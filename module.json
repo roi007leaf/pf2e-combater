@@ -3,6 +3,9 @@
   "title": "PF2e Combater",
   "description": "Floating tactical combat advisor for PF2e. Recommends full-turn plans from actor actions, battlefield state, generic actions, strikes, and curated spells.",
   "version": "1.0.0",
+  "url": "#{URL}#",
+  "manifest": "#{MANIFEST}#",
+  "download": "#{DOWNLOAD}#",
   "compatibility": {
     "minimum": "14",
     "verified": "14"
