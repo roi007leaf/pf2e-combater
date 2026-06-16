@@ -6,6 +6,7 @@ pf2e/
 .vscode/tasks.json
 .bmad-core
 web-bundles/
+.github/
 .playwright-cli/
 output/playwright/
 artifacts/
