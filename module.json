@@ -1,0 +1,31 @@
+{
+  "id": "pf2e-combater",
+  "title": "PF2e Combater",
+  "description": "Floating tactical combat advisor for PF2e. Recommends full-turn plans from actor actions, battlefield state, generic actions, strikes, and curated spells.",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf2e",
+        "type": "system",
+        "compatibility": {}
+      }
+    ]
+  },
+  "system": [
+    "pf2e"
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/combater.css"
+  ],
+  "flags": {
+    "canUpload": true
+  }
+}

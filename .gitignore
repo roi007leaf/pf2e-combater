@@ -1,0 +1,13 @@
+node_modules/
+coverage/
+pf2e/
+.claude/
+.vscode/settings.json
+.vscode/tasks.json
+.bmad-core
+web-bundles/
+.github/
+.playwright-cli/
+output/playwright/
+artifacts/
+.playwright-mcp/

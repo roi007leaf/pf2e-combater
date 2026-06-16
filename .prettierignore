@@ -1,0 +1,11 @@
+# Generated files
+node_modules/
+coverage/
+*.log
+*.lock
+
+# FoundryVTT specific
+packs/
+module.json
+system.json
+template.json

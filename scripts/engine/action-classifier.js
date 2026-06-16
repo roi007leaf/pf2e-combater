@@ -1,0 +1,883 @@
+function textValue(value) {
+  if (value && typeof value === "object" && "value" in value) return value.value;
+  return value;
+}
+
+function arrayValue(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  return [];
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function rawDescription(action) {
+  return [
+    textValue(action?.description),
+    textValue(action?.system?.description),
+    textValue(action?.item?.system?.description),
+    textValue(action?.item?.description),
+  ].filter(Boolean).join(" ");
+}
+
+function actionText(action) {
+  return normalizeText([
+    action?.name,
+    action?.label,
+    action?.slug,
+    rawDescription(action),
+  ].filter(Boolean).join(" "));
+}
+
+function actionName(action) {
+  return String(action?.name ?? action?.label ?? action?.item?.name ?? action?.slug ?? "");
+}
+
+function actionSlug(action) {
+  return String(action?.slug ?? action?.system?.slug ?? action?.item?.slug ?? action?.item?.system?.slug ?? "")
+    .toLowerCase();
+}
+
+function actionTraits(action) {
+  const traitValues = [
+    ...arrayValue(action?.traits).map((trait) => trait?.slug ?? trait?.name ?? trait),
+    ...arrayValue(action?.system?.traits?.value ?? action?.system?.traits),
+    ...arrayValue(action?.item?.traits).map((trait) => trait?.slug ?? trait?.name ?? trait),
+    ...arrayValue(action?.item?.system?.traits?.value ?? action?.item?.system?.traits),
+  ];
+  return [...new Set(traitValues.filter(Boolean).map((trait) => String(trait).toLowerCase()))];
+}
+
+function actionCategory(action) {
+  return String(textValue(action?.category ?? action?.system?.category ?? action?.item?.system?.category) ?? "")
+    .toLowerCase();
+}
+
+function localizeKeys(action) {
+  return [...rawDescription(action).matchAll(/@Localize\[([^\]]+)\]/gi)]
+    .map((match) => match[1].toLowerCase());
+}
+
+function hasLocalize(action, key) {
+  const needle = key.toLowerCase();
+  return localizeKeys(action).some((value) => value.includes(needle));
+}
+
+function hasName(action, pattern) {
+  return pattern.test(actionName(action).toLowerCase()) || pattern.test(actionSlug(action));
+}
+
+function readSaveProfile(action) {
+  const raw = rawDescription(action);
+  const match = raw.match(/@Check\[(fortitude|reflex|will)([^\]]*)\]/i);
+  if (match) {
+    const dc = Number(match[2]?.match(/dc:(\d+)/i)?.[1]);
+    return {
+      stat: match[1].toLowerCase(),
+      dc: Number.isFinite(dc) ? dc : null,
+      basic: /\bbasic\b/i.test(match[2] ?? raw),
+    };
+  }
+
+  const textMatch = normalizeText(raw).match(/\b(fortitude|reflex|will)\s+save\b/);
+  if (!textMatch) return null;
+  return {
+    stat: textMatch[1].toLowerCase(),
+    dc: null,
+    basic: /\bbasic\b/i.test(raw),
+  };
+}
+
+function readDamageProfile(action) {
+  const raw = rawDescription(action);
+  const match = raw.match(/@Damage\[([^\][]+)(?:\[([^\]]+)\])?/i);
+  if (!match) return null;
+  return {
+    formula: String(match[1] ?? "").trim(),
+    type: String(match[2] ?? "").trim() || null,
+  };
+}
+
+function readTemplateProfile(action) {
+  const raw = rawDescription(action);
+  const match = raw.match(/@Template\[([^\]]+)\]/i);
+  if (!match) return null;
+
+  const parts = Object.fromEntries(
+    match[1].split("|")
+      .map((part) => part.split(":"))
+      .filter(([key, value]) => key && value)
+      .map(([key, value]) => [key.trim().toLowerCase(), value.trim().toLowerCase()]),
+  );
+  const distance = Number(parts.distance ?? parts.radius ?? parts.length ?? parts.width);
+  return {
+    area: true,
+    type: parts.type ?? "area",
+    distance: Number.isFinite(distance) ? distance : null,
+  };
+}
+
+function readRangeProfile(action) {
+  const text = actionText(action);
+  const matches = [
+    ...text.matchAll(/\bwithin\s+(\d+)\s+feet\b/g),
+    ...text.matchAll(/\b(\d+)\s+feet\b/g),
+  ];
+  const values = matches
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (!values.length) return {};
+  return { maxRange: Math.max(...values) };
+}
+
+function hasFrequency(action) {
+  return Boolean(action?.system?.frequency ?? action?.item?.system?.frequency)
+    || /\bfrequency\b|\brecharge\b|\bcan(?:not|'t|t) use .* again\b/i.test(rawDescription(action));
+}
+
+function textHasAny(text, values) {
+  return values.some((value) => text.includes(value));
+}
+
+function baseProfile(includes = []) {
+  return {
+    includes,
+    includesStrike: includes.includes("strike"),
+  };
+}
+
+function baseAttackProfile() {
+  return {
+    includes: ["strike"],
+    includesStrike: true,
+  };
+}
+
+const MAP_WORD_NUMBERS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+
+// How many attacks this activity counts as toward the multiple attack penalty.
+// Returns a number, "variable" (counts as an unknown/scaling number — e.g. "equal
+// to the number of heads"), or null when the text says nothing about MAP.
+function readMapAttacks(text) {
+  if (/(?:doesn.t|does not|don.t|do not|won.t|will not) count (?:toward|towards|against)[^.]*multiple attack penalty/.test(text)) {
+    return 0;
+  }
+  if (/counts? as a number of attacks equal to/.test(text)) return "variable";
+  const match = text.match(/counts? as (\d+|one|two|three|four|five|six) attacks?/);
+  if (match) return MAP_WORD_NUMBERS[match[1]] ?? Number(match[1]);
+  return null;
+}
+
+function readAcSetupProfile(text) {
+  const appliesOffGuard = /\boff[- ]guard\b|\bflat-footed\b/.test(text);
+  const appliesAcPenalty = /\b(?:ac|armor class|defenses?)\b.{0,50}\bpenalty\b|\bpenalty\b.{0,50}\b(?:ac|armor class|defenses?)\b/.test(text);
+  if (!appliesOffGuard && !appliesAcPenalty) return null;
+
+  return {
+    ...baseProfile(["setup"]),
+    appliesCondition: appliesOffGuard ? "off-guard" : null,
+    acPenalty: appliesAcPenalty,
+  };
+}
+
+// Detect a beneficial (buff/support) effect. Requires a positive signal so plain
+// utility actions are not mislabeled as buffs.
+function readBuffProfile(text) {
+  const attackBuff = /\bbonus to attack\b|\battack rolls?\b.*\bbonus\b|\bstatus bonus\b.*\battack/.test(text);
+  const grantsBonus = /\b(?:\+\d+|status|circumstance|item) bonus\b|\bgrants? a .*bonus\b/.test(text);
+  const tempHp = /\btemporary hit points\b/.test(text);
+  const resistance = /\bresistance\b|\breduce[sd]? .* damage\b/.test(text);
+  const removesCondition = /\b(?:remove|reduce|suppress)[sd]? .* (?:condition|penalt)/.test(text);
+  const protective = /\bprotect|\bward\b|\bbolster|\bbless|\bheroism|\bhaste\b|\benhance|\brally\b|\bsanctuary\b/.test(text);
+  const extraAction = /\b(?:an? )?(?:extra|additional) action\b|\bact twice\b/.test(text);
+
+  if (!(attackBuff || grantsBonus || tempHp || resistance || removesCondition || protective || extraAction)) {
+    return null;
+  }
+
+  const ally = /\bally\b|\ballies\b|\bwilling creature\b/.test(text);
+  return { ally, attackBuff, tempHp, removesCondition };
+}
+
+function inferred(role, {
+  activityProfile = null,
+  targetingProfile = null,
+  saveProfile = null,
+  damageProfile = null,
+  gatingProfile = null,
+  setupFor = [],
+  confidence = "medium",
+  executable = "open-item",
+  reasons = [],
+} = {}) {
+  return {
+    role,
+    activityProfile,
+    targetingProfile,
+    saveProfile,
+    damageProfile,
+    gatingProfile,
+    setupFor,
+    confidence,
+    executable,
+    reasons,
+    inferred: true,
+  };
+}
+
+export function classifySystemAction(action, parsedCost) {
+  const actionCost = parsedCost?.actionCost;
+  if (parsedCost?.passive || actionCost === null || actionCost === undefined) return null;
+
+  const text = actionText(action);
+  const traits = actionTraits(action);
+  const category = actionCategory(action);
+  const saveProfile = readSaveProfile(action);
+  const damageProfile = readDamageProfile(action);
+  const templateProfile = readTemplateProfile(action);
+  const rangeProfile = readRangeProfile(action);
+  const gatingProfile = {
+    frequency: hasFrequency(action),
+    triggerOnly: actionCost === "reaction",
+  };
+
+  const isReaction = actionCost === "reaction";
+  const isFree = actionCost === 0;
+  const mentionsStrike = /\bstrikes?\b/.test(text);
+  const offensive = category === "offensive" || traits.includes("attack") || mentionsStrike || Boolean(saveProfile || damageProfile);
+
+  if (isReaction || isFree) {
+    if (
+      hasName(action, /\b(?:reactive strike|attack of opportunity)\b/)
+      || (isReaction && mentionsStrike && /\btrigger\b|\bmanipulate\b|\bleaves? a square\b|\bmove action\b/.test(text))
+    ) {
+      return inferred("reaction-attack", {
+        activityProfile: {
+          ...baseAttackProfile(),
+          reaction: true,
+        },
+        targetingProfile: { enemy: true, reach: true },
+        gatingProfile,
+        confidence: hasName(action, /\b(?:reactive strike|attack of opportunity)\b/) ? "high" : "medium",
+        reasons: ["Reaction can punish a provoking enemy."],
+      });
+    }
+
+    if (
+      hasName(action, /\bfast swallow\b/)
+      || /\buses? swallow whole\b/.test(text)
+    ) {
+      return inferred("control", {
+        activityProfile: {
+          ...baseProfile(["control"]),
+          reaction: true,
+          requiresAnyTargetCondition: ["grabbed", "restrained"],
+          containsTarget: true,
+        },
+        targetingProfile: { enemy: true, reach: true },
+        gatingProfile,
+        confidence: "high",
+        reasons: ["Reaction can immediately Swallow Whole a grabbed target."],
+      });
+    }
+
+    if (
+      hasName(action, /\b(?:shield block|ferocity|nimble dodge|deny advantage)\b/)
+      || category === "defensive"
+      || /\btrigger\b.*\b(?:damage|attack|hit|critical)\b/.test(text)
+    ) {
+      return inferred("defense", {
+        activityProfile: baseProfile(["defense"]),
+        targetingProfile: { self: true },
+        gatingProfile,
+        confidence: hasName(action, /\b(?:shield block|ferocity|nimble dodge)\b/) ? "high" : "medium",
+        reasons: ["Defensive reaction is recognized."],
+      });
+    }
+  }
+
+  const mentionsStride = /\bstrides?\b|\bsteps?\b|\bmoves?\b|\bleaps?\b|\bjumps?\b|\bbounds?\b|\bsprings?\b/.test(text);
+  const mentionsDifferentTargets = /\bdifferent targets?\b|\bseparate targets?\b|\beach against\b/.test(text);
+  const mentionsMultipleStrikes = /\b(?:two|three|\d+) strikes?\b|\bup to .* strikes?\b|\bnumber of strikes?\b/.test(text);
+  const mentionsDelayedMap = /multiple attack penalty.*(?:doesn.t|does not|doesn’t) increase|map.*(?:doesn.t|does not|doesn’t) increase/.test(text);
+  const mapAttacks = readMapAttacks(text);
+  const mentionsFocusedTarget = /\bsingle .* strike\b|\bone .* strike\b|\bsingle target\b|\bsame target\b|\bfocus/.test(text);
+  const acSetupProfile = readAcSetupProfile(text);
+  const mentionsFutureAttack = /\bnext (?:strike|attack)\b|\buntil .* next (?:strike|attack)\b/.test(text);
+
+  if (acSetupProfile && !saveProfile && !damageProfile && (!mentionsStrike || mentionsFutureAttack)) {
+    return inferred("setup", {
+      activityProfile: acSetupProfile,
+      targetingProfile: { enemy: true, ...rangeProfile },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: acSetupProfile.appliesCondition === "off-guard" ? "high" : "medium",
+      reasons: ["Action can weaken target defenses before a Strike."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.changeshape") || hasName(action, /\bchange shape\b/)) {
+    return inferred("transformation", {
+      activityProfile: {
+        ...baseProfile(["transformation"]),
+        polymorph: traits.includes("polymorph"),
+      },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: hasLocalize(action, "glossary.changeshape") ? "high" : "medium",
+      reasons: ["Change Shape can alter movement, attacks, or disguise state."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.throwrock") || hasName(action, /\bthrow rock\b/)) {
+    return inferred("damage", {
+      activityProfile: {
+        ...baseAttackProfile(),
+        focusedStrike: true,
+        ranged: true,
+      },
+      targetingProfile: { enemy: true, maxRange: rangeProfile.maxRange ?? 120 },
+      gatingProfile,
+      confidence: hasLocalize(action, "glossary.throwrock") ? "high" : "medium",
+      reasons: ["Throw Rock is a ranged attack option."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.aquaticambush") || hasName(action, /\baquatic ambush\b/)) {
+    return inferred("mobility-attack", {
+      activityProfile: {
+        ...baseProfile(["stride", "strike"]),
+        strideCount: 1,
+        includesStrike: true,
+        requiresTerrain: "water",
+      },
+      targetingProfile: { enemy: true, reachAfterMove: true, maxRange: rangeProfile.maxRange ?? null },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Aquatic Ambush moves from water into an attack."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.push") || hasName(action, /\bpush\b/)) {
+    return inferred("control", {
+      activityProfile: {
+        ...baseProfile(["control"]),
+        forcedMovement: true,
+        requiresPreviousStrike: /\blast action\b.*\bstrike\b|\bsuccessful strike\b/.test(text),
+      },
+      targetingProfile: { enemy: true, reach: true },
+      gatingProfile,
+      confidence: hasLocalize(action, "glossary.push") ? "high" : "medium",
+      reasons: ["Push can move a target after a hit."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.formup") || hasName(action, /\bform up\b/)) {
+    return inferred("mobility", {
+      activityProfile: {
+        ...baseProfile(["stride"]),
+        formation: true,
+      },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Troop can reform its space."],
+    });
+  }
+
+  if (hasName(action, /\bhunt prey\b/) || /\bdesignates? (?:a single )?creature .* prey\b|\bhunted prey\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        targetMark: "hunted-prey",
+        precisionDamageSetup: /\bprecision damage\b/.test(text),
+      },
+      targetingProfile: { enemy: true, ...rangeProfile },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Hunt Prey sets up stronger follow-up attacks."],
+    });
+  }
+
+  if (hasName(action, /\brage\b/) || /\bgains? .*bonus damage\b.*\bstrikes?\b|\brage\b.*\bstrikes?\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        damageBuff: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Rage sets up stronger attacks."],
+    });
+  }
+
+  if (traits.includes("stance") || /\benter (?:the |a )?stance\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        stance: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Stance sets up this turn's attacks."],
+    });
+  }
+
+  if (hasName(action, /\bpoison weapon\b/) || /\bappl(?:y|ies) poison\b.*\bweapon\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        weaponBuff: true,
+        poison: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Poisoned weapon can improve the next damaging Strike."],
+    });
+  }
+
+  if (hasName(action, /\breach spell\b/) || /\bnext spell\b.*\brange\b|\brange increased\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        spellBuff: true,
+        rangeBuff: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["spell", "damage", "control"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Reach Spell sets up a longer-range spell."],
+    });
+  }
+
+  if (hasName(action, /\bquickened casting\b/) || /\bnext spell\b.*\b(?:1 fewer action|fewer actions)\b/.test(text)) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        spellBuff: true,
+        actionDiscount: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["spell", "damage", "control", "healing"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Quickened Casting sets up an efficient spell this turn."],
+    });
+  }
+
+  if (traits.includes("spellshape") || traits.includes("metamagic")) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        spellBuff: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["spell", "damage", "control", "healing"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Spellshape action improves the spell cast right after it."],
+    });
+  }
+
+  if (
+    hasName(action, /\b(?:recharge|drain bonded item)\b/)
+    || /\bregains? an expended spell\b|\bregains? an expended spell slot\b|\bquickened casting again\b|\bprepared and already cast\b/.test(text)
+  ) {
+    return inferred("resource-recovery", {
+      activityProfile: {
+        ...baseProfile(["resource"]),
+        recoversSpellResource: true,
+      },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Action recovers an expended spell resource."],
+    });
+  }
+
+  if (hasName(action, /\bbattle medicine\b/) || /\bmedicine\b.*\brestore hit points\b|\bpatch wounds\b|\brestore hit points\b.*\bcombat\b/.test(text)) {
+    return inferred("healing", {
+      activityProfile: {
+        ...baseProfile(["healing"]),
+        medicine: true,
+      },
+      targetingProfile: { ally: true, self: true },
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Battle Medicine can restore Hit Points in combat."],
+    });
+  }
+
+  if (hasName(action, /\bremove a condition\b/) || /\bremove\b.*\bcondition\b/.test(text)) {
+    return inferred("healing", {
+      activityProfile: {
+        ...baseProfile(["healing"]),
+        removesCondition: true,
+      },
+      targetingProfile: { ally: true, self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Action can remove a harmful condition."],
+    });
+  }
+
+  if (hasName(action, /\braise a shield\b/) || /\bshield\b.*\bprotect\b|\braises? (?:a|its|their) shield\b/.test(text)) {
+    return inferred("defense", {
+      activityProfile: baseProfile(["defense"]),
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Raise a Shield improves defense until next turn."],
+    });
+  }
+
+  if (hasName(action, /\brunning reload\b/) || /\b(?:strides?|steps?|sneaks?).*\breload\b/.test(text)) {
+    return inferred("mobility", {
+      activityProfile: {
+        ...baseProfile(["stride", "setup"]),
+        strideCount: 1,
+        reload: true,
+      },
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Running Reload repositions and reloads for ranged offense."],
+    });
+  }
+
+  if (
+    hasName(action, /\bconsume flesh\b/)
+    || (damageProfile?.type === "healing" && /\bcorpse\b|\bdevours?\b|\bregains? .*hit points\b/.test(text))
+  ) {
+    return inferred("self-healing", {
+      activityProfile: {
+        ...baseProfile(["healing"]),
+        requiresCorpse: /\bcorpse\b/.test(text),
+      },
+      targetingProfile: { self: true },
+      damageProfile,
+      gatingProfile,
+      confidence: damageProfile ? "high" : "medium",
+      reasons: ["Action can restore Hit Points if its requirement is met."],
+    });
+  }
+
+  if (
+    hasName(action, /\b(?:drink blood|blood drain)\b/)
+    || (/\b(?:drained|drains? blood)\b/.test(text) && /\bregains? .*hit points\b|\bvampire\b/.test(text))
+  ) {
+    return inferred("drain", {
+      activityProfile: {
+        ...baseProfile(["damage", "healing", "control"]),
+        requiresAnyTargetCondition: ["grabbed", "restrained", "paralyzed", "unconscious"],
+        appliesCondition: "drained",
+        selfHealing: true,
+      },
+      targetingProfile: { enemy: true, reach: true },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Drink Blood punishes a grabbed or helpless target and heals the actor."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.grab") || hasName(action, /\b(?:grab|improved grab)\b/)) {
+    return inferred("grab", {
+      activityProfile: {
+        ...baseProfile(["grab"]),
+        includesGrab: true,
+        requiresPreviousStrike: hasName(action, /\bimproved grab\b/) || /\blast action\b.*\bstrike\b/.test(text),
+      },
+      targetingProfile: { enemy: true, reach: true },
+      gatingProfile,
+      confidence: hasLocalize(action, "glossary.grab") ? "high" : "medium",
+      reasons: ["Creature can grab a target."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.constrict") || hasName(action, /\bconstrict\b/)) {
+    return inferred("save-damage", {
+      activityProfile: {
+        ...baseProfile(["damage", "control"]),
+        requiresTargetCondition: "grabbed",
+      },
+      targetingProfile: { enemy: true, reach: true },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: saveProfile && damageProfile ? "high" : "medium",
+      reasons: ["Constrict damages a grabbed target."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.swallowwhole") || hasName(action, /\bswallow whole\b/)) {
+    return inferred("control", {
+      activityProfile: {
+        ...baseProfile(["damage", "control"]),
+        requiresTargetCondition: "grabbed",
+        containsTarget: true,
+      },
+      targetingProfile: { enemy: true, reach: true },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Swallow Whole is useful against a grabbed target."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.trample") || hasName(action, /\btrample\b/)) {
+    return inferred("mobility-attack", {
+      activityProfile: {
+        ...baseProfile(["stride", "damage"]),
+        strideCount: /\bdouble\b/.test(text) ? 2 : 1,
+      },
+      targetingProfile: {
+        area: true,
+        type: "path",
+        enemy: true,
+      },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: saveProfile && damageProfile ? "high" : "medium",
+      reasons: ["Trample moves through enemies and deals damage."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.knockdown") || hasName(action, /\bknockdown\b/)) {
+    return inferred("control", {
+      activityProfile: {
+        ...baseProfile(mentionsStrike ? ["strike", "control"] : ["control"]),
+        appliesCondition: "prone",
+      },
+      targetingProfile: { enemy: true, reach: true },
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Knockdown can leave target prone."],
+    });
+  }
+
+  if (hasLocalize(action, "glossary.rend") || hasName(action, /\brend\b/)) {
+    return inferred("damage", {
+      activityProfile: {
+        ...baseProfile(["damage"]),
+        requiresMultipleHits: true,
+      },
+      targetingProfile: { enemy: true, reach: true },
+      damageProfile,
+      gatingProfile,
+      confidence: damageProfile ? "high" : "medium",
+      reasons: ["Rend rewards repeated hits on one target."],
+    });
+  }
+
+  if (templateProfile && saveProfile && damageProfile) {
+    return inferred("area-damage", {
+      activityProfile: baseProfile(["damage", "area"]),
+      targetingProfile: { ...templateProfile, ...rangeProfile },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Area damage with saving throw is recognized."],
+    });
+  }
+
+  if (saveProfile && damageProfile && offensive) {
+    return inferred("save-damage", {
+      activityProfile: baseProfile(["damage"]),
+      targetingProfile: { enemy: true, ...rangeProfile },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Saving throw damage is recognized."],
+    });
+  }
+
+  if (saveProfile && offensive) {
+    return inferred("control", {
+      activityProfile: baseProfile(["control"]),
+      targetingProfile: { enemy: true, ...rangeProfile },
+      saveProfile,
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Saving throw control action is recognized."],
+    });
+  }
+
+  const buffProfile = readBuffProfile(text);
+  if (buffProfile && !saveProfile && !damageProfile && !mentionsStrike && !offensive) {
+    return inferred("buff", {
+      activityProfile: { ...baseProfile(["buff"]), ...buffProfile },
+      targetingProfile: buffProfile.ally ? { ally: true, self: true } : { self: true },
+      setupFor: buffProfile.attackBuff ? ["strike", "damage"] : [],
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Action grants a beneficial effect to the actor or an ally."],
+    });
+  }
+
+  if (!mentionsStrike && (
+    traits.includes("move")
+    || /\bstrides? twice\b|\bstrides? up to\b|\bmoves? up to\b|\bjumps? up to\b|\bflies? up to\b|\bflies? twice\b|\bburrows? twice\b/.test(text)
+  )) {
+    const strideCount = /\bhalf (?:its|his|her|their|the) speed\b/.test(text)
+      ? 0.5
+      : (/\btwice\b|\bdouble\b/.test(text) ? 2 : 1);
+    return inferred("mobility", {
+      activityProfile: {
+        ...baseProfile(["stride"]),
+        strideCount,
+        safeMovement: /doesn.t trigger reactions|does not trigger reactions|bonus to ac against reactions/.test(text),
+        retreat: /\bnot adjacent to any enemy\b|\bretreat\b/.test(text),
+      },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Movement activity is recognized."],
+    });
+  }
+
+  if (traits.includes("teleportation") || /\bteleport|\bteleportation\b/.test(text)) {
+    return inferred("mobility", {
+      activityProfile: { ...baseProfile(["teleport"]), teleport: true },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Teleportation repositions the actor."],
+    });
+  }
+
+  if ((traits.includes("polymorph") || traits.includes("morph")) && !mentionsStrike) {
+    return inferred("transformation", {
+      activityProfile: {
+        ...baseProfile(["transformation"]),
+        polymorph: traits.includes("polymorph"),
+      },
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Form change alters the actor's options."],
+    });
+  }
+
+  if (traits.includes("summon") || /\bsummon (?:a|an|the|forth)\b|\bconjures?\b/.test(text)) {
+    return inferred("summon", {
+      activityProfile: baseProfile(["summon"]),
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Summons an ally or construct to the battlefield."],
+    });
+  }
+
+  if (traits.includes("aura")) {
+    return inferred("buff", {
+      activityProfile: { ...baseProfile(["buff"]), aura: true, ally: true },
+      targetingProfile: { ally: true, self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Aura affects the actor and nearby allies."],
+    });
+  }
+
+  // Attack-trait actions whose effect lives in prose / rules rather than a
+  // structured save or @Damage (e.g. Elemental Blast, athletics-free maneuvers).
+  if (!mentionsStrike && (offensive || traits.includes("attack"))) {
+    const proseDamage = /\b\d+d\d+\b|\bdeals?\b[^.]*\bdamage\b/.test(text);
+    return proseDamage
+      ? inferred("damage", {
+        activityProfile: baseAttackProfile(),
+        targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+        gatingProfile,
+        confidence: "low",
+        reasons: ["Offensive action deals damage."],
+      })
+      : inferred("control", {
+        activityProfile: baseProfile(["control"]),
+        targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+        gatingProfile,
+        confidence: "low",
+        reasons: ["Offensive maneuver pressures a target."],
+      });
+  }
+
+  if (!mentionsStrike) {
+    // Recognized active action with no tactical pattern — surface as a low-priority
+    // option instead of dropping it. Reactions/free actions without a pattern stay
+    // null so they are not treated as turn-economy filler.
+    if (isReaction || isFree) return null;
+    return inferred("utility", {
+      activityProfile: baseProfile(["utility"]),
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "low",
+      reasons: ["Action is available but has no recognized tactical pattern."],
+    });
+  }
+
+  if (mentionsStride) {
+    return inferred("mobility-attack", {
+      activityProfile: {
+        includes: ["stride", "strike"],
+        strideCount: 1,
+        includesStrike: true,
+      },
+      targetingProfile: { enemy: true, reachAfterMove: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: ["Move-and-Strike activity is recognized."],
+    });
+  }
+
+  if (mentionsDifferentTargets || mentionsMultipleStrikes) {
+    return inferred("multiattack", {
+      activityProfile: {
+        ...baseAttackProfile(),
+        multiStrike: true,
+        delayedMap: mentionsDelayedMap,
+        ...(mapAttacks !== null ? { mapAttacks } : {}),
+      },
+      targetingProfile: {
+        enemy: true,
+        separateTargets: mentionsDifferentTargets,
+      },
+      gatingProfile,
+      confidence: mentionsDifferentTargets ? "high" : "medium",
+      reasons: ["Multi-Strike activity is recognized."],
+    });
+  }
+
+  return inferred("damage", {
+    activityProfile: {
+      ...baseAttackProfile(),
+      focusedStrike: mentionsFocusedTarget || actionCost > 1,
+      ...(mapAttacks !== null ? { mapAttacks } : {}),
+    },
+    targetingProfile: { enemy: true, reach: true },
+    gatingProfile,
+    confidence: mentionsFocusedTarget ? "high" : "medium",
+    reasons: ["Strike-based damage activity is recognized."],
+  });
+}

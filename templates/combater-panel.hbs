@@ -1,0 +1,181 @@
+<div class="combater-shell {{#if expanded}}is-expanded{{else}}is-compact{{/if}}">
+  <header class="combater-compact">
+    {{#if actor}}
+      <img class="combater-portrait" src="{{actor.img}}" alt="{{actor.name}}">
+      <div class="combater-headline">
+        <div class="combater-name-row">
+          <h2>{{actor.name}}</h2>
+          <span class="combater-confidence confidence-{{plan.confidenceClass}}">{{plan.confidenceLabel}}</span>
+        </div>
+        <div class="combater-sequence" aria-label="Recommended action sequence">
+          {{#each plan.steps}}
+            <button type="button" class="combater-chip {{costClass}}" data-execute-step="{{index}}" data-preview-plan="main" data-preview-step="{{index}}" title="{{name}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if mapLabel}} - {{mapLabel}}{{/if}}: {{reason}}">
+              <span class="combater-chip-cost" aria-label="{{costLabel}}">
+                {{#each diamonds}}<span>{{this}}</span>{{/each}}
+              </span>
+              <span class="combater-chip-text">
+                <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" title="{{rangeLabel}}"></i>{{/if}}</span>
+                {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
+                {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
+              </span>
+            </button>
+          {{else}}
+            <span class="combater-empty-chip">No usable action</span>
+          {{/each}}
+        </div>
+        <p class="combater-reason">{{plan.reason}}</p>
+      </div>
+    {{else}}
+      <div class="combater-portrait placeholder" aria-hidden="true"></div>
+      <div class="combater-headline">
+        <div class="combater-name-row">
+          <h2>No active combatant</h2>
+          <span class="combater-confidence confidence-low">Low</span>
+        </div>
+        <p class="combater-reason">Start combat or select readable active actor.</p>
+      </div>
+    {{/if}}
+
+    <div class="combater-actions">
+      <button type="button" class="icon-button" data-action="refresh" title="Refresh" aria-label="Refresh">
+        <i class="fa-solid fa-rotate-right"></i>
+      </button>
+      <button type="button" class="icon-button" data-action="toggle-expanded" title="{{#if expanded}}Collapse{{else}}Expand{{/if}}" aria-label="{{#if expanded}}Collapse{{else}}Expand{{/if}}">
+        <i class="fa-solid {{#if expanded}}fa-chevron-up{{else}}fa-chevron-down{{/if}}"></i>
+      </button>
+    </div>
+  </header>
+
+  {{#if expanded}}
+    <nav class="combater-tabs" aria-label="PF2e Combater tabs">
+      <button type="button" data-tab="plan" class="{{#if activeTabPlan}}active{{/if}}">Plan</button>
+      <button type="button" data-tab="alternatives" class="{{#if activeTabAlternatives}}active{{/if}}">Alternatives</button>
+      {{#if showDebug}}
+        <button type="button" data-tab="debug" class="{{#if activeTabDebug}}active{{/if}}">Debug</button>
+      {{/if}}
+    </nav>
+
+    <section class="combater-body">
+      {{#if activeTabPlan}}
+        <div class="combater-plan-list">
+          {{#each plan.steps}}
+            <article class="combater-step" data-preview-plan="main" data-preview-step="{{index}}">
+              <div class="combater-step-main">
+                <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
+                  {{#each diamonds}}<span>{{this}}</span>{{/each}}
+                </span>
+                <div>
+                  <h3>{{name}}{{#if isRanged}} <span class="combater-range" title="{{rangeLabel}}"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}</h3>
+                  {{#if targetLabel}}<span class="combater-target">{{targetLabel}}</span>{{/if}}
+                  {{#if mapLabel}}<span class="combater-target">{{mapLabel}}</span>{{/if}}
+                  <p>{{reason}}</p>
+                </div>
+              </div>
+              <button type="button" class="combater-run" data-execute-step="{{index}}" title="Open action">
+                <i class="fa-solid fa-up-right-from-square"></i>
+              </button>
+            </article>
+          {{else}}
+            <p class="combater-empty">No plan available.</p>
+          {{/each}}
+        </div>
+      {{/if}}
+
+      {{#if activeTabAlternatives}}
+        <div class="combater-alt-list">
+          {{#each alternatives}}
+            <article class="combater-alt {{#if detailsExpanded}}is-open{{/if}}">
+              <div class="combater-alt-head" data-toggle-alt="{{id}}" role="button" tabindex="0" aria-expanded="{{detailsExpanded}}" title="Show recommendation details">
+                <span class="combater-alt-title">
+                  <i class="fa-solid {{#if detailsExpanded}}fa-chevron-up{{else}}fa-chevron-down{{/if}} combater-alt-caret"></i>
+                  <strong>#{{rank}} {{summary}}</strong>
+                </span>
+                <span class="combater-confidence confidence-{{confidenceClass}}">{{confidenceLabel}}</span>
+                <button type="button" class="combater-alt-promote" data-promote-plan="{{id}}" title="Set as main plan" aria-label="Set as main plan">
+                  <i class="fa-solid fa-arrow-up"></i>
+                  <span>Set as main</span>
+                </button>
+              </div>
+              <div class="combater-sequence small">
+                {{#each steps}}
+                  <button type="button" class="combater-chip {{costClass}}" data-preview-plan="{{../id}}" data-preview-step="{{index}}" data-execute-alt-plan="{{../id}}" data-execute-alt-step="{{index}}" title="Show {{name}} details">
+                    <span class="combater-chip-cost" aria-label="{{costLabel}}">
+                      {{#each diamonds}}<span>{{this}}</span>{{/each}}
+                    </span>
+                    <span class="combater-chip-text">
+                      <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" title="{{rangeLabel}}"></i>{{/if}}</span>
+                      {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
+                      {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
+                    </span>
+                  </button>
+                {{/each}}
+              </div>
+              <p>{{reason}}</p>
+              {{#if detailsExpanded}}
+                <div class="combater-alt-details">
+                  {{#each steps}}
+                    <div class="combater-alt-step" data-preview-plan="{{../id}}" data-preview-step="{{index}}">
+                      <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
+                        {{#each diamonds}}<span>{{this}}</span>{{/each}}
+                      </span>
+                      <div class="combater-alt-step-body">
+                        <h4>{{name}}{{#if isRanged}} <span class="combater-range" title="{{rangeLabel}}"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}</h4>
+                        {{#if targetLabel}}<span class="combater-target">{{targetLabel}}</span>{{/if}}
+                        {{#if mapLabel}}<span class="combater-target">{{mapLabel}}</span>{{/if}}
+                        <p>{{reason}}</p>
+                      </div>
+                      <button type="button" class="combater-run" data-execute-alt-plan="{{../id}}" data-execute-alt-step="{{index}}" title="Open / roll this action">
+                        <i class="fa-solid fa-up-right-from-square"></i>
+                      </button>
+                    </div>
+                  {{/each}}
+                </div>
+              {{/if}}
+            </article>
+          {{else}}
+            <p class="combater-empty">No alternate plans found.</p>
+          {{/each}}
+        </div>
+      {{/if}}
+
+      {{#if activeTabDebug}}
+        {{#if showDebug}}
+          <div class="combater-debug">
+            <details open>
+              <summary>Candidates ({{debug.candidates.length}})</summary>
+              {{#each debug.candidates}}
+                <div class="debug-row">
+                  <span>{{name}}</span>
+                  <code title="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                  <span>{{costLabel}}</span>
+                  <span>{{#if skillCheckLabel}}{{skillCheckLabel}}{{else}}{{#if targetLabel}}{{targetLabel}}{{else}}{{score}}{{/if}}{{/if}}</span>
+                </div>
+              {{/each}}
+            </details>
+            <details>
+              <summary>Rejected ({{debug.rejected.length}})</summary>
+              {{#each debug.rejected}}
+                <div class="debug-row">
+                  <span>{{action.name}}</span>
+                  <code>{{action.source}}</code>
+                  <span>{{reason}}</span>
+                </div>
+              {{/each}}
+            </details>
+            <details>
+              <summary>Detected ({{debug.detected.length}})</summary>
+              {{#each debug.detected}}
+                <div class="debug-row">
+                  <span>{{name}}</span>
+                  <code title="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                  <span>{{costLabel}}</span>
+                  <span>{{#if available}}available{{else}}blocked{{/if}}</span>
+                </div>
+              {{/each}}
+            </details>
+          </div>
+        {{/if}}
+      {{/if}}
+    </section>
+  {{/if}}
+</div>

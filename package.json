@@ -1,0 +1,49 @@
+{
+  "name": "pf2e-combater",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/roi007leaf/pf2e-combater.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/roi007leaf/pf2e-combater/issues"
+  },
+  "homepage": "https://github.com/roi007leaf/pf2e-combater#readme",
+  "description": "",
+  "scripts": {
+    "test": "jest --maxWorkers=50%",
+    "test:watch": "jest --maxWorkers=50% --watch",
+    "test:coverage": "jest --coverage --maxWorkers=50%",
+    "test:ci": "jest --ci --coverage --watchAll=false --maxWorkers=50%",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "echo 'No build step required for Foundry VTT modules'",
+    "prepublishOnly": "npm run test:ci && npm run lint",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.3",
+    "@babel/preset-env": "^7.28.3",
+    "@eslint/js": "^9.35.0",
+    "babel-jest": "^30.1.2",
+    "canvas": "^3.2.0",
+    "classic-level": "^3.0.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^16.3.0",
+    "husky": "^9.1.7",
+    "jest": "^30.1.3",
+    "jest-environment-jsdom": "^30.1.2",
+    "prettier": "^3.6.2"
+  }
+}
