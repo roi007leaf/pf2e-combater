@@ -3,6 +3,8 @@ import { readSpellActions } from "../readers/spell-reader.js";
 import { SETTINGS, setting } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
 
+const REJECTED_SCORE = -900;
+
 function readSetting(key, fallback) {
   try {
     return setting(key);
@@ -86,7 +88,12 @@ export function buildCandidates(context) {
       rejected.push({ action, reason: "Unknown custom action hidden by setting." });
       continue;
     }
-    candidates.push(scoreCandidate(context, action));
+    const scored = scoreCandidate(context, action);
+    if (scored.score <= REJECTED_SCORE) {
+      rejected.push({ action: scored, reason: scored.reason || "Action is not useful in current context." });
+      continue;
+    }
+    candidates.push(scored);
   }
 
   return { candidates, rejected, detected };

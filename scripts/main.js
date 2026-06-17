@@ -1,34 +1,18 @@
 import { MODULE_ID } from "./constants.js";
 import { registerSettings, setting, SETTINGS } from "./settings.js";
+import { documentRelevantToContext } from "./state/context-relevance.js";
+import {
+  clearMovementActionSpends,
+  consumeTokenRefreshChange,
+  markMovementActionSpent,
+  tokenUpdateAffectsCombatGeometry,
+} from "./state/token-refresh.js";
 
 let activePanel = null;
 let refreshTimer = null;
 
 function activeContext() {
   return activePanel?.context ?? activePanel?._context ?? null;
-}
-
-function actorId(actor) {
-  return actor?.document?.id ?? actor?.id ?? null;
-}
-
-function documentActorId(document) {
-  return actorId(document?.actor ?? document?.parent ?? document);
-}
-
-function contextTargets(context) {
-  return context?.targets ?? context?.battlefield?.targets ?? [];
-}
-
-function actorRelevantToActiveContext(document) {
-  const id = documentActorId(document);
-  if (!id) return false;
-
-  const context = activeContext();
-  if (!context) return false;
-
-  if (id === actorId(context.actor) || id === actorId(context.combatant?.actor)) return true;
-  return contextTargets(context).some((target) => id === actorId(target?.actor));
 }
 
 async function openCurrent(source) {
@@ -46,6 +30,11 @@ function scheduleRefresh(source) {
       console.warn(`${MODULE_ID} | Refresh failed`, error);
     });
   }, 150);
+}
+
+function scheduleDocumentRefresh(document, source) {
+  if (!documentRelevantToContext(document, activeContext())) return;
+  scheduleRefresh(source);
 }
 
 Hooks.once("init", () => {
@@ -75,6 +64,7 @@ Hooks.on("deleteCombat", (combat) => {
   const isActiveCombat = activeCombatId && activeCombatId === combat.id;
   const isCurrentCombat = game.combat && combat === game.combat;
   if (!isActiveCombat && !isCurrentCombat) return;
+  clearMovementActionSpends();
   if (activePanel) {
     activePanel.close();
     activePanel = null;
@@ -89,9 +79,15 @@ Hooks.on("updateCombat", async (combat, changed) => {
   await openCurrent("combat-turn");
 });
 
-Hooks.on("updateToken", (_token, changed) => {
-  if (!("x" in changed) && !("y" in changed) && !("hidden" in changed)) return;
-  scheduleRefresh("token-update");
+Hooks.on("updateToken", (token, changed) => {
+  const movementSpent = markMovementActionSpent(token, { changed });
+  if (!tokenUpdateAffectsCombatGeometry(changed)) return;
+  scheduleRefresh(movementSpent ? "token-movement" : "token-update");
+});
+
+Hooks.on("refreshToken", (token) => {
+  if (!consumeTokenRefreshChange(token)) return;
+  scheduleRefresh("token-refresh");
 });
 
 Hooks.on("targetToken", (user) => {
@@ -100,21 +96,29 @@ Hooks.on("targetToken", (user) => {
 });
 
 Hooks.on("updateActor", (actor) => {
-  if (!actorRelevantToActiveContext(actor)) return;
-  scheduleRefresh("actor-update");
+  scheduleDocumentRefresh(actor, "actor-update");
 });
 
 Hooks.on("createItem", (item) => {
-  if (!actorRelevantToActiveContext(item)) return;
-  scheduleRefresh("item-create");
+  scheduleDocumentRefresh(item, "item-create");
 });
 
 Hooks.on("updateItem", (item) => {
-  if (!actorRelevantToActiveContext(item)) return;
-  scheduleRefresh("item-update");
+  scheduleDocumentRefresh(item, "item-update");
 });
 
 Hooks.on("deleteItem", (item) => {
-  if (!actorRelevantToActiveContext(item)) return;
-  scheduleRefresh("item-delete");
+  scheduleDocumentRefresh(item, "item-delete");
+});
+
+Hooks.on("createActiveEffect", (effect) => {
+  scheduleDocumentRefresh(effect, "effect-create");
+});
+
+Hooks.on("updateActiveEffect", (effect) => {
+  scheduleDocumentRefresh(effect, "effect-update");
+});
+
+Hooks.on("deleteActiveEffect", (effect) => {
+  scheduleDocumentRefresh(effect, "effect-delete");
 });

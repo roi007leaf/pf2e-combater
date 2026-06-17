@@ -10,7 +10,15 @@ import { readActionSources } from "../readers/action-reader.js";
 import { readActorProfile } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import { readCombatContext } from "../state/combat-context.js";
-import { readVisionerDetectionState } from "../integrations/visioner.js";
+import { documentRelevantToContext } from "../state/context-relevance.js";
+import {
+  consumeTokenRefreshChange,
+  markMovementActionSpent,
+  movementActionsSpent,
+  tokenUpdateAffectsCombatGeometry,
+  tokenUpdateAffectsMovement,
+} from "../state/token-refresh.js";
+import { readVisionerCoverState, readVisionerDetectionState } from "../integrations/visioner.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { movementPreviewForStep } from "../ui/movement-preview.js";
@@ -25,6 +33,65 @@ assert.equal(best.target.name, "Ogre");
 assert.equal(best.totalCost, 3);
 assert.equal(best.summary, "Demoralize -> Strike -> Raise a Shield");
 assert.equal(confidenceLabel(best.confidence), "Medium");
+
+assert.equal(tokenUpdateAffectsCombatGeometry({ name: "Calder" }), false);
+assert.equal(tokenUpdateAffectsCombatGeometry({ x: 10 }), true);
+assert.equal(tokenUpdateAffectsCombatGeometry({ document: { y: 20 } }), true);
+assert.equal(tokenUpdateAffectsMovement({ name: "Calder" }), false);
+assert.equal(tokenUpdateAffectsMovement({ x: 10 }), true);
+assert.equal(tokenUpdateAffectsMovement({ document: { elevation: 5 } }), true);
+const tokenRefreshSnapshots = new Map();
+const movingToken = {
+  id: "token-calder",
+  x: 0,
+  y: 0,
+  document: { uuid: "Scene.Token.token-calder", x: 0, y: 0 },
+};
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true);
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), false);
+movingToken.x = 5;
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true);
+const movementSpendMap = new Map();
+const movementCombat = {
+  id: "combat-1",
+  round: 1,
+  turn: 0,
+  started: true,
+  combatant: {
+    id: "combatant-calder",
+    tokenId: "token-calder",
+    token: { id: "token-calder" },
+    tokenDocument: { uuid: "Scene.Token.token-calder" },
+  },
+};
+assert.equal(markMovementActionSpent({ id: "other-token" }, { combat: movementCombat, changed: { x: 5 }, spends: movementSpendMap }), false);
+assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { name: "Calder" }, spends: movementSpendMap }), false);
+assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { x: 10 }, spends: movementSpendMap }), true);
+assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { y: 10 }, spends: movementSpendMap }), true);
+assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { x: 15 }, spends: movementSpendMap }), true);
+assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { y: 15 }, spends: movementSpendMap }), false);
+assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 3);
+assert.equal(movementActionsSpent({ ...movementCombat, turn: 1 }, movementSpendMap), 0);
+
+const relevanceContext = {
+  actor: { id: "actor-active" },
+  combatant: { actor: { id: "actor-active" } },
+  token: { id: "token-active", uuid: "Scene.scene.Token.token-active" },
+  battlefield: {
+    targets: [{
+      actor: { id: "actor-target" },
+      token: { id: "token-target", uuid: "Scene.scene.Token.token-target" },
+    }],
+  },
+};
+assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-active.Item.condition" }, relevanceContext), true);
+assert.equal(
+  documentRelevantToContext({ type: "condition", uuid: "Scene.scene.Token.token-active.Actor.actor-active.Item.condition" }, relevanceContext),
+  true,
+);
+assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-target.Item.condition" }, relevanceContext), true);
+assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-other.Item.condition" }, relevanceContext), false);
+assert.equal(documentRelevantToContext({ documentName: "Actor", id: "actor-active" }, relevanceContext), true);
 
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
@@ -61,6 +128,62 @@ const excellentSingleAction = bestTurnPlan(fighterContext, [
   },
 ]);
 assert.equal(excellentSingleAction.summary, "Excellent Strike");
+
+const untargetedStrike = scoreCandidate({
+  actor: { id: "kobold", name: "Nakpik" },
+  token: { id: "token-nakpik", name: "Nakpik" },
+  battlefield: { targets: [], enemies: [] },
+}, {
+  id: "shortsword",
+  name: "Shortsword",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  range: { max: 5 },
+});
+assert.equal(untargetedStrike.score, -999);
+assert.equal(untargetedStrike.suggestedTarget, null);
+assert.equal(untargetedStrike.reason, "No valid enemy target.");
+
+const untargetedStep = scoreCandidate({
+  actor: { id: "kobold", name: "Nakpik" },
+  token: { id: "token-nakpik", name: "Nakpik" },
+  battlefield: { targets: [], enemies: [] },
+}, {
+  id: "step",
+  name: "Step",
+  slug: "step",
+  source: "generic",
+  actionCost: 1,
+});
+assert.equal(untargetedStep.score, -999);
+assert.equal(untargetedStep.suggestedTarget, null);
+assert.equal(untargetedStep.reason, "No valid enemy target.");
+
+const noTargetBuild = buildCandidates({
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          slug: "shortsword",
+          type: "strike",
+          label: "Shortsword",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: { id: "shortsword", system: { traits: { value: [] } } },
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  profile: { speed: 25, conditions: { slugs: [], values: {} } },
+  token: { id: "token-nakpik", name: "Nakpik", center: { x: 0, y: 0 } },
+  battlefield: { targets: [], enemies: [] },
+  targets: undefined,
+});
+assert.equal(noTargetBuild.candidates.some((action) => ["step", "stride", "strike"].includes(action.slug)), false);
 
 const manyFreeActions = Array.from({ length: 40 }, (_, index) => ({
   id: `free-${index}`,
@@ -99,6 +222,17 @@ const stunnedContext = {
 };
 assert.equal(actionBudget(stunnedContext).normalActions, 1);
 assert.equal(bestTurnPlan(stunnedContext, fixtureCandidates).totalCost, 1);
+
+const movedThisTurnContext = {
+  ...fighterContext,
+  actionsSpent: {
+    movement: 2,
+    normal: 2,
+    total: 2,
+  },
+};
+assert.equal(actionBudget(movedThisTurnContext).normalActions, 1);
+assert.equal(bestTurnPlan(movedThisTurnContext, fixtureCandidates).totalCost, 1);
 
 const quickenedContext = {
   ...fighterContext,
@@ -312,6 +446,110 @@ assert.equal(stridePreview.distanceFeet, 25);
 assert.equal(stridePreview.recommendedCenter.x, 25);
 assert.equal(stridePreview.recommendedCenter.y, 0);
 
+const combatOnlyStridePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{
+      id: "combat-target",
+      name: "Combat Target",
+      token: { center: { x: 100, y: 0 } },
+      distance: 100,
+    }],
+  },
+}, {
+  slug: "stride",
+  preferredTarget: {
+    id: "off-combat-target",
+    name: "Off Combat Target",
+    token: { center: { x: -100, y: 0 } },
+    distance: 100,
+  },
+}, { gridSize: 5 });
+assert.equal(combatOnlyStridePreview.enabled, true);
+assert.equal(combatOnlyStridePreview.recommendedCenter.x, 25);
+assert.equal(combatOnlyStridePreview.recommendedCenter.y, 0);
+
+const wallAwareStridePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{
+      name: "Ogre",
+      token: { center: { x: 100, y: 0 } },
+      distance: 100,
+    }],
+  },
+}, { slug: "stride" }, {
+  gridSize: 5,
+  pathBlocked: (_from, to) => to.x === 25 && to.y === 0,
+});
+assert.equal(wallAwareStridePreview.enabled, true);
+assert.notDeepEqual(wallAwareStridePreview.recommendedCenter, { x: 25, y: 0 });
+assert.ok(!wallAwareStridePreview.reachableCenters.some((center) => center.x === 25 && center.y === 0));
+
+const previousWallPreviewCanvas = globalThis.canvas;
+const previousWallPreviewFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    walls: {
+      checkCollision: (ray, options) =>
+        options?.type === "move" && ray.B.x === 50 && ray.B.y === 0,
+    },
+  };
+  const foundryWallAwareStridePreview = movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: {
+      targets: [{
+        name: "Ogre",
+        token: { center: { x: 100, y: 0 } },
+        distance: 100,
+      }],
+    },
+  }, { slug: "stride" }, { gridSize: 5, collisionScale: 2 });
+  assert.notDeepEqual(foundryWallAwareStridePreview.recommendedCenter, { x: 25, y: 0 });
+} finally {
+  globalThis.canvas = previousWallPreviewCanvas;
+  globalThis.foundry = previousWallPreviewFoundry;
+}
+
+const previousTokenCollisionPreviewCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    tokens: {
+      placeables: [{
+        id: "active-token",
+        checkCollision: (to, options) => options?.type === "move" && to.x === 25 && to.y === 0,
+      }],
+    },
+  };
+  const tokenCollisionStridePreview = movementPreviewForStep({
+    token: { id: "active-token", center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: {
+      targets: [{
+        name: "Ogre",
+        token: { center: { x: 100, y: 0 } },
+        distance: 100,
+      }],
+    },
+  }, { slug: "stride" }, { gridSize: 5 });
+  assert.notDeepEqual(tokenCollisionStridePreview.recommendedCenter, { x: 25, y: 0 });
+} finally {
+  globalThis.canvas = previousTokenCollisionPreviewCanvas;
+}
+
 const stepPreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
   actor: { profile: { speed: 25 } },
@@ -336,6 +574,196 @@ assert.equal(compositePreview.stridePath.length, 2);
 assert.notEqual(compositePreview.stridePath[0].color, compositePreview.stridePath[1].color);
 assert.ok(compositePreview.stridePath[1].center.x > compositePreview.stridePath[0].center.x);
 assert.ok(compositePreview.stridePath[0].marker.strokes.length === 2);
+
+const attackBlockedCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 30, y: 0 } }, distance: 30 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 1 },
+}, {
+  gridSize: 5,
+  attackPathBlocked: (_from, to) => to.x >= 27.5 && to.x <= 32.5 && to.y >= -2.5 && to.y <= 2.5,
+});
+assert.equal(attackBlockedCompositePreview.enabled, false);
+
+const centerBlockedCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 30, y: 0 } }, distance: 30 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 1 },
+}, {
+  gridSize: 5,
+  attackPathBlocked: (_from, to) => to.x === 30 && to.y === 0,
+});
+assert.equal(centerBlockedCompositePreview.enabled, false);
+
+const perimeterBlockedCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 35 } },
+  battlefield: {
+    targets: [{
+      name: "Caged Mitflit",
+      token: { center: { x: 40, y: 0 }, width: 2, height: 2 },
+      distance: 40,
+    }],
+  },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 1 },
+}, {
+  gridSize: 5,
+  attackPathBlocked: (_from, to) => to.x !== 40 || to.y !== 0,
+});
+assert.equal(perimeterBlockedCompositePreview.enabled, false);
+
+const preferredTargetCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ id: "blocked", name: "Blocked", token: { center: { x: -35, y: 0 } }, distance: 35 }],
+    enemies: [{ id: "mitflit", name: "Mitflit", token: { center: { x: 35, y: 0 } }, distance: 35 }],
+  },
+}, {
+  slug: "stride-strike-claw",
+  preferredTarget: { id: "mitflit", name: "Mitflit", token: { center: { x: 35, y: 0 } }, distance: 35 },
+  targetingProfile: { preferredTargetId: "mitflit", preferredTargetName: "Mitflit" },
+  activityProfile: { includesStrike: true, strideCount: 2 },
+}, { gridSize: 5 });
+assert.equal(preferredTargetCompositePreview.enabled, true);
+assert.ok(preferredTargetCompositePreview.destinationCenter.x > 0);
+
+const stepwiseCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 20 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 25, y: 0 } }, distance: 25 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 1 },
+}, {
+  gridSize: 5,
+  pathBlocked: (from, to) => Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) > 5,
+});
+assert.equal(stepwiseCompositePreview.enabled, true);
+assert.equal(stepwiseCompositePreview.stridePath.length, 1);
+
+const routedCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 20 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 45, y: 0 } }, distance: 45 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 2 },
+}, {
+  gridSize: 5,
+  pathBlocked: (_from, to) => to.x === 20 && to.y === 0,
+});
+assert.equal(routedCompositePreview.enabled, true);
+assert.equal(routedCompositePreview.stridePath.length, 2);
+assert.ok(!routedCompositePreview.stridePath.some((step) => step.center.x === 20 && step.center.y === 0));
+
+const fastestCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 30 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 35, y: 0 } }, distance: 35 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 1 },
+}, {
+  gridSize: 5,
+  pathBlocked: (_from, to) => to.x === 25 && to.y === 0,
+});
+assert.equal(fastestCompositePreview.enabled, true);
+assert.equal(fastestCompositePreview.destinationCenter.cost, 25);
+
+const directCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 45, y: -10 } }, distance: 45 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 2 },
+}, { gridSize: 5 });
+assert.equal(directCompositePreview.enabled, true);
+assert.ok(directCompositePreview.stridePath.every((step) =>
+  step.trail.every((point) => point.y >= -10),
+));
+
+const shortTwoStrideCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Amiri", token: { center: { x: 25, y: 0 } }, distance: 25 }] },
+}, {
+  slug: "stride-strike-claw",
+  activityProfile: { includesStrike: true, strideCount: 2 },
+}, { gridSize: 5 });
+assert.equal(shortTwoStrideCompositePreview.enabled, true);
+assert.equal(shortTwoStrideCompositePreview.stridePath.length, 2);
+assert.notEqual(
+  `${shortTwoStrideCompositePreview.stridePath[0].center.x},${shortTwoStrideCompositePreview.stridePath[0].center.y}`,
+  `${shortTwoStrideCompositePreview.stridePath[1].center.x},${shortTwoStrideCompositePreview.stridePath[1].center.y}`,
+);
+
+const skirmishCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ id: "mitflit", name: "Mitflit", token: { center: { x: 80, y: 0 } }, distance: 80 }] },
+}, {
+  slug: "stride-strike-stride-shortbow",
+  preferredTarget: { id: "mitflit", name: "Mitflit", token: { center: { x: 80, y: 0 } }, distance: 80 },
+  targetingProfile: { preferredTargetId: "mitflit", preferredTargetName: "Mitflit" },
+  activityProfile: { includesStrike: true, retreatAfterStrike: true, strideCount: 2, strikeReach: 60 },
+}, { gridSize: 5 });
+assert.equal(skirmishCompositePreview.enabled, true);
+assert.equal(skirmishCompositePreview.stridePath.length, 2);
+assert.ok(skirmishCompositePreview.stridePath[0].center.x > 0);
+assert.deepEqual(skirmishCompositePreview.stridePath[1].center, { x: 0, y: 0 });
+
+const previousPreviewVisibilityGame = globalThis.game;
+const previousPreviewVisibilityCanvas = globalThis.canvas;
+try {
+  globalThis.game = { user: { isGM: false } };
+  const playerVisibleStridePreview = movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [{ name: "Amiri", token: { center: { x: 25, y: 0 } }, distance: 25 }] },
+  }, { slug: "stride" }, {
+    gridSize: 5,
+    pointVisible: (point) => point.x <= 10,
+  });
+  assert.ok(!playerVisibleStridePreview.reachableCenters.some((point) => point.x > 10));
+
+  const playerHiddenPathCompositePreview = movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [{ name: "Amiri", token: { center: { x: 25, y: 0 } }, distance: 25 }] },
+  }, {
+    slug: "stride-strike-claw",
+    activityProfile: { includesStrike: true, strideCount: 1 },
+  }, {
+    gridSize: 5,
+    pointVisible: (point) => point.x <= 10,
+  });
+  assert.equal(playerHiddenPathCompositePreview.enabled, false);
+
+  globalThis.canvas = {
+    visibility: {
+      testVisibility: (point) => point.x <= 20,
+    },
+  };
+  const foundryVisibilityStridePreview = movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [{ name: "Amiri", token: { center: { x: 25, y: 0 } }, distance: 25 }] },
+  }, { slug: "stride" }, { gridSize: 5, collisionScale: 2 });
+  assert.ok(!foundryVisibilityStridePreview.reachableCenters.some((point) => point.x > 10));
+} finally {
+  globalThis.game = previousPreviewVisibilityGame;
+  globalThis.canvas = previousPreviewVisibilityCanvas;
+}
 
 const hugeStridePreview = movementPreviewForStep({
   token: { center: { x: 15, y: 15 }, width: 3, height: 3 },
@@ -1525,34 +1953,160 @@ const hiddenAction = readActionSources(fighterContext).find((action) => action.s
 assert.equal(hiddenAction.available, false);
 assert.equal(hiddenAction.unavailableReason, "No cover or concealment detected.");
 
-const visibleSeek = readActionSources({
+const noAdjacentWallTakeCover = readActionSources({
   ...fighterContext,
-  token: { id: "observer-token" },
-  battlefield: {
-    targets: [{
-      ...fighterContext.targets[0],
-      token: { id: "target-token" },
-      visionerDetectionState: "observed",
-    }],
+  token: { center: { x: 0, y: 0 } },
+  profile: {
+    ...fighterContext.profile,
+    hasCover: true,
   },
-  targets: undefined,
-}).find((action) => action.slug === "seek");
-assert.equal(visibleSeek.available, false);
-assert.equal(visibleSeek.unavailableReason, "No hidden or undetected target detected.");
+}).find((action) => action.slug === "take-cover");
+assert.equal(noAdjacentWallTakeCover.available, false);
+assert.equal(noAdjacentWallTakeCover.unavailableReason, "No adjacent wall or cover.");
 
-const hiddenSeek = readActionSources({
-  ...fighterContext,
-  token: { id: "observer-token" },
-  battlefield: {
-    targets: [{
-      ...fighterContext.targets[0],
-      token: { id: "target-token" },
-      visionerDetectionState: "hidden",
-    }],
-  },
-  targets: undefined,
-}).find((action) => action.slug === "seek");
-assert.equal(hiddenSeek.available, true);
+const systemTakeCoverNoWallCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: { placeables: [] },
+  };
+  const systemTakeCoverNoWallContext = {
+    ...fighterContext,
+    token: { center: { x: 0, y: 0 } },
+    actor: {
+      ...fighterContext.actor,
+      document: {
+        itemTypes: {
+          action: [{
+            id: "system-take-cover",
+            name: "Take Cover",
+            slug: "take-cover",
+            type: "action",
+            system: {
+              slug: "take-cover",
+              actionType: { value: "action" },
+              actions: { value: 1 },
+              description: { value: "<p>You press yourself against cover.</p>" },
+            },
+          }],
+          feat: [],
+          feature: [],
+          consumable: [],
+        },
+        items: [],
+      },
+    },
+  };
+  assert.equal(
+    buildCandidates(systemTakeCoverNoWallContext).candidates.some((action) => action.slug === "take-cover"),
+    false,
+  );
+} finally {
+  globalThis.canvas = systemTakeCoverNoWallCanvas;
+}
+
+const previousTakeCoverWallCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      placeables: [{
+        document: { c: [2.5, -2.5, 2.5, 2.5] },
+      }],
+    },
+  };
+  const adjacentWallTakeCover = readActionSources({
+    ...fighterContext,
+    token: { center: { x: 0, y: 0 } },
+  }).find((action) => action.slug === "take-cover");
+  assert.equal(adjacentWallTakeCover.available, true);
+} finally {
+  globalThis.canvas = previousTakeCoverWallCanvas;
+}
+
+const previousSeekVisionerGame = globalThis.game;
+try {
+  globalThis.game = {
+    modules: {
+      get: (id) => id === "pf2e-visioner" ? { active: true, api: {} } : null,
+    },
+  };
+
+  const visibleSeek = readActionSources({
+    ...fighterContext,
+    token: { id: "observer-token" },
+    battlefield: {
+      targets: [{
+        ...fighterContext.targets[0],
+        token: { id: "target-token" },
+        visionerDetectionState: "observed",
+      }],
+    },
+    targets: undefined,
+  }).find((action) => action.slug === "seek");
+  assert.equal(visibleSeek.available, false);
+  assert.equal(visibleSeek.unavailableReason, "No hidden or undetected target detected.");
+
+  const observedConditionSeek = readActionSources({
+    ...fighterContext,
+    token: { id: "observer-token" },
+    battlefield: {
+      targets: [{
+        ...fighterContext.targets[0],
+        token: { id: "target-token" },
+        visionerDetectionState: "observed",
+        conditions: [{ slug: "hidden" }],
+      }],
+    },
+    targets: undefined,
+  }).find((action) => action.slug === "seek");
+  assert.equal(observedConditionSeek.available, false);
+  assert.equal(observedConditionSeek.unavailableReason, "No hidden or undetected target detected.");
+
+  const hiddenSeek = readActionSources({
+    ...fighterContext,
+    token: { id: "observer-token" },
+    battlefield: {
+      targets: [{
+        ...fighterContext.targets[0],
+        token: { id: "target-token" },
+        visionerDetectionState: "hidden",
+      }],
+    },
+    targets: undefined,
+  }).find((action) => action.slug === "seek");
+  assert.equal(hiddenSeek.available, true);
+} finally {
+  globalThis.game = previousSeekVisionerGame;
+}
+
+const previousInactiveVisionerGame = globalThis.game;
+try {
+  globalThis.game = {
+    modules: {
+      get: (id) => id === "pf2e-visioner" ? { active: false, api: {} } : null,
+    },
+  };
+
+  const inactiveVisionerSystemSeek = readActionSources({
+    ...fighterContext,
+    token: { id: "observer-token" },
+    battlefield: {
+      targets: [{
+        ...fighterContext.targets[0],
+        token: { id: "target-token" },
+        visionerDetectionState: "observed",
+        conditions: [{ slug: "hidden" }],
+      }],
+    },
+    targets: undefined,
+  }).find((action) => action.slug === "seek");
+  assert.equal(inactiveVisionerSystemSeek.available, true);
+} finally {
+  globalThis.game = previousInactiveVisionerGame;
+}
 
 const blockedSenseMotive = readActionSources(fighterContext).find((action) => action.slug === "sense-motive");
 assert.equal(blockedSenseMotive.available, false);
@@ -1594,6 +2148,40 @@ try {
     readVisionerDetectionState({ token: { id: "observer-token" } }, { token: { id: "target-token" } }),
     "undetected",
   );
+  assert.equal(
+    readVisionerCoverState({ token: { id: "observer-token" } }, { token: { id: "target-token" } }),
+    "none",
+  );
+  globalThis.game.modules.get = (id) => id === "pf2e-visioner"
+    ? {
+      api: {
+        autoVisibility: {
+          getPerceptionProfile: () => ({
+            detectionState: "observed",
+            awarenessState: "hidden",
+          }),
+        },
+      },
+    }
+    : null;
+  assert.equal(
+    readVisionerDetectionState({ token: { id: "observer-token" } }, { token: { id: "target-token" } }),
+    "observed",
+  );
+  globalThis.game.modules.get = (id) => id === "pf2e-visioner"
+    ? {
+      active: false,
+      api: {
+        autoVisibility: {
+          getPerceptionProfile: () => ({ detectionState: "hidden" }),
+        },
+      },
+    }
+    : null;
+  assert.equal(
+    readVisionerDetectionState({ token: { id: "observer-token" } }, { token: { id: "target-token" } }),
+    null,
+  );
 } finally {
   globalThis.game = previousVisionerGame;
 }
@@ -1601,6 +2189,32 @@ try {
 const forceOpenAction = readActionSources(fighterContext).find((action) => action.slug === "force-open");
 assert.equal(forceOpenAction.available, false);
 assert.equal(forceOpenAction.unavailableReason, "No obstacle or object in reach.");
+
+const previousForceOpenDoorCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    walls: {
+      placeables: [{
+        document: {
+          door: 1,
+          ds: 2,
+          c: [5, -5, 5, 5],
+        },
+      }],
+    },
+  };
+  const forceOpenDoorAction = readActionSources({
+    ...fighterContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: {
+      ...fighterContext.profile,
+      reach: 5,
+    },
+  }).find((action) => action.slug === "force-open");
+  assert.equal(forceOpenDoorAction.available, true);
+} finally {
+  globalThis.canvas = previousForceOpenDoorCanvas;
+}
 
 const climbAction = readActionSources({
   ...fighterContext,
@@ -1773,6 +2387,58 @@ const repeatedStrikePlan = bestTurnPlan(fighterContext, [{
 }]);
 assert.equal(repeatedStrikePlan.steps.length, 2);
 assert.deepEqual(repeatedStrikePlan.steps.map((step) => step.mapPenalty), [0, 5]);
+
+const rangedAlreadyInRangeContext = {
+  ...fighterContext,
+  targets: [{
+    id: "calder",
+    name: "Calder",
+    distance: 40,
+  }],
+  battlefield: {
+    targets: [{
+      id: "calder",
+      name: "Calder",
+      distance: 40,
+    }],
+    enemies: [{
+      id: "calder",
+      name: "Calder",
+      distance: 40,
+    }],
+  },
+};
+const rangedAlreadyInRangePlans = buildTurnPlans(rangedAlreadyInRangeContext, [{
+  id: "stride",
+  name: "Stride",
+  slug: "stride",
+  actionCost: 1,
+  source: "generic",
+  score: 100,
+  confidence: "medium",
+  reason: "Move.",
+}, {
+  id: "crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120 },
+  score: 90,
+  confidence: "medium",
+  reason: "Shoot.",
+}]);
+assert.equal(
+  rangedAlreadyInRangePlans.some((plan) =>
+    plan.steps.some((step) => step.slug === "stride")
+    && plan.steps.some((step) => step.name === "Crossbow"),
+  ),
+  false,
+);
+assert.deepEqual(
+  rangedAlreadyInRangePlans[0].steps.map((step) => step.name),
+  ["Crossbow", "Crossbow"],
+);
 
 const twoActionOrderingContext = {
   ...fighterContext,
@@ -2003,6 +2669,19 @@ try {
         actor,
         token: { object: activeToken },
       },
+      combatants: [{
+        id: "combatant-feral",
+        name: "Fe'Ral",
+        actor,
+        tokenId: activeToken.id,
+        token: { object: activeToken, id: activeToken.id, uuid: activeToken.document.uuid },
+      }, {
+        id: "combatant-hydra",
+        name: "Hydra",
+        actor: hydraActor,
+        tokenId: hydraToken.id,
+        token: { object: hydraToken, id: hydraToken.id, uuid: hydraToken.document.uuid },
+      }],
     },
   };
   const hugeTargetContext = readCombatContext("huge-target-test");
@@ -2061,10 +2740,11 @@ assert.equal(rangedStrike.reason, "Target is in range.");
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;
 try {
-  const makeActor = (id, name) => ({
+  const makeActor = (id, name, type = "npc") => ({
     id,
     uuid: `Actor.${id}`,
     name,
+    type,
     img: "icons/svg/mystery-man.svg",
     documentName: "Actor",
     isOwner: true,
@@ -2090,6 +2770,9 @@ try {
   const valerosActor = makeActor("valeros", "Valeros");
   const ezrenActor = makeActor("ezren", "Ezren");
   const centipedeActor = makeActor("centipede", "Giant Centipede");
+  const nakpikActor = makeActor("nakpik", "Nakpik");
+  const hiddenPitActor = makeActor("hidden-pit", "Hidden Pit", "hazard");
+  const treasureActor = makeActor("treasure", "Treasure", "loot");
   const makeToken = (id, name, actor, disposition, x) => ({
     id,
     name,
@@ -2112,6 +2795,18 @@ try {
   const activeToken = makeToken("token-valeros", "Valeros", valerosActor, 1, 0);
   const allyToken = makeToken("token-ezren", "Ezren", ezrenActor, 1, 5);
   const enemyToken = makeToken("token-centipede", "Giant Centipede", centipedeActor, -1, 40);
+  const neutralToken = makeToken("token-nakpik", "Nakpik", nakpikActor, 0, 10);
+  const hiddenPitToken = makeToken("token-hidden-pit", "Hidden Pit", hiddenPitActor, -1, 10);
+  const treasureToken = makeToken("token-treasure", "Treasure", treasureActor, -1, 15);
+  const makeCombatant = (token) => ({
+    id: `combatant-${token.id}`,
+    name: token.name,
+    actor: token.actor,
+    tokenId: token.id,
+    token: { object: token, id: token.id, uuid: token.document.uuid },
+  });
+  const combatantsFor = (tokens) => tokens.map((token) => makeCombatant(token));
+  const activeCombatant = makeCombatant(activeToken);
   valerosActor.getActiveTokens = () => [activeToken];
   globalThis.canvas = {
     grid: {
@@ -2132,13 +2827,12 @@ try {
       round: 1,
       turn: 0,
       started: true,
-      combatant: {
-        id: "combatant-valeros",
-        name: "Valeros",
-        actor: valerosActor,
-        token: { object: activeToken },
-      },
+      combatant: activeCombatant,
+      combatants: combatantsFor([activeToken, allyToken, enemyToken]),
     },
+  };
+  const setCombatants = (tokens) => {
+    globalThis.game.combat.combatants = combatantsFor(tokens);
   };
   const contextWithFriendlyTarget = readCombatContext("test");
   assert.equal(contextWithFriendlyTarget.battlefield.targets.length, 1);
@@ -2161,6 +2855,59 @@ try {
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].perceptionDC, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].resistances, null);
 
+  globalThis.game.user.isGM = true;
+  globalThis.game.user.targets = new Set([neutralToken]);
+  globalThis.canvas.tokens.placeables = [activeToken, neutralToken, enemyToken];
+  const neutralTargetContext = readCombatContext("neutral-target-test");
+  assert.deepEqual(
+    neutralTargetContext.battlefield.enemies.map((target) => target.name),
+    ["Giant Centipede"],
+  );
+  assert.equal(neutralTargetContext.battlefield.targets.length, 1);
+  assert.equal(neutralTargetContext.battlefield.targets[0].name, "Giant Centipede");
+
+  const calderActor = makeActor("calder", "Calder Stoneplow");
+  const calderToken = makeToken("token-calder", "Calder Stoneplow", calderActor, 1, 30);
+  globalThis.game.user.targets = new Set();
+  globalThis.canvas.tokens.placeables = [neutralToken, calderToken];
+  globalThis.game.combat.combatant = makeCombatant(neutralToken);
+  setCombatants([neutralToken, calderToken]);
+  const neutralActiveContext = readCombatContext("neutral-active-test");
+  assert.equal(neutralActiveContext.actor.name, "Nakpik");
+  assert.deepEqual(
+    neutralActiveContext.battlefield.enemies.map((target) => target.name),
+    ["Calder Stoneplow"],
+  );
+  assert.equal(neutralActiveContext.battlefield.targets[0].name, "Calder Stoneplow");
+  assert.ok(
+    buildCandidates(neutralActiveContext).candidates.some((action) => ["step", "stride"].includes(action.slug)),
+  );
+
+  globalThis.game.user.targets = new Set([hiddenPitToken, treasureToken]);
+  globalThis.canvas.tokens.placeables = [activeToken, hiddenPitToken, treasureToken, enemyToken];
+  globalThis.game.combat.combatant = activeCombatant;
+  setCombatants([activeToken, hiddenPitToken, treasureToken, enemyToken]);
+  const objectTargetContext = readCombatContext("object-target-test");
+  assert.deepEqual(
+    objectTargetContext.battlefield.enemies.map((target) => target.name),
+    ["Giant Centipede"],
+  );
+  assert.equal(objectTargetContext.battlefield.targets.length, 1);
+  assert.equal(objectTargetContext.battlefield.targets[0].name, "Giant Centipede");
+
+  const offCombatActor = makeActor("off-combat", "Off Combat Target");
+  const offCombatToken = makeToken("token-off-combat", "Off Combat Target", offCombatActor, -1, 1);
+  globalThis.game.user.targets = new Set([offCombatToken]);
+  globalThis.canvas.tokens.placeables = [activeToken, offCombatToken, enemyToken];
+  setCombatants([activeToken, enemyToken]);
+  const outOfCombatTargetContext = readCombatContext("out-of-combat-target-test");
+  assert.deepEqual(
+    outOfCombatTargetContext.battlefield.enemies.map((target) => target.name),
+    ["Giant Centipede"],
+  );
+  assert.equal(outOfCombatTargetContext.battlefield.targets.length, 1);
+  assert.equal(outOfCombatTargetContext.battlefield.targets[0].name, "Giant Centipede");
+
   const farEnemyActor = makeActor("feral", "Fe'Ral");
   const nearEnemyActor = makeActor("amiri", "Amiri");
   const farEnemyToken = makeToken("token-feral", "Fe'Ral", farEnemyActor, -1, 60);
@@ -2168,8 +2915,35 @@ try {
   globalThis.game.user.isGM = true;
   globalThis.game.user.targets = new Set();
   globalThis.canvas.tokens.placeables = [activeToken, farEnemyToken, nearEnemyToken];
+  setCombatants([activeToken, farEnemyToken, nearEnemyToken]);
   const nearestFallbackContext = readCombatContext("nearest-test");
   assert.equal(nearestFallbackContext.battlefield.targets[0].name, "Amiri");
+
+  const sootscaleActor = makeActor("sootscale-kobold-scout", "Sootscale Kobold Scout");
+  const nakpikToken = makeToken("token-nakpik-active", "Nakpik", sootscaleActor, -1, 0);
+  const otherSootscaleToken = makeToken("token-sootscale-other", "Sootscale Kobold Scout", sootscaleActor, -1, 10);
+  sootscaleActor.getActiveTokens = () => [otherSootscaleToken, nakpikToken];
+  globalThis.game.user.targets = new Set();
+  globalThis.canvas.tokens.placeables = [otherSootscaleToken, nakpikToken, calderToken];
+  globalThis.game.combat.combatant = {
+    id: "combatant-nakpik",
+    name: "Nakpik",
+    actor: sootscaleActor,
+    tokenId: nakpikToken.id,
+    token: { id: nakpikToken.id, uuid: nakpikToken.document.uuid },
+  };
+  globalThis.game.combat.combatants = [
+    globalThis.game.combat.combatant,
+    makeCombatant(calderToken),
+  ];
+  const namedTokenContext = readCombatContext("named-token-test");
+  assert.equal(namedTokenContext.actor.name, "Nakpik");
+  assert.equal(namedTokenContext.token.name, "Nakpik");
+  assert.deepEqual(
+    namedTokenContext.battlefield.enemies.map((target) => target.name),
+    ["Calder Stoneplow"],
+  );
+  assert.equal(namedTokenContext.battlefield.targets[0].name, "Calder Stoneplow");
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;
@@ -2550,6 +3324,71 @@ assert.ok(
   `harder-hitting strike should outrank a smaller one, got Jaws ${jawsStrikeScore.score} vs Claw ${clawStrikeScore.score}`,
 );
 
+const swordVsUnarmedContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: {
+        actions: [{
+          slug: "unarmed-attack",
+          type: "strike",
+          label: "Unarmed Attack",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          traits: [{ slug: "agile" }, { slug: "unarmed" }],
+          item: {
+            id: "unarmed-attack",
+            name: "Unarmed Attack",
+            system: { damage: { dice: 1, die: "d4", modifier: 4 } },
+          },
+        }, {
+          slug: "longsword",
+          type: "strike",
+          label: "Longsword",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          traits: [],
+          item: {
+            id: "longsword",
+            name: "Longsword",
+            system: { damage: { dice: 1, die: "d8", modifier: 4 } },
+          },
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  profile: {
+    ...fighterContext.profile,
+    conditions: { slugs: ["slowed"], values: { slowed: 1 } },
+  },
+  targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  battlefield: {
+    ...fighterContext.battlefield,
+    targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  },
+};
+const swordVsUnarmedSources = readActionSources(swordVsUnarmedContext).filter((action) => action.source === "strike");
+assert.equal(swordVsUnarmedSources.find((action) => action.name === "Unarmed Attack").averageDamage, 6.5);
+assert.equal(swordVsUnarmedSources.find((action) => action.name === "Longsword").averageDamage, 8.5);
+const swordVsUnarmedStrikes = swordVsUnarmedSources.map((action) => scoreCandidate(swordVsUnarmedContext, action));
+const swordAfterGrapplePlan = bestTurnPlan(swordVsUnarmedContext, [{
+  id: "grapple-primer",
+  name: "Grapple",
+  slug: "grapple",
+  actionCost: 1,
+  source: "generic",
+  attackTrait: true,
+  score: 100,
+  confidence: "medium",
+  reason: "Control target.",
+}, ...swordVsUnarmedStrikes]);
+assert.equal(swordAfterGrapplePlan.steps[1].name, "Longsword");
+
 // The strike reader derives average damage from the NPC damageRolls shape.
 const damageReaderStrike = readActionSources({
   actor: {
@@ -2574,6 +3413,127 @@ const damageReaderStrike = readActionSources({
   targets: [],
 }).find((entry) => entry.name === "Jaws");
 assert.equal(damageReaderStrike.averageDamage, 21);
+
+const previousDirectStrikeBlockedCanvas = globalThis.canvas;
+const previousDirectStrikeBlockedFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray, options) => options?.type === "sight" && ray.A.x < 5,
+    },
+  };
+  const blockedDirectCrossbowContext = {
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "crossbow",
+            type: "strike",
+            label: "Crossbow",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { id: "crossbow", system: { range: { max: 120 }, traits: { value: ["ranged"] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { center: { x: 0, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "calder", name: "Calder", distance: 30, token: { center: { x: 30, y: 0 } } }],
+      targets: [{ id: "calder", name: "Calder", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  const blockedDirectCrossbow = readActionSources(blockedDirectCrossbowContext)
+    .find((action) => action.name === "Crossbow");
+  assert.equal(blockedDirectCrossbow.available, false);
+  assert.equal(blockedDirectCrossbow.unavailableReason, "Attack path to target is blocked.");
+  assert.equal(
+    buildCandidates(blockedDirectCrossbowContext).candidates.some((action) => action.name === "Crossbow"),
+    false,
+  );
+  const moveToShootCrossbow = readActionSources(blockedDirectCrossbowContext)
+    .find((action) => action.slug === "stride-strike-crossbow");
+  assert.ok(moveToShootCrossbow, "expected Stride -> Crossbow when current shot is blocked");
+  assert.equal(moveToShootCrossbow.actionCost, 2);
+} finally {
+  globalThis.canvas = previousDirectStrikeBlockedCanvas;
+  globalThis.foundry = previousDirectStrikeBlockedFoundry;
+}
+
+const previousCenterBlockedShotCanvas = globalThis.canvas;
+const previousCenterBlockedShotFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray, options) =>
+        options?.type === "sight" && ray.B.x === 30 && ray.B.y === 0,
+    },
+  };
+  const centerBlockedShotContext = {
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "crossbow",
+            type: "strike",
+            label: "Crossbow",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { id: "crossbow", system: { range: { max: 120 }, traits: { value: ["ranged"] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { center: { x: 0, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "calder", name: "Calder", distance: 30, token: { center: { x: 30, y: 0 } } }],
+      targets: [{ id: "calder", name: "Calder", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  assert.equal(
+    readActionSources(centerBlockedShotContext).find((action) => action.slug === "stride-strike-crossbow"),
+    undefined,
+  );
+} finally {
+  globalThis.canvas = previousCenterBlockedShotCanvas;
+  globalThis.foundry = previousCenterBlockedShotFoundry;
+}
 
 // A target two Strides away (45 ft, Speed 25, reach 5) gets a "Stride -> Stride ->
 // Strike" composite so the planner can recommend closing the gap and attacking.
@@ -2610,6 +3570,163 @@ assert.ok(
   `far-target plan should move twice and Strike, got ${twoStrideBest.summary}`,
 );
 
+const previousBlockedStrikeCanvas = globalThis.canvas;
+const previousBlockedStrikeFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray, options) =>
+        options?.type === "move" && ray.B.x > 0,
+    },
+  };
+  const blockedStrideStrikeContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: { ...twoStrideContext.profile, speed: 25, reach: 5 },
+    battlefield: {
+      enemies: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+      targets: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  assert.equal(
+    readActionSources(blockedStrideStrikeContext).find((action) => action.slug === "stride-strike-claw"),
+    undefined,
+  );
+} finally {
+  globalThis.canvas = previousBlockedStrikeCanvas;
+  globalThis.foundry = previousBlockedStrikeFoundry;
+}
+
+const previousTokenBlockedStrikeCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: {
+      placeables: [{
+        id: "active-token",
+        checkCollision: (to, options) => options?.type === "move" && to.x > 0,
+      }],
+    },
+  };
+  const tokenBlockedStrideStrikeContext = {
+    ...twoStrideContext,
+    token: { id: "active-token", center: { x: 0, y: 0 } },
+    profile: { ...twoStrideContext.profile, speed: 25, reach: 5 },
+    battlefield: {
+      enemies: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+      targets: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  assert.equal(
+    readActionSources(tokenBlockedStrideStrikeContext).find((action) => action.slug === "stride-strike-claw"),
+    undefined,
+  );
+} finally {
+  globalThis.canvas = previousTokenBlockedStrikeCanvas;
+}
+
+const previousAttackBlockedStrikeCanvas = globalThis.canvas;
+const previousAttackBlockedStrikeFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray, options) =>
+        options?.type === "sight"
+        && ray.B.x >= 27.5
+        && ray.B.x <= 32.5
+        && ray.B.y >= -2.5
+        && ray.B.y <= 2.5,
+    },
+  };
+  const attackBlockedStrideStrikeContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: { ...twoStrideContext.profile, speed: 25, reach: 5 },
+    battlefield: {
+      enemies: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+      targets: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  assert.equal(
+    readActionSources(attackBlockedStrideStrikeContext).find((action) => action.slug === "stride-strike-claw"),
+    undefined,
+  );
+} finally {
+  globalThis.canvas = previousAttackBlockedStrikeCanvas;
+  globalThis.foundry = previousAttackBlockedStrikeFoundry;
+}
+
+const previousStepwiseStrideStrikeCanvas = globalThis.canvas;
+const previousStepwiseStrideStrikeFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: {
+      size: 5,
+      measurePath: ([from, to]) => Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)),
+    },
+    walls: {
+      checkCollision: (ray, options) =>
+        options?.type === "move"
+        && Math.max(Math.abs(ray.B.x - ray.A.x), Math.abs(ray.B.y - ray.A.y)) > 5,
+    },
+  };
+  const stepwiseStrideStrikeContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: { ...twoStrideContext.profile, speed: 20, reach: 5 },
+    battlefield: {
+      enemies: [{ id: "amiri", name: "Amiri", distance: 25, token: { center: { x: 25, y: 0 } } }],
+      targets: [{ id: "amiri", name: "Amiri", distance: 25, token: { center: { x: 25, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  const stepwiseStrideStrike = readActionSources(stepwiseStrideStrikeContext)
+    .find((action) => action.slug === "stride-strike-claw");
+  assert.equal(stepwiseStrideStrike.activityProfile.strideCount, 1);
+} finally {
+  globalThis.canvas = previousStepwiseStrideStrikeCanvas;
+  globalThis.foundry = previousStepwiseStrideStrikeFoundry;
+}
+
 // A target within one Stride still uses a single-Stride composite.
 const oneStrideContext = {
   ...twoStrideContext,
@@ -2622,6 +3739,244 @@ const oneStrideComposite = readActionSources(oneStrideContext).find((a) => a.slu
 assert.equal(oneStrideComposite.actionCost, 2);
 assert.equal(oneStrideComposite.activityProfile.strideCount, 1);
 
+const previousSkirmishGame = globalThis.game;
+const previousSkirmishCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+  };
+  globalThis.game = {
+    modules: {
+      get: (id) => id === "pf2e-visioner"
+        ? {
+          api: {
+            autoVisibility: {
+              getPerceptionProfile: (observerId, targetId) => ({
+                coverState: observerId === "target-token" && targetId === "observer-token"
+                  ? "standard"
+                  : "none",
+              }),
+            },
+          },
+        }
+        : null,
+    },
+  };
+  const rangedSkirmishContext = {
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "shortbow",
+            type: "strike",
+            label: "Shortbow",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { id: "shortbow", system: { range: { max: 60 }, traits: { value: ["ranged"] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "observer-token", center: { x: 0, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "target-token", name: "Mitflit", distance: 80, token: { center: { x: 80, y: 0 } } }],
+      targets: [{ id: "target-token", name: "Mitflit", distance: 80, token: { center: { x: 80, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  const skirmishAction = readActionSources(rangedSkirmishContext)
+    .find((action) => action.slug === "stride-strike-stride-shortbow");
+  assert.ok(skirmishAction, "expected a covered ranged skirmish composite");
+  assert.equal(skirmishAction.actionCost, 3);
+  assert.equal(skirmishAction.name, "Stride -> Shortbow -> Stride");
+  assert.equal(skirmishAction.activityProfile.retreatAfterStrike, true);
+  assert.equal(skirmishAction.activityProfile.defensiveCoverState, "standard");
+
+  globalThis.game.modules.get = (id) => id === "pf2e-visioner"
+    ? {
+      api: {
+        autoVisibility: {
+          getPerceptionProfile: () => ({ coverState: "none" }),
+        },
+      },
+    }
+    : null;
+  assert.equal(
+    readActionSources(rangedSkirmishContext).find((action) => action.slug === "stride-strike-stride-shortbow"),
+    undefined,
+  );
+} finally {
+  globalThis.game = previousSkirmishGame;
+  globalThis.canvas = previousSkirmishCanvas;
+}
+
+const previousPerimeterBlockedStrikeCanvas = globalThis.canvas;
+const previousPerimeterBlockedStrikeFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray) => ray.B.x !== 40 || ray.B.y !== 0,
+    },
+  };
+  const perimeterBlockedStrideStrikeContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: { ...twoStrideContext.profile, speed: 35, reach: 5 },
+    battlefield: {
+      enemies: [{
+        id: "caged-mitflit",
+        name: "Caged Mitflit",
+        distance: 40,
+        token: { center: { x: 40, y: 0 }, width: 2, height: 2 },
+      }],
+      targets: [{
+        id: "caged-mitflit",
+        name: "Caged Mitflit",
+        distance: 40,
+        token: { center: { x: 40, y: 0 }, width: 2, height: 2 },
+      }],
+    },
+    targets: undefined,
+  };
+  assert.equal(
+    readActionSources(perimeterBlockedStrideStrikeContext).find((action) => action.slug === "stride-strike-claw"),
+    undefined,
+  );
+} finally {
+  globalThis.canvas = previousPerimeterBlockedStrikeCanvas;
+  globalThis.foundry = previousPerimeterBlockedStrikeFoundry;
+}
+
+const movementLimitedContext = {
+  ...twoStrideContext,
+  actor: {
+    document: {
+      system: {
+        actions: [
+          ...twoStrideContext.actor.document.system.actions,
+          {
+            slug: "gallop",
+            type: "action",
+            label: "Gallop",
+            actionType: "action",
+            actions: 2,
+            traits: [{ slug: "move" }],
+            description: { value: "<p>The war pony Strides twice.</p>" },
+          },
+        ],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  profile: {
+    ...twoStrideContext.profile,
+    hasCover: true,
+    conditions: { slugs: ["grabbed"], values: { grabbed: 1 } },
+  },
+};
+
+const previousCagedMoveCanvas = globalThis.canvas;
+const previousCagedMoveFoundry = globalThis.foundry;
+try {
+  globalThis.foundry = {
+    utils: {
+      Ray: class Ray {
+        constructor(A, B) {
+          this.A = A;
+          this.B = B;
+        }
+      },
+    },
+  };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      checkCollision: (ray, options) =>
+        ["move", "movement"].includes(options?.type)
+        && (ray.A.x !== ray.B.x || ray.A.y !== ray.B.y),
+    },
+  };
+  const cagedMovementContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: {
+      ...twoStrideContext.profile,
+      speed: 25,
+      conditions: { slugs: [], values: {} },
+    },
+  };
+  const cagedMovementActions = readActionSources(cagedMovementContext);
+  assert.equal(cagedMovementActions.find((action) => action.slug === "step").available, false);
+  assert.equal(cagedMovementActions.find((action) => action.slug === "step").unavailableReason, "No collision-free movement path.");
+  assert.equal(cagedMovementActions.find((action) => action.slug === "stride").available, false);
+  assert.equal(cagedMovementActions.find((action) => action.slug === "stride").unavailableReason, "No collision-free movement path.");
+  assert.equal(buildCandidates(cagedMovementContext).candidates.some((action) => ["step", "stride"].includes(action.slug)), false);
+} finally {
+  globalThis.canvas = previousCagedMoveCanvas;
+  globalThis.foundry = previousCagedMoveFoundry;
+}
+
+const previousSegmentCagedMoveCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      placeables: [
+        { document: { c: [-2.5, -2.5, 2.5, -2.5] } },
+        { document: { c: [2.5, -2.5, 2.5, 2.5] } },
+        { document: { c: [2.5, 2.5, -2.5, 2.5] } },
+        { document: { c: [-2.5, 2.5, -2.5, -2.5] } },
+      ],
+    },
+  };
+  const segmentCagedMovementContext = {
+    ...twoStrideContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: {
+      ...twoStrideContext.profile,
+      speed: 25,
+      conditions: { slugs: [], values: {} },
+    },
+  };
+  const segmentCagedMovementActions = readActionSources(segmentCagedMovementContext);
+  assert.equal(segmentCagedMovementActions.find((action) => action.slug === "step").available, false);
+  assert.equal(segmentCagedMovementActions.find((action) => action.slug === "stride").available, false);
+} finally {
+  globalThis.canvas = previousSegmentCagedMoveCanvas;
+}
+
+const movementLimitedActions = readActionSources(movementLimitedContext);
+assert.equal(movementLimitedActions.find((action) => action.slug === "step").available, false);
+assert.equal(movementLimitedActions.find((action) => action.slug === "stride").available, false);
+assert.equal(movementLimitedActions.find((action) => action.slug === "sneak").available, false);
+assert.equal(movementLimitedActions.find((action) => action.slug === "escape").available, true);
+assert.equal(movementLimitedActions.find((action) => action.slug === "gallop").available, false);
+assert.equal(movementLimitedActions.find((action) => action.slug === "stride-strike-claw"), undefined);
+const movementLimitedCandidates = buildCandidates(movementLimitedContext).candidates;
+assert.equal(movementLimitedCandidates.some((action) =>
+  ["step", "stride", "sneak", "gallop", "stride-strike-claw"].includes(action.slug),
+), false);
 
 const inferredSpellContext = {
   actor: {

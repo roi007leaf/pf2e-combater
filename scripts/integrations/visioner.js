@@ -1,9 +1,28 @@
 const SEEK_VISIBILITY_STATES = new Set(["hidden", "undetected", "unnoticed"]);
 
+function visionerModule() {
+  return globalThis.game?.modules?.get?.("pf2e-visioner") ?? null;
+}
+
+export function isVisionerActive() {
+  const modules = globalThis.game?.modules;
+  if (modules?.get) {
+    const entry = visionerModule();
+    return Boolean(entry && entry.active !== false && entry.api);
+  }
+
+  return Boolean(globalThis.window?.visioneerApi);
+}
+
 function visionerApi() {
-  return globalThis.game?.modules?.get?.("pf2e-visioner")?.api
-    ?? globalThis.window?.visioneerApi
-    ?? null;
+  const modules = globalThis.game?.modules;
+  if (modules?.get) {
+    const entry = visionerModule();
+    if (!entry || entry.active === false) return null;
+    return entry.api ?? null;
+  }
+
+  return globalThis.window?.visioneerApi ?? null;
 }
 
 function tokenId(value) {
@@ -13,18 +32,44 @@ function tokenId(value) {
     ?? null;
 }
 
+function perceptionProfile(observer, target) {
+  const api = visionerApi();
+  const observerId = tokenId(observer);
+  const targetId = tokenId(target);
+  if (!api || !observerId || !targetId) return null;
+
+  return api.autoVisibility?.getPerceptionProfile?.(observerId, targetId)
+    ?? api.getPerceptionProfile?.(observerId, targetId)
+    ?? null;
+}
+
 export function readVisionerDetectionState(observer, target) {
   const api = visionerApi();
   const observerId = tokenId(observer);
   const targetId = tokenId(target);
   if (!api || !observerId || !targetId) return null;
 
-  const profile = api.autoVisibility?.getPerceptionProfile?.(observerId, targetId)
-    ?? api.getPerceptionProfile?.(observerId, targetId)
-    ?? null;
-  if (profile?.detectionState) return profile.awarenessState ?? profile.detectionState;
+  const profile = perceptionProfile(observer, target);
+  if (profile?.detectionState) return profile.detectionState;
+  if (profile?.awarenessState) return profile.awarenessState;
 
   return api.getVisibility?.(observerId, targetId) ?? null;
+}
+
+export function readVisionerCoverState(observer, target) {
+  const api = visionerApi();
+  const observerId = tokenId(observer);
+  const targetId = tokenId(target);
+  if (!api || !observerId || !targetId) return null;
+
+  const profile = perceptionProfile(observer, target);
+  const profileCover = profile?.coverState ?? profile?.expectedCover;
+  if (profileCover) return profileCover;
+  if (profile?.hasCover === true) return "standard";
+
+  return api.getCover?.(observerId, targetId)
+    ?? api.getAutoCoverState?.(observerId, targetId, { rawPrereq: true })
+    ?? null;
 }
 
 export function isSeekRelevantVisibility(state) {

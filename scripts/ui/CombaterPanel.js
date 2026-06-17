@@ -11,6 +11,17 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 const DEFAULT_TAB = "plan";
 const TABS = new Set(["plan", "alternatives", "debug"]);
+const RESET_PIN_REFRESH_SOURCES = new Set([
+  "actor-update",
+  "button",
+  "combat-turn",
+  "item-create",
+  "item-delete",
+  "item-update",
+  "target-change",
+  "token-refresh",
+  "token-update",
+]);
 
 function readSetting(key, fallback) {
   try {
@@ -227,7 +238,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async refresh(refreshSource = "manual") {
     this.refreshSource = refreshSource;
-    if (refreshSource === "button" || refreshSource === "combat-turn") this._pinnedPlanId = null;
+    if (RESET_PIN_REFRESH_SOURCES.has(refreshSource)) this._pinnedPlanId = null;
     clearMovementPreview();
     await this.render({ force: true });
   }

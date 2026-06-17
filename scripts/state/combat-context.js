@@ -1,5 +1,8 @@
 import { readActorProfile, readConditions } from "../readers/actor-profile.js";
 import { readVisionerDetectionState } from "../integrations/visioner.js";
+import { movementActionsSpent } from "./token-refresh.js";
+
+const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 
 function actorSummary(actor) {
   if (!actor) return null;
@@ -13,13 +16,21 @@ function actorSummary(actor) {
   };
 }
 
+function tokenDisplayName(token, actor = tokenActor(token)) {
+  return token?.name
+    ?? token?.document?.name
+    ?? actor?.name
+    ?? null;
+}
+
 function tokenSummary(token) {
   const document = token?.document ?? token;
   if (!document) return null;
+  const actor = tokenActor(token);
   return {
     id: document.id,
     uuid: document.uuid,
-    name: document.name ?? token?.name,
+    name: tokenDisplayName(token, actor),
     img: document.texture?.src ?? token?.texture?.src,
     disposition: tokenDisposition(token),
     center: tokenCenter(token),
@@ -33,8 +44,36 @@ function tokenActor(token) {
   return token?.actor ?? token?.document?.actor ?? null;
 }
 
+function actorType(actor) {
+  return String(actor?.type ?? actor?.document?.type ?? "").toLowerCase();
+}
+
+function isTargetableCombatToken(token) {
+  const actor = tokenActor(token);
+  return Boolean(actor && !NON_TARGETABLE_ACTOR_TYPES.has(actorType(actor)));
+}
+
 function tokenDisposition(token) {
   return token?.document?.disposition ?? token?.disposition ?? null;
+}
+
+function numericDisposition(token) {
+  const disposition = Number(tokenDisposition(token));
+  return Number.isFinite(disposition) ? disposition : null;
+}
+
+function isAllyDisposition(token, activeDisposition) {
+  const disposition = numericDisposition(token);
+  return activeDisposition !== null && activeDisposition !== 0
+    && disposition !== null && disposition !== 0
+    && disposition === activeDisposition;
+}
+
+function isEnemyDisposition(token, activeDisposition) {
+  const disposition = numericDisposition(token);
+  if (activeDisposition === null || disposition === null || disposition === 0) return false;
+  if (activeDisposition === 0) return disposition !== 0;
+  return disposition !== activeDisposition;
 }
 
 function tokenCenter(token) {
@@ -181,7 +220,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
   const actor = tokenActor(token);
   return {
     id: token?.id ?? token?.document?.id,
-    name: token?.name ?? token?.document?.name ?? actor?.name,
+    name: tokenDisplayName(token, actor),
     disposition: tokenDisposition(token),
     actor: actorSummary(actor),
     token: tokenSummary(token),
@@ -205,30 +244,100 @@ function tokenMatchesTarget(token, target) {
     || tokenDocument?.id === targetDocument?.id;
 }
 
+function tokenMatchesIdentity(left, right) {
+  if (!left || !right) return false;
+  const leftIds = new Set(tokenIdentityValues(left));
+  if (!leftIds.size) return false;
+  return tokenIdentityValues(right).some((id) => leftIds.has(id));
+}
+
+function collectionValues(collection) {
+  if (!collection) return [];
+  if (Array.isArray(collection)) return collection;
+  if (Array.isArray(collection.contents)) return collection.contents;
+  if (typeof collection.values === "function") return Array.from(collection.values());
+  if (typeof collection[Symbol.iterator] === "function") return Array.from(collection);
+  return [];
+}
+
+function tokenIdentityValues(value) {
+  const document = value?.document ?? value;
+  return [
+    value?.id,
+    value?.uuid,
+    value?.tokenId,
+    value?.tokenUuid,
+    document?.id,
+    document?.uuid,
+    value?.object?.id,
+    value?.object?.uuid,
+    value?.object?.document?.id,
+    value?.object?.document?.uuid,
+  ]
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry));
+}
+
+function tokenMatchesCombatant(token, combatant) {
+  const tokenIds = new Set(tokenIdentityValues(token));
+  if (!tokenIds.size) return false;
+
+  const combatantTokenValues = [
+    combatant?.token?.object,
+    combatant?.token,
+    combatant?.tokenDocument,
+    combatant?.document?.token,
+    { id: combatant?.tokenId, uuid: combatant?.tokenUuid },
+  ];
+  return combatantTokenValues.some((value) =>
+    tokenIdentityValues(value).some((id) => tokenIds.has(id)),
+  );
+}
+
+function tokenForCombatant(combatant, actor) {
+  const placeables = globalThis.canvas?.tokens?.placeables ?? [];
+  return placeables.find((token) => tokenMatchesCombatant(token, combatant))
+    ?? combatant?.token?.object
+    ?? combatant?.token
+    ?? combatant?.tokenDocument
+    ?? actor?.getActiveTokens?.(true)?.find((token) => tokenMatchesCombatant(token, combatant))
+    ?? actor?.getActiveTokens?.(true)?.[0]
+    ?? null;
+}
+
+function tokenInCombat(combat, token) {
+  if (!combat) return true;
+  const combatants = collectionValues(combat.combatants);
+  return combatants.some((combatant) => tokenMatchesCombatant(token, combatant))
+    || tokenMatchesCombatant(token, combat.combatant);
+}
+
 export function readCombatContext(refreshSource = "manual") {
   const combatant = game?.combat?.combatant ?? null;
   const actor = combatant?.actor ?? null;
   if (!canReadActor(actor)) return null;
 
-  const activeToken = combatant?.token?.object ?? actor.getActiveTokens?.(true)?.[0] ?? null;
-  const activeDisposition = tokenDisposition(activeToken);
+  const activeToken = tokenForCombatant(combatant, actor);
+  const activeDisposition = numericDisposition(activeToken);
+  const activeTokenName = tokenDisplayName(activeToken, actor);
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
   const tokens = placeables.filter((token) => tokenActor(token));
-  const otherTokens = tokens.filter((token) => token !== activeToken);
+  const combatTokens = tokens.filter((token) => tokenInCombat(game?.combat, token));
+  const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
+  const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
 
   const allyTokens = otherTokens
-    .filter((token) => tokenDisposition(token) === activeDisposition);
+    .filter((token) => isAllyDisposition(token, activeDisposition));
   const enemyTokens = otherTokens
-    .filter((token) => tokenDisposition(token) !== activeDisposition);
+    .filter((token) => isEnemyDisposition(token, activeDisposition));
 
   const allies = allyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
   const enemies = enemyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
 
   const userTargets = Array.from(game?.user?.targets ?? []);
-  const matchedTargetTokens = tokens.filter((token) =>
-    tokenDisposition(token) !== activeDisposition
-      && userTargets.some((target) => tokenMatchesTarget(token, target)),
+  const matchedTargetTokens = enemyTokens.filter((token) =>
+    userTargets.some((target) => tokenMatchesTarget(token, target)),
   );
   const nearestEnemyTokens = [...enemyTokens]
     .sort((left, right) => measureDistance(activeToken, left) - measureDistance(activeToken, right));
@@ -236,6 +345,7 @@ export function readCombatContext(refreshSource = "manual") {
   const targets = targetTokens
     .filter(Boolean)
     .map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
+  const movementSpent = movementActionsSpent(game?.combat);
 
   return {
     refreshSource,
@@ -248,14 +358,20 @@ export function readCombatContext(refreshSource = "manual") {
     },
     combatant: {
       id: combatant.id,
-      name: combatant.name,
+      name: activeTokenName ?? combatant.name,
       actor,
     },
     actor: {
       ...actorSummary(actor),
+      name: activeTokenName ?? actor.name,
       profile: readActorProfile(actor),
     },
     token: tokenSummary(activeToken),
+    actionsSpent: {
+      movement: movementSpent,
+      normal: movementSpent,
+      total: movementSpent,
+    },
     battlefield: {
       allies,
       enemies,

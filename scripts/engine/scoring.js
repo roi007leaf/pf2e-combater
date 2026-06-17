@@ -12,12 +12,13 @@ function enemies(context) {
 
 function actorTarget(context) {
   const actor = context?.actor ?? context?.combatant?.actor ?? null;
-  if (!actor) return { type: "self", name: "Self" };
+  const token = context?.token ?? null;
+  if (!actor && !token) return { type: "self", name: "Self" };
   return {
     type: "self",
-    id: actor.id ?? actor.document?.id ?? null,
-    uuid: actor.uuid ?? actor.document?.uuid ?? null,
-    name: actor.name ?? actor.document?.name ?? "Self",
+    id: token?.id ?? actor?.id ?? actor?.document?.id ?? null,
+    uuid: token?.uuid ?? actor?.uuid ?? actor?.document?.uuid ?? null,
+    name: token?.name ?? actor?.name ?? actor?.document?.name ?? "Self",
   };
 }
 
@@ -166,6 +167,10 @@ function baseScore(action) {
   return 20;
 }
 
+function strikeDamageScore(averageDamage) {
+  return Math.min(averageDamage * 2, 40);
+}
+
 function defaultReason(action) {
   if (action.source === "custom-curated") return "Actor-specific action is recognized.";
   if (action.source === "system-inferred") return "System action pattern is recognized.";
@@ -311,12 +316,16 @@ function suggestedTargetFor(context, action, role, preferredTarget = firstTarget
   const target = preferredTarget;
 
   if (action.source === "strike") {
-    return target ? targetRef(target, "enemy") : actorTarget(context);
+    return target ? targetRef(target, "enemy") : null;
+  }
+
+  if (["step", "stride"].includes(action.slug)) {
+    return target ? targetRef(target, "enemy") : null;
   }
 
   if (
     role === "defense"
-    || ["raise-a-shield", "take-cover", "hide", "sneak", "step", "stride"].includes(action.slug)
+    || ["raise-a-shield", "take-cover", "hide", "sneak"].includes(action.slug)
   ) {
     return actorTarget(context);
   }
@@ -360,6 +369,26 @@ export function scoreCandidate(context, action) {
   const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
   let score = baseScore(action);
 
+  if (action.source === "strike" && !target) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: "No valid enemy target.",
+      reasons: ["No valid enemy target."],
+    };
+  }
+
+  if (["step", "stride"].includes(action.slug) && action.source === "generic" && !target) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: "No valid enemy target.",
+      reasons: ["No valid enemy target."],
+    };
+  }
+
   if (action.source === "strike" && target && !inRange(action, target)) {
     return {
       ...action,
@@ -374,12 +403,11 @@ export function scoreCandidate(context, action) {
     score += 24;
     reasons.push(maxRange(action) > 10 ? "Target is in range." : "Melee target is in reach.");
 
-    // Break ties between strikes by expected damage so a harder-hitting weapon
-    // (e.g. Jaws 2d10) outranks a smaller one (Claw 2d8) for the opening attack.
-    // Agile weapons still win follow-ups via their lower multiple-attack penalty.
+    // Prefer harder-hitting strikes strongly enough that a real weapon can beat
+    // an agile unarmed fallback even after one prior attack.
     const average = Number(action.averageDamage);
     if (Number.isFinite(average) && average > 0) {
-      score += Math.min(average * 0.5, 20);
+      score += strikeDamageScore(average);
       reasons.push(`Average damage about ${Math.round(average)}.`);
     }
   }

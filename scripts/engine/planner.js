@@ -42,12 +42,24 @@ function conditionValue(conditions, slug) {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
+function spentNormalActions(context) {
+  const spent = Number(
+    context?.actionsSpent?.normal
+      ?? context?.actionsSpent?.total
+      ?? context?.profile?.actionsSpent?.normal
+      ?? context?.profile?.actionsSpent?.total
+      ?? 0,
+  );
+  return Number.isFinite(spent) && spent > 0 ? spent : 0;
+}
+
 export function actionBudget(context) {
   const conditions = context?.profile?.conditions;
   const slowed = conditionValue(conditions, "slowed");
   const stunned = conditionValue(conditions, "stunned");
   const quickened = conditionValue(conditions, "quickened");
-  const normalActions = Math.max(0, BASE_ACTIONS - slowed - stunned);
+  const spent = spentNormalActions(context);
+  const normalActions = Math.max(0, BASE_ACTIONS - slowed - stunned - spent);
 
   return {
     normalActions,
@@ -56,6 +68,7 @@ export function actionBudget(context) {
     slowed,
     stunned,
     quickened,
+    spent,
   };
 }
 
@@ -196,6 +209,64 @@ function isMoveAndStrike(step) {
     && Number(step?.activityProfile?.strideCount) > 0;
 }
 
+function contextTargets(context) {
+  return context?.targets ?? context?.battlefield?.targets ?? [];
+}
+
+function contextEnemies(context) {
+  return context?.enemies ?? context?.battlefield?.enemies ?? contextTargets(context);
+}
+
+function targetIdentity(value) {
+  return [
+    value?.id,
+    value?.uuid,
+    value?.actor?.id,
+    value?.actor?.uuid,
+    value?.token?.id,
+    value?.token?.uuid,
+    value?.name,
+  ]
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry));
+}
+
+function targetForCandidate(context, candidate) {
+  const fallback = contextTargets(context)[0] ?? contextEnemies(context)[0] ?? null;
+  const reference = candidate?.preferredTarget ?? candidate?.suggestedTarget ?? fallback;
+  if (!reference) return null;
+  if (Number.isFinite(Number(reference.distance))) return reference;
+
+  const ids = new Set(targetIdentity(reference));
+  return [...contextTargets(context), ...contextEnemies(context)]
+    .find((target) => targetIdentity(target).some((id) => ids.has(id)))
+    ?? fallback;
+}
+
+function currentAttackRange(candidate) {
+  const values = [
+    candidate?.range?.max,
+    candidate?.targetingProfile?.maxRange,
+    candidate?.targetingProfile?.range,
+    candidate?.range?.increment,
+    candidate?.activityProfile?.strikeReach,
+  ].map(Number);
+  const range = values.find((value) => Number.isFinite(value) && value > 0);
+  if (range) return range;
+  return candidate?.source === "strike" ? 5 : null;
+}
+
+function reachesCurrentTarget(context, candidate) {
+  if (!isAttackAction(candidate)) return false;
+
+  const range = currentAttackRange(candidate);
+  if (!Number.isFinite(range) || range <= 0) return false;
+
+  const target = targetForCandidate(context, candidate);
+  const distance = Number(target?.distance);
+  return Number.isFinite(distance) && distance <= range;
+}
+
 function hasPlanConflict(context, candidate, steps) {
   if (BASIC_MOVE_SLUGS.has(candidate.slug) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug))) {
     return true;
@@ -208,6 +279,16 @@ function hasPlanConflict(context, candidate, steps) {
   if (
     (basicMove && steps.some(isMoveAndStrike))
     || (moveStrike && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug)))
+  ) {
+    return true;
+  }
+
+  // If an attack already reaches from the current square, don't spend a generic
+  // Step/Stride just to pair it with that attack. Movement for closing remains
+  // available when the attack is actually out of range.
+  if (
+    (basicMove && steps.some((step) => reachesCurrentTarget(context, step)))
+    || (reachesCurrentTarget(context, candidate) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug)))
   ) {
     return true;
   }
