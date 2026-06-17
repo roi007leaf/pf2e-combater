@@ -545,6 +545,12 @@ function rectangleDistanceFeet(left, right, metrics) {
   return Math.hypot(dx, dy) / metrics.pixelsPerFoot;
 }
 
+function gridReachDistanceFeet(left, right, metrics) {
+  const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
+  const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
+  return (Math.max(dx, dy) + metrics.pixelSize) / metrics.pixelsPerFoot;
+}
+
 function perimeterSamplePoints(rectangle, metrics) {
   if (!rectangle) return [];
 
@@ -674,7 +680,7 @@ function reachableAttackCenters(context, target, distanceFeet, reachFeet) {
   return movementReachableCenters(origin, distanceFeet, metrics, collisionToken)
     .filter((center) => {
       const attackerRectangle = rectangleForCenter(center, attackerFootprint);
-      return rectangleDistanceFeet(attackerRectangle, targetRectangle, metrics) <= reachFeet
+      return gridReachDistanceFeet(attackerRectangle, targetRectangle, metrics) <= reachFeet
         && canAttackTargetPerimeter(attackerRectangle, targetRectangle, metrics);
     });
 }

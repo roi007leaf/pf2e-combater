@@ -2,6 +2,7 @@ import { MODULE_ID } from "./constants.js";
 import { registerSettings, setting, SETTINGS } from "./settings.js";
 import { documentRelevantToContext } from "./state/context-relevance.js";
 import {
+  captureMovementOrigin,
   clearMovementActionSpends,
   consumeTokenRefreshChange,
   markMovementActionSpent,
@@ -79,8 +80,12 @@ Hooks.on("updateCombat", async (combat, changed) => {
   await openCurrent("combat-turn");
 });
 
-Hooks.on("updateToken", (token, changed) => {
-  const movementSpent = markMovementActionSpent(token, { changed });
+Hooks.on("preUpdateToken", (token, changed) => {
+  captureMovementOrigin(token, { changed });
+});
+
+Hooks.on("updateToken", (token, changed, options) => {
+  const movementSpent = markMovementActionSpent(token, { changed, options });
   if (!tokenUpdateAffectsCombatGeometry(changed)) return;
   scheduleRefresh(movementSpent ? "token-movement" : "token-update");
 });

@@ -12,6 +12,7 @@ import { readSpellActions } from "../readers/spell-reader.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
 import {
+  captureMovementOrigin,
   consumeTokenRefreshChange,
   markMovementActionSpent,
   movementActionsSpent,
@@ -72,6 +73,40 @@ assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, chan
 assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { y: 15 }, spends: movementSpendMap }), false);
 assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 3);
 assert.equal(movementActionsSpent({ ...movementCombat, turn: 1 }, movementSpendMap), 0);
+const routedMovementSpendMap = new Map();
+const routedMovementOrigins = new Map();
+const routedMovementCombat = {
+  ...movementCombat,
+  combatant: {
+    ...movementCombat.combatant,
+    actor: {
+      system: {
+        attributes: { speed: { value: 25 } },
+      },
+    },
+  },
+};
+captureMovementOrigin({
+  id: "token-calder",
+  x: 0,
+  y: 0,
+  document: { uuid: "Scene.Token.token-calder", x: 0, y: 0 },
+}, { changed: { x: 20 }, origins: routedMovementOrigins });
+assert.equal(markMovementActionSpent({
+  id: "token-calder",
+  x: 20,
+  y: 0,
+  document: { uuid: "Scene.Token.token-calder", x: 20, y: 0 },
+}, {
+  combat: routedMovementCombat,
+  changed: {
+    x: 20,
+    waypoints: [{ x: 0, y: 25 }, { x: 20, y: 25 }],
+  },
+  origins: routedMovementOrigins,
+  spends: routedMovementSpendMap,
+}), true);
+assert.equal(movementActionsSpent(routedMovementCombat, routedMovementSpendMap), 3);
 
 const relevanceContext = {
   actor: { id: "actor-active" },
@@ -575,6 +610,18 @@ assert.notEqual(compositePreview.stridePath[0].color, compositePreview.stridePat
 assert.ok(compositePreview.stridePath[1].center.x > compositePreview.stridePath[0].center.x);
 assert.ok(compositePreview.stridePath[0].marker.strokes.length === 2);
 
+const fiveFootReachCompositePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Nakpik", token: { center: { x: 35, y: 0 } }, distance: 35 }] },
+}, {
+  slug: "stride-strike-longsword",
+  activityProfile: { includesStrike: true, strideCount: 2, strikeReach: 5 },
+}, { gridSize: 5 });
+assert.equal(fiveFootReachCompositePreview.enabled, true);
+assert.equal(fiveFootReachCompositePreview.destinationCenter.x, 30);
+assert.equal(fiveFootReachCompositePreview.stridePath.at(-1).center.x, 30);
+
 const attackBlockedCompositePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
   actor: { profile: { speed: 25 } },
@@ -677,7 +724,7 @@ const fastestCompositePreview = movementPreviewForStep({
   pathBlocked: (_from, to) => to.x === 25 && to.y === 0,
 });
 assert.equal(fastestCompositePreview.enabled, true);
-assert.equal(fastestCompositePreview.destinationCenter.cost, 25);
+assert.equal(fastestCompositePreview.destinationCenter.cost, 30);
 
 const directCompositePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },

@@ -3,6 +3,7 @@ const MOVEMENT_KEYS = new Set(["x", "y", "elevation"]);
 const MAX_MOVEMENT_ACTION_SPENDS = 3;
 const tokenSnapshots = new Map();
 const movementActionSpends = new Map();
+const movementOrigins = new Map();
 
 function tokenDocument(token) {
   return token?.document ?? token ?? {};
@@ -61,6 +62,23 @@ function combatTurnKey(combat) {
   return `${combatId}:${combat?.round ?? 0}:${combat?.turn ?? 0}:${combatantId}`;
 }
 
+function numeric(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function tokenPosition(token) {
+  const document = tokenDocument(token);
+  const x = snapshotValue(token?.x, document.x);
+  const y = snapshotValue(token?.y, document.y);
+  if (x === null || y === null) return null;
+  return {
+    x: numeric(x, 0),
+    y: numeric(y, 0),
+    elevation: numeric(snapshotValue(token?.elevation, document.elevation), 0),
+  };
+}
+
 function snapshotValue(...values) {
   for (const value of values) {
     if (value !== undefined) return value;
@@ -78,6 +96,101 @@ function tokenSnapshot(token) {
     width: snapshotValue(token?.width, document.width),
     height: snapshotValue(token?.height, document.height),
   });
+}
+
+function gridMetrics() {
+  const sceneDistance = numeric(globalThis.canvas?.scene?.grid?.distance, 5) || 5;
+  const pixelSize = numeric(globalThis.canvas?.grid?.size, sceneDistance) || sceneDistance;
+  return {
+    sceneDistance,
+    pixelSize,
+    pixelsPerFoot: pixelSize / sceneDistance,
+  };
+}
+
+function pointFromValue(value) {
+  const point = value?.center ?? value;
+  if (!point) return null;
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y, elevation: numeric(point.elevation, 0) };
+}
+
+function movementWaypoints(changed, options = {}) {
+  const candidates = [
+    options?.waypoints,
+    options?.movement?.waypoints,
+    options?.animation?.waypoints,
+    changed?.waypoints,
+    changed?.movement?.waypoints,
+    changed?.animation?.waypoints,
+    changed?.path,
+    changed?.route,
+  ];
+  const waypoints = candidates.find((candidate) => Array.isArray(candidate));
+  return waypoints ? waypoints.map(pointFromValue).filter(Boolean) : [];
+}
+
+function movementTargetPosition(token, changed = null) {
+  const current = tokenPosition(token);
+  if (!changed) return current;
+  if (!tokenUpdateAffectsMovement(changed)) return current;
+
+  const document = tokenDocument(token);
+  const x = snapshotValue(changed.x, changed.document?.x, token?.x, document.x);
+  const y = snapshotValue(changed.y, changed.document?.y, token?.y, document.y);
+  if (x === null || y === null) return current;
+  return {
+    x: numeric(x, current?.x ?? 0),
+    y: numeric(y, current?.y ?? 0),
+    elevation: numeric(
+      snapshotValue(changed.elevation, changed.document?.elevation, token?.elevation, document.elevation),
+      current?.elevation ?? 0,
+    ),
+  };
+}
+
+function measurePathFeet(points) {
+  if (points.length < 2) return 0;
+
+  try {
+    const measured = globalThis.canvas?.grid?.measurePath?.(points);
+    const distance = Number(measured?.distance ?? measured);
+    if (Number.isFinite(distance)) return distance;
+  } catch (_error) {
+    // Fall back to Euclidean segment sum below.
+  }
+
+  const metrics = gridMetrics();
+  return points.slice(1).reduce((total, point, index) => {
+    const previous = points[index];
+    return total + Math.hypot(point.x - previous.x, point.y - previous.y) / metrics.pixelsPerFoot;
+  }, 0);
+}
+
+function movementSpeedFeet(combat) {
+  const actor = combat?.combatant?.actor ?? {};
+  const speed = numeric(
+    actor?.profile?.speed
+      ?? actor?.system?.attributes?.speed?.value
+      ?? actor?.system?.movement?.speeds?.land?.value
+      ?? actor?.system?.movement?.speeds?.land?.base
+      ?? actor?.system?.movement?.speed?.value
+      ?? actor?.system?.speed?.value,
+    25,
+  );
+  return speed > 0 ? speed : 25;
+}
+
+function movementSpendCount({ combat, from, to, changed, options }) {
+  const speed = movementSpeedFeet(combat);
+  if (!from || !to) return 1;
+
+  const path = [from, ...movementWaypoints(changed, options), to];
+  const distance = measurePathFeet(path);
+  if (!Number.isFinite(distance) || distance <= 0) return 1;
+  return Math.max(1, Math.ceil(distance / speed));
 }
 
 export function tokenUpdateAffectsCombatGeometry(changed) {
@@ -98,9 +211,25 @@ export function tokenUpdateAffectsMovement(changed) {
   );
 }
 
+export function captureMovementOrigin(token, {
+  changed = null,
+  origins = movementOrigins,
+} = {}) {
+  if (changed && !tokenUpdateAffectsMovement(changed)) return false;
+
+  const key = tokenKey(token);
+  const origin = tokenPosition(token);
+  if (!key || !origin) return false;
+
+  origins.set(key, origin);
+  return true;
+}
+
 export function markMovementActionSpent(token, {
   combat = globalThis.game?.combat,
   changed = null,
+  options = null,
+  origins = movementOrigins,
   spends = movementActionSpends,
 } = {}) {
   if (changed && !tokenUpdateAffectsMovement(changed)) return false;
@@ -110,9 +239,18 @@ export function markMovementActionSpent(token, {
   const key = combatTurnKey(combat);
   if (!key) return false;
 
+  const tokenId = tokenKey(token);
+  const from = tokenId ? origins.get(tokenId) : null;
+  if (tokenId) origins.delete(tokenId);
+  const to = movementTargetPosition(token, changed);
   const previous = Number(spends.get(key) ?? 0);
   if (previous >= MAX_MOVEMENT_ACTION_SPENDS) return false;
-  spends.set(key, previous + 1);
+  const count = Math.min(
+    movementSpendCount({ combat, from, to, changed, options }),
+    MAX_MOVEMENT_ACTION_SPENDS - previous,
+  );
+  if (count <= 0) return false;
+  spends.set(key, previous + count);
   return true;
 }
 

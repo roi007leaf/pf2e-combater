@@ -425,6 +425,12 @@ function rectangleDistance(left, right) {
   return Math.hypot(dx, dy);
 }
 
+function gridReachDistance(left, right, gridSize) {
+  const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
+  const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
+  return Math.max(dx, dy) + gridSize;
+}
+
 function perimeterSamplePoints(placement, gridSize) {
   if (!placement) return [];
 
@@ -511,7 +517,7 @@ function strikeReachableCenters(context, step, reachable, footprint, gridSize, o
   const reach = strikeReach(step);
   return reachable.filter((center) => {
     const placement = placementForCenter(center, footprint, gridSize);
-    return rectangleDistance(placement, targetPlacement) <= reach
+    return gridReachDistance(placement, targetPlacement, gridSize) <= reach
       && canReachTargetPerimeter(placement, targetPlacement, gridSize, options);
   });
 }
