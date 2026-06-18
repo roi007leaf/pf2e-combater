@@ -2,6 +2,7 @@ import { combineConfidence } from "./confidence.js";
 
 const BASE_ACTIONS = 3;
 const MAX_CANDIDATES = 12;
+const PRIMARY_CANDIDATES = 8;
 const MAX_FREE_STEPS = 1;
 const MAX_PLANS = 256;
 const MAX_STRIKE_STEPS = 2;
@@ -10,6 +11,29 @@ const MAP_SCORE_WEIGHT = 3;
 const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride", "step"]);
 const GENERIC_ATTACK_SLUGS = new Set(["trip", "grapple", "disarm", "shove", "reposition"]);
 const BASIC_MOVE_SLUGS = new Set(["step", "stride"]);
+const SKILL_ACTION_SLUGS = new Set([
+  "demoralize",
+  "recall-knowledge",
+  "create-a-diversion",
+  "feint",
+  "trip",
+  "grapple",
+  "disarm",
+  "shove",
+  "reposition",
+  "tumble-through",
+  "seek",
+  "sense-motive",
+]);
+const DIVERSE_CANDIDATE_CATEGORIES = [
+  "strike",
+  "class",
+  "skill",
+  "support",
+  "movement",
+  "item",
+  "spell",
+];
 const AC_SETUP_CONDITIONS = new Set(["off-guard", "frightened", "clumsy", "sickened", "prone", "grabbed", "restrained"]);
 const AC_PENALTY_FIELDS = [
   "acPenalty",
@@ -42,6 +66,44 @@ function conditionValue(conditions, slug) {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
+function normalizeSlug(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function effectMatchesSlug(effect, slug) {
+  const normalized = normalizeSlug(slug);
+  const values = [
+    effect?.slug,
+    effect?.name,
+    effect?.label,
+    effect?.system?.slug?.value,
+    effect?.system?.slug,
+  ].map(normalizeSlug);
+  return values.some((value) => value === normalized || value === `effect-${normalized}`);
+}
+
+function effectValue(effects, slug) {
+  if (!Array.isArray(effects)) return 0;
+  const effect = effects.find((entry) => effectMatchesSlug(entry, slug));
+  if (!effect) return 0;
+
+  const value = Number(effect?.value ?? effect?.system?.value?.value ?? effect?.system?.badge?.value);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function profileStateValue(profile, slug) {
+  return Math.max(
+    conditionValue(profile?.conditions, slug),
+    effectValue(profile?.effects, slug),
+  );
+}
+
 function spentNormalActions(context) {
   const spent = Number(
     context?.actionsSpent?.normal
@@ -54,10 +116,10 @@ function spentNormalActions(context) {
 }
 
 export function actionBudget(context) {
-  const conditions = context?.profile?.conditions;
-  const slowed = conditionValue(conditions, "slowed");
-  const stunned = conditionValue(conditions, "stunned");
-  const quickened = conditionValue(conditions, "quickened");
+  const profile = context?.profile ?? context?.actor?.profile ?? {};
+  const slowed = profileStateValue(profile, "slowed");
+  const stunned = profileStateValue(profile, "stunned");
+  const quickened = profileStateValue(profile, "quickened");
   const spent = spentNormalActions(context);
   const normalActions = Math.max(0, BASE_ACTIONS - slowed - stunned - spent);
 
@@ -94,12 +156,80 @@ function isStrikeAction(candidate) {
   return candidate.source === "strike";
 }
 
+function isSpellAction(candidate) {
+  return String(candidate?.source ?? "").startsWith("spell");
+}
+
+function isStrikeLikeCandidate(candidate) {
+  return isStrikeAction(candidate)
+    || candidate?.activityProfile?.includesStrike === true
+    || candidate?.activityProfile?.drawsWeapon === true;
+}
+
+function isItemCandidate(candidate) {
+  return candidate?.item?.type === "consumable"
+    || candidate?.type === "consumable"
+    || Number(candidate?.interactDrawCost) > 0;
+}
+
+function candidateCategory(candidate) {
+  if (isStrikeLikeCandidate(candidate)) return "strike";
+  if (isSpellAction(candidate)) return "spell";
+  if (candidate?.activityProfile?.impulse === true) return "class";
+  if (BASIC_MOVE_SLUGS.has(candidate?.slug) || candidate?.role === "mobility") return "movement";
+  if (isItemCandidate(candidate)) return "item";
+  if (candidate?.skill || SKILL_ACTION_SLUGS.has(candidate?.slug)) return "skill";
+  if (["healing", "defense", "buff", "self-healing"].includes(candidate?.role)) return "support";
+  if (["custom-curated", "system-inferred"].includes(candidate?.source)) return "class";
+  return "other";
+}
+
+function selectPlanningCandidates(sortedCandidates) {
+  const selected = [];
+  const selectedKeys = new Set();
+
+  function add(candidate) {
+    if (!candidate || selected.length >= MAX_CANDIDATES) return;
+    const key = actionKey(candidate);
+    if (selectedKeys.has(key)) return;
+    selected.push(candidate);
+    selectedKeys.add(key);
+  }
+
+  for (const candidate of sortedCandidates.slice(0, PRIMARY_CANDIDATES)) add(candidate);
+
+  for (const category of DIVERSE_CANDIDATE_CATEGORIES) {
+    if (selected.some((candidate) => candidateCategory(candidate) === category)) continue;
+    add(sortedCandidates.find((candidate) => candidateCategory(candidate) === category));
+  }
+
+  for (const candidate of sortedCandidates) add(candidate);
+  return selected;
+}
+
+function reloadCost(candidate) {
+  const value = Number(
+    candidate?.reload
+      ?? candidate?.activityProfile?.reloadCost
+      ?? candidate?.item?.system?.reload?.value
+      ?? candidate?.item?.system?.reload,
+  );
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 function hasOffensiveFollowUp(steps) {
   return steps.some((step) => isAttackAction(step));
 }
 
 function hasStrikeFollowUp(steps) {
   return steps.some((step) => isStrikeAction(step) || step.activityProfile?.includesStrike === true);
+}
+
+function includesStand(step) {
+  const includes = Array.isArray(step?.activityProfile?.includes) ? step.activityProfile.includes : [];
+  return step?.slug === "stand"
+    || step?.activityProfile?.removesCondition === "prone"
+    || includes.map((entry) => String(entry ?? "").toLowerCase()).includes("stand");
 }
 
 function values(value) {
@@ -140,7 +270,20 @@ function isOffensiveSetup(step) {
     || appliesAcPenalty(profile);
 }
 
+function candidateSetupKeys(candidate) {
+  return [
+    candidate?.slug,
+    candidate?.role,
+    candidate?.source,
+    candidate?.tacticSlug,
+    candidate?.activityProfile?.tacticSlug,
+    candidate?.activityProfile?.nextAction,
+  ].map(normalizeSlug).filter(Boolean);
+}
+
 function setupPriority(step, allSteps) {
+  if (includesStand(step)) return -2;
+
   if (
     BASIC_MOVE_SLUGS.has(step?.slug)
     && (hasOffensiveFollowUp(allSteps) || allSteps.some((other) => isOffensiveSetup(other)))
@@ -150,8 +293,9 @@ function setupPriority(step, allSteps) {
 
   const setupFor = Array.isArray(step?.setupFor) ? step.setupFor : [];
   if (setupFor.length) {
+    const setupKeys = setupFor.map(normalizeSlug);
     const supportsPlannedStep = allSteps.some((candidate) =>
-      setupFor.includes(candidate?.slug) || setupFor.includes(candidate?.role),
+      candidateSetupKeys(candidate).some((key) => setupKeys.includes(key)),
     );
     if (supportsPlannedStep) return 0;
   }
@@ -195,8 +339,10 @@ function attacksTowardMap(candidate) {
   return 1;
 }
 
-function canUseQuickened(candidate) {
-  return candidate.actionCost === 1 && QUICKENED_ALLOWED_SLUGS.has(candidate.slug);
+function quickenedCapacity(candidate, repeatReloadCost = 0) {
+  if (candidate.actionCost === 1 && QUICKENED_ALLOWED_SLUGS.has(candidate.slug)) return 1;
+  if (repeatReloadCost > 0 && isStrikeAction(candidate)) return 1;
+  return 0;
 }
 
 function allowsPostChargeTumbleThrough(context) {
@@ -268,6 +414,14 @@ function reachesCurrentTarget(context, candidate) {
 }
 
 function hasPlanConflict(context, candidate, steps) {
+  if (candidate?.variantGroup && steps.some((step) => step?.variantGroup === candidate.variantGroup)) {
+    return true;
+  }
+
+  if (includesStand(candidate) && steps.some(includesStand)) {
+    return true;
+  }
+
   if (BASIC_MOVE_SLUGS.has(candidate.slug) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug))) {
     return true;
   }
@@ -331,17 +485,17 @@ function toPlan(context, steps, sortedCandidates, budget) {
 
 export function buildTurnPlans(context, candidates) {
   const budget = actionBudget(context);
-  const sortedCandidates = candidates
+  const sortedCandidates = selectPlanningCandidates(candidates
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
     .toSorted((left, right) => right.score - left.score)
-    .slice(0, MAX_CANDIDATES);
+  );
 
   const plans = [];
   const seenPlans = new Set();
 
-  function visit(startIndex, steps, normalCost, quickenedCost, freeSteps, attackCount, strikeCount, usedActions) {
+  function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions) {
     if (plans.length >= MAX_PLANS) return;
 
     if (steps.length) {
@@ -363,16 +517,19 @@ export function buildTurnPlans(context, candidates) {
       if (strikeAction && strikeCount >= MAX_STRIKE_STEPS) continue;
       if (hasPlanConflict(context, candidate, steps)) continue;
 
-      let nextNormalCost = normalCost + candidate.actionCost;
-      let nextQuickenedCost = quickenedCost;
-      if (nextNormalCost > budget.normalActions && canUseQuickened(candidate)) {
-        nextNormalCost = normalCost;
-        nextQuickenedCost += 1;
-      }
-      const nextFreeSteps = freeSteps + (candidate.actionCost === 0 ? 1 : 0);
+      const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(candidate) : 0;
+      const candidateActionCost = Number(candidate.actionCost) + repeatReloadCost;
+
+      let nextNormalCost = normalCost + candidateActionCost;
+      const nextQuickenedEligibleActions = quickenedEligibleActions + quickenedCapacity(candidate, repeatReloadCost);
+      const quickenedApplied = Math.min(
+        budget.quickenedActions,
+        nextQuickenedEligibleActions,
+        Math.max(0, nextNormalCost - budget.normalActions),
+      );
+      const nextFreeSteps = freeSteps + (candidateActionCost === 0 ? 1 : 0);
       if (
-        nextNormalCost > budget.normalActions
-        || nextQuickenedCost > budget.quickenedActions
+        nextNormalCost - quickenedApplied > budget.normalActions
         || nextFreeSteps > MAX_FREE_STEPS
       ) {
         continue;
@@ -383,10 +540,23 @@ export function buildTurnPlans(context, candidates) {
         ? {
           ...candidate,
           id: currentUses > 0 ? `${candidate.id ?? key}-map-${currentUses}` : candidate.id,
+          name: repeatReloadCost > 0 ? `Reload -> ${candidate.name}` : candidate.name,
+          actionCost: candidateActionCost,
+          reloadCost: repeatReloadCost,
+          activityProfile: repeatReloadCost > 0
+            ? {
+              ...(candidate.activityProfile ?? {}),
+              reloadBeforeStrike: true,
+              reloadCost: repeatReloadCost,
+            }
+            : candidate.activityProfile,
           mapPenalty: penalty,
           attackIndex: attackCount + 1,
           score: candidate.score - penalty * MAP_SCORE_WEIGHT,
-          reason: penalty > 0 ? `${candidate.reason ?? ""} MAP -${penalty}.`.trim() : candidate.reason,
+          reason: [
+            repeatReloadCost > 0 ? `Reloads before firing ${candidate.name}.` : "",
+            penalty > 0 ? `${candidate.reason ?? ""} MAP -${penalty}.`.trim() : candidate.reason,
+          ].filter(Boolean).join(" "),
         }
         : candidate;
 
@@ -396,7 +566,7 @@ export function buildTurnPlans(context, candidates) {
         attackAction ? index : index + 1,
         steps,
         nextNormalCost,
-        nextQuickenedCost,
+        nextQuickenedEligibleActions,
         nextFreeSteps,
         attackAction ? attackCount + attacksTowardMap(candidate) : attackCount,
         strikeAction ? strikeCount + 1 : strikeCount,

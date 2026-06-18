@@ -15,7 +15,7 @@ function itemSlug(item) {
 
 const CLASS_TRAITS = new Set([
   "alchemist", "barbarian", "bard", "champion", "cleric", "druid", "fighter",
-  "gunslinger", "inventor", "investigator", "kineticist", "magus", "monk",
+  "commander", "gunslinger", "inventor", "investigator", "kineticist", "magus", "monk",
   "oracle", "psychic", "ranger", "rogue", "sorcerer", "summoner", "swashbuckler",
   "thaumaturge", "witch", "wizard", "exemplar", "animist", "guardian", "runesmith",
 ]);
@@ -86,8 +86,10 @@ export function classifyItemForCoverage(item) {
       ...base,
       source: curated ? "spell-curated" : (tactic ? "spell-inferred" : "spell-unknown"),
       role: tactic?.role ?? null,
+      confidence: tactic?.confidence ?? null,
       classified: Boolean(tactic),
       likelyBuff: !tactic && looksLikeBuff(item, traits),
+      likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "defense", "healing", "setup"].includes(tactic.role),
     };
   }
 
@@ -109,8 +111,10 @@ export function classifyItemForCoverage(item) {
     ...base,
     source: curated ? "custom-curated" : (tactic ? "system-inferred" : "unknown"),
     role: tactic?.role ?? null,
+    confidence: tactic?.confidence ?? null,
     classified: Boolean(tactic),
     likelyBuff: !tactic && looksLikeBuff(item, traits),
+    likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "defense", "healing", "setup"].includes(tactic.role),
   };
 }
 
@@ -119,6 +123,9 @@ export function coverageForItems(items) {
   const active = results.filter((entry) => !entry.skipped);
   const classified = active.filter((entry) => entry.classified);
   const unknown = active.filter((entry) => !entry.classified);
+  const lowConfidence = classified.filter((entry) => entry.confidence === "low");
+  const utilityFallbacks = classified.filter((entry) => ["utility", "generic"].includes(entry.role));
+  const likelyMisclassifiedBuffs = classified.filter((entry) => entry.likelyBuffClassified);
 
   const byRole = {};
   for (const entry of classified) {
@@ -137,6 +144,14 @@ export function coverageForItems(items) {
     unknownCount: unknown.length,
     coveragePct: active.length ? Math.round((classified.length / active.length) * 100) : 0,
     byRole,
+    quality: {
+      lowConfidenceCount: lowConfidence.length,
+      utilityFallbackCount: utilityFallbacks.length,
+      likelyMisclassifiedBuffCount: likelyMisclassifiedBuffs.length,
+    },
+    lowConfidence,
+    utilityFallbacks,
+    likelyMisclassifiedBuffs,
     unknownByClass,
     likelyBuffGaps: unknown.filter((entry) => entry.likelyBuff).map((entry) => entry.name),
     unknown,

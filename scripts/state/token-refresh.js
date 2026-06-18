@@ -3,6 +3,7 @@ const MOVEMENT_KEYS = new Set(["x", "y", "elevation"]);
 const MAX_MOVEMENT_ACTION_SPENDS = 3;
 const tokenSnapshots = new Map();
 const movementActionSpends = new Map();
+const movementActionDistances = new Map();
 const movementOrigins = new Map();
 
 function tokenDocument(token) {
@@ -183,14 +184,18 @@ function movementSpeedFeet(combat) {
   return speed > 0 ? speed : 25;
 }
 
-function movementSpendCount({ combat, from, to, changed, options }) {
-  const speed = movementSpeedFeet(combat);
-  if (!from || !to) return 1;
+function movementDistanceFeet({ combat, from, to, changed, options }) {
+  if (!from || !to) return movementSpeedFeet(combat);
 
   const path = [from, ...movementWaypoints(changed, options), to];
   const distance = measurePathFeet(path);
-  if (!Number.isFinite(distance) || distance <= 0) return 1;
-  return Math.max(1, Math.ceil(distance / speed));
+  if (!Number.isFinite(distance) || distance <= 0) return 0;
+  return distance;
+}
+
+function movementSpendCountForDistance(distance, speed) {
+  if (!Number.isFinite(distance) || distance <= 0) return 0;
+  return Math.max(1, Math.ceil((distance - 0.0001) / speed));
 }
 
 export function tokenUpdateAffectsCombatGeometry(changed) {
@@ -231,6 +236,7 @@ export function markMovementActionSpent(token, {
   options = null,
   origins = movementOrigins,
   spends = movementActionSpends,
+  distances = movementActionDistances,
 } = {}) {
   if (changed && !tokenUpdateAffectsMovement(changed)) return false;
   if (!combat?.started || !combat?.combatant) return false;
@@ -245,12 +251,19 @@ export function markMovementActionSpent(token, {
   const to = movementTargetPosition(token, changed);
   const previous = Number(spends.get(key) ?? 0);
   if (previous >= MAX_MOVEMENT_ACTION_SPENDS) return false;
+  const speed = movementSpeedFeet(combat);
+  const movementDistance = movementDistanceFeet({ combat, from, to, changed, options });
+  if (!Number.isFinite(movementDistance) || movementDistance <= 0) return false;
+
+  const totalDistance = Number(distances.get(key) ?? 0) + movementDistance;
+  distances.set(key, totalDistance);
+
   const count = Math.min(
-    movementSpendCount({ combat, from, to, changed, options }),
-    MAX_MOVEMENT_ACTION_SPENDS - previous,
+    movementSpendCountForDistance(totalDistance, speed),
+    MAX_MOVEMENT_ACTION_SPENDS,
   );
-  if (count <= 0) return false;
-  spends.set(key, previous + count);
+  if (count <= previous) return false;
+  spends.set(key, count);
   return true;
 }
 
@@ -276,6 +289,7 @@ export function clearTokenRefreshSnapshots(snapshots = tokenSnapshots) {
   snapshots.clear();
 }
 
-export function clearMovementActionSpends(spends = movementActionSpends) {
+export function clearMovementActionSpends(spends = movementActionSpends, distances = movementActionDistances) {
   spends.clear();
+  distances.clear();
 }

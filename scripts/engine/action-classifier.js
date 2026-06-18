@@ -62,6 +62,12 @@ function actionCategory(action) {
     .toLowerCase();
 }
 
+function isConsumable(action, traits) {
+  return action?.type === "consumable"
+    || action?.item?.type === "consumable"
+    || traits.includes("consumable");
+}
+
 function localizeKeys(action) {
   return [...rawDescription(action).matchAll(/@Localize\[([^\]]+)\]/gi)]
     .map((match) => match[1].toLowerCase());
@@ -110,7 +116,19 @@ function readDamageProfile(action) {
 function readTemplateProfile(action) {
   const raw = rawDescription(action);
   const match = raw.match(/@Template\[([^\]]+)\]/i);
-  if (!match) return null;
+  if (!match) {
+    const text = normalizeText(raw);
+    const textMatch = text.match(/\b(\d+)[ -]foot (cone|line|burst|emanation)\b/)
+      ?? text.match(/\b(cone|line|burst|emanation)\b.{0,24}\b(\d+)\s+feet\b/);
+    if (!textMatch) return null;
+
+    const firstIsNumber = Number.isFinite(Number(textMatch[1]));
+    return {
+      area: true,
+      type: firstIsNumber ? textMatch[2] : textMatch[1],
+      distance: Number(firstIsNumber ? textMatch[1] : textMatch[2]),
+    };
+  }
 
   const parts = Object.fromEntries(
     match[1].split("|")
@@ -139,9 +157,30 @@ function readRangeProfile(action) {
   return { maxRange: Math.max(...values) };
 }
 
+function readMovementDistance(text) {
+  const match = text.match(/\b(?:stride|move|fly|burrow|leap|jump)s? up to (\d+) feet\b/);
+  const distance = Number(match?.[1]);
+  return Number.isFinite(distance) && distance > 0 ? distance : null;
+}
+
 function hasFrequency(action) {
   return Boolean(action?.system?.frequency ?? action?.item?.system?.frequency)
     || /\bfrequency\b|\brecharge\b|\bcan(?:not|'t|t) use .* again\b/i.test(rawDescription(action));
+}
+
+function readEventProfile(text, actionCost) {
+  const triggers = [];
+  if (/\broll(?:ed)? initiative\b|\babout to roll initiative\b/.test(text)) triggers.push("initiative");
+  if (/\bturn begins\b|\bstart of your turn\b|\byour turn begins\b/.test(text)) triggers.push("turn-start");
+  if (/\bfail(?:ed|s)? (?:a )?(?:saving throw|save)\b|\bfailed save\b/.test(text)) triggers.push("failed-save");
+  if (/\bbefore .* roll\b|\babout to roll\b/.test(text)) triggers.push("before-roll");
+  if (/\bafter .* strike\b|\blast action\b.{0,40}\bstrike\b|\bsuccessful strike\b/.test(text)) triggers.push("after-strike");
+  if (/\bprevious action\b|\blast action\b|\bnext action\b/.test(text)) triggers.push("previous-action");
+
+  return {
+    eventTriggers: [...new Set(triggers)],
+    eventTriggerOnly: actionCost === "reaction" || (actionCost === 0 && triggers.length > 0) || /\btrigger\b/.test(text),
+  };
 }
 
 function textHasAny(text, values) {
@@ -245,9 +284,11 @@ export function classifySystemAction(action, parsedCost) {
   const damageProfile = readDamageProfile(action);
   const templateProfile = readTemplateProfile(action);
   const rangeProfile = readRangeProfile(action);
+  const eventProfile = readEventProfile(text, actionCost);
   const gatingProfile = {
     frequency: hasFrequency(action),
     triggerOnly: actionCost === "reaction",
+    ...eventProfile,
   };
 
   const isReaction = actionCost === "reaction";
@@ -409,6 +450,25 @@ export function classifySystemAction(action, parsedCost) {
     });
   }
 
+  if (
+    hasName(action, /\bexploit vulnerability\b/)
+    || /\b(?:mortal weakness|personal antithesis|exploit vulnerability)\b/.test(text)
+  ) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        targetMark: "exploited-vulnerability",
+        damageBuff: true,
+        weaknessSetup: true,
+      },
+      targetingProfile: { enemy: true, ...rangeProfile },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: ["Exploit Vulnerability identifies a weakness and sets up stronger attacks."],
+    });
+  }
+
   if (hasName(action, /\brage\b/) || /\bgains? .*bonus damage\b.*\bstrikes?\b|\brage\b.*\bstrikes?\b/.test(text)) {
     return inferred("setup", {
       activityProfile: {
@@ -449,6 +509,24 @@ export function classifySystemAction(action, parsedCost) {
       gatingProfile,
       confidence: "high",
       reasons: ["Poisoned weapon can improve the next damaging Strike."],
+    });
+  }
+
+  if (
+    hasName(action, /\b(?:weapon infusion|two-element infusion)\b/)
+    || /\bnext action\b.{0,40}\belemental blast\b|\bnext elemental blast\b/.test(text)
+  ) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        infusion: true,
+        nextAction: "elemental-blast",
+      },
+      targetingProfile: { self: true },
+      setupFor: ["elemental-blast", "damage"],
+      gatingProfile,
+      confidence: hasName(action, /\b(?:weapon infusion|two-element infusion)\b/) ? "high" : "medium",
+      reasons: ["Infusion modifies the next Elemental Blast."],
     });
   }
 
@@ -560,6 +638,24 @@ export function classifySystemAction(action, parsedCost) {
       gatingProfile,
       confidence: "high",
       reasons: ["Running Reload repositions and reloads for ranged offense."],
+    });
+  }
+
+  if (
+    isConsumable(action, traits)
+    && (damageProfile?.type === "healing" || /\bregains? .*hit points\b|\brestore .*hit points\b/.test(text))
+  ) {
+    return inferred("healing", {
+      activityProfile: {
+        ...baseProfile(["healing"]),
+        consumable: true,
+        interactDraw: Number(parsedCost?.interactDrawCost) > 0,
+      },
+      targetingProfile: { ally: true, self: true },
+      damageProfile,
+      gatingProfile,
+      confidence: damageProfile ? "high" : "medium",
+      reasons: ["Consumable can restore Hit Points."],
     });
   }
 
@@ -740,15 +836,17 @@ export function classifySystemAction(action, parsedCost) {
 
   if (!mentionsStrike && (
     traits.includes("move")
-    || /\bstrides? twice\b|\bstrides? up to\b|\bmoves? up to\b|\bjumps? up to\b|\bflies? up to\b|\bflies? twice\b|\bburrows? twice\b/.test(text)
+    || /\bstrides? twice\b|\bstrides? up to\b|\bmoves? up to\b|\bleaps? up to\b|\bjumps? up to\b|\bflies? up to\b|\bflies? twice\b|\bburrows? twice\b/.test(text)
   )) {
     const strideCount = /\bhalf (?:its|his|her|their|the) speed\b/.test(text)
       ? 0.5
       : (/\btwice\b|\bdouble\b/.test(text) ? 2 : 1);
+    const fixedDistance = readMovementDistance(text);
     return inferred("mobility", {
       activityProfile: {
         ...baseProfile(["stride"]),
         strideCount,
+        fixedDistance,
         safeMovement: /doesn.t trigger reactions|does not trigger reactions|bonus to ac against reactions/.test(text),
         retreat: /\bnot adjacent to any enemy\b|\bretreat\b/.test(text),
       },

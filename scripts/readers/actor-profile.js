@@ -1,3 +1,5 @@
+import { readCombatState } from "../rules/combat-state.js";
+
 const ABILITY_SLUGS = ["str", "dex", "con", "int", "wis", "cha"];
 
 function numericValue(value, fallback = null) {
@@ -153,12 +155,54 @@ function readHasShield(actor) {
   return collectionValues(actor?.items).some((item) => isShieldLike(item) && isEquipped(item));
 }
 
+function normalizeSlug(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function conditionSlug(condition) {
-  return condition?.slug
-    ?? condition?.system?.slug
+  if (typeof condition === "string") return normalizeSlug(condition);
+  const raw = condition?.slug
     ?? condition?.system?.slug?.value
+    ?? condition?.system?.slug
     ?? condition?.name?.slugify?.()
     ?? condition?.name;
+  return normalizeSlug(raw);
+}
+
+function readClassItems(actor) {
+  const typedClasses = collectionValues(actor?.itemTypes?.class);
+  const typedIds = new Set(typedClasses.map((item) => item?.id ?? item?._id).filter(Boolean));
+  const fallbackClasses = collectionValues(actor?.items)
+    .filter((item) => item?.type === "class")
+    .filter((item) => !typedIds.has(item?.id ?? item?._id));
+  return [...typedClasses, ...fallbackClasses];
+}
+
+function classSlug(item) {
+  return conditionSlug(
+    item?.system?.slug?.value
+      ?? item?.system?.slug
+      ?? item?.slug
+      ?? item?.name,
+  );
+}
+
+function readClassSlugs(actor) {
+  const itemSlugs = readClassItems(actor).map(classSlug);
+  const detailsClass = actor?.system?.details?.class;
+  const detailSlugs = [
+    detailsClass?.slug,
+    detailsClass?.value,
+    detailsClass,
+  ].map(conditionSlug);
+
+  return [...new Set([...itemSlugs, ...detailSlugs].filter(Boolean))];
 }
 
 function conditionValue(condition) {
@@ -183,10 +227,39 @@ export function readConditions(actor) {
   };
 }
 
+function effectSlug(effect) {
+  return conditionSlug(effect);
+}
+
+function effectSummary(effect) {
+  const slug = effectSlug(effect);
+  if (!slug) return null;
+  return {
+    id: effect?.id ?? effect?._id ?? null,
+    uuid: effect?.uuid ?? null,
+    name: effect?.name ?? effect?.label ?? slug,
+    slug,
+    sourceId: effect?.sourceId ?? effect?.system?.source?.value ?? effect?.system?.source?.id ?? null,
+  };
+}
+
+export function readEffects(actor) {
+  const typedEffects = collectionValues(actor?.itemTypes?.effect);
+  const typedIds = new Set(typedEffects.map((effect) => effect?.id ?? effect?._id).filter(Boolean));
+  const fallbackEffects = collectionValues(actor?.items)
+    .filter((item) => item?.type === "effect")
+    .filter((item) => !typedIds.has(item?.id ?? item?._id));
+
+  return [...typedEffects, ...fallbackEffects]
+    .map(effectSummary)
+    .filter(Boolean);
+}
+
 export function readActorProfile(actor) {
   if (!actor) return null;
 
   const reach = readReach(actor);
+  const classSlugs = readClassSlugs(actor);
 
   return {
     id: actor.id,
@@ -195,9 +268,13 @@ export function readActorProfile(actor) {
     img: actor.img,
     actorType: actor.type,
     level: numericValue(actor.level ?? actor.system?.details?.level?.value, 0),
+    classSlug: classSlugs[0] ?? null,
+    classSlugs,
     skills: readSkills(actor),
     abilities: readAbilities(actor),
     conditions: readConditions(actor),
+    effects: readEffects(actor),
+    combatState: readCombatState(actor),
     hp: readHp(actor),
     speed: readSpeed(actor),
     reach,

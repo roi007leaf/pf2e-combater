@@ -6,11 +6,12 @@ import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
-import { readActionSources } from "../readers/action-reader.js";
-import { readActorProfile } from "../readers/actor-profile.js";
+import { readActionCost, readActionSources } from "../readers/action-reader.js";
+import { readActorProfile, readEffects } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
+import { coverageForItems } from "../dev/coverage.js";
 import {
   captureMovementOrigin,
   consumeTokenRefreshChange,
@@ -22,7 +23,8 @@ import {
 import { readVisionerCoverState, readVisionerDetectionState } from "../integrations/visioner.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
-import { movementPreviewForStep } from "../ui/movement-preview.js";
+import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
+import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
@@ -53,6 +55,8 @@ assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), fals
 movingToken.x = 5;
 assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true);
 const movementSpendMap = new Map();
+const movementDistanceMap = new Map();
+const movementOriginMap = new Map();
 const movementCombat = {
   id: "combat-1",
   round: 1,
@@ -67,13 +71,38 @@ const movementCombat = {
 };
 assert.equal(markMovementActionSpent({ id: "other-token" }, { combat: movementCombat, changed: { x: 5 }, spends: movementSpendMap }), false);
 assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { name: "Calder" }, spends: movementSpendMap }), false);
-assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { x: 10 }, spends: movementSpendMap }), true);
-assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { y: 10 }, spends: movementSpendMap }), true);
-assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { x: 15 }, spends: movementSpendMap }), true);
-assert.equal(markMovementActionSpent(movingToken, { combat: movementCombat, changed: { y: 15 }, spends: movementSpendMap }), false);
+
+const trackedMovementToken = {
+  id: "token-calder",
+  x: 0,
+  y: 0,
+  document: { uuid: "Scene.Token.token-calder", x: 0, y: 0 },
+};
+function moveTrackedToken(token, changed) {
+  captureMovementOrigin(token, { changed, origins: movementOriginMap });
+  Object.assign(token, changed);
+  Object.assign(token.document, changed);
+  return markMovementActionSpent(token, {
+    combat: movementCombat,
+    changed,
+    origins: movementOriginMap,
+    spends: movementSpendMap,
+    distances: movementDistanceMap,
+  });
+}
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 5 }), true);
+assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 1);
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 10 }), false);
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 25 }), false);
+assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 1);
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 30 }), true);
+assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 2);
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 55 }), true);
+assert.equal(moveTrackedToken(trackedMovementToken, { x: 60 }), false);
 assert.equal(movementActionsSpent(movementCombat, movementSpendMap), 3);
 assert.equal(movementActionsSpent({ ...movementCombat, turn: 1 }, movementSpendMap), 0);
 const routedMovementSpendMap = new Map();
+const routedMovementDistanceMap = new Map();
 const routedMovementOrigins = new Map();
 const routedMovementCombat = {
   ...movementCombat,
@@ -105,6 +134,7 @@ assert.equal(markMovementActionSpent({
   },
   origins: routedMovementOrigins,
   spends: routedMovementSpendMap,
+  distances: routedMovementDistanceMap,
 }), true);
 assert.equal(movementActionsSpent(routedMovementCombat, routedMovementSpendMap), 3);
 
@@ -220,6 +250,262 @@ const noTargetBuild = buildCandidates({
 });
 assert.equal(noTargetBuild.candidates.some((action) => ["step", "stride", "strike"].includes(action.slug)), false);
 
+const pressureContext = {
+  profile: { hpPercent: 1, hasShield: true, conditions: { slugs: [], values: {} } },
+  token: { id: "hero", name: "Hero", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  battlefield: {
+    targets: [],
+    allies: [],
+    enemies: [
+      { id: "goblin", name: "Goblin", center: { x: 5, y: 0 }, token: { center: { x: 5, y: 0 }, width: 1, height: 1 } },
+      { id: "archer", name: "Archer", center: { x: 30, y: 0 }, token: { center: { x: 30, y: 0 }, width: 1, height: 1 } },
+    ],
+  },
+};
+const pressure = battlefieldPressure(pressureContext);
+assert.equal(pressure.inMeleeThreat, true);
+assert.equal(pressure.hasOpenEnemyLine, true);
+assert.equal(threatCountAtCenter(pressureContext, { x: -10, y: 0 }), 0);
+assert.ok(compareTacticalCenters(pressureContext, { x: -10, y: 0, cost: 10 }, { x: 0, y: 0, cost: 0 }) < 0);
+
+const previousPressureCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    walls: {
+      placeables: [{ document: { c: [2.5, -2.5, 2.5, 2.5] } }],
+    },
+  };
+  assert.equal(battlefieldPressure(pressureContext).inMeleeThreat, false);
+} finally {
+  globalThis.canvas = previousPressureCanvas;
+}
+
+const pressuredShield = scoreCandidate(pressureContext, {
+  id: "raise-a-shield",
+  name: "Raise a Shield",
+  slug: "raise-a-shield",
+  actionCost: 1,
+  source: "generic",
+  role: "defense",
+  score: 10,
+});
+const quietShield = scoreCandidate({
+  ...pressureContext,
+  battlefield: { targets: [], allies: [], enemies: [] },
+}, {
+  id: "raise-a-shield",
+  name: "Raise a Shield",
+  slug: "raise-a-shield",
+  actionCost: 1,
+  source: "generic",
+  role: "defense",
+  score: 10,
+});
+assert.ok(pressuredShield.score > quietShield.score);
+assert.ok(pressuredShield.reasons.includes("Enemies have a clear attack line."));
+
+const proneMeleeTarget = { ...fighterContext.targets[0], distance: 5 };
+const proneMeleeContext = {
+  ...fighterContext,
+  profile: {
+    ...fighterContext.profile,
+    speed: 25,
+    conditions: {
+      slugs: ["prone"],
+      values: { prone: 1 },
+    },
+  },
+  targets: [proneMeleeTarget],
+  battlefield: {
+    targets: [proneMeleeTarget],
+    enemies: [proneMeleeTarget],
+    allies: [],
+  },
+};
+const proneSources = readActionSources(proneMeleeContext);
+const proneStand = proneSources.find((action) => action.slug === "stand");
+const proneStride = proneSources.find((action) => action.slug === "stride");
+assert.equal(proneStand.available, true);
+assert.equal(proneStride.available, false);
+assert.equal(proneStride.unavailableReason, "Actor is prone; move actions are unavailable.");
+
+const uprightSources = readActionSources(fighterContext);
+assert.equal(uprightSources.find((action) => action.slug === "stand").available, false);
+
+const scoredStand = scoreCandidate(proneMeleeContext, proneStand);
+assert.ok(scoredStand.score > 70);
+assert.ok(scoredStand.reasons.includes("Removes prone and restores normal movement."));
+assert.ok(scoredStand.reasons.includes("Standing removes melee attack penalty and off-guard risk."));
+
+const proneStandStrikePlan = buildTurnPlans(proneMeleeContext, [
+  scoredStand,
+  {
+    id: "strike-longsword",
+    name: "Longsword",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    score: 92,
+    confidence: "medium",
+    reason: "Melee target is in reach.",
+  },
+]).find((plan) => plan.steps.some((step) => step.slug === "stand") && plan.steps.some((step) => step.slug === "strike"));
+assert.ok(proneStandStrikePlan.steps.findIndex((step) => step.slug === "stand")
+  < proneStandStrikePlan.steps.findIndex((step) => step.slug === "strike"));
+
+const proneFarTarget = { ...fighterContext.targets[0], distance: 20 };
+const proneFarContext = {
+  ...proneMeleeContext,
+  targets: [proneFarTarget],
+  battlefield: {
+    targets: [proneFarTarget],
+    enemies: [proneFarTarget],
+    allies: [],
+  },
+};
+const standStride = readActionSources(proneFarContext).find((action) => action.slug === "stand-stride");
+assert.equal(standStride.available, true);
+assert.equal(standStride.actionCost, 2);
+assert.equal(standStride.preferredTarget.name, "Ogre");
+const scoredStandStride = scoreCandidate(proneFarContext, standStride);
+assert.ok(scoredStandStride.reasons.includes("Closes distance toward the target."));
+
+const proneStrideStrikeContext = {
+  ...proneFarContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: {
+        actions: [{
+          slug: "longsword",
+          type: "strike",
+          label: "Longsword",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: { id: "longsword", system: { traits: { value: [] } } },
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+};
+const standStrideStrike = readActionSources(proneStrideStrikeContext)
+  .find((action) => action.slug === "stand-stride-strike-longsword");
+assert.equal(standStrideStrike.name, "Stand -> Stride -> Longsword");
+assert.equal(standStrideStrike.actionCost, 3);
+assert.deepEqual(standStrideStrike.activityProfile.includes, ["stand", "stride", "strike"]);
+
+const previousTacticalCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: {
+      size: 5,
+      measurePath(points) {
+        const [from, to] = points;
+        return Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+      },
+    },
+    walls: { placeables: [] },
+  };
+
+  const tacticalMoveContext = {
+    ...fighterContext,
+    profile: {
+      ...fighterContext.profile,
+      speed: 25,
+      reach: 5,
+      conditions: { slugs: [], values: {} },
+    },
+    token: { id: "hero", name: "Hero", center: { x: 0, y: 0 }, width: 1, height: 1 },
+    actor: {
+      ...fighterContext.actor,
+      document: {
+        system: {
+          actions: [{
+            slug: "longsword",
+            type: "strike",
+            label: "Longsword",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { id: "longsword", system: { traits: { value: [] } } },
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    targets: [{
+      id: "target",
+      name: "Target",
+      distance: 25,
+      center: { x: 25, y: 0 },
+      token: { center: { x: 25, y: 0 }, width: 1, height: 1 },
+      conditions: { slugs: [], values: {} },
+    }],
+    battlefield: {
+      targets: [{
+        id: "target",
+        name: "Target",
+        distance: 25,
+        center: { x: 25, y: 0 },
+        token: { center: { x: 25, y: 0 }, width: 1, height: 1 },
+        conditions: { slugs: [], values: {} },
+      }],
+      allies: [],
+      enemies: [{
+        id: "target",
+        name: "Target",
+        distance: 25,
+        center: { x: 25, y: 0 },
+        token: { center: { x: 25, y: 0 }, width: 1, height: 1 },
+        conditions: { slugs: [], values: {} },
+      }, {
+        id: "guard",
+        name: "Guard",
+        distance: 20,
+        center: { x: 20, y: 5 },
+        token: { center: { x: 20, y: 5 }, width: 1, height: 1 },
+        conditions: { slugs: [], values: {} },
+      }],
+    },
+  };
+  const tacticalStrideStrike = readActionSources(tacticalMoveContext)
+    .find((action) => action.slug === "stride-strike-longsword");
+  assert.ok(tacticalStrideStrike.activityProfile.attackCenter);
+  assert.ok(
+    threatCountAtCenter(tacticalMoveContext, tacticalStrideStrike.activityProfile.attackCenter) < 2,
+    "move-strike should avoid equal-cost square threatened by a second enemy",
+  );
+} finally {
+  globalThis.canvas = previousTacticalCanvas;
+}
+
+const scoredStandStrideStrike = scoreCandidate(proneStrideStrikeContext, standStrideStrike);
+const scoredProneTwoActionSpell = scoreCandidate(proneStrideStrikeContext, {
+  id: "two-action-prone-spell",
+  name: "Two-Action Spell",
+  slug: "two-action-prone-spell",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "damage",
+  preferredTarget: proneFarTarget,
+  damageProfile: { formula: "5d8", type: "force", types: ["force"], average: 22.5 },
+  activityProfile: { includes: ["damage"], includesStrike: false, averageDamage: 22.5 },
+  targetingProfile: { enemy: true, maxRange: 60 },
+});
+const standThenSpellPlan = bestTurnPlan(proneStrideStrikeContext, [
+  scoredStand,
+  scoredStandStrideStrike,
+  scoredProneTwoActionSpell,
+]);
+assert.deepEqual(standThenSpellPlan.steps.map((step) => step.slug), ["stand", "two-action-prone-spell"]);
+
 const manyFreeActions = Array.from({ length: 40 }, (_, index) => ({
   id: `free-${index}`,
   name: `Free ${index}`,
@@ -294,7 +580,94 @@ const quickenedPlan = bestTurnPlan(quickenedContext, [
 ]);
 assert.equal(actionBudget(quickenedContext).quickenedActions, 1);
 assert.equal(quickenedPlan.totalCost, 4);
-assert.ok(quickenedPlan.steps.some((step) => step.slug === "stride"));
+assert.ok(quickenedPlan.steps.some((step) => ["strike", "stride", "step"].includes(step.slug)));
+
+const quickenedProfile = readActorProfile({
+  id: "quickened-actor",
+  name: "Quickened Actor",
+  itemTypes: {
+    condition: [{
+      name: "Quickened",
+      system: { slug: { value: "quickened" } },
+    }],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(quickenedProfile.conditions.slugs, ["quickened"]);
+assert.equal(actionBudget({ profile: quickenedProfile }).quickenedActions, 1);
+
+const quickenedEffectProfile = readActorProfile({
+  id: "quickened-effect-actor",
+  name: "Quickened Effect Actor",
+  itemTypes: {
+    condition: [],
+    effect: [{
+      name: "Quickened",
+      system: { slug: { value: "quickened" } },
+    }],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(quickenedEffectProfile.conditions.slugs, []);
+assert.deepEqual(quickenedEffectProfile.effects.map((effect) => effect.slug), ["quickened"]);
+assert.equal(actionBudget({ profile: quickenedEffectProfile }).quickenedActions, 1);
+
+const quickenedEffectContext = {
+  ...quickenedContext,
+  profile: {
+    ...fighterContext.profile,
+    conditions: { slugs: [], values: {} },
+    effects: [{ slug: "effect-quickened", name: "Effect: Quickened" }],
+  },
+};
+const quickenedEffectPlan = bestTurnPlan(quickenedEffectContext, [
+  ...fixtureCandidates,
+  {
+    id: "stride",
+    name: "Stride",
+    slug: "stride",
+    actionCost: 1,
+    source: "generic",
+    score: 55,
+    confidence: "medium",
+    reason: "Use quickened action to reposition.",
+  },
+]);
+assert.equal(actionBudget(quickenedEffectContext).quickenedActions, 1);
+assert.equal(quickenedEffectPlan.totalCost, 4);
+
+const nestedQuickenedEffectContext = {
+  ...quickenedEffectContext,
+  profile: undefined,
+  actor: {
+    ...fighterContext.actor,
+    profile: quickenedEffectProfile,
+  },
+};
+assert.equal(actionBudget(nestedQuickenedEffectContext).quickenedActions, 1);
+assert.equal(bestTurnPlan(nestedQuickenedEffectContext, [
+  ...fixtureCandidates,
+  {
+    id: "stride",
+    name: "Stride",
+    slug: "stride",
+    actionCost: 1,
+    source: "generic",
+    score: 55,
+    confidence: "medium",
+    reason: "Use quickened action to reposition.",
+  },
+]).totalCost, 4);
 
 const redundantBasicMovementPlan = bestTurnPlan(fighterContext, [{
   id: "demoralize",
@@ -384,6 +757,51 @@ const speedProfile = readActorProfile({
   },
 });
 assert.equal(speedProfile.speed, 35);
+assert.deepEqual(speedProfile.effects, []);
+
+const classProfile = readActorProfile({
+  id: "fighter-class-actor",
+  name: "Classed Fighter",
+  items: [],
+  itemTypes: {
+    class: [{
+      id: "fighter-class",
+      name: "Fighter",
+      type: "class",
+      system: { slug: "fighter" },
+    }],
+    condition: [],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    details: { level: { value: 1 } },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.equal(classProfile.classSlug, "fighter");
+assert.deepEqual(classProfile.classSlugs, ["fighter"]);
+
+const demoralizeEffectEntries = readEffects({
+  itemTypes: {
+    effect: [{
+      id: "demoralize-immunity",
+      name: "Effect: Demoralize Immunity",
+      slug: "effect-demoralize-immunity",
+      type: "effect",
+      sourceId: "Compendium.xdy-pf2e-workbench.xdy-pf2e-workbench-items.Item.demoralize-immunity",
+    }],
+  },
+  items: [],
+});
+assert.deepEqual(demoralizeEffectEntries, [{
+  id: "demoralize-immunity",
+  uuid: null,
+  name: "Effect: Demoralize Immunity",
+  slug: "effect-demoralize-immunity",
+  sourceId: "Compendium.xdy-pf2e-workbench.xdy-pf2e-workbench-items.Item.demoralize-immunity",
+}]);
 
 // Prepared PF2e actors expose Speed under system.movement.speeds.land.
 const movementSpeedProfile = readActorProfile({
@@ -464,6 +882,49 @@ assert.deepEqual(
   selectableAlternativePlans(displayPlans, displayPlans[1]).map((plan) => plan.id),
   ["main", "third"],
 );
+const quickenedDisplayPlans = [
+  { id: "main", summary: "Main", totalCost: 4, actionBudget: { totalActions: 4 } },
+  { id: "short", summary: "Short", totalCost: 2, actionBudget: { totalActions: 4 } },
+  { id: "full", summary: "Full", totalCost: 4, actionBudget: { totalActions: 4 } },
+  { id: "also-full", summary: "Also Full", totalCost: 4, actionBudget: { totalActions: 4 } },
+];
+assert.deepEqual(
+  selectableAlternativePlans(quickenedDisplayPlans, quickenedDisplayPlans[0]).map((plan) => plan.id),
+  ["full", "also-full", "short"],
+);
+assert.deepEqual(
+  selectableAlternativePlans(quickenedDisplayPlans.slice(0, 2), quickenedDisplayPlans[0]).map((plan) => plan.id),
+  ["short"],
+);
+const spellHeavyAlternativePlans = [
+  {
+    id: "main",
+    summary: "Main",
+    totalCost: 3,
+    score: 500,
+    actionBudget: { totalActions: 3 },
+    steps: [{ id: "main-spell", source: "spell-inferred", slug: "frostbite" }],
+  },
+  ...Array.from({ length: 6 }, (_, index) => ({
+    id: `spell-alt-${index}`,
+    summary: `Spell ${index}`,
+    totalCost: 3,
+    score: 400 - index,
+    steps: [{ id: `spell-${index}`, source: "spell-inferred", slug: `spell-${index}` }],
+  })),
+  {
+    id: "glaive-alt",
+    summary: "Glaive",
+    totalCost: 1,
+    score: 120,
+    steps: [{ id: "glaive", source: "strike", slug: "strike" }],
+  },
+];
+assert.ok(
+  selectableAlternativePlans(spellHeavyAlternativePlans, spellHeavyAlternativePlans[0])
+    .slice(0, 6)
+    .some((plan) => plan.id === "glaive-alt"),
+);
 
 const stridePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
@@ -480,6 +941,22 @@ assert.equal(stridePreview.enabled, true);
 assert.equal(stridePreview.distanceFeet, 25);
 assert.equal(stridePreview.recommendedCenter.x, 25);
 assert.equal(stridePreview.recommendedCenter.y, 0);
+
+const standStridePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{
+      name: "Ogre",
+      token: { center: { x: 100, y: 0 } },
+      distance: 100,
+    }],
+  },
+}, { slug: "stand-stride" }, { gridSize: 5 });
+assert.equal(standStridePreview.enabled, true);
+assert.equal(standStridePreview.distanceFeet, 25);
+assert.equal(standStridePreview.recommendedCenter.x, 25);
+assert.equal(standStridePreview.recommendedCenter.y, 0);
 
 const combatOnlyStridePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
@@ -768,6 +1245,74 @@ assert.equal(skirmishCompositePreview.enabled, true);
 assert.equal(skirmishCompositePreview.stridePath.length, 2);
 assert.ok(skirmishCompositePreview.stridePath[0].center.x > 0);
 assert.deepEqual(skirmishCompositePreview.stridePath[1].center, { x: 0, y: 0 });
+
+const previousScaledPreviewCanvas = globalThis.canvas;
+const previousScaledPreviewPixi = globalThis.PIXI;
+try {
+  class TestGraphics {
+    lineStyle() {}
+    beginFill() {}
+    drawRect() {}
+    endFill() {}
+    moveTo() {}
+    lineTo() {}
+    destroy() {}
+  }
+  const layer = {
+    sortableChildren: false,
+    addChild: (child) => {
+      child.parent = { removeChild: () => {} };
+    },
+  };
+  globalThis.PIXI = { Graphics: TestGraphics };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 100 },
+    tokens: {
+      placeables: [{
+        id: "calder-token",
+        center: { x: 200, y: 200 },
+        document: { id: "calder-token", uuid: "Scene.Token.calder-token", width: 1, height: 1 },
+      }, {
+        id: "mitflit-token",
+        center: { x: 300, y: 200 },
+        document: { id: "mitflit-token", uuid: "Scene.Token.mitflit-token", width: 1, height: 1 },
+      }],
+    },
+    interface: layer,
+  };
+  const scaledRetreatPreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: {
+      targets: [{
+        id: "mitflit-token",
+        name: "Mitflit",
+        token: { id: "mitflit-token" },
+        distance: 5,
+      }],
+    },
+  }, {
+    slug: "stride-away-strike-versatile-vial",
+    preferredTarget: { id: "mitflit-token", name: "Mitflit", token: { id: "mitflit-token" }, distance: 5 },
+    targetingProfile: { preferredTargetId: "mitflit-token", preferredTargetName: "Mitflit" },
+    activityProfile: {
+      includesStrike: true,
+      retreatBeforeStrike: true,
+      strideCount: 1,
+      strikeReach: 20,
+      attackCenter: { x: 100, y: 200 },
+    },
+  });
+  assert.equal(scaledRetreatPreview.enabled, true);
+  assert.deepEqual(scaledRetreatPreview.origin, { x: 10, y: 10 });
+  assert.deepEqual(scaledRetreatPreview.destinationCenter, { x: 5, y: 10 });
+  assert.deepEqual(scaledRetreatPreview.stridePath[0].center, { x: 5, y: 10 });
+} finally {
+  clearMovementPreview();
+  globalThis.canvas = previousScaledPreviewCanvas;
+  globalThis.PIXI = previousScaledPreviewPixi;
+}
 
 const previousPreviewVisibilityGame = globalThis.game;
 const previousPreviewVisibilityCanvas = globalThis.canvas;
@@ -1417,6 +1962,145 @@ assert.equal(itemAbilityCandidate.source, "system-inferred");
 assert.equal(itemAbilityCandidate.role, "multiattack");
 assert.ok(itemAbilityCandidate.score > 100);
 
+const wornHealingPotion = {
+  id: "healing-potion-minor",
+  name: "Healing Potion (Minor)",
+  type: "consumable",
+  system: {
+    slug: "healing-potion-minor",
+    category: "potion",
+    usage: { value: "held-in-one-hand" },
+    equipped: { carryType: "worn", handsHeld: 0 },
+    quantity: 1,
+    traits: { value: ["consumable", "healing", "magical", "potion"] },
+    description: {
+      value: "<p><strong>Activate</strong> A (manipulate)</p><p>When you drink a healing potion, you regain @Damage[1d8[healing]] Hit Points.</p>",
+    },
+  },
+};
+const wornPotionCost = readActionCost(wornHealingPotion);
+assert.equal(wornPotionCost.activationActionCost, 1);
+assert.equal(wornPotionCost.interactDrawCost, 1);
+assert.equal(wornPotionCost.actionCost, 2);
+
+const heldPotionCost = readActionCost({
+  ...wornHealingPotion,
+  system: {
+    ...wornHealingPotion.system,
+    equipped: { carryType: "held", handsHeld: 1 },
+  },
+});
+assert.equal(heldPotionCost.actionCost, 1);
+assert.equal(heldPotionCost.interactDrawCost ?? 0, 0);
+
+const potionClassification = classifySystemAction(wornHealingPotion, wornPotionCost);
+assert.equal(potionClassification.role, "healing");
+assert.equal(potionClassification.activityProfile.consumable, true);
+assert.equal(potionClassification.activityProfile.interactDraw, true);
+
+const potionContext = {
+  ...fighterContext,
+  profile: {
+    ...fighterContext.profile,
+    hpPercent: 0.35,
+  },
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: { actions: [] },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [wornHealingPotion],
+      },
+      items: [],
+    },
+  },
+};
+const potionAction = readActionSources(potionContext).find((action) => action.slug === "healing-potion-minor");
+assert.equal(potionAction.name, "Interact -> Healing Potion (Minor)");
+assert.equal(potionAction.actionCost, 2);
+assert.equal(potionAction.activationActionCost, 1);
+assert.equal(potionAction.interactDrawCost, 1);
+assert.equal(potionAction.role, "healing");
+const scoredPotion = scoreCandidate(potionContext, potionAction);
+assert.ok(scoredPotion.reasons.includes("Includes Interact to draw or retrieve the consumable."));
+assert.ok(scoredPotion.reasons.includes("Valeros is badly injured."));
+
+const activatedCloak = {
+  id: "cloak-of-illusions",
+  name: "Cloak of Illusions",
+  type: "equipment",
+  system: {
+    slug: "cloak-of-illusions",
+    usage: { value: "worncloak" },
+    equipped: { carryType: "worn", handsHeld: 0 },
+    traits: { value: ["illusion", "invested", "magical"] },
+    actionType: { value: "passive" },
+    description: {
+      value: "<p>This cloak bends nearby light.</p><hr /><p><strong>Activate—Draw Hood</strong> <span class=\"action-glyph\">2</span> (manipulate)</p><p><strong>Effect</strong> You become invisible.</p>",
+    },
+  },
+};
+const activatedCloakCost = readActionCost(activatedCloak);
+assert.equal(activatedCloakCost.actionCost, 2);
+assert.equal(activatedCloakCost.type, "action");
+assert.equal(activatedCloakCost.activationInDescription, true);
+
+const activatedArmorCost = readActionCost({
+  id: "second-chance-shield",
+  name: "Second Chance Shield",
+  type: "armor",
+  system: {
+    slug: "second-chance-shield",
+    traits: { value: ["magical"] },
+    description: {
+      value: "<p><strong>Activate—Second Chance</strong> <span class=\"action-glyph\">R</span> (fortune)</p><p><strong>Trigger</strong> You would die.</p>",
+    },
+  },
+});
+assert.equal(activatedArmorCost.actionCost, "reaction");
+assert.equal(activatedArmorCost.type, "reaction");
+
+const longActivationCost = readActionCost({
+  id: "planar-ribbon",
+  name: "Planar Ribbon",
+  type: "equipment",
+  system: {
+    slug: "planar-ribbon",
+    traits: { value: ["occult"] },
+    description: {
+      value: "<p><strong>Activate</strong> 1 minute (command, envision, Interact)</p><p><strong>Effect</strong> You open a viewing window.</p>",
+    },
+  },
+});
+assert.equal(longActivationCost.actionCost, null);
+
+const activatedItemContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: { actions: [] },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+        equipment: [activatedCloak],
+      },
+      items: [],
+    },
+  },
+};
+const activatedItemAction = readActionSources(activatedItemContext)
+  .find((action) => action.slug === "cloak-of-illusions");
+assert.equal(activatedItemAction.source, "system-inferred");
+assert.equal(activatedItemAction.role, "utility");
+assert.equal(activatedItemAction.actionCost, 2);
+assert.equal(activatedItemAction.activationActionCost, 2);
+
 const throwRockClassification = classifySystemAction({
   name: "Throw Rock",
   system: {
@@ -1464,6 +2148,21 @@ const huntPreyClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(huntPreyClassification.role, "setup");
 assert.deepEqual(huntPreyClassification.setupFor, ["strike", "damage"]);
+
+const exploitVulnerabilityClassification = classifySystemAction({
+  name: "Exploit Vulnerability",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p>You scour your experiences and learning to identify something that might repel your foe. You attempt an Esoteric Lore check and exploit mortal weakness or apply a personal antithesis. Your Strikes gain bonus damage.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(exploitVulnerabilityClassification.role, "setup");
+assert.equal(exploitVulnerabilityClassification.activityProfile.targetMark, "exploited-vulnerability");
+assert.deepEqual(exploitVulnerabilityClassification.setupFor, ["strike", "damage"]);
 
 const swiftLeapClassification = classifySystemAction({
   name: "Swift Leap",
@@ -1635,6 +2334,38 @@ const rageClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(rageClassification.role, "setup");
 assert.deepEqual(rageClassification.setupFor, ["strike", "damage"]);
+
+const burningJetClassification = classifySystemAction({
+  name: "Burning Jet",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    traits: { value: ["fire", "impulse", "primal"] },
+    description: {
+      value: "<p>A condensed burst of flame shoots behind you. Stride up to 40 feet in a straight line. Movement from this impulse ignores difficult terrain and doesn't trigger reactions.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(burningJetClassification.role, "mobility");
+assert.equal(burningJetClassification.activityProfile.fixedDistance, 40);
+assert.equal(burningJetClassification.activityProfile.safeMovement, true);
+
+const blazingWaveClassification = classifySystemAction({
+  name: "Blazing Wave",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    traits: { value: ["fire", "impulse", "primal"] },
+    description: {
+      value: "<p>Creatures in a 30-foot cone take @Damage[4d6[fire]] damage with a basic @Check[reflex] save.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(blazingWaveClassification.role, "area-damage");
+assert.equal(blazingWaveClassification.targetingProfile.type, "cone");
+assert.equal(blazingWaveClassification.targetingProfile.distance, 30);
 
 const reachSpellClassification = classifySystemAction({
   name: "Reach Spell",
@@ -1915,6 +2646,40 @@ const nearDemoralize = readActionSources({
 }).find((action) => action.slug === "demoralize");
 assert.equal(nearDemoralize.available, true);
 
+const demoralizeImmuneTarget = {
+  ...fighterContext.targets[0],
+  distance: 20,
+  effects: [{ slug: "effect-demoralize-immunity", name: "Effect: Demoralize Immunity" }],
+};
+const immuneDemoralizeContext = {
+  ...fighterContext,
+  targets: [demoralizeImmuneTarget],
+  battlefield: {
+    targets: [demoralizeImmuneTarget],
+    enemies: [demoralizeImmuneTarget],
+    allies: [],
+  },
+};
+const immuneDemoralize = readActionSources(immuneDemoralizeContext)
+  .find((action) => action.slug === "demoralize");
+assert.equal(immuneDemoralize.available, false);
+assert.equal(immuneDemoralize.unavailableReason, "Target is temporarily immune to Demoralize.");
+assert.equal(
+  buildCandidates(immuneDemoralizeContext).candidates.some((action) => action.slug === "demoralize"),
+  false,
+);
+const scoredImmuneDemoralize = scoreCandidate(immuneDemoralizeContext, {
+  id: "demoralize",
+  name: "Demoralize",
+  slug: "demoralize",
+  actionCost: 1,
+  source: "generic",
+  role: "debuff",
+  maxRange: 30,
+});
+assert.equal(scoredImmuneDemoralize.score, -999);
+assert.equal(scoredImmuneDemoralize.reason, "Target is temporarily immune to Demoralize.");
+
 // Create a Diversion carries a default PF2e variant so execution doesn't error.
 const diversionAction = readActionSources(fighterContext).find((action) => action.slug === "create-a-diversion");
 assert.equal(diversionAction.variant, "gesture");
@@ -2137,7 +2902,7 @@ try {
     },
   };
 
-  const inactiveVisionerSystemSeek = readActionSources({
+const inactiveVisionerSystemSeek = readActionSources({
     ...fighterContext,
     token: { id: "observer-token" },
     battlefield: {
@@ -2154,6 +2919,132 @@ try {
 } finally {
   globalThis.game = previousInactiveVisionerGame;
 }
+
+const attackVisibilityContext = (targetPatch = {}) => ({
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: {
+        actions: [{
+          slug: "longsword",
+          type: "strike",
+          label: "Longsword",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: { id: "longsword", system: { traits: { value: [] } } },
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  token: { id: "observer-token", center: { x: 0, y: 0 } },
+  battlefield: {
+    targets: [{
+      ...fighterContext.targets[0],
+      distance: 5,
+      token: { id: "target-token", center: { x: 5, y: 0 } },
+      ...targetPatch,
+    }],
+    enemies: [{
+      ...fighterContext.targets[0],
+      distance: 5,
+      token: { id: "target-token", center: { x: 5, y: 0 } },
+      ...targetPatch,
+    }],
+  },
+  targets: undefined,
+});
+
+const hiddenStrike = readActionSources(attackVisibilityContext({
+  conditions: [{ slug: "hidden" }],
+})).find((action) => action.source === "strike");
+assert.equal(hiddenStrike.available, true);
+
+const hiddenDemoralize = readActionSources(attackVisibilityContext({
+  conditions: [{ slug: "hidden" }],
+})).find((action) => action.slug === "demoralize");
+assert.equal(hiddenDemoralize.available, true);
+
+const systemUndetectedStrike = readActionSources(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+})).find((action) => action.source === "strike");
+assert.equal(systemUndetectedStrike.available, false);
+assert.equal(systemUndetectedStrike.unavailableReason, "No target in range.");
+
+const systemUndetectedDemoralize = readActionSources(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+})).find((action) => action.slug === "demoralize");
+assert.equal(systemUndetectedDemoralize.available, false);
+assert.equal(systemUndetectedDemoralize.unavailableReason, "No enemy target selected.");
+
+const scoredSystemUndetectedStrike = scoreCandidate(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+}), {
+  id: "longsword",
+  name: "Longsword",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+});
+assert.equal(scoredSystemUndetectedStrike.score, -999);
+assert.equal(scoredSystemUndetectedStrike.reason, "No valid enemy target.");
+
+const scoredSystemUndetectedSpell = scoreCandidate(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+}), {
+  id: "force",
+  name: "Force",
+  slug: "force",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "damage",
+  damageProfile: { average: 10, type: "force", types: ["force"] },
+  activityProfile: { includes: ["damage"], averageDamage: 10 },
+  targetingProfile: { enemy: true, maxRange: 30 },
+});
+assert.equal(scoredSystemUndetectedSpell.score, -999);
+assert.equal(scoredSystemUndetectedSpell.reason, "No attackable enemy target.");
+
+const scoredSystemUndetectedSetup = scoreCandidate(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+}), {
+  id: "feint-like",
+  name: "Feint-Like",
+  slug: "feint-like",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  targetingProfile: { enemy: true, maxRange: 30 },
+  activityProfile: { includes: ["setup"], appliesCondition: "off-guard" },
+});
+assert.equal(scoredSystemUndetectedSetup.score, -999);
+assert.equal(scoredSystemUndetectedSetup.reason, "No targetable enemy target.");
+
+const scoredSystemUndetectedAreaSpell = scoreCandidate(attackVisibilityContext({
+  conditions: [{ slug: "undetected" }],
+}), {
+  id: "breathe-fire",
+  name: "Breathe Fire",
+  slug: "breathe-fire",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "area-damage",
+  damageProfile: { average: 8, type: "fire", types: ["fire"] },
+  activityProfile: { includes: ["damage"], averageDamage: 8 },
+  targetingProfile: { type: "cone", distance: 15 },
+});
+assert.equal(scoredSystemUndetectedAreaSpell.score, -999);
+assert.equal(scoredSystemUndetectedAreaSpell.reason, "No attackable enemy target.");
+
+const visionerUndetectedStrike = readActionSources(attackVisibilityContext({
+  visionerDetectionState: "undetected",
+})).find((action) => action.source === "strike");
+assert.equal(visionerUndetectedStrike.available, false);
+assert.equal(visionerUndetectedStrike.unavailableReason, "No target in range.");
 
 const blockedSenseMotive = readActionSources(fighterContext).find((action) => action.slug === "sense-motive");
 assert.equal(blockedSenseMotive.available, false);
@@ -2434,6 +3325,49 @@ const repeatedStrikePlan = bestTurnPlan(fighterContext, [{
 }]);
 assert.equal(repeatedStrikePlan.steps.length, 2);
 assert.deepEqual(repeatedStrikePlan.steps.map((step) => step.mapPenalty), [0, 5]);
+
+const repeatedReloadStrikePlan = bestTurnPlan(fighterContext, [{
+  id: "crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  reload: 1,
+  range: { max: 120 },
+  score: 90,
+  confidence: "medium",
+  reason: "Shoot.",
+}]);
+assert.equal(repeatedReloadStrikePlan.steps.length, 2);
+assert.equal(repeatedReloadStrikePlan.totalCost, 3);
+assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.name), ["Crossbow", "Reload -> Crossbow"]);
+assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.actionCost), [1, 2]);
+assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.mapPenalty), [0, 5]);
+
+const quickenedReloadPlan = bestTurnPlan(quickenedContext, [{
+  id: "demoralize-reload",
+  name: "Demoralize",
+  slug: "demoralize",
+  actionCost: 1,
+  source: "generic",
+  score: 80,
+  confidence: "medium",
+  reason: "Target is not frightened.",
+}, {
+  id: "crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  reload: 1,
+  range: { max: 120 },
+  score: 90,
+  confidence: "medium",
+  reason: "Shoot.",
+}]);
+assert.equal(quickenedReloadPlan.actionBudget.quickenedActions, 1);
+assert.equal(quickenedReloadPlan.totalCost, 4);
+assert.deepEqual(quickenedReloadPlan.steps.map((step) => step.name), ["Demoralize", "Crossbow", "Reload -> Crossbow"]);
 
 const rangedAlreadyInRangeContext = {
   ...fighterContext,
@@ -2784,6 +3718,1083 @@ const rangedStrike = scoreCandidate({
 });
 assert.equal(rangedStrike.reason, "Target is in range.");
 
+const spellcasterSpellPriorityContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      itemTypes: {
+        spell: [{ id: "needle-darts", type: "spell" }],
+        spellcastingEntry: [{ id: "entry-1", type: "spellcastingEntry" }],
+      },
+      items: [],
+    },
+  },
+  targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  battlefield: {
+    enemies: [{ ...fighterContext.targets[0], distance: 5 }],
+    allies: [],
+    targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  },
+};
+const spellcasterMeleeStrike = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "staff",
+  name: "Staff",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 8,
+});
+const spellcasterDamageSpell = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "needle-darts",
+  name: "Needle Darts",
+  slug: "needle-darts",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "damage",
+  damageProfile: { average: 8, type: "piercing", types: ["piercing"] },
+  activityProfile: { includes: ["damage"], includesStrike: false, spellAttack: true },
+  targetingProfile: { enemy: true, maxRange: 60 },
+});
+assert.ok(
+  spellcasterDamageSpell.score > spellcasterMeleeStrike.score,
+  `spellcaster spell should beat melee fallback, got ${spellcasterDamageSpell.score} vs ${spellcasterMeleeStrike.score}`,
+);
+assert.ok(spellcasterDamageSpell.reasons.includes("Spellcaster spell option is preferred over melee fallback."));
+assert.ok(spellcasterMeleeStrike.reasons.includes("Spellcaster melee Strike is lower priority than spell options."));
+const spellcasterRangedStrike = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120, increment: 120 },
+  averageDamage: 8,
+});
+assert.equal(
+  spellcasterRangedStrike.reasons.includes("Spellcaster melee Strike is lower priority than spell options."),
+  false,
+);
+const spellCrowdedPlans = buildTurnPlans(spellcasterSpellPriorityContext, [
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: `spell-crowd-${index}`,
+    name: `Spell Crowd ${index}`,
+    slug: `spell-crowd-${index}`,
+    actionCost: 1,
+    source: "spell-inferred",
+    score: 200 - index,
+    confidence: "medium",
+  })),
+  {
+    id: "staff-fallback",
+    name: "Staff",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    score: 70,
+    confidence: "medium",
+  },
+]);
+assert.ok(
+  spellCrowdedPlans.some((plan) => plan.steps.some((step) => step.id === "staff-fallback")),
+  "spell-heavy candidate pool should still keep a martial fallback plan",
+);
+
+const fighterClassTacticContext = {
+  ...fighterContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "fighter",
+    classSlugs: ["fighter"],
+  },
+  targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  battlefield: {
+    enemies: [{ ...fighterContext.targets[0], distance: 5 }],
+    allies: [],
+    targets: [{ ...fighterContext.targets[0], distance: 5 }],
+  },
+};
+const fighterClassStrike = scoreCandidate(fighterClassTacticContext, {
+  id: "fighter-longsword",
+  name: "Longsword",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 8,
+});
+assert.ok(fighterClassStrike.reasons.includes("Fighter tactic favors melee Strikes."));
+
+const wizardClassSpell = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "wizard",
+    classSlugs: ["wizard"],
+  },
+}, {
+  id: "wizard-fire-ray",
+  name: "Fire Ray",
+  slug: "fire-ray",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "damage",
+  damageProfile: { average: 10, type: "fire", types: ["fire"] },
+  activityProfile: { includes: ["damage"], includesStrike: false, spellAttack: true },
+  targetingProfile: { enemy: true, maxRange: 60 },
+});
+assert.ok(wizardClassSpell.reasons.some((reason) => reason.startsWith("Wizard tactic favors")));
+
+const gunslingerClassTacticContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "gunslinger",
+    classSlugs: ["gunslinger"],
+  },
+};
+const gunslingerMeleeStrike = scoreCandidate(gunslingerClassTacticContext, {
+  id: "gunslinger-dagger",
+  name: "Dagger",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 8,
+});
+const gunslingerRangedStrike = scoreCandidate(gunslingerClassTacticContext, {
+  id: "gunslinger-crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120, increment: 120 },
+  averageDamage: 8,
+});
+assert.ok(
+  gunslingerRangedStrike.score > gunslingerMeleeStrike.score,
+  `gunslinger ranged Strike should beat melee fallback, got ${gunslingerRangedStrike.score} vs ${gunslingerMeleeStrike.score}`,
+);
+assert.ok(gunslingerRangedStrike.reasons.some((reason) => reason.includes("Gunslinger") && reason.includes("ranged")));
+
+function classContext(slug, { combatState = {}, target = null, allies = [] } = {}) {
+  const activeTarget = target ?? { ...fighterContext.targets[0], distance: 5 };
+  return {
+    ...fighterClassTacticContext,
+    profile: {
+      ...fighterContext.profile,
+      classSlug: slug,
+      classSlugs: [slug],
+      combatState,
+    },
+    targets: [activeTarget],
+    battlefield: {
+      enemies: [activeTarget],
+      allies,
+      targets: [activeTarget],
+    },
+  };
+}
+
+function mergeCandidate(slug, name, extra = {}) {
+  const tactic = findCustomAction(slug) ?? {};
+  return {
+    id: slug,
+    name,
+    source: "system-inferred",
+    ...tactic,
+    ...extra,
+    slug,
+    actionCost: extra.actionCost ?? tactic.actionCost ?? 1,
+    activityProfile: {
+      ...(tactic.activityProfile ?? {}),
+      ...(extra.activityProfile ?? {}),
+    },
+    targetingProfile: {
+      ...(tactic.targetingProfile ?? {}),
+      ...(extra.targetingProfile ?? {}),
+    },
+  };
+}
+
+function expectReason(scored, text) {
+  assert.ok(
+    scored.reasons.some((reason) => reason.includes(text)),
+    `expected reason containing "${text}", got ${scored.reasons.join(" | ")}`,
+  );
+}
+
+expectReason(
+  scoreCandidate(classContext("alchemist"), mergeCandidate("quick-alchemy", "Quick Alchemy")),
+  "Quick Alchemy creates the right tool",
+);
+expectReason(
+  scoreCandidate(classContext("animist"), mergeCandidate("circle-of-spirits", "Circle of Spirits", {
+    role: "buff",
+    activityProfile: { includes: ["buff"] },
+    targetingProfile: { self: true },
+  })),
+  "Animist apparition actions set up spirit magic",
+);
+expectReason(
+  scoreCandidate(classContext("barbarian"), mergeCandidate("rage", "Rage")),
+  "Barbarian wants Rage before attacking",
+);
+expectReason(
+  scoreCandidate(classContext("barbarian", { combatState: { rageActive: true } }), mergeCandidate("rage", "Rage")),
+  "Rage is already active",
+);
+expectReason(
+  scoreCandidate(classContext("bard", { allies: [{ id: "ally-1", name: "Ally", hpPercent: 1 }] }), mergeCandidate("courageous-anthem", "Courageous Anthem")),
+  "Bard composition should anchor the turn",
+);
+expectReason(
+  scoreCandidate(classContext("champion", { allies: [{ id: "ally-1", name: "Ally", hpPercent: 0.4 }] }), mergeCandidate("lay-on-hands", "Lay on Hands")),
+  "Champion healing protects wounded allies",
+);
+expectReason(
+  scoreCandidate(classContext("cleric", { allies: [{ id: "ally-1", name: "Ally", hpPercent: 0.4 }] }), {
+    id: "heal",
+    name: "Heal",
+    slug: "heal",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "healing",
+    activityProfile: { includes: ["healing"], spell: true },
+    targetingProfile: { ally: true, self: true },
+  }),
+  "Cleric should stabilize wounded allies",
+);
+expectReason(
+  scoreCandidate(classContext("commander", { allies: [{ id: "ally-1", name: "Ally", hpPercent: 1 }] }), mergeCandidate("strike-hard", "Strike Hard", {
+    role: "buff",
+    activityProfile: { includes: ["buff"], ally: true },
+    targetingProfile: { ally: true },
+  })),
+  "Commander tactics are high value with allies",
+);
+expectReason(
+  scoreCandidate(classContext("commander"), mergeCandidate("strike-hard", "Strike Hard", {
+    role: "buff",
+    activityProfile: { includes: ["buff"], ally: true },
+    targetingProfile: { ally: true },
+  })),
+  "Commander tactics need allies",
+);
+expectReason(
+  scoreCandidate(classContext("druid"), mergeCandidate("wild-shape", "Wild Shape")),
+  "Wild Shape opens Druid martial options",
+);
+expectReason(
+  scoreCandidate(classContext("exemplar", { combatState: {}, target: { ...fighterContext.targets[0], distance: 20 } }), mergeCandidate("spark-transcendence", "Spark Transcendence", {
+    role: "damage",
+    activityProfile: { includes: ["damage"] },
+    targetingProfile: { enemy: true, maxRange: 30 },
+  })),
+  "Spark Transcendence is Exemplar",
+);
+expectReason(
+  scoreCandidate(classContext("fighter"), mergeCandidate("power-attack", "Power Attack")),
+  "Fighter class Strike is stronger than a plain Strike",
+);
+expectReason(
+  scoreCandidate(classContext("guardian"), mergeCandidate("taunt", "Taunt")),
+  "Guardian wants Taunt before defensive payoffs",
+);
+expectReason(
+  scoreCandidate(classContext("inventor"), mergeCandidate("overdrive", "Overdrive")),
+  "Inventor wants Overdrive before attacking",
+);
+expectReason(
+  scoreCandidate(classContext("inventor", { combatState: { overdriveActive: true } }), mergeCandidate("overdrive", "Overdrive")),
+  "Overdrive is already active",
+);
+expectReason(
+  scoreCandidate(classContext("monk"), mergeCandidate("flurry-of-blows", "Flurry of Blows")),
+  "Flurry-style action is Monk",
+);
+expectReason(
+  scoreCandidate(classContext("oracle"), mergeCandidate("whispers-of-weakness", "Whispers of Weakness", {
+    role: "debuff",
+    activityProfile: { includes: ["debuff"] },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  })),
+  "Oracle revelation action is a class payoff",
+);
+expectReason(
+  scoreCandidate(classContext("psychic"), mergeCandidate("unleash-psyche", "Unleash Psyche")),
+  "Psychic wants Unleash Psyche before burst spells",
+);
+expectReason(
+  scoreCandidate(classContext("psychic", { combatState: { unleashPsycheActive: true }, target: { ...fighterContext.targets[0], distance: 30 } }), {
+    id: "amp-cantrip",
+    name: "Amped Cantrip",
+    slug: "amp-cantrip",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "damage",
+    damageProfile: { average: 12, type: "mental", types: ["mental"] },
+    activityProfile: { includes: ["damage"], spell: true },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  }),
+  "Unleashed Psyche boosts Psychic burst actions",
+);
+expectReason(
+  scoreCandidate(classContext("rogue"), mergeCandidate("feint", "Feint", {
+    role: "setup",
+    activityProfile: { includes: ["setup"], appliesCondition: "off-guard" },
+    targetingProfile: { enemy: true, reach: true },
+  })),
+  "Rogue wants off-guard before damage",
+);
+expectReason(
+  scoreCandidate(classContext("rogue", { target: { ...fighterContext.targets[0], distance: 5, conditions: { slugs: ["off-guard"] } } }), {
+    id: "rogue-strike",
+    name: "Rapier",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    range: { max: 5 },
+    averageDamage: 8,
+  }),
+  "Off-guard target enables Rogue payoff damage",
+);
+expectReason(
+  scoreCandidate(classContext("runesmith"), mergeCandidate("trace-rune", "Trace Rune")),
+  "Runesmith wants a rune traced before invoking",
+);
+expectReason(
+  scoreCandidate(classContext("runesmith", { target: { ...fighterContext.targets[0], distance: 20, effects: [{ slug: "traced-rune" }] } }), mergeCandidate("invoke-rune", "Invoke Rune", {
+    targetingProfile: { enemy: true, maxRange: 30 },
+  })),
+  "Invoke Rune pays off a traced rune",
+);
+expectReason(
+  scoreCandidate(classContext("sorcerer", { target: { ...fighterContext.targets[0], distance: 30 } }), {
+    id: "bloodline-spell",
+    name: "Bloodline Spell",
+    slug: "bloodline-spell",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "damage",
+    damageProfile: { average: 12, type: "fire", types: ["fire"] },
+    activityProfile: { includes: ["damage"], spell: true },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  }),
+  "Sorcerer should lean into spell damage",
+);
+expectReason(
+  scoreCandidate(classContext("summoner"), mergeCandidate("manifest-eidolon", "Manifest Eidolon")),
+  "Summoner wants Eidolon manifested first",
+);
+expectReason(
+  scoreCandidate(classContext("summoner", { combatState: { eidolonManifested: true } }), mergeCandidate("act-together", "Act Together")),
+  "Tandem action pays off manifested Eidolon",
+);
+expectReason(
+  scoreCandidate(classContext("witch", { target: { ...fighterContext.targets[0], distance: 30 } }), mergeCandidate("split-hex", "Split Hex", {
+    role: "debuff",
+    activityProfile: { includes: ["debuff"] },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  })),
+  "Split Hex wants multiple valid enemies",
+);
+expectReason(
+  scoreCandidate(classContext("wizard", { target: { ...fighterContext.targets[0], distance: 30 } }), {
+    id: "control-spell",
+    name: "Wall Spell",
+    slug: "wall-spell",
+    actionCost: 3,
+    source: "spell-inferred",
+    role: "control",
+    activityProfile: { includes: ["control"], spell: true },
+    targetingProfile: { enemy: true, maxRange: 120 },
+  }),
+  "Wizard should prioritize high-impact spells",
+);
+
+const thaumaturgeClassTacticContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "thaumaturge",
+    classSlugs: ["thaumaturge"],
+  },
+};
+const thaumaturgeExploit = scoreCandidate(thaumaturgeClassTacticContext, {
+  id: "exploit-vulnerability",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+const thaumaturgeDemoralize = scoreCandidate(thaumaturgeClassTacticContext, {
+  id: "demoralize",
+  name: "Demoralize",
+  slug: "demoralize",
+  actionCost: 1,
+  source: "generic",
+  role: "debuff",
+  skill: "intimidation",
+  targetingProfile: { enemy: true },
+});
+assert.ok(
+  thaumaturgeExploit.score > thaumaturgeDemoralize.score,
+  `thaumaturge should prefer Exploit Vulnerability over generic filler, got ${thaumaturgeExploit.score} vs ${thaumaturgeDemoralize.score}`,
+);
+assert.ok(thaumaturgeExploit.reasons.some((reason) => reason.includes("Exploit Vulnerability signature")));
+
+const kineticistImpulseContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "kineticist",
+    classSlugs: ["kineticist"],
+  },
+  targets: [{ ...fighterContext.targets[0], distance: 35 }],
+  battlefield: {
+    enemies: [{ ...fighterContext.targets[0], distance: 35 }],
+    allies: [],
+    targets: [{ ...fighterContext.targets[0], distance: 35 }],
+  },
+};
+const kineticistBurningJet = scoreCandidate(kineticistImpulseContext, {
+  id: "burning-jet",
+  name: "Burning Jet",
+  slug: "burning-jet",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "mobility",
+  traits: ["fire", "impulse", "primal"],
+  activityProfile: {
+    includes: ["stride"],
+    strideCount: 1,
+    fixedDistance: 40,
+    safeMovement: true,
+    impulse: true,
+  },
+  targetingProfile: { self: true },
+});
+assert.ok(kineticistBurningJet.reasons.some((reason) => reason.includes("Kineticist tactic favors impulses")));
+assert.ok(kineticistBurningJet.score > 80);
+
+const kineticistBlastContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      level: 5,
+      flags: {
+        pf2e: {
+          kineticist: {
+            elementalBlast: {
+              fire: {
+                element: "fire",
+                label: "PF2E.SpecificRule.Kineticist.Impulse.ElementalBlast.Label.Fire",
+                img: "icons/magic/fire/projectile-fireball-smoke-orange.webp",
+                damageTypes: ["fire"],
+                dieFaces: 6,
+                range: 30,
+              },
+            },
+          },
+        },
+      },
+      system: {
+        details: { level: { value: 5 } },
+        actions: [{
+          slug: "battle-axe",
+          type: "strike",
+          label: "Battle Axe",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "battle-axe",
+            name: "Battle Axe",
+            system: { damage: { dice: 1, die: "d8", modifier: 4 } },
+          },
+        }],
+      },
+      itemTypes: {
+        action: [{
+          id: "elemental-blast",
+          name: "Elemental Blast",
+          slug: "elemental-blast",
+          type: "action",
+          flags: {
+            pf2e: {
+              rulesSelections: { actionCost: 1 },
+              damageSelections: { fire: "fire" },
+            },
+          },
+          system: {
+            slug: "elemental-blast",
+            actionType: { value: "action" },
+            actions: { value: 1 },
+            traits: { value: ["attack", "impulse", "kineticist"] },
+          },
+        }],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "kineticist",
+    classSlugs: ["kineticist"],
+  },
+  targets: [{ ...fighterContext.targets[0], distance: 25 }],
+  battlefield: {
+    enemies: [{ ...fighterContext.targets[0], distance: 25 }],
+    allies: [],
+    targets: [{ ...fighterContext.targets[0], distance: 25 }],
+  },
+};
+const kineticistBlastSources = readActionSources(kineticistBlastContext)
+  .filter((action) => action.tacticSlug === "elemental-blast");
+assert.equal(kineticistBlastSources.length, 4);
+assert.equal(
+  kineticistBlastSources.some((action) => action.name === "Elemental Blast (Fire) (ranged)" && action.available),
+  true,
+);
+assert.deepEqual([...new Set(kineticistBlastSources.map((action) => action.actionCost))].toSorted(), [1, 2]);
+assert.equal(
+  kineticistBlastSources.some((action) => action.name === "Elemental Blast (Fire) (ranged, 2 actions)" && action.available),
+  true,
+);
+assert.ok(
+  kineticistBlastSources.find((action) => action.name === "Elemental Blast (Fire) (ranged, 2 actions)").averageDamage
+    > kineticistBlastSources.find((action) => action.name === "Elemental Blast (Fire) (ranged)").averageDamage,
+);
+assert.equal(
+  readActionSources(kineticistBlastContext).filter((action) => action.slug === "elemental-blast").length,
+  0,
+);
+const kineticistPlan = bestTurnPlan(kineticistBlastContext, buildCandidates(kineticistBlastContext).candidates);
+assert.ok(
+  kineticistPlan.steps.some((step) => step.tacticSlug === "elemental-blast"),
+  `kineticist plan should include Elemental Blast, got ${kineticistPlan.summary}`,
+);
+
+const comboStateProfile = readActorProfile({
+  id: "combo-state",
+  name: "Combo State",
+  type: "character",
+  itemTypes: {
+    class: [{ name: "Magus", type: "class", system: { slug: "magus" } }],
+    condition: [],
+    effect: [{
+      name: "Spellstrike Expended",
+      type: "effect",
+      system: { slug: { value: "spellstrike-expended" } },
+    }, {
+      name: "Arcane Cascade",
+      type: "effect",
+      system: { slug: { value: "arcane-cascade" } },
+    }, {
+      name: "Panache",
+      type: "effect",
+      system: { slug: { value: "panache" } },
+    }, {
+      name: "Rage",
+      type: "effect",
+      system: { slug: { value: "rage" } },
+    }, {
+      name: "Overdrive",
+      type: "effect",
+      system: { slug: { value: "overdrive" } },
+    }, {
+      name: "Unleash Psyche",
+      type: "effect",
+      system: { slug: { value: "unleash-psyche" } },
+    }, {
+      name: "Manifest Eidolon",
+      type: "effect",
+      system: { slug: { value: "manifest-eidolon" } },
+    }, {
+      name: "Courageous Anthem",
+      type: "effect",
+      system: { slug: { value: "courageous-anthem" } },
+    }, {
+      name: "Lingering Composition",
+      type: "effect",
+      system: { slug: { value: "lingering-composition" } },
+    }, {
+      name: "Smite",
+      type: "effect",
+      system: { slug: { value: "smite" } },
+    }, {
+      name: "Mutagen",
+      type: "effect",
+      system: { slug: { value: "mutagen" } },
+    }, {
+      name: "Cursebound",
+      type: "effect",
+      system: { slug: { value: "cursebound" } },
+    }, {
+      name: "Unstable Function",
+      type: "effect",
+      system: { slug: { value: "unstable-function" } },
+    }],
+  },
+  items: [],
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.equal(comboStateProfile.combatState.spellstrikeNeedsRecharge, true);
+assert.equal(comboStateProfile.combatState.spellstrikeCharged, false);
+assert.equal(comboStateProfile.combatState.arcaneCascadeActive, true);
+assert.equal(comboStateProfile.combatState.panacheActive, true);
+assert.equal(comboStateProfile.combatState.rageActive, true);
+assert.equal(comboStateProfile.combatState.overdriveActive, true);
+assert.equal(comboStateProfile.combatState.unleashPsycheActive, true);
+assert.equal(comboStateProfile.combatState.eidolonManifested, true);
+assert.equal(comboStateProfile.combatState.compositionActive, true);
+assert.equal(comboStateProfile.combatState.lingeringCompositionActive, true);
+assert.equal(comboStateProfile.combatState.smiteActive, true);
+assert.equal(comboStateProfile.combatState.mutagenActive, true);
+assert.equal(comboStateProfile.combatState.curseActive, true);
+assert.equal(comboStateProfile.combatState.unstableUsed, true);
+
+const weaponInfusionClassification = classifySystemAction({
+  name: "Weapon Infusion",
+  type: "feat",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    traits: { value: ["kineticist", "impulse"] },
+    description: { value: "<p>If your next action is an Elemental Blast, choose a weapon shape.</p>" },
+  },
+}, { actionCost: 1 });
+assert.equal(weaponInfusionClassification.role, "setup");
+assert.equal(weaponInfusionClassification.activityProfile.nextAction, "elemental-blast");
+assert.deepEqual(weaponInfusionClassification.setupFor, ["elemental-blast", "damage"]);
+
+const infusionPlan = bestTurnPlan({
+  ...kineticistImpulseContext,
+  profile: {
+    ...kineticistImpulseContext.profile,
+    combatState: { kineticistAuraActive: true },
+  },
+}, [
+  {
+    id: "weapon-infusion",
+    name: "Weapon Infusion",
+    slug: "weapon-infusion",
+    actionCost: 1,
+    source: "system-inferred",
+    role: weaponInfusionClassification.role,
+    score: 70,
+    confidence: "medium",
+    activityProfile: weaponInfusionClassification.activityProfile,
+    setupFor: weaponInfusionClassification.setupFor,
+  },
+  {
+    id: "elemental-blast-fire",
+    name: "Elemental Blast",
+    slug: "strike",
+    tacticSlug: "elemental-blast",
+    actionCost: 1,
+    source: "strike",
+    score: 80,
+    confidence: "medium",
+    attackTrait: true,
+    range: { max: 30 },
+  },
+]);
+assert.deepEqual(infusionPlan.steps.map((step) => step.id).slice(0, 2), ["weapon-infusion", "elemental-blast-fire"]);
+
+const inactiveAuraKineticistContext = {
+  ...kineticistImpulseContext,
+  profile: {
+    ...kineticistImpulseContext.profile,
+    combatState: { kineticistAuraActive: false },
+  },
+};
+const channelElementsScore = scoreCandidate(inactiveAuraKineticistContext, {
+  id: "channel-elements",
+  name: "Channel Elements",
+  slug: "channel-elements",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  traits: ["kineticist", "impulse"],
+  activityProfile: { includes: ["setup"], impulse: true },
+  targetingProfile: { self: true },
+});
+const inactiveAuraBlastScore = scoreCandidate(inactiveAuraKineticistContext, {
+  id: "elemental-blast-fire",
+  name: "Elemental Blast",
+  slug: "strike",
+  tacticSlug: "elemental-blast",
+  actionCost: 1,
+  source: "strike",
+  traits: ["kineticist", "impulse", "fire"],
+  range: { max: 60 },
+  averageDamage: 8,
+  attackTrait: true,
+});
+assert.ok(channelElementsScore.score > inactiveAuraBlastScore.score);
+assert.ok(channelElementsScore.reasons.includes("Channel Elements opens kinetic aura for impulses."));
+assert.ok(inactiveAuraBlastScore.reasons.includes("Impulse wants Channel Elements active first."));
+
+const activeAuraChannelScore = scoreCandidate({
+  ...inactiveAuraKineticistContext,
+  profile: {
+    ...inactiveAuraKineticistContext.profile,
+    combatState: { kineticistAuraActive: true },
+  },
+}, {
+  id: "channel-elements",
+  name: "Channel Elements",
+  slug: "channel-elements",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  traits: ["kineticist", "impulse"],
+  activityProfile: { includes: ["setup"], impulse: true },
+  targetingProfile: { self: true },
+});
+assert.ok(activeAuraChannelScore.score < channelElementsScore.score);
+assert.ok(activeAuraChannelScore.reasons.includes("Kinetic aura already active; Channel Elements is redundant."));
+
+const magusBaseContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "magus",
+    classSlugs: ["magus"],
+    combatState: { spellstrikeCharged: false, spellstrikeNeedsRecharge: true },
+  },
+};
+const needsRechargeSpellstrike = scoreCandidate(magusBaseContext, {
+  id: "spellstrike",
+  name: "Spellstrike",
+  slug: "spellstrike",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "damage",
+  traits: ["magus"],
+  activityProfile: { includes: ["spell", "strike"], includesStrike: true, spellstrike: true },
+  targetingProfile: { enemy: true, reach: true },
+});
+const rechargeSpellstrike = scoreCandidate(magusBaseContext, {
+  id: "recharge-spellstrike",
+  name: "Recharge Spellstrike",
+  slug: "recharge-spellstrike",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "resource-recovery",
+  traits: ["magus"],
+  activityProfile: { includes: ["resource"], rechargeSpellstrike: true },
+  targetingProfile: { self: true },
+});
+assert.ok(rechargeSpellstrike.score > needsRechargeSpellstrike.score);
+assert.ok(needsRechargeSpellstrike.reasons.includes("Spellstrike needs recharge before use."));
+assert.ok(rechargeSpellstrike.reasons.includes("Recharge Spellstrike restores Magus' main payoff."));
+
+const chargedMagusContext = {
+  ...magusBaseContext,
+  profile: {
+    ...magusBaseContext.profile,
+    combatState: { spellstrikeCharged: true, spellstrikeNeedsRecharge: false },
+  },
+};
+const chargedSpellstrike = scoreCandidate(chargedMagusContext, {
+  id: "spellstrike",
+  name: "Spellstrike",
+  slug: "spellstrike",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "damage",
+  traits: ["magus"],
+  activityProfile: { includes: ["spell", "strike"], includesStrike: true, spellstrike: true },
+  targetingProfile: { enemy: true, reach: true },
+});
+const chargedRecharge = scoreCandidate(chargedMagusContext, {
+  id: "recharge-spellstrike",
+  name: "Recharge Spellstrike",
+  slug: "recharge-spellstrike",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "resource-recovery",
+  traits: ["magus"],
+  activityProfile: { includes: ["resource"], rechargeSpellstrike: true },
+  targetingProfile: { self: true },
+});
+assert.ok(chargedSpellstrike.score > chargedRecharge.score);
+assert.ok(chargedSpellstrike.reasons.includes("Spellstrike is charged."));
+assert.ok(chargedRecharge.reasons.includes("Spellstrike is already charged."));
+
+const exploitedTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ slug: "exploited-vulnerability", name: "Exploited Vulnerability" }],
+};
+const exploitedThaumaturgeContext = {
+  ...thaumaturgeClassTacticContext,
+  targets: [exploitedTarget],
+  battlefield: { targets: [exploitedTarget], enemies: [exploitedTarget], allies: [] },
+};
+const duplicateExploit = scoreCandidate(exploitedThaumaturgeContext, {
+  id: "exploit-vulnerability",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+const exploitedStrike = scoreCandidate(exploitedThaumaturgeContext, {
+  id: "thaumaturge-strike",
+  name: "Weapon Strike",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 8,
+});
+assert.ok(exploitedStrike.score > duplicateExploit.score);
+assert.ok(duplicateExploit.reasons.includes("Target is already exploited."));
+assert.ok(exploitedStrike.reasons.includes("Exploited target makes Thaumaturge damage better."));
+
+const rangerClassTacticContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "ranger",
+    classSlugs: ["ranger"],
+    combatState: { huntedPreyActive: false },
+  },
+};
+const rangerHuntPrey = scoreCandidate(rangerClassTacticContext, {
+  id: "hunt-prey",
+  name: "Hunt Prey",
+  slug: "hunt-prey",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "hunted-prey" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["ranger"],
+});
+const rangerStrikeWithoutPrey = scoreCandidate(rangerClassTacticContext, {
+  id: "ranger-strike",
+  name: "Longbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 100, increment: 100 },
+  averageDamage: 8,
+});
+assert.ok(
+  rangerHuntPrey.score > rangerStrikeWithoutPrey.score,
+  `ranger should prefer Hunt Prey setup first, got ${rangerHuntPrey.score} vs ${rangerStrikeWithoutPrey.score}`,
+);
+assert.ok(rangerHuntPrey.reasons.includes("Hunt Prey should come before Ranger attacks."));
+assert.ok(rangerStrikeWithoutPrey.reasons.includes("Ranger attacks want Hunt Prey first."));
+
+const huntedPreyTarget = {
+  ...fighterContext.targets[0],
+  distance: 30,
+  effects: [{ slug: "hunted-prey", name: "Hunted Prey" }],
+};
+const huntedRangerContext = {
+  ...rangerClassTacticContext,
+  profile: {
+    ...rangerClassTacticContext.profile,
+    combatState: { huntedPreyActive: true },
+  },
+  targets: [huntedPreyTarget],
+  battlefield: { targets: [huntedPreyTarget], enemies: [huntedPreyTarget], allies: [] },
+};
+const duplicateHuntPrey = scoreCandidate(huntedRangerContext, {
+  id: "hunt-prey",
+  name: "Hunt Prey",
+  slug: "hunt-prey",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "hunted-prey" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["ranger"],
+});
+const huntedRangerStrike = scoreCandidate(huntedRangerContext, {
+  id: "hunted-shot",
+  name: "Hunted Shot",
+  slug: "hunted-shot",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  activityProfile: { includes: ["strike"], includesStrike: true, multiStrike: true },
+  targetingProfile: { enemy: true },
+  traits: ["ranger"],
+});
+assert.ok(huntedRangerStrike.score > duplicateHuntPrey.score);
+assert.ok(duplicateHuntPrey.reasons.includes("Target is already hunted prey."));
+assert.ok(huntedRangerStrike.reasons.includes("Hunted prey makes Ranger attacks better."));
+
+const investigatorClassTacticContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "investigator",
+    classSlugs: ["investigator"],
+    combatState: { deviseStratagemActive: false },
+  },
+};
+const deviseStratagem = scoreCandidate(investigatorClassTacticContext, {
+  id: "devise-a-stratagem",
+  name: "Devise a Stratagem",
+  slug: "devise-a-stratagem",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "devised-stratagem" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["investigator"],
+});
+const investigatorStrikeWithoutDevise = scoreCandidate(investigatorClassTacticContext, {
+  id: "investigator-crossbow",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120, increment: 120 },
+  averageDamage: 8,
+});
+assert.ok(deviseStratagem.score > investigatorStrikeWithoutDevise.score);
+assert.ok(deviseStratagem.reasons.includes("Devise a Stratagem should come before Investigator attacks."));
+assert.ok(investigatorStrikeWithoutDevise.reasons.includes("Investigator attacks want Devise a Stratagem first."));
+
+const devisedTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ slug: "devised-stratagem", name: "Devised Stratagem" }],
+};
+const devisedInvestigatorContext = {
+  ...investigatorClassTacticContext,
+  profile: {
+    ...investigatorClassTacticContext.profile,
+    combatState: { deviseStratagemActive: true },
+  },
+  targets: [devisedTarget],
+  battlefield: { targets: [devisedTarget], enemies: [devisedTarget], allies: [] },
+};
+const duplicateDevise = scoreCandidate(devisedInvestigatorContext, {
+  id: "devise-a-stratagem",
+  name: "Devise a Stratagem",
+  slug: "devise-a-stratagem",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "devised-stratagem" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["investigator"],
+});
+const devisedInvestigatorStrike = scoreCandidate(devisedInvestigatorContext, {
+  id: "investigator-strike",
+  name: "Rapier",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 8,
+});
+assert.ok(devisedInvestigatorStrike.score > duplicateDevise.score);
+assert.ok(duplicateDevise.reasons.includes("Devise a Stratagem is already active."));
+assert.ok(devisedInvestigatorStrike.reasons.includes("Devised Stratagem supports this attack."));
+
+const swashbucklerClassTacticContext = {
+  ...fighterClassTacticContext,
+  profile: {
+    ...fighterContext.profile,
+    classSlug: "swashbuckler",
+    classSlugs: ["swashbuckler"],
+    combatState: { panacheActive: false },
+  },
+};
+const tumbleThrough = scoreCandidate(swashbucklerClassTacticContext, {
+  id: "tumble-through",
+  name: "Tumble Through",
+  slug: "tumble-through",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], gainPanache: true },
+  targetingProfile: { enemy: true },
+  setupFor: ["finisher", "strike", "damage"],
+  traits: ["swashbuckler", "move"],
+});
+const unreadyFinisher = scoreCandidate(swashbucklerClassTacticContext, {
+  id: "confident-finisher",
+  name: "Confident Finisher",
+  slug: "confident-finisher",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "damage",
+  activityProfile: { includes: ["strike"], includesStrike: true, finisher: true },
+  targetingProfile: { enemy: true, reach: true },
+  traits: ["swashbuckler", "finisher"],
+});
+assert.ok(tumbleThrough.score > unreadyFinisher.score);
+assert.ok(tumbleThrough.reasons.includes("Swashbuckler wants panache before finishers."));
+assert.ok(unreadyFinisher.reasons.includes("Finisher needs panache first."));
+
+const panacheSwashbucklerContext = {
+  ...swashbucklerClassTacticContext,
+  profile: {
+    ...swashbucklerClassTacticContext.profile,
+    combatState: { panacheActive: true },
+  },
+};
+const readyFinisher = scoreCandidate(panacheSwashbucklerContext, {
+  id: "confident-finisher",
+  name: "Confident Finisher",
+  slug: "confident-finisher",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "damage",
+  activityProfile: { includes: ["strike"], includesStrike: true, finisher: true },
+  targetingProfile: { enemy: true, reach: true },
+  traits: ["swashbuckler", "finisher"],
+});
+const redundantPanacheGain = scoreCandidate(panacheSwashbucklerContext, {
+  id: "tumble-through",
+  name: "Tumble Through",
+  slug: "tumble-through",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], gainPanache: true },
+  targetingProfile: { enemy: true },
+  traits: ["swashbuckler", "move"],
+});
+assert.ok(readyFinisher.score > redundantPanacheGain.score);
+assert.ok(readyFinisher.reasons.includes("Panache active; finisher is ready."));
+assert.ok(redundantPanacheGain.reasons.includes("Panache already active; gaining panache is lower value."));
+
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;
 try {
@@ -2803,6 +4814,8 @@ try {
         hp: { value: 10, max: 10 },
         ac: { value: 16 },
         resistances: [{ type: "fire", value: 5 }],
+        weaknesses: [{ type: "cold", value: 3 }],
+        immunities: [{ type: "poison" }],
       },
       perception: { dc: 20, mod: 10 },
       saves: {
@@ -2893,6 +4906,31 @@ try {
   });
   assert.equal(contextWithFriendlyTarget.battlefield.targets[0].perceptionDC, 20);
   assert.deepEqual(contextWithFriendlyTarget.battlefield.targets[0].resistances, [{ type: "fire", value: 5 }]);
+  assert.deepEqual(contextWithFriendlyTarget.battlefield.targets[0].weaknesses, [{ type: "cold", value: 3 }]);
+  assert.deepEqual(contextWithFriendlyTarget.battlefield.targets[0].immunities, [{ type: "poison" }]);
+
+  centipedeActor.itemTypes.effect = [{
+    id: "demoralize-immunity",
+    name: "Effect: Demoralize Immunity",
+    slug: "effect-demoralize-immunity",
+  }];
+  const demoralizeEffectContext = readCombatContext("demoralize-effect-test");
+  assert.deepEqual(demoralizeEffectContext.battlefield.targets[0].effects, [{
+    id: "demoralize-immunity",
+    uuid: null,
+    name: "Effect: Demoralize Immunity",
+    slug: "effect-demoralize-immunity",
+    sourceId: null,
+  }]);
+  centipedeActor.itemTypes.effect = [];
+
+  centipedeActor.itemTypes.condition = [{ slug: "undetected", system: { value: { value: 1 } } }];
+  globalThis.game.user.targets = new Set([enemyToken]);
+  const undetectedTargetContext = readCombatContext("undetected-target-test");
+  assert.equal(undetectedTargetContext.battlefield.targets[0].name, "Giant Centipede");
+  assert.equal(undetectedTargetContext.battlefield.targets[0].attackTargetable, false);
+  assert.equal(undetectedTargetContext.battlefield.targets[0].conditions.slugs.includes("undetected"), true);
+  centipedeActor.itemTypes.condition = [];
 
   globalThis.game.user.isGM = false;
   const playerContextWithoutDefenses = readCombatContext("player-test");
@@ -2901,6 +4939,8 @@ try {
   assert.deepEqual(playerContextWithoutDefenses.battlefield.targets[0].saves, {});
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].perceptionDC, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].resistances, null);
+  assert.equal(playerContextWithoutDefenses.battlefield.targets[0].weaknesses, null);
+  assert.equal(playerContextWithoutDefenses.battlefield.targets[0].immunities, null);
 
   globalThis.game.user.isGM = true;
   globalThis.game.user.targets = new Set([neutralToken]);
@@ -3023,6 +5063,93 @@ assert.equal(hybridSpell.actionCost, 1);
 assert.equal(hybridSpell.curated.role, "damage");
 assert.equal(hybridSpell.source, "spell-curated");
 
+const multiEntrySpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "arcane-cantrip",
+          name: "Arcane Cantrip",
+          slug: "telekinetic-projectile",
+          system: {
+            slug: "telekinetic-projectile",
+            time: { value: "2" },
+            traits: { value: ["attack", "cantrip"] },
+            level: { value: 0 },
+            location: { value: "arcane-entry" },
+            range: { value: "30 feet" },
+            damage: { "0": { formula: "2d6", type: "bludgeoning" } },
+          },
+        }, {
+          id: "divine-prepared",
+          name: "Divine Prepared",
+          slug: "fear",
+          system: {
+            slug: "fear",
+            time: { value: "2" },
+            traits: { value: ["emotion", "fear", "mental"] },
+            level: { value: 1 },
+            location: { value: "divine-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "will" } },
+            description: { value: "<p>The target becomes frightened on a failed save.</p>" },
+          },
+        }, {
+          id: "slot-matched",
+          name: "Slot Matched",
+          slug: "fireball",
+          system: {
+            slug: "fireball",
+            time: { value: "2" },
+            traits: { value: ["fire"] },
+            level: { value: 3 },
+            range: { value: "500 feet" },
+            area: { type: "burst", value: 20 },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "6d6", type: "fire" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "arcane-entry",
+          system: {
+            prepared: { value: "spontaneous" },
+            statistic: { dc: { value: 22 } },
+            slots: { slot1: { value: 1 }, slot3: { value: 0, prepared: [] } },
+          },
+        }, {
+          id: "divine-entry",
+          system: {
+            prepared: { value: "prepared" },
+            statistic: { dc: { value: 18 } },
+            slots: { slot1: { prepared: [{ id: "other-spell", expended: false }] } },
+          },
+        }, {
+          id: "occult-entry",
+          system: {
+            prepared: { value: "prepared" },
+            statistic: { dc: { value: 20 } },
+            slots: { slot3: { prepared: [{ id: "slot-matched", expended: false }] } },
+          },
+        }],
+      },
+    },
+  },
+};
+const multiEntrySpells = readSpellActions(multiEntrySpellContext);
+const arcaneCantrip = multiEntrySpells.find((spell) => spell.id === "spell-arcane-cantrip");
+assert.equal(arcaneCantrip.spellcastingEntryId, "arcane-entry");
+assert.equal(arcaneCantrip.spellDc, 22);
+assert.equal(arcaneCantrip.available, true);
+const divinePrepared = multiEntrySpells.find((spell) => spell.id === "spell-divine-prepared");
+assert.equal(divinePrepared.spellcastingEntryId, "divine-entry");
+assert.equal(divinePrepared.spellDc, 18);
+assert.equal(divinePrepared.available, false);
+assert.equal(divinePrepared.unavailableReason, "Prepared spell is not available or is expended.");
+const slotMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-slot-matched");
+assert.equal(slotMatchedSpell.spellcastingEntryId, "occult-entry");
+assert.equal(slotMatchedSpell.spellDc, 20);
+assert.equal(slotMatchedSpell.available, true);
+
 const stanceClassification = classifySystemAction({
   name: "Dragon Stance",
   system: {
@@ -3053,6 +5180,21 @@ assert.equal(widenSpellClassification.role, "setup");
 assert.equal(widenSpellClassification.activityProfile.spellBuff, true);
 assert.deepEqual(widenSpellClassification.setupFor, ["spell", "damage", "control", "healing"]);
 
+const followUpClassification = classifySystemAction({
+  name: "Follow-Up Feint",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: 0 },
+    traits: { value: ["fortune"] },
+    description: {
+      value: "<p><strong>Trigger</strong> Your last action was a Strike.</p><p>The target is off-guard to your next Strike.</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(followUpClassification.role, "setup");
+assert.equal(followUpClassification.gatingProfile.eventTriggerOnly, true);
+assert.deepEqual(followUpClassification.gatingProfile.eventTriggers, ["after-strike", "previous-action"]);
+
 const fireballClassification = classifySpell({
   name: "Fireball",
   system: {
@@ -3069,6 +5211,74 @@ assert.equal(fireballClassification.saveProfile.stat, "reflex");
 assert.equal(fireballClassification.targetingProfile.area, true);
 assert.equal(fireballClassification.targetingProfile.distance, 20);
 assert.equal(fireballClassification.damageProfile.type, "fire");
+assert.equal(fireballClassification.damageProfile.average, 21);
+assert.equal(fireballClassification.activityProfile.rank, 3);
+assert.deepEqual(fireballClassification.activityProfile.damageTypes, ["fire"]);
+
+const wallOfStoneClassification = classifySpell({
+  name: "Wall of Stone",
+  system: {
+    traits: { value: ["earth"] },
+    level: { value: 5 },
+    range: { value: "120 feet" },
+    duration: { value: "1 minute" },
+    description: {
+      value: "<p>You create a wall of stone that blocks movement and makes difficult terrain around broken sections.</p>",
+    },
+  },
+});
+assert.equal(wallOfStoneClassification.role, "control");
+assert.equal(wallOfStoneClassification.activityProfile.wall, true);
+assert.equal(wallOfStoneClassification.activityProfile.terrainControl, true);
+assert.equal(wallOfStoneClassification.activityProfile.lastingDuration, true);
+const wallControlScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  battlefield: {
+    ...spellcasterSpellPriorityContext.battlefield,
+    enemies: [
+      { ...fighterContext.targets[0], id: "ogre-1", name: "Ogre 1", distance: 40 },
+      { ...fighterContext.targets[0], id: "ogre-2", name: "Ogre 2", distance: 55 },
+    ],
+    targets: [{ ...fighterContext.targets[0], id: "ogre-1", name: "Ogre 1", distance: 40 }],
+  },
+  targets: [{ ...fighterContext.targets[0], id: "ogre-1", name: "Ogre 1", distance: 40 }],
+}, {
+  id: "wall-of-stone",
+  name: "Wall of Stone",
+  slug: "wall-of-stone",
+  actionCost: 3,
+  source: "spell-inferred",
+  ...wallOfStoneClassification,
+});
+assert.ok(wallControlScore.reasons.includes("Battlefield control can restrict enemy movement."));
+assert.ok(wallControlScore.reasons.includes("Duration can persist beyond this turn."));
+assert.ok(wallControlScore.reasons.includes("Uses a ranked spell slot."));
+
+const cantripDamageScore = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "ray-of-frost",
+  name: "Ray of Frost",
+  slug: "ray-of-frost",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "damage",
+  damageProfile: { average: 7, type: "cold", types: ["cold"] },
+  activityProfile: { includes: ["damage"], cantrip: true, averageDamage: 7 },
+  targetingProfile: { enemy: true, maxRange: 120 },
+});
+assert.ok(cantripDamageScore.reasons.includes("Cantrip conserves spell slots."));
+
+const focusControlScore = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "force-bolt",
+  name: "Force Bolt",
+  slug: "force-bolt",
+  actionCost: 1,
+  source: "spell-inferred",
+  role: "damage",
+  damageProfile: { average: 5, type: "force", types: ["force"] },
+  activityProfile: { includes: ["damage"], focus: true, averageDamage: 5 },
+  targetingProfile: { enemy: true, maxRange: 30 },
+});
+assert.ok(focusControlScore.reasons.includes("Focus spell is recoverable after combat."));
 
 const phantasmalClassification = classifySpell({
   name: "Phantasmal Killer",
@@ -3104,11 +5314,100 @@ const forceBarrageClassification = classifySpell({
     level: { value: 1 },
     range: { value: "120 feet" },
     damage: { "0": { formula: "1d4+1", type: "force" } },
+    description: { value: "<p>For each additional action you use when Casting the Spell, increase the number of shards by one.</p>" },
   },
 });
 assert.equal(forceBarrageClassification.role, "damage");
 assert.equal(forceBarrageClassification.activityProfile.spellAttack, false);
 assert.equal(forceBarrageClassification.targetingProfile.maxRange, 120);
+assert.equal(forceBarrageClassification.activityProfile.damageScalesWithActions, true);
+
+const forceBarrageContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "force-barrage",
+          name: "Force Barrage",
+          slug: "force-barrage",
+          system: {
+            slug: "force-barrage",
+            time: { value: "1 to 3" },
+            traits: { value: ["concentrate", "force", "manipulate"] },
+            level: { value: 1 },
+            range: { value: "120 feet" },
+            damage: { "0": { formula: "1d4+1", type: "force" } },
+            description: { value: "<p>It automatically hits and deals 1d4+1 force damage. For each additional action you use when Casting the Spell, increase the number of shards by one.</p>" },
+            location: { value: "entry-1" },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+        }],
+      },
+    },
+  },
+};
+const forceBarrageVariants = readSpellActions(forceBarrageContext)
+  .filter((spell) => spell.slug === "force-barrage")
+  .toSorted((left, right) => left.actionCost - right.actionCost);
+assert.deepEqual(forceBarrageVariants.map((spell) => spell.actionCost), [1, 2, 3]);
+assert.equal(new Set(forceBarrageVariants.map((spell) => spell.variantGroup)).size, 1);
+const forceBarrageScores = forceBarrageVariants.map((spell) => scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 30 }],
+}, spell));
+assert.ok(forceBarrageScores[2].score > forceBarrageScores[1].score);
+assert.ok(forceBarrageScores[1].score > forceBarrageScores[0].score);
+assert.equal(
+  buildTurnPlans(fighterContext, forceBarrageScores).some((plan) =>
+    plan.steps.filter((step) => step.slug === "force-barrage").length > 1,
+  ),
+  false,
+);
+
+const previousForceBarrageComparisonCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    grid: { size: 100 },
+    scene: { grid: { distance: 5 } },
+    walls: {},
+  };
+  const singleTargetSpellContext = {
+    ...fighterContext,
+    isGM: false,
+    token: { center: { x: 0, y: 0 } },
+    targets: [{
+      id: "mitflit",
+      name: "Mitflit",
+      distance: 10,
+      token: { center: { x: 200, y: 0 } },
+    }],
+    allies: [],
+  };
+  const singleTargetBreatheScore = scoreCandidate(singleTargetSpellContext, {
+    id: "breathe-fire",
+    name: "Breathe Fire",
+    slug: "breathe-fire",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "area-damage",
+    damageProfile: { formula: "2d6", type: "fire", types: ["fire"], average: 7 },
+    activityProfile: { includes: ["damage", "area"], includesStrike: false, damageTypes: ["fire"], averageDamage: 7 },
+    targetingProfile: { area: true, type: "cone", distance: 15, enemy: true },
+  });
+  const threeActionForceBarrageScore = scoreCandidate(
+    singleTargetSpellContext,
+    forceBarrageVariants.find((spell) => spell.actionCost === 3),
+  );
+  assert.ok(
+    threeActionForceBarrageScore.score > singleTargetBreatheScore.score,
+    `3-action Force Barrage should beat one-target Breathe Fire, got ${threeActionForceBarrageScore.score} vs ${singleTargetBreatheScore.score}`,
+  );
+} finally {
+  globalThis.canvas = previousForceBarrageComparisonCanvas;
+}
 
 const multiActionSpellScore = scoreCandidate({
   ...fighterContext,
@@ -3144,6 +5443,173 @@ assert.ok(
 );
 assert.ok(multiActionSpellScore.reasons.some((reason) => reason.includes("Commits 2 actions")));
 
+const fireSaveSpell = {
+  id: "spell-fire-ray",
+  name: "Fire Ray",
+  slug: "fire-ray",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "save-damage",
+  spellDc: 20,
+  saveProfile: { stat: "reflex", dc: null, basic: true },
+  damageProfile: { formula: "4d6", type: "fire", types: ["fire"], average: 14 },
+  activityProfile: { includes: ["damage"], includesStrike: false, damageTypes: ["fire"], averageDamage: 14 },
+  targetingProfile: { enemy: true, maxRange: 60 },
+};
+const fireResistantTarget = {
+  id: "fire-resistant",
+  name: "Fire Resistant",
+  distance: 30,
+  hpPercent: 1,
+  saves: { reflex: 18 },
+  resistances: [{ type: "fire", value: 10 }],
+};
+const fireWeakTarget = {
+  id: "fire-weak",
+  name: "Fire Weak",
+  distance: 30,
+  hpPercent: 1,
+  saves: { reflex: 18 },
+  weaknesses: [{ type: "fire", value: 5 }],
+};
+const gmFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [fireResistantTarget, fireWeakTarget],
+}, fireSaveSpell);
+assert.equal(gmFireSpellScore.suggestedTarget.name, "Fire Weak");
+assert.ok(gmFireSpellScore.reasons.some((reason) => reason.includes("weakness 5")));
+
+const playerFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [fireResistantTarget, fireWeakTarget],
+}, fireSaveSpell);
+assert.equal(playerFireSpellScore.suggestedTarget.name, "Fire Resistant");
+assert.ok(!playerFireSpellScore.reasons.some((reason) => /weakness|resists|immune|spell DC/i.test(reason)));
+
+const gmFireStrikeScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [{ ...fireResistantTarget, distance: 5 }, { ...fireWeakTarget, distance: 5 }],
+}, {
+  id: "flaming-sword",
+  name: "Flaming Sword",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 12,
+  damageProfile: { type: "fire", types: ["fire"], average: 12 },
+});
+assert.equal(gmFireStrikeScore.suggestedTarget.name, "Fire Weak");
+
+const playerFireStrikeScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [{ ...fireResistantTarget, distance: 5 }, { ...fireWeakTarget, distance: 5 }],
+}, {
+  id: "flaming-sword",
+  name: "Flaming Sword",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+  averageDamage: 12,
+  damageProfile: { type: "fire", types: ["fire"], average: 12 },
+});
+assert.equal(playerFireStrikeScore.suggestedTarget.name, "Fire Resistant");
+
+const previousAreaPlacementCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    grid: { size: 100 },
+    scene: { grid: { distance: 5 } },
+    walls: {},
+  };
+  const areaSpellScore = scoreCandidate({
+    ...fighterContext,
+    isGM: true,
+    token: { center: { x: 0, y: 0 } },
+    targets: [{
+      id: "cluster-a",
+      name: "Cluster A",
+      distance: 30,
+      token: { center: { x: 100, y: 0 } },
+      saves: { reflex: 18 },
+    }, {
+      id: "cluster-b",
+      name: "Cluster B",
+      distance: 35,
+      token: { center: { x: 180, y: 0 } },
+      saves: { reflex: 18 },
+    }],
+    allies: [{
+      id: "ally-far",
+      name: "Ally Far",
+      distance: 40,
+      token: { center: { x: 800, y: 0 } },
+    }],
+  }, {
+    id: "burst",
+    name: "Burst",
+    slug: "burst",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "area-damage",
+    spellDc: 20,
+    saveProfile: { stat: "reflex", dc: null, basic: true },
+    damageProfile: { formula: "6d6", type: "fire", types: ["fire"], average: 21 },
+    activityProfile: { includes: ["damage", "area"], includesStrike: false, damageTypes: ["fire"], averageDamage: 21 },
+    targetingProfile: { area: true, type: "burst", distance: 10, maxRange: 120, enemy: true },
+  });
+  assert.ok(areaSpellScore.reasons.some((reason) => reason.includes("2 enemies")));
+  assert.ok(areaSpellScore.reasons.some((reason) => reason.includes("avoids allies")));
+} finally {
+  globalThis.canvas = previousAreaPlacementCanvas;
+}
+
+const previousConePlacementCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    grid: { size: 100 },
+    scene: { grid: { distance: 5 } },
+    walls: {},
+  };
+  const coneSpellScore = scoreCandidate({
+    ...fighterContext,
+    isGM: false,
+    token: { center: { x: 0, y: 0 } },
+    targets: [{
+      id: "east",
+      name: "East",
+      distance: 10,
+      token: { center: { x: 200, y: 0 } },
+    }, {
+      id: "north",
+      name: "North",
+      distance: 10,
+      token: { center: { x: 0, y: 200 } },
+    }],
+  }, {
+    id: "breathe-fire",
+    name: "Breathe Fire",
+    slug: "breathe-fire",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "area-damage",
+    saveProfile: { stat: "reflex", dc: null, basic: true },
+    damageProfile: { formula: "2d6", type: "fire", types: ["fire"], average: 7 },
+    activityProfile: { includes: ["damage", "area"], includesStrike: false, damageTypes: ["fire"], averageDamage: 7 },
+    targetingProfile: { area: true, type: "cone", distance: 15, enemy: true },
+  });
+  assert.ok(coneSpellScore.reasons.some((reason) => reason.includes("1 enemy")));
+  assert.ok(!coneSpellScore.reasons.some((reason) => reason.includes("2 enemies")));
+  assert.equal(coneSpellScore.suggestedTarget.name, "East");
+} finally {
+  globalThis.canvas = previousConePlacementCanvas;
+}
+
 const fearClassification = classifySpell({
   name: "Fear",
   system: {
@@ -3151,10 +5617,25 @@ const fearClassification = classifySpell({
     level: { value: 1 },
     range: { value: "30 feet" },
     defense: { save: { statistic: "will", basic: false } },
+    description: { value: "<p>The target becomes frightened on a failed save.</p>" },
   },
 });
 assert.equal(fearClassification.role, "control");
 assert.equal(fearClassification.saveProfile.stat, "will");
+assert.equal(fearClassification.activityProfile.appliesCondition, "frightened");
+
+const dirgeClassification = classifySpell({
+  name: "Dirge of Doom",
+  system: {
+    traits: { value: ["bard", "cantrip", "composition", "emotion", "fear", "mental"] },
+    level: { value: 0 },
+    area: { type: "emanation", value: 30 },
+    description: { value: "<p>Enemies within the area are Frightened 1.</p>" },
+  },
+});
+assert.equal(dirgeClassification.role, "control");
+assert.equal(dirgeClassification.activityProfile.appliesCondition, "frightened");
+assert.equal(dirgeClassification.targetingProfile.area, true);
 
 const healClassification = classifySpell({
   name: "Heal",
@@ -3181,6 +5662,20 @@ const heroismClassification = classifySpell({
 assert.equal(heroismClassification.role, "buff");
 assert.equal(heroismClassification.activityProfile.attackBuff, true);
 assert.equal(heroismClassification.targetingProfile.ally, true);
+
+const liberatingCommandClassification = classifySpell({
+  name: "Liberating Command",
+  system: {
+    traits: { value: ["auditory", "concentrate"] },
+    level: { value: 1 },
+    range: { value: "60 feet" },
+    target: { value: "1 ally" },
+    description: { value: "<p>You urge an ally to break free from an effect that holds them in place. The target attempts to Escape.</p>" },
+  },
+});
+assert.equal(liberatingCommandClassification.role, "buff");
+assert.equal(liberatingCommandClassification.activityProfile.removesCondition, true);
+assert.equal(liberatingCommandClassification.targetingProfile.ally, true);
 
 // A non-combat utility spell is not a buff, but with max-coverage it still
 // surfaces as a low-priority "utility" option rather than being dropped.
@@ -3460,6 +5955,35 @@ const damageReaderStrike = readActionSources({
   targets: [],
 }).find((entry) => entry.name === "Jaws");
 assert.equal(damageReaderStrike.averageDamage, 21);
+
+const reloadReaderStrike = readActionSources({
+  ...fighterContext,
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          slug: "crossbow",
+          type: "strike",
+          label: "Crossbow",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "crossbow",
+            system: {
+              range: { max: 120 },
+              reload: { value: "1" },
+              traits: { value: ["ranged"] },
+            },
+          },
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+}).find((entry) => entry.name === "Crossbow");
+assert.equal(reloadReaderStrike.reload, 1);
 
 const previousDirectStrikeBlockedCanvas = globalThis.canvas;
 const previousDirectStrikeBlockedFoundry = globalThis.foundry;
@@ -3863,6 +6387,60 @@ try {
   globalThis.canvas = previousSkirmishCanvas;
 }
 
+const previousRangedRetreatCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: { placeables: [] },
+  };
+  const rangedRetreatContext = {
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "shortbow",
+            type: "strike",
+            label: "Shortbow",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { id: "shortbow", system: { range: { max: 60 }, traits: { value: ["ranged"] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "archer-token", center: { x: 0, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "target-token", name: "Mitflit", distance: 5, token: { center: { x: 5, y: 0 } } }],
+      targets: [{ id: "target-token", name: "Mitflit", distance: 5, token: { center: { x: 5, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  const retreatAction = readActionSources(rangedRetreatContext)
+    .find((action) => action.slug === "stride-away-strike-shortbow");
+  assert.ok(retreatAction, "expected ranged retreat composite");
+  assert.equal(retreatAction.actionCost, 2);
+  assert.equal(retreatAction.name, "Stride Away -> Shortbow");
+  assert.equal(retreatAction.activityProfile.retreatBeforeStrike, true);
+  assert.ok(retreatAction.activityProfile.attackCenter.x < 0, "expected retreat square away from target");
+
+  const retreatPreview = movementPreviewForStep(rangedRetreatContext, retreatAction, { gridSize: 5 });
+  assert.equal(retreatPreview.enabled, true);
+  assert.deepEqual(retreatPreview.destinationCenter, retreatAction.activityProfile.attackCenter);
+
+  const scoredRetreat = scoreCandidate(rangedRetreatContext, retreatAction);
+  const scoredPlainShot = scoreCandidate(rangedRetreatContext, readActionSources(rangedRetreatContext)
+    .find((action) => action.source === "strike" && action.name === "Shortbow"));
+  assert.ok(scoredRetreat.score > scoredPlainShot.score, "retreat shot should outscore adjacent ranged shot");
+} finally {
+  globalThis.canvas = previousRangedRetreatCanvas;
+}
+
 const previousPerimeterBlockedStrikeCanvas = globalThis.canvas;
 const previousPerimeterBlockedStrikeFoundry = globalThis.foundry;
 try {
@@ -4171,5 +6749,41 @@ assert.ok(
   spellcasterPlan.steps.some((step) => ["telekinetic-projectile", "breathe-fire", "mountain-stance"].includes(step.slug)),
   `PC plan should use an inferred spell or feat, got ${spellcasterPlan.summary}`,
 );
+
+const qualityCoverage = coverageForItems([{
+  name: "Cryptic Clue",
+  type: "spell",
+  system: {
+    time: { value: "2" },
+    traits: { value: [] },
+    level: { value: 1 },
+    description: { value: "<p>You gain a cryptic clue.</p>" },
+  },
+}, {
+  name: "Unclear Tactic",
+  type: "action",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    traits: { value: [] },
+    description: { value: "<p>You perform an unclear tactical option.</p>" },
+  },
+}, {
+  name: "Seek",
+  type: "action",
+  system: {
+    slug: "seek",
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    traits: { value: ["concentrate", "secret"] },
+    description: { value: "<p>You scan an area.</p>" },
+  },
+}]);
+assert.equal(qualityCoverage.quality.lowConfidenceCount, 2);
+assert.equal(qualityCoverage.quality.utilityFallbackCount, 3);
+assert.equal(qualityCoverage.quality.likelyMisclassifiedBuffCount, 1);
+assert.equal(qualityCoverage.lowConfidence.some((entry) => entry.name === "Cryptic Clue"), true);
+assert.equal(qualityCoverage.utilityFallbacks.some((entry) => entry.name === "Seek"), true);
+assert.equal(qualityCoverage.likelyMisclassifiedBuffs[0].name, "Cryptic Clue");
 
 console.log("PF2e Combater self-test passed");

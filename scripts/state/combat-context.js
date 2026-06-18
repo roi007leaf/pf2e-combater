@@ -1,8 +1,9 @@
-import { readActorProfile, readConditions } from "../readers/actor-profile.js";
+import { readActorProfile, readConditions, readEffects } from "../readers/actor-profile.js";
 import { readVisionerDetectionState } from "../integrations/visioner.js";
 import { movementActionsSpent } from "./token-refresh.js";
 
 const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
+const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
 
 function actorSummary(actor) {
   if (!actor) return null;
@@ -193,6 +194,14 @@ function readResistances(actor) {
   return plainValue(actor?.system?.attributes?.resistances ?? actor?.system?.resistances);
 }
 
+function readWeaknesses(actor) {
+  return plainValue(actor?.system?.attributes?.weaknesses ?? actor?.system?.weaknesses);
+}
+
+function readImmunities(actor) {
+  return plainValue(actor?.system?.attributes?.immunities ?? actor?.system?.immunities);
+}
+
 function readDefensiveMeta(actor, canSeeDefenses) {
   if (!canSeeDefenses) {
     return {
@@ -201,6 +210,8 @@ function readDefensiveMeta(actor, canSeeDefenses) {
       perception: { dc: null, mod: null },
       perceptionDC: null,
       resistances: null,
+      weaknesses: null,
+      immunities: null,
     };
   }
 
@@ -213,11 +224,32 @@ function readDefensiveMeta(actor, canSeeDefenses) {
     perception,
     perceptionDC: perception.dc,
     resistances: readResistances(actor),
+    weaknesses: readWeaknesses(actor),
+    immunities: readImmunities(actor),
   };
+}
+
+function hasCondition(conditions, slug) {
+  if (!conditions) return false;
+  if (Array.isArray(conditions.slugs) && conditions.slugs.includes(slug)) return true;
+  const value = Number(conditions.values?.[slug]);
+  return Number.isFinite(value) && value > 0;
+}
+
+function attackTargetableDetectionState(state) {
+  return !ATTACK_HIDDEN_DETECTION_STATES.has(String(state ?? "").toLowerCase());
+}
+
+function attackTargetableConditions(conditions) {
+  return !hasCondition(conditions, "undetected")
+    && !hasCondition(conditions, "unnoticed");
 }
 
 function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
   const actor = tokenActor(token);
+  const conditions = readConditions(actor);
+  const effects = readEffects(actor);
+  const visionerDetectionState = readVisionerDetectionState(tokenSummary(originToken), tokenSummary(token));
   return {
     id: token?.id ?? token?.document?.id,
     name: tokenDisplayName(token, actor),
@@ -225,9 +257,12 @@ function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
     actor: actorSummary(actor),
     token: tokenSummary(token),
     distance: measureDistance(originToken, token),
-    visionerDetectionState: readVisionerDetectionState(tokenSummary(originToken), tokenSummary(token)),
+    visionerDetectionState,
+    attackTargetable: attackTargetableDetectionState(visionerDetectionState)
+      && attackTargetableConditions(conditions),
     hpPercent: hpPercent(actor),
-    conditions: readConditions(actor),
+    conditions,
+    effects,
     ...readDefensiveMeta(actor, canSeeDefenses),
   };
 }

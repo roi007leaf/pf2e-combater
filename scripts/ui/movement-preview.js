@@ -1,4 +1,4 @@
-const MOVEMENT_SLUGS = new Set(["stride", "step"]);
+const MOVEMENT_SLUGS = new Set(["stride", "step", "stand-stride"]);
 const MAX_REACHABLE_MARKERS = 48;
 let previewGraphics = null;
 
@@ -87,7 +87,7 @@ function profileSpeed(context) {
 
 function movementDistanceFeet(context, step) {
   if (step?.slug === "step") return 5;
-  if (step?.slug === "stride") return profileSpeed(context);
+  if (step?.slug === "stride" || step?.slug === "stand-stride") return profileSpeed(context);
   return 0;
 }
 
@@ -554,10 +554,15 @@ function retreatStrideStrikePath(context, step, gridSize, options = {}) {
   const speed = profileSpeed(context);
   const footprint = tokenFootprint(context?.token);
   const outboundCenters = reachableMovementCenters(origin, speed, gridSize, options);
-  const attackCenters = strikeReachableCenters(context, step, outboundCenters, footprint, gridSize, options);
-  const destination = recommendedPlacement(context, step, origin, attackCenters, footprint, gridSize, {
-    preferShortestRoute: true,
-  });
+  const fixedAttackCenter = point({ center: step?.activityProfile?.attackCenter });
+  const attackCenters = fixedAttackCenter
+    ? [fixedAttackCenter]
+    : strikeReachableCenters(context, step, outboundCenters, footprint, gridSize, options);
+  const destination = fixedAttackCenter
+    ? placementForCenter(fixedAttackCenter, footprint, gridSize)
+    : recommendedPlacement(context, step, origin, attackCenters, footprint, gridSize, {
+      preferShortestRoute: true,
+    });
   if (!destination) return null;
 
   const attackCenter = destination.center;
@@ -605,8 +610,13 @@ function strideStrikePath(context, step, gridSize, options = {}) {
   const speed = profileSpeed(context);
   const footprint = tokenFootprint(context?.token);
   const movementCenters = reachableMovementCenters(origin, strideCount * speed, gridSize, options);
-  const centers = strikeReachableCenters(context, step, movementCenters, footprint, gridSize, options);
-  const destination = recommendedPlacement(context, step, origin, centers, footprint, gridSize, { preferShortestRoute: true });
+  const fixedAttackCenter = point({ center: step?.activityProfile?.attackCenter });
+  const centers = fixedAttackCenter
+    ? [fixedAttackCenter]
+    : strikeReachableCenters(context, step, movementCenters, footprint, gridSize, options);
+  const destination = fixedAttackCenter
+    ? placementForCenter(fixedAttackCenter, footprint, gridSize)
+    : recommendedPlacement(context, step, origin, centers, footprint, gridSize, { preferShortestRoute: true });
   if (!destination) return null;
 
   const destCenter = destination.center;
@@ -794,7 +804,32 @@ export function showMovementPreview(context, step) {
   const { sceneDistance, pixelSize } = previewGridSize();
   const scale = pixelSize / sceneDistance;
   const rawContext = canvasContext(context, step);
-  const toScene = (center) => center ? ({ x: center.x / scale, y: center.y / scale }) : null;
+  const toScene = (center) => center
+    ? ({
+      ...center,
+      x: center.x / scale,
+      y: center.y / scale,
+      ...(Array.isArray(center.route) ? { route: center.route.map((point) => toScene(point)) } : {}),
+    })
+    : null;
+  const toSceneToken = (token) => token
+    ? ({ ...token, center: toScene(token.center) })
+    : token;
+  const sceneStep = step
+    ? {
+      ...step,
+      preferredTarget: step.preferredTarget
+        ? { ...step.preferredTarget, token: toSceneToken(step.preferredTarget.token) }
+        : step.preferredTarget,
+      activityProfile: step.activityProfile
+        ? {
+          ...step.activityProfile,
+          ...(step.activityProfile.attackCenter ? { attackCenter: toScene(step.activityProfile.attackCenter) } : {}),
+          ...(step.activityProfile.retreatCenter ? { retreatCenter: toScene(step.activityProfile.retreatCenter) } : {}),
+        }
+        : step.activityProfile,
+    }
+    : step;
   const sceneContext = {
     ...rawContext,
     token: {
@@ -816,7 +851,7 @@ export function showMovementPreview(context, step) {
       })),
     },
   };
-  const preview = movementPreviewForStep(sceneContext, step, { gridSize: sceneDistance, collisionScale: scale });
+  const preview = movementPreviewForStep(sceneContext, sceneStep, { gridSize: sceneDistance, collisionScale: scale });
   if (!preview.enabled) return null;
 
   const graphics = new PIXI.Graphics();

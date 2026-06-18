@@ -7,12 +7,30 @@ import {
   readVisionerCoverState,
   readVisionerDetectionState,
 } from "../integrations/visioner.js";
+import { compareTacticalCenters } from "../rules/battlefield-analysis.js";
+import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
 
 const ACTION_ITEM_TYPES = new Set(["action", "feat", "feature", "consumable"]);
+const ACTIVATABLE_ITEM_TYPES = new Set([
+  ...ACTION_ITEM_TYPES,
+  "ammo",
+  "armor",
+  "backpack",
+  "book",
+  "equipment",
+  "weapon",
+]);
 const WORD_NUMBERS = {
   one: 1,
   two: 2,
   three: 3,
+};
+const ACTION_GLYPHS = {
+  A: 1,
+  D: 2,
+  T: 3,
+  F: 0,
+  R: "reaction",
 };
 const MOVE_ACTION_SLUGS = new Set([
   "balance",
@@ -20,6 +38,7 @@ const MOVE_ACTION_SLUGS = new Set([
   "high-jump",
   "long-jump",
   "sneak",
+  "stand",
   "step",
   "stride",
   "swim",
@@ -64,6 +83,13 @@ function htmlToText(value) {
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/p>/gi, "\n")
       .replace(/<[^>]+>/g, " "),
+  );
+}
+
+function normalizeActivationText(value) {
+  return normalizeWhitespace(
+    String(value ?? "")
+      .replace(/&mdash;|&ndash;|â€”|â€“|[\u2013\u2014]/g, " — "),
   );
 }
 
@@ -118,9 +144,12 @@ export function readActionSources(context) {
   const generatedStrikes = readGeneratedStrikes(actor, context);
   return [
     ...readGenericActions(context),
+    ...readStandStrideActivities(context),
     ...generatedStrikes,
+    ...readElementalBlastActions(actor, context),
     ...readDrawStrikeActivities(actor, context, generatedStrikes),
     ...readStrideStrikeActivities(context, generatedStrikes),
+    ...readRangedRetreatStrikeActivities(context, generatedStrikes),
     ...readSkirmishStrikeActivities(context, generatedStrikes),
     ...readGeneratedActivities(actor, context),
     ...readActorItemActions(actor, context),
@@ -140,6 +169,50 @@ function readGenericActions(context) {
       unavailableReason: itemAvailability.reason,
     };
   });
+}
+
+function canStandBeforeMovement(profile) {
+  return movementBlockingCondition(profile, { slug: "stride" }) === "prone"
+    && !movementBlockingCondition(profile, { slug: "stand", traits: ["move"] });
+}
+
+function readStandStrideActivities(context) {
+  const profile = contextProfile(context);
+  if (!canStandBeforeMovement(profile)) return [];
+
+  const reach = meleeReach(profile);
+  const target = [...contextTargets(context), ...contextEnemies(context)]
+    .filter(canAttackTarget)
+    .find((enemy) => (enemy?.distance ?? Infinity) > reach);
+  if (!target) return [];
+
+  return [{
+    id: "stand-stride",
+    name: "Stand -> Stride",
+    slug: "stand-stride",
+    actionCost: 2,
+    actionType: "action",
+    source: "generic",
+    confidence: "medium",
+    executable: "chat-guidance",
+    detected: true,
+    available: true,
+    item: null,
+    preferredTarget: target,
+    role: "mobility",
+    activityProfile: {
+      includes: ["stand", "stride"],
+      removesCondition: "prone",
+      strideCount: 1,
+    },
+    targetingProfile: {
+      enemy: true,
+      preferredTargetId: target.id ?? null,
+      preferredTargetName: target.name ?? null,
+    },
+    setupFor: [],
+    reasons: [`Stand, then Stride toward ${target.name}.`],
+  }];
 }
 
 function genericActionAvailability(slug, context) {
@@ -165,13 +238,33 @@ function diceAverage(formula) {
 // Average expected damage of a strike, read from whichever shape the system uses
 // (NPC `damageRolls`, weapon `damage`, or a derived formula). Returns null when no
 // damage data is present so scoring can skip the bonus rather than guess.
-function readStrikeAverageDamage(strike) {
+function readStrikeDamageProfile(strike) {
   const item = strike?.item;
   const rolls = item?.system?.damageRolls;
   if (rolls && typeof rolls === "object") {
+    const entries = [];
     for (const roll of Object.values(rolls)) {
       const average = diceAverage(roll?.damage ?? roll?.formula);
-      if (average !== null) return average;
+      const type = String(roll?.damageType ?? roll?.type ?? "").toLowerCase() || null;
+      if (average !== null || type) {
+        entries.push({
+          formula: roll?.damage ?? roll?.formula ?? null,
+          type,
+          average,
+        });
+      }
+    }
+    if (entries.length) {
+      const average = entries
+        .map((entry) => Number(entry.average))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .reduce((total, value) => total + value, 0);
+      return {
+        average: average > 0 ? average : entries[0].average,
+        type: entries[0].type,
+        types: [...new Set(entries.map((entry) => entry.type).filter(Boolean))],
+        entries,
+      };
     }
   }
 
@@ -179,10 +272,32 @@ function readStrikeAverageDamage(strike) {
   const dieFaces = Number(String(damage?.die ?? "").replace(/\D/g, ""));
   const diceCount = Number(damage?.dice);
   if (Number.isFinite(dieFaces) && dieFaces > 0 && Number.isFinite(diceCount) && diceCount > 0) {
-    return diceCount * ((dieFaces + 1) / 2) + (Number(damage?.modifier) || 0);
+    const average = diceCount * ((dieFaces + 1) / 2) + (Number(damage?.modifier) || 0);
+    const type = String(damage?.damageType ?? damage?.type ?? "").toLowerCase() || null;
+    return {
+      average,
+      type,
+      types: type ? [type] : [],
+      entries: [{ formula: `${diceCount}d${dieFaces}${damage?.modifier ? `+${damage.modifier}` : ""}`, type, average }],
+    };
   }
 
-  return diceAverage(strike?.damageFormula);
+  const formulaAverage = diceAverage(strike?.damageFormula);
+  if (formulaAverage !== null) {
+    const type = String(strike?.damageType ?? strike?.damage?.damageType ?? "").toLowerCase() || null;
+    return {
+      average: formulaAverage,
+      type,
+      types: type ? [type] : [],
+      entries: [{ formula: strike.damageFormula, type, average: formulaAverage }],
+    };
+  }
+
+  return null;
+}
+
+function readStrikeAverageDamage(strike) {
+  return readStrikeDamageProfile(strike)?.average ?? null;
 }
 
 function readGeneratedStrikes(actor, context = null) {
@@ -199,6 +314,8 @@ function readGeneratedStrikes(actor, context = null) {
       const slug = slugify(strike.slug ?? strike.item?.slug ?? strike.label ?? strike.name ?? `strike-${index}`);
       const traits = readStrikeTraits(strike);
       const range = readStrikeRange(strike, traits);
+      const reload = readStrikeReload(strike, traits);
+      const damageProfile = readStrikeDamageProfile(strike);
       const action = {
         range,
         traits,
@@ -216,6 +333,7 @@ function readGeneratedStrikes(actor, context = null) {
         traits,
         weaponTraits: strike.weaponTraits ?? [],
         range,
+        reload,
         detected: true,
         available: strikeAvailability.available,
         unavailableReason: strikeAvailability.reason,
@@ -225,7 +343,8 @@ function readGeneratedStrikes(actor, context = null) {
         variants: strike.variants ?? [],
         attack: strike.attack ?? strike.roll ?? null,
         damage: strike.damage ?? null,
-        averageDamage: readStrikeAverageDamage(strike),
+        damageProfile,
+        averageDamage: damageProfile?.average ?? readStrikeAverageDamage(strike),
         critical: strike.critical ?? null,
       };
     });
@@ -335,6 +454,45 @@ function readStrikeRange(strike, traits) {
   return { max: 5 };
 }
 
+function parseReloadCost(value) {
+  const raw = systemValue(value);
+  if (raw === undefined || raw === null) return null;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+
+  const text = String(raw ?? "").toLowerCase().trim();
+  if (!text || text === "-" || text === "none") return 0;
+
+  const word = text.match(/\b(one|two|three|1|2|3)\b/)?.[1];
+  if (!word) return null;
+  return WORD_NUMBERS[word] ?? Number(word);
+}
+
+function readStrikeReload(strike, traits) {
+  const item = strike?.item ?? {};
+  const candidates = [
+    strike?.reload,
+    strike?.reloadValue,
+    strike?.system?.reload,
+    strike?.system?.reload?.value,
+    item?.reload,
+    item?.system?.reload,
+    item?.system?.reload?.value,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseReloadCost(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  const traitReloads = traits
+    .map((trait) => String(trait ?? "").toLowerCase())
+    .map((trait) => trait.match(/^reload[-\s]?(\d+)$/)?.[1])
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return traitReloads.length ? Math.max(...traitReloads) : 0;
+}
+
 function targetKey(target) {
   return target?.id
     ?? target?.uuid
@@ -348,12 +506,24 @@ function uniqueTargets(context) {
   const seen = new Set();
   const targets = [];
   for (const target of [...contextTargets(context), ...contextEnemies(context)]) {
+    if (!canAttackTarget(target)) continue;
     const key = targetKey(target);
     if (key && seen.has(key)) continue;
     if (key) seen.add(key);
     targets.push(target);
   }
   return targets;
+}
+
+function detectionState(target) {
+  return String(target?.visionerDetectionState ?? target?.detectionState ?? target?.visibility ?? "").toLowerCase();
+}
+
+function canAttackTarget(target) {
+  if (target?.attackTargetable === false) return false;
+  const state = detectionState(target);
+  if (state === "undetected" || state === "unnoticed") return false;
+  return !hasCondition(target, "undetected") && !hasCondition(target, "unnoticed");
 }
 
 function hasAttackCollisionLayer() {
@@ -388,6 +558,183 @@ function generatedStrikeAvailability(context, action) {
   if (target) return { ...availability(true, ""), target };
 
   return availability(false, "Attack path to target is blocked.");
+}
+
+function actorLevel(actor) {
+  const value = Number(actor?.level ?? actor?.system?.details?.level?.value);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function elementalBlastItem(actor) {
+  return collectionValues(actor?.itemTypes?.action)
+    .find((item) => slugify(item?.slug ?? item?.system?.slug ?? item?.name) === "elemental-blast")
+    ?? null;
+}
+
+function kineticistBlastFlag(actor) {
+  const flag = actor?.flags?.pf2e?.kineticist?.elementalBlast;
+  return flag && typeof flag === "object" ? flag : null;
+}
+
+function elementalBlastConfigs(actor) {
+  const flag = kineticistBlastFlag(actor);
+  if (!flag) return [];
+  return Object.values(flag)
+    .filter((entry) => entry && typeof entry === "object" && typeof entry.element === "string");
+}
+
+function selectedElementalDamageType(item, config, infusion) {
+  const configured = item?.flags?.pf2e?.damageSelections?.[config.element];
+  const values = [
+    configured,
+    ...(Array.isArray(infusion?.damageTypes) ? infusion.damageTypes : []),
+    ...(Array.isArray(config.damageTypes) ? config.damageTypes : []),
+  ].filter(Boolean);
+  return String(values[0] ?? "untyped").toLowerCase();
+}
+
+function selectedElementalBlastActionCost(item) {
+  const selected = Number(item?.flags?.pf2e?.rulesSelections?.actionCost);
+  if (selected === 1 || selected === 2) return selected;
+
+  const parsed = readActionCost(item);
+  const value = Number(parsed.actionCost);
+  return value === 2 ? 2 : 1;
+}
+
+function elementalBlastActionCosts(item) {
+  const selected = selectedElementalBlastActionCost(item);
+  return [selected, ...[1, 2].filter((cost) => cost !== selected)];
+}
+
+function elementalBlastAverage(actor, config, actionCost) {
+  const dieFaces = Number(config?.dieFaces);
+  if (!Number.isFinite(dieFaces) || dieFaces <= 0) return null;
+
+  // Coarse ordering estimate only. PF2e still executes exact blast damage.
+  const dice = Math.max(1, Math.ceil(actorLevel(actor) / 4));
+  const actionBonus = actionCost >= 2 ? dice : 0;
+  return dice * ((dieFaces + 1) / 2) + actionBonus;
+}
+
+function titleCaseWords(value) {
+  return String(value ?? "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function localizeLabel(value) {
+  const label = String(value ?? "").trim();
+  if (!label) return null;
+
+  const i18n = globalThis.game?.i18n;
+  if (
+    typeof i18n?.has === "function"
+    && typeof i18n.localize === "function"
+    && i18n.has(label)
+  ) {
+    const localized = String(i18n.localize(label) ?? "").trim();
+    if (localized && localized !== label) return localized;
+  }
+
+  return label.startsWith("PF2E.") ? null : label;
+}
+
+function elementalBlastLabel(config) {
+  const label = localizeLabel(config?.label);
+  if (label) return label;
+
+  const element = String(config?.element ?? "").trim();
+  const elementLabel = titleCaseWords(element || "element");
+  const key = `PF2E.SpecificRule.Kineticist.Impulse.ElementalBlast.Label.${elementLabel}`;
+  return localizeLabel(key) ?? `Elemental Blast (${elementLabel})`;
+}
+
+function elementalBlastModeLabel(baseLabel, mode, actionCost) {
+  const actionSuffix = actionCost === 2 ? ", 2 actions" : "";
+  return `${baseLabel} (${mode}${actionSuffix})`;
+}
+
+function readElementalBlastActions(actor, context) {
+  const item = elementalBlastItem(actor);
+  const configs = elementalBlastConfigs(actor);
+  if (!item || !configs.length) return [];
+
+  const infusion = kineticistBlastFlag(actor)?.infusion;
+  const actionCosts = elementalBlastActionCosts(item);
+
+  return configs.flatMap((config) => {
+    const damageType = selectedElementalDamageType(item, config, infusion);
+    const element = slugify(config.element);
+    const label = elementalBlastLabel(config);
+    const rangedIncrement = Number(infusion?.range?.increment);
+    const rangedMax = Number(infusion?.range?.max ?? config.range);
+    const rangedRange = Number.isFinite(rangedIncrement) && rangedIncrement > 0
+      ? { increment: rangedIncrement, max: rangedIncrement * 6 }
+      : { max: Number.isFinite(rangedMax) && rangedMax > 0 ? rangedMax : 30 };
+
+    return actionCosts.flatMap((actionCost) => {
+      const averageDamage = elementalBlastAverage(actor, config, actionCost);
+      const commonTraits = [
+        "attack",
+        "impulse",
+        "kineticist",
+        element,
+        damageType,
+      ].filter(Boolean);
+      const common = {
+        slug: "strike",
+        tacticSlug: "elemental-blast",
+        actionCost,
+        source: "strike",
+        confidence: "medium",
+        executable: "open-item",
+        detected: true,
+        item: null,
+        elementalBlastItem: item,
+        elementalBlastConfig: config,
+        elementalBlastActionCost: actionCost,
+        attackTrait: true,
+        damageProfile: {
+          average: averageDamage,
+          type: damageType,
+          types: [damageType],
+        },
+        averageDamage,
+        traits: commonTraits,
+        variants: [],
+        reasons: ["Elemental Blast is available."],
+      };
+
+      return [{
+        ...common,
+        id: `elemental-blast-${element}-${damageType}-melee-${actionCost}a`,
+        name: elementalBlastModeLabel(label, "melee", actionCost),
+        range: { max: 5 },
+        traits: [
+          ...commonTraits,
+          ...(Array.isArray(infusion?.traits?.melee) ? infusion.traits.melee : []),
+        ],
+      }, {
+        ...common,
+        id: `elemental-blast-${element}-${damageType}-ranged-${actionCost}a`,
+        name: elementalBlastModeLabel(label, "ranged", actionCost),
+        range: rangedRange,
+        traits: [
+          ...commonTraits,
+          ...(Array.isArray(infusion?.traits?.ranged) ? infusion.traits.ranged : []),
+        ],
+      }].map((action) => {
+        const availability = generatedStrikeAvailability(context, action);
+        return {
+          ...action,
+          available: availability.available,
+          unavailableReason: availability.reason,
+          preferredTarget: availability.target,
+        };
+      });
+    });
+  });
 }
 
 function readWeaponRange(weapon) {
@@ -694,6 +1041,16 @@ function canMoveIntoReach(context, target, distanceFeet, reachFeet) {
   return reachableAttackCenters(context, target, distanceFeet, reachFeet).length > 0;
 }
 
+function bestReachableAttackCenter(context, target, distanceFeet, reachFeet, options = {}) {
+  return reachableAttackCenters(context, target, distanceFeet, reachFeet)
+    .toSorted((left, right) =>
+      compareTacticalCenters(context, left, right, {
+        target,
+        preferFartherFromTarget: options.preferFartherFromTarget === true,
+      }),
+    )[0] ?? null;
+}
+
 function canReturnToOrigin(context, fromCenter, distanceFeet) {
   const origin = centerPoint(context?.token);
   if (!origin || !fromCenter) return false;
@@ -709,7 +1066,8 @@ function drawStrikeTarget(context, range, readyStrikes) {
   const targets = contextTargets(context);
   const enemies = contextEnemies(context);
   return [...targets, ...enemies].find((target) =>
-    !readyStrikeCanReach(readyStrikes, target)
+    canAttackTarget(target)
+      && !readyStrikeCanReach(readyStrikes, target)
       && (target?.distance ?? Infinity) <= range.max,
   ) ?? null;
 }
@@ -765,45 +1123,70 @@ function strikeMeleeReach(strike) {
   return Number.isFinite(reach) && reach > 0 ? reach : 5;
 }
 
+function rangedStrikeReach(strike) {
+  const reach = Number(strike?.range?.max ?? strike?.range?.increment);
+  return Number.isFinite(reach) && reach > 5 ? reach : 0;
+}
+
+function isRangedStrike(strike) {
+  if (rangedStrikeReach(strike) <= 5) return false;
+  const traits = normalizedTraits(strike?.traits ?? strike?.item?.system?.traits?.value)
+    .map((trait) => String(trait ?? "").toLowerCase());
+  return traits.includes("ranged")
+    || traits.some((trait) => trait.startsWith("thrown-"))
+    || Number(strike?.range?.max ?? strike?.range?.increment) > 10;
+}
+
 // Find a target this strike can reach by Striding, and how many Strides it takes.
 // A single Stride covers Speed; two Strides cover double Speed, letting the actor
 // simulate closing a gap that one move can't (the "move-move-strike" turn).
-function strideStrikePlan(context, profile, strike, readyStrikes) {
+function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2) {
   const reach = strikeMeleeReach(strike);
   const speed = movementRange(profile);
   const oneStride = speed + reach;
   const twoStrides = speed * 2 + reach;
-  for (const target of [...contextTargets(context), ...contextEnemies(context)]) {
+  for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
     const distance = target?.distance ?? Infinity;
     if (readyStrikeCanReach(readyStrikes, target)) continue;
-    if (distance <= oneStride && canMoveIntoReach(context, target, speed, reach)) return { target, strides: 1 };
-    if (distance <= twoStrides && canMoveIntoReach(context, target, speed * 2, reach)) return { target, strides: 2 };
+    if (maxStrides >= 1 && distance <= oneStride) {
+      const attackCenter = bestReachableAttackCenter(context, target, speed, reach);
+      if (attackCenter) return { target, strides: 1, attackCenter };
+      if (canMoveIntoReach(context, target, speed, reach)) return { target, strides: 1 };
+    }
+    if (maxStrides >= 2 && distance <= twoStrides) {
+      const attackCenter = bestReachableAttackCenter(context, target, speed * 2, reach);
+      if (attackCenter) return { target, strides: 2, attackCenter };
+      if (canMoveIntoReach(context, target, speed * 2, reach)) return { target, strides: 2 };
+    }
   }
   return null;
 }
 
 function readStrideStrikeActivities(context, readyStrikes) {
   const profile = contextProfile(context);
-  if (movementBlockingCondition(profile, { slug: "stride" })) return [];
+  const standFirst = canStandBeforeMovement(profile);
+  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" })) return [];
 
   const seenTargets = new Set();
   return readyStrikes.flatMap((strike) => {
     const reach = strikeMeleeReach(strike);
-    const plan = strideStrikePlan(context, profile, strike, readyStrikes);
+    const plan = strideStrikePlan(context, profile, strike, readyStrikes, standFirst ? 1 : 2);
     if (!plan) return [];
-    const { target, strides } = plan;
+    const { target, strides, attackCenter } = plan;
+    const actionCost = strides + 1 + (standFirst ? 1 : 0);
+    if (actionCost > 3) return [];
 
     const targetKey = target.id ?? target.name;
     if (seenTargets.has(targetKey)) return [];
     seenTargets.add(targetKey);
 
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
-    const movePrefix = "Stride -> ".repeat(strides);
+    const movePrefix = `${standFirst ? "Stand -> " : ""}${"Stride -> ".repeat(strides)}`;
     return [{
-      id: `stride-strike-${strike.id ?? slug}`,
+      id: `${standFirst ? "stand-" : ""}stride-strike-${strike.id ?? slug}`,
       name: `${movePrefix}${strike.name}`,
-      slug: `stride-strike-${slug}`,
-      actionCost: strides + 1,
+      slug: `${standFirst ? "stand-" : ""}stride-strike-${slug}`,
+      actionCost,
       actionType: "action",
       source: "system-inferred",
       confidence: "medium",
@@ -814,10 +1197,12 @@ function readStrideStrikeActivities(context, readyStrikes) {
       preferredTarget: target,
       role: "mobility-attack",
       activityProfile: {
-        includes: [...Array(strides).fill("stride"), "strike"],
+        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill("stride"), "strike"],
         includesStrike: true,
+        removesCondition: standFirst ? "prone" : null,
         strideCount: strides,
         strikeReach: reach,
+        attackCenter,
       },
       targetingProfile: {
         enemy: true,
@@ -827,9 +1212,111 @@ function readStrideStrikeActivities(context, readyStrikes) {
       },
       attackTrait: true,
       setupFor: [],
-      reasons: [strides > 1
+      reasons: [standFirst
+        ? `Stand, Stride into reach, and Strike ${target.name}.`
+        : strides > 1
         ? `Stride twice into reach and Strike ${target.name}.`
         : `Stride into reach and Strike ${target.name}.`],
+    }];
+  });
+}
+
+function targetThreatReach(target) {
+  const reach = Number(target?.reach ?? target?.meleeReach ?? target?.profile?.reach ?? target?.profile?.meleeReach);
+  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+}
+
+function distanceFromCenterToTarget(context, center, target) {
+  const targetCenter = centerPoint(target);
+  if (!center || !targetCenter) return Infinity;
+
+  const metrics = movementGridMetrics();
+  const attackerRectangle = rectangleForCenter(center, tokenFootprintPixels(context?.token, metrics));
+  const targetRectangle = rectangleForCenter(targetCenter, tokenFootprintPixels(target, metrics));
+  return gridReachDistanceFeet(attackerRectangle, targetRectangle, metrics);
+}
+
+function rangedRetreatStrikePlan(context, profile, strike) {
+  if (!isRangedStrike(strike)) return null;
+
+  const origin = centerPoint(context?.token);
+  const reach = rangedStrikeReach(strike);
+  const speed = movementRange(profile);
+  if (!origin || reach <= 5 || speed <= 0) return null;
+
+  for (const target of uniqueTargets(context)) {
+    if (!actionCanReach(strike, target)) continue;
+
+    const threatReach = targetThreatReach(target);
+    const currentDistance = distanceFromCenterToTarget(context, origin, target);
+    if (!Number.isFinite(currentDistance) || currentDistance > threatReach) continue;
+
+    const attackCenter = reachableAttackCenters(context, target, speed, reach)
+      .filter((center) => distanceFromCenterToTarget(context, center, target) > threatReach)
+      .toSorted((left, right) => {
+        const tactical = compareTacticalCenters(context, left, right, { target, preferFartherFromTarget: true });
+        if (tactical !== 0) return tactical;
+        const leftDistance = distanceFromCenterToTarget(context, left, target);
+        const rightDistance = distanceFromCenterToTarget(context, right, target);
+        if (leftDistance !== rightDistance) return rightDistance - leftDistance;
+        return (left.cost ?? Infinity) - (right.cost ?? Infinity);
+      })[0] ?? null;
+
+    if (attackCenter) return { target, attackCenter, threatReach };
+  }
+
+  return null;
+}
+
+function readRangedRetreatStrikeActivities(context, readyStrikes) {
+  const profile = contextProfile(context);
+  if (movementBlockingCondition(profile, { slug: "stride" })) return [];
+
+  const seenTargets = new Set();
+  return readyStrikes.flatMap((strike) => {
+    const plan = rangedRetreatStrikePlan(context, profile, strike);
+    if (!plan) return [];
+    const { target, attackCenter, threatReach } = plan;
+
+    const targetKeyValue = targetKey(target);
+    if (targetKeyValue && seenTargets.has(targetKeyValue)) return [];
+    if (targetKeyValue) seenTargets.add(targetKeyValue);
+
+    const reach = rangedStrikeReach(strike);
+    const slug = slugify(strike.name ?? strike.slug ?? "strike");
+    return [{
+      id: `stride-away-strike-${strike.id ?? slug}`,
+      name: `Stride Away -> ${strike.name}`,
+      slug: `stride-away-strike-${slug}`,
+      actionCost: 2,
+      actionType: "action",
+      source: "system-inferred",
+      confidence: "medium",
+      executable: "open-item",
+      detected: true,
+      available: true,
+      item: strike.item ?? null,
+      preferredTarget: target,
+      role: "mobility-attack",
+      activityProfile: {
+        includes: ["stride", "strike"],
+        includesStrike: true,
+        retreatBeforeStrike: true,
+        strideCount: 1,
+        strikeReach: reach,
+        threatReach,
+        attackCenter,
+      },
+      targetingProfile: {
+        enemy: true,
+        reachAfterMove: true,
+        retreatBeforeStrike: true,
+        preferredTargetId: target.id ?? null,
+        preferredTargetName: target.name ?? null,
+      },
+      attackTrait: true,
+      setupFor: [],
+      reasons: [`Stride away from ${target.name}, then Strike with ${strike.name}.`],
     }];
   });
 }
@@ -851,14 +1338,15 @@ function skirmishStrikePlan(context, profile, strike, readyStrikes) {
   if (reach <= 5) return null;
 
   const speed = movementRange(profile);
-  for (const target of [...contextTargets(context), ...contextEnemies(context)]) {
+  for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
     if (readyStrikeCanReach(readyStrikes, target) || (target?.distance ?? Infinity) <= reach) continue;
 
     const coverState = originCoverFromTarget(context, target);
     if (!coverState) continue;
 
     const attackCenter = reachableAttackCenters(context, target, speed, reach)
-      .find((center) => canReturnToOrigin(context, center, speed));
+      .filter((center) => canReturnToOrigin(context, center, speed))
+      .toSorted((left, right) => compareTacticalCenters(context, left, right, { target }))[0] ?? null;
     if (attackCenter) return { target, coverState, attackCenter };
   }
   return null;
@@ -924,25 +1412,38 @@ function readActorItemActions(actor, context) {
     ...collectionValues(actor?.itemTypes?.feat),
     ...collectionValues(actor?.itemTypes?.feature),
     ...collectionValues(actor?.itemTypes?.consumable),
+    ...collectionValues(actor?.itemTypes?.ammo),
+    ...collectionValues(actor?.itemTypes?.armor),
+    ...collectionValues(actor?.itemTypes?.backpack),
+    ...collectionValues(actor?.itemTypes?.book),
+    ...collectionValues(actor?.itemTypes?.equipment),
+    ...collectionValues(actor?.itemTypes?.weapon),
   ];
   const typedIds = new Set(typedItems.map((item) => item?.id).filter(Boolean));
   const fallbackItems = collectionValues(actor?.items)
     .filter((item) => !typedIds.has(item?.id))
-    .filter((item) => ACTION_ITEM_TYPES.has(item?.type));
+    .filter((item) => ACTIVATABLE_ITEM_TYPES.has(item?.type));
 
   return [...typedItems, ...fallbackItems].flatMap((item) => {
     if (!item) return [];
     const slug = slugify(item.slug ?? item.system?.slug ?? item.name);
+    if (slug === "elemental-blast" && elementalBlastConfigs(actor).length) return [];
     const curated = findCustomAction(slug);
     const parsedCost = readActionCost(item);
     const inferred = curated ? null : classifySystemAction(item, parsedCost);
     const tactic = curated ?? inferred;
     const actionCost = curated?.actionCost ?? parsedCost.actionCost;
+    const baseName = curated?.name ?? item.name;
+    const name = parsedCost.interactDrawCost > 0 ? `Interact -> ${baseName}` : baseName;
     const itemAvailability = readItemAvailability(item);
     const trigger = readTrigger(item);
     const triggerAvailability = readTriggerAvailability(trigger, context);
     const traits = readTraitSlugs(item);
-    const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile: tactic?.activityProfile });
+    const activityProfile = addItemTraitProfile(
+      addConsumableInteractProfile(tactic?.activityProfile, parsedCost),
+      traits,
+    );
+    const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = genericActionAvailability(slug, context);
     const available = actionCost !== null
       && actionCost !== Infinity
@@ -956,10 +1457,12 @@ function readActorItemActions(actor, context) {
 
     return [{
       id: `item-${item.id ?? slug}`,
-      name: curated?.name ?? item.name,
+      name,
       slug,
       actionCost,
       actionType: parsedCost.type,
+      activationActionCost: parsedCost.activationActionCost ?? actionCost,
+      interactDrawCost: parsedCost.interactDrawCost ?? 0,
       source: curated ? "custom-curated" : (inferred ? "system-inferred" : "custom-unknown"),
       confidence: tactic?.confidence ?? "low",
       executable: tactic?.executable ?? "open-item",
@@ -969,7 +1472,7 @@ function readActorItemActions(actor, context) {
       item,
       trigger,
       role: tactic?.role ?? "unknown",
-      activityProfile: tactic?.activityProfile ?? null,
+      activityProfile,
       targetingProfile: tactic?.targetingProfile ?? null,
       saveProfile: tactic?.saveProfile ?? null,
       damageProfile: tactic?.damageProfile ?? null,
@@ -1007,6 +1510,10 @@ function triggerEventKeys(trigger) {
   if (/\broll(?:ed)? initiative\b/.test(text)) keys.push("initiative", "initiative-roll", "initiative-rolled");
   if (/\bturn begins\b|\bstart of your turn\b/.test(text)) keys.push("turn-start", "turn-begins");
   if (/\bend of (?:a|any|your|another) .*turn\b/.test(text)) keys.push("turn-end");
+  if (/\bfail(?:ed|s)? (?:a )?(?:saving throw|save)\b|\bfailed save\b/.test(text)) keys.push("failed-save");
+  if (/\bbefore .* roll\b|\babout to roll\b/.test(text)) keys.push("before-roll");
+  if (/\bafter .* strike\b|\blast action\b.{0,40}\bstrike\b|\bsuccessful strike\b/.test(text)) keys.push("after-strike");
+  if (/\bprevious action\b|\blast action\b|\bnext action\b/.test(text)) keys.push("previous-action");
   if (/\btargeted\b|\btargets you\b/.test(text)) keys.push("targeted");
   if (/\bhits? you\b|\bdamages? you\b|\battack\b/.test(text)) keys.push("attacked", "damaged");
   if (/\bcast(?:s)? a spell\b/.test(text)) keys.push("spell-cast");
@@ -1028,6 +1535,14 @@ function isGenericAvailable(action, context) {
   const profile = contextProfile(context);
   const targets = contextTargets(context);
   const enemies = contextEnemies(context);
+  const targetableTargets = targets.filter(canAttackTarget);
+  const targetableEnemies = enemies.filter(canAttackTarget);
+  const actionTargets = action.slug === "demoralize"
+    ? targetableTargets.filter((target) => !hasDemoralizeImmunity(target))
+    : targetableTargets;
+  const actionEnemies = action.slug === "demoralize"
+    ? targetableEnemies.filter((target) => !hasDemoralizeImmunity(target))
+    : targetableEnemies;
   const allies = contextAllies(context);
   const movementAvailability = readMovementAvailability(context, action);
 
@@ -1041,22 +1556,26 @@ function isGenericAvailable(action, context) {
     return availability(Boolean(profile.hasShield), "No shield equipped.");
   }
   if (action.requiresTarget) {
-    const targetExists = Boolean(targets.length);
+    const targetExists = Boolean(actionTargets.length);
+    if (!targetExists && action.slug === "demoralize" && targetableTargets.length) {
+      return availability(false, "Target is temporarily immune to Demoralize.");
+    }
     if (!targetExists) return availability(false, "No enemy target selected.");
   }
   if (Number.isFinite(action.maxRange)) {
-    const inRange = [...targets, ...enemies].some((target) => (target?.distance ?? Infinity) <= action.maxRange);
+    const targetPool = action.requiresTarget ? actionTargets : [...actionTargets, ...actionEnemies];
+    const inRange = targetPool.some((target) => (target?.distance ?? Infinity) <= action.maxRange);
     if (!inRange) return availability(false, `No target within ${action.maxRange} feet.`);
   }
   if (action.requiresEnemyInReach) {
-    const enemyInReach = targets.some((target) => (target?.distance ?? Infinity) <= meleeReach(profile));
+    const enemyInReach = targetableTargets.some((target) => (target?.distance ?? Infinity) <= meleeReach(profile));
     if (!enemyInReach) return availability(false, "No enemy in reach.");
   }
   if (action.requiresFreeHand && freeHands(profile) < 1) {
     return availability(false, "No free hand to manipulate an object.");
   }
   if (action.requiresNearbyEnemy) {
-    const nearbyEnemy = targets.some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
+    const nearbyEnemy = targetableTargets.some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
     if (!nearbyEnemy) return availability(false, "No enemy close enough.");
   }
   if (action.requiresSeekTarget) {
@@ -1065,12 +1584,12 @@ function isGenericAvailable(action, context) {
     }
   }
   if (action.requiresCombatSignal) {
-    if (!hasCombatSignal(context, targets)) {
+    if (!hasCombatSignal(context, targetableTargets)) {
       return availability(false, "No combat-relevant deception or mental effect detected.");
     }
   }
   if (action.requiresTumbleThroughOpportunity) {
-    if (!hasTumbleThroughOpportunity(context, targets)) {
+    if (!hasTumbleThroughOpportunity(context, targetableTargets)) {
       return availability(false, "No useful path through enemy detected.");
     }
   }
@@ -1087,6 +1606,11 @@ function isGenericAvailable(action, context) {
   if (action.requiresObjectInReach) {
     if (!hasObjectInReach(context, profile, ["objects"])) {
       return availability(false, "No object in reach.");
+    }
+  }
+  if (action.requiresProne) {
+    if (!hasCondition(profile, "prone")) {
+      return availability(false, "Actor is not prone.");
     }
   }
   if (action.requiresCover) {
@@ -1515,11 +2039,18 @@ export function readActionCost(item) {
   const getterCost = item?.actionCost;
   const getterType = systemValue(getterCost?.type);
   const getterValue = systemValue(getterCost?.value);
-  if (getterType) return parseActionCost(getterType, getterValue);
+  if (getterType) {
+    const parsedGetter = parseActionCost(getterType, getterValue);
+    if (parsedGetter.actionCost !== null) return withConsumableInteractCost(item, parsedGetter);
+  }
 
   const actionType = systemValue(item?.system?.actionType);
   const actions = systemValue(item?.system?.actions);
-  return parseActionCost(actionType, actions);
+  const parsed = parseActionCost(actionType, actions);
+  if (parsed.actionCost !== null) {
+    return withConsumableInteractCost(item, parsed);
+  }
+  return withConsumableInteractCost(item, readActivationActionCost(item) ?? parsed);
 }
 
 function readItemAvailability(item) {
@@ -1589,6 +2120,113 @@ function parseActionCost(type, value) {
   if (parsedText !== null) return { actionCost: parsedText, type: "action", passive: false };
   if (normalizedType === "action") return { actionCost: 1, type: "action", passive: false };
   return { actionCost: null, type: normalizedType || "unknown", passive: false };
+}
+
+function readActivationActionCost(item) {
+  const text = normalizeActivationText(htmlToText(descriptionHtml(item)));
+  const match = text.match(/\bActivate\b([\s\S]{0,180})/i);
+  if (!match) return null;
+
+  const activation = match[1].trim();
+  const bracket = activation.match(/\[(one-action|two-actions|three-actions|free-action|reaction)\]/i);
+  if (bracket) {
+    const cost = parseActivationToken(bracket[1]);
+    return { actionCost: cost, type: activationType(cost), passive: false, activationInDescription: true };
+  }
+
+  const glyph = activation.match(/(?:^|\s)([123ADTRFR])(?=\s*(?:\(|Interact\b|Envision\b|Command\b|Cast\b|concentrate\b|manipulate\b|$))/i);
+  if (glyph) {
+    const raw = glyph[1].toUpperCase();
+    const cost = /^[123]$/.test(raw) ? Number(raw) : ACTION_GLYPHS[raw];
+    return { actionCost: cost, type: activationType(cost), passive: false, activationInDescription: true };
+  }
+
+  const wordCost = activation.match(/\b(one|two|three|1|2|3)[ -]actions?\b/i);
+  if (wordCost) {
+    const cost = WORD_NUMBERS[String(wordCost[1]).toLowerCase()] ?? Number(wordCost[1]);
+    return { actionCost: cost, type: "action", passive: false, activationInDescription: true };
+  }
+
+  if (/\bfree\b/i.test(activation)) {
+    return { actionCost: 0, type: "free", passive: false, activationInDescription: true };
+  }
+  if (/\breaction\b/i.test(activation)) {
+    return { actionCost: "reaction", type: "reaction", passive: false, activationInDescription: true };
+  }
+
+  return null;
+}
+
+function parseActivationToken(value) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "one-action") return 1;
+  if (normalized === "two-actions") return 2;
+  if (normalized === "three-actions") return 3;
+  if (normalized === "free-action") return 0;
+  if (normalized === "reaction") return "reaction";
+  return null;
+}
+
+function activationType(cost) {
+  if (cost === "reaction") return "reaction";
+  if (cost === 0) return "free";
+  return "action";
+}
+
+function itemCarryType(item) {
+  return String(item?.carryType ?? item?.system?.equipped?.carryType ?? "").toLowerCase();
+}
+
+function itemHandsHeld(item) {
+  const hands = Number(item?.handsHeld ?? item?.system?.equipped?.handsHeld);
+  return Number.isFinite(hands) ? hands : 0;
+}
+
+function itemUsage(item) {
+  return String(systemValue(item?.system?.usage) ?? "").toLowerCase();
+}
+
+function requiresHeldConsumableUse(item) {
+  return item?.type === "consumable" && itemUsage(item).includes("held");
+}
+
+function isHeldItem(item) {
+  return item?.isHeld === true || itemCarryType(item) === "held" || itemHandsHeld(item) > 0;
+}
+
+function consumableInteractDrawCost(item, parsedCost) {
+  if (!requiresHeldConsumableUse(item) || isHeldItem(item)) return 0;
+  return Number.isFinite(Number(parsedCost?.actionCost)) ? 1 : 0;
+}
+
+function withConsumableInteractCost(item, parsedCost) {
+  const drawCost = consumableInteractDrawCost(item, parsedCost);
+  if (!drawCost) return parsedCost;
+  return {
+    ...parsedCost,
+    activationActionCost: parsedCost.actionCost,
+    actionCost: Number(parsedCost.actionCost) + drawCost,
+    interactDrawCost: drawCost,
+  };
+}
+
+function addConsumableInteractProfile(activityProfile, parsedCost) {
+  if (!parsedCost?.interactDrawCost) return activityProfile ?? null;
+  const includes = new Set(Array.isArray(activityProfile?.includes) ? activityProfile.includes : []);
+  includes.add("interact");
+  return {
+    ...(activityProfile ?? {}),
+    includes: [...includes],
+    interactDraw: true,
+  };
+}
+
+function addItemTraitProfile(activityProfile, traits) {
+  if (!Array.isArray(traits) || !traits.includes("impulse")) return activityProfile ?? null;
+  return {
+    ...(activityProfile ?? {}),
+    impulse: true,
+  };
 }
 
 export function parseActionText(value) {

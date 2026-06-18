@@ -298,6 +298,17 @@ export const GENERIC_ACTIONS = [
     executable: "pf2e-action",
   },
   {
+    id: "stand",
+    name: "Stand",
+    slug: "stand",
+    actionCost: 1,
+    role: "mobility",
+    traits: ["move"],
+    activityProfile: { includes: ["move"], removesCondition: "prone" },
+    requiresProne: true,
+    executable: "pf2e-action",
+  },
+  {
     id: "step",
     name: "Step",
     slug: "step",

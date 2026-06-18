@@ -37,6 +37,11 @@ function spellText(spell) {
   ].filter(Boolean).join(" "));
 }
 
+function spellRank(spell) {
+  const rank = Number(spell?.rank ?? spell?.system?.level?.value ?? spell?.system?.rank?.value);
+  return Number.isFinite(rank) ? rank : null;
+}
+
 function readSaveProfile(spell) {
   const defense = spell?.system?.defense;
   const statistic = String(
@@ -52,16 +57,60 @@ function readSaveProfile(spell) {
   return null;
 }
 
+function diceAverage(formula) {
+  const text = String(formula ?? "");
+  let total = 0;
+  let matched = false;
+
+  for (const [, count, faces] of text.matchAll(/(\d+)d(\d+)/g)) {
+    total += Number(count) * ((Number(faces) + 1) / 2);
+    matched = true;
+  }
+
+  for (const flat of text.match(/[+-]\s*\d+(?!d)/g) ?? []) {
+    total += Number(flat.replace(/\s/g, ""));
+    matched = true;
+  }
+
+  if (!matched) {
+    const numeric = Number(text.match(/^\s*\d+(?:\.\d+)?\s*$/)?.[0]);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+
+  return matched && total > 0 ? total : null;
+}
+
 function readDamageProfile(spell) {
   const damage = spell?.system?.damage;
   const partials = damage && typeof damage === "object" ? Object.values(damage) : [];
-  const partial = partials.find((entry) => entry && (entry.formula || entry.value || entry.dice));
-  if (!partial) return null;
+  const entries = partials
+    .filter((entry) => entry && (entry.formula || entry.value || entry.dice))
+    .map((entry) => {
+      const formula = String(entry.formula ?? entry.value ?? "").trim();
+      const type = String(entry.type ?? entry.damageType ?? "").trim().toLowerCase() || null;
+      return {
+        formula: formula || null,
+        type,
+        average: diceAverage(formula),
+      };
+    })
+    .filter((entry) => entry.formula || entry.type);
 
-  const formula = String(partial.formula ?? partial.value ?? "").trim();
-  const type = String(partial.type ?? partial.damageType ?? "").trim().toLowerCase() || null;
-  if (!formula && !type) return null;
-  return { formula: formula || null, type };
+  if (!entries.length) return null;
+
+  const primary = entries[0];
+  const average = entries
+    .map((entry) => Number(entry.average))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .reduce((total, value) => total + value, 0);
+
+  return {
+    formula: primary.formula,
+    type: primary.type,
+    entries,
+    types: [...new Set(entries.map((entry) => entry.type).filter(Boolean))],
+    average: average > 0 ? average : primary.average,
+  };
 }
 
 function readAreaProfile(spell) {
@@ -90,9 +139,13 @@ function readRangeProfile(spell) {
   return {};
 }
 
+function targetText(spell) {
+  return normalizeText(systemValue(spell?.system?.target) ?? spell?.system?.target ?? "");
+}
+
 function targetsSelfOnly(spell, rangeProfile) {
   if (rangeProfile.self) return true;
-  const target = String(systemValue(spell?.system?.target) ?? "").toLowerCase();
+  const target = targetText(spell);
   return target.includes("self") || target.includes("you");
 }
 
@@ -100,6 +153,84 @@ function isHealing(spell, traits, damageProfile) {
   return traits.includes("healing")
     || damageProfile?.type === "healing"
     || /\bregain(?:s)? .*hit points\b|\brestore(?:s)? .*hit points\b/.test(spellText(spell));
+}
+
+const CONDITION_PATTERNS = [
+  ["frightened", /\bfrightened\b/],
+  ["sickened", /\bsickened\b/],
+  ["slowed", /\bslowed\b/],
+  ["stunned", /\bstunned\b/],
+  ["stupefied", /\bstupefied\b/],
+  ["clumsy", /\bclumsy\b/],
+  ["enfeebled", /\benfeebled\b/],
+  ["off-guard", /\boff[- ]guard\b|\bflat-footed\b/],
+  ["prone", /\bprone\b|\bknocked down\b/],
+  ["immobilized", /\bimmobilized\b/],
+  ["grabbed", /\bgrabbed\b/],
+  ["restrained", /\brestrained\b/],
+  ["paralyzed", /\bparalyzed\b/],
+  ["confused", /\bconfused\b/],
+  ["controlled", /\bcontrolled\b/],
+  ["fleeing", /\bfleeing\b/],
+  ["dazzled", /\bdazzled\b/],
+  ["blinded", /\bblinded\b/],
+  ["deafened", /\bdeafened\b/],
+];
+
+function readConditionProfile(spell) {
+  const text = spellText(spell);
+  const appliesConditions = CONDITION_PATTERNS
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([slug]) => slug);
+
+  if (!appliesConditions.length) return null;
+
+  return {
+    appliesCondition: appliesConditions[0],
+    appliesConditions,
+  };
+}
+
+function readDurationProfile(spell) {
+  const duration = normalizeText(systemValue(spell?.system?.duration) ?? spell?.system?.duration ?? "");
+  const text = spellText(spell);
+  const instantaneous = !duration || duration === "instantaneous";
+  return {
+    duration: duration || null,
+    lastingDuration: !instantaneous,
+    sustained: /\bsustained\b|\bsustain\b/.test(duration) || /\bsustain(?:ed)?\b/.test(text),
+  };
+}
+
+function readSpellFacts(spell, traits, damageProfile, conditionProfile) {
+  const text = spellText(spell);
+  return {
+    spell: true,
+    rank: spellRank(spell),
+    traits,
+    cantrip: traits.includes("cantrip"),
+    focus: traits.includes("focus"),
+    damageTypes: damageProfile?.types ?? (damageProfile?.type ? [damageProfile.type] : []),
+    averageDamage: damageProfile?.average ?? null,
+    damageScalesWithActions: /\bfor each additional action\b|\badditional action you use\b|\beach action you spend\b/.test(text),
+    conditionProfile,
+    incapacitation: traits.includes("incapacitation"),
+    ...readDurationProfile(spell),
+  };
+}
+
+function readControlFacts(spell) {
+  const text = spellText(spell);
+  const facts = {
+    terrainControl: /\bdifficult terrain\b|\bhazardous terrain\b|\buneven ground\b/.test(text),
+    wall: /\bwall\b|\bbarrier\b|\bblocks? (?:movement|line|sight)\b/.test(text),
+    obscuring: /\bconcealed\b|\bconcealment\b|\bobscur(?:e|ing)|\bmist\b|\bfog\b|\bdarkness\b|\bsmoke\b/.test(text),
+    forcedMovement: /\bpush(?:es)?\b|\bpull(?:s)?\b|\bslide(?:s)?\b|\bmove(?:s)? .* target\b/.test(text),
+    areaDenial: /\benter(?:s|ing)? .* (?:takes?|damage)\b|\bstarts? (?:its|their) turn\b.{0,40}\bdamage\b/.test(text),
+  };
+
+  if (!Object.values(facts).some(Boolean)) return null;
+  return facts;
 }
 
 function baseProfile(includes = []) {
@@ -135,19 +266,22 @@ function inferred(role, {
 function readBuffProfile(spell) {
   const text = spellText(spell);
   const attackBuff = /\bbonus to attack\b|\battack rolls?\b.*\bbonus\b|\bstatus bonus\b.*\battack/.test(text);
+  const damageBuff = /\bbonus (?:to|on) damage\b|\badditional .*damage\b|\bextra .*damage\b/.test(text);
+  const acBuff = /\bbonus to ac\b|\bac\b.*\bbonus\b|\barmor class\b.*\bbonus\b/.test(text);
+  const saveBuff = /\bbonus to (?:saving throws|saves)\b|\bsaving throws?\b.*\bbonus\b/.test(text);
   const grantsBonus = /\b(?:\+\d+|status|circumstance|item) (?:bonus|status)\b|\bgrants? a .*bonus\b/.test(text);
   const tempHp = /\btemporary hit points\b/.test(text);
   const resistance = /\bresistance\b|\breduce[sd]? .* damage\b/.test(text);
-  const removesCondition = /\b(?:remove|reduce|suppress)[sd]? .* (?:condition|penalt)/.test(text);
+  const removesCondition = /\b(?:remove|reduce|suppress)[sd]? .* (?:condition|penalt)|\bbreak free\b|\bescape\b|\bholds? .* in place\b|\bimmobilized\b|\bgrabbed\b|\brestrained\b/.test(text);
   const protective = /\bprotect|\bward\b|\bbolster|\bbless|\bheroism|\bhaste\b|\benhance|\bshield\b|\bsanctuary\b/.test(text);
-  const extraAction = /\b(?:an? )?(?:extra|additional) action\b|\bact twice\b/.test(text);
+  const extraAction = /\b(?:an? )?(?:extra|additional) action\b|\bact twice\b|\buse several actions\b|\bquickened\b/.test(text);
 
-  if (!(attackBuff || grantsBonus || tempHp || resistance || removesCondition || protective || extraAction)) {
+  if (!(attackBuff || damageBuff || acBuff || saveBuff || grantsBonus || tempHp || resistance || removesCondition || protective || extraAction)) {
     return null;
   }
 
   const ally = /\bally\b|\ballies\b|\bwilling creature\b|\btarget\b/.test(text);
-  return { ally, attackBuff, tempHp, removesCondition };
+  return { ally, attackBuff, damageBuff, acBuff, saveBuff, tempHp, resistance, removesCondition, extraAction };
 }
 
 export function classifySpell(spell) {
@@ -158,12 +292,15 @@ export function classifySpell(spell) {
   const damageProfile = readDamageProfile(spell);
   const areaProfile = readAreaProfile(spell);
   const rangeProfile = readRangeProfile(spell);
+  const conditionProfile = readConditionProfile(spell);
+  const controlFacts = readControlFacts(spell);
+  const spellFacts = readSpellFacts(spell, traits, damageProfile, conditionProfile);
   const hasAttack = traits.includes("attack");
   const healing = isHealing(spell, traits, damageProfile);
 
   if (healing) {
     return inferred("healing", {
-      activityProfile: baseProfile(["healing"]),
+      activityProfile: { ...baseProfile(["healing"]), ...spellFacts },
       targetingProfile: { ally: true, self: true },
       damageProfile,
       confidence: "high",
@@ -173,7 +310,7 @@ export function classifySpell(spell) {
 
   if (areaProfile && damageProfile) {
     return inferred("area-damage", {
-      activityProfile: baseProfile(["damage", "area"]),
+      activityProfile: { ...baseProfile(["damage", "area"]), ...spellFacts },
       targetingProfile: { ...areaProfile, ...rangeProfile, enemy: true },
       saveProfile,
       damageProfile,
@@ -184,7 +321,7 @@ export function classifySpell(spell) {
 
   if (saveProfile && damageProfile) {
     return inferred("save-damage", {
-      activityProfile: baseProfile(["damage"]),
+      activityProfile: { ...baseProfile(["damage"]), ...spellFacts },
       targetingProfile: { enemy: true, ...rangeProfile },
       saveProfile,
       damageProfile,
@@ -195,7 +332,7 @@ export function classifySpell(spell) {
 
   if (damageProfile && !targetsSelfOnly(spell, rangeProfile)) {
     return inferred("damage", {
-      activityProfile: { ...baseProfile(["damage"]), spellAttack: hasAttack },
+      activityProfile: { ...baseProfile(["damage"]), ...spellFacts, spellAttack: hasAttack },
       targetingProfile: { enemy: true, ...rangeProfile },
       damageProfile,
       confidence: hasAttack ? "high" : "medium",
@@ -205,13 +342,23 @@ export function classifySpell(spell) {
     });
   }
 
-  if (saveProfile && !targetsSelfOnly(spell, rangeProfile)) {
+  if ((saveProfile || conditionProfile || controlFacts) && !targetsSelfOnly(spell, rangeProfile)) {
     return inferred("control", {
-      activityProfile: { ...baseProfile(["control"]), ...(areaProfile ?? {}) },
+      activityProfile: {
+        ...baseProfile(["control"]),
+        ...spellFacts,
+        ...(conditionProfile ?? {}),
+        ...(areaProfile ?? {}),
+        ...(controlFacts ?? {}),
+      },
       targetingProfile: { enemy: true, ...rangeProfile, ...(areaProfile ?? {}) },
       saveProfile,
-      confidence: "medium",
-      reasons: ["Spell forces a saving throw to debuff or control the target."],
+      confidence: saveProfile || conditionProfile ? "medium" : "high",
+      reasons: [saveProfile
+        ? "Spell forces a saving throw to debuff or control the target."
+        : controlFacts
+        ? "Spell changes terrain, visibility, or enemy positioning."
+        : "Spell applies a combat condition."],
     });
   }
 
@@ -221,7 +368,7 @@ export function classifySpell(spell) {
     const defensive = traits.includes("abjuration")
       || /\bshield\b|\barmor\b|\bward\b|\bresistance\b|\btemporary hit points\b/.test(spellText(spell));
     return inferred(defensive ? "defense" : "setup", {
-      activityProfile: baseProfile([defensive ? "defense" : "setup"]),
+      activityProfile: { ...baseProfile([defensive ? "defense" : "setup"]), ...spellFacts },
       targetingProfile: { self: true },
       setupFor: defensive ? [] : ["strike", "damage", "spell"],
       confidence: "medium",
@@ -232,9 +379,9 @@ export function classifySpell(spell) {
   const buff = readBuffProfile(spell);
   if (buff && !damageProfile && !saveProfile) {
     return inferred("buff", {
-      activityProfile: { ...baseProfile(["buff"]), ...buff },
+      activityProfile: { ...baseProfile(["buff"]), ...spellFacts, ...buff },
       targetingProfile: buff.ally ? { ally: true, self: true } : { self: true },
-      setupFor: buff.attackBuff ? ["strike", "damage", "spell"] : [],
+      setupFor: (buff.attackBuff || buff.damageBuff || buff.extraAction) ? ["strike", "damage", "spell"] : [],
       confidence: "medium",
       reasons: ["Spell grants a beneficial effect to the caster or an ally."],
     });
@@ -243,7 +390,7 @@ export function classifySpell(spell) {
   const text = spellText(spell);
   if (traits.includes("teleportation") || /\bteleport/.test(text)) {
     return inferred("mobility", {
-      activityProfile: { ...baseProfile(["teleport"]), teleport: true },
+      activityProfile: { ...baseProfile(["teleport"]), ...spellFacts, teleport: true },
       targetingProfile: { self: true },
       confidence: "medium",
       reasons: ["Teleportation spell repositions the caster."],
@@ -252,7 +399,7 @@ export function classifySpell(spell) {
 
   if (traits.includes("polymorph") || traits.includes("morph")) {
     return inferred("transformation", {
-      activityProfile: { ...baseProfile(["transformation"]), polymorph: traits.includes("polymorph") },
+      activityProfile: { ...baseProfile(["transformation"]), ...spellFacts, polymorph: traits.includes("polymorph") },
       targetingProfile: { self: true },
       confidence: "medium",
       reasons: ["Form-changing spell alters the caster's options."],
@@ -261,7 +408,7 @@ export function classifySpell(spell) {
 
   if (traits.includes("summon") || /\bsummon (?:a|an|the|forth)\b|\bconjures?\b/.test(text)) {
     return inferred("summon", {
-      activityProfile: baseProfile(["summon"]),
+      activityProfile: { ...baseProfile(["summon"]), ...spellFacts },
       targetingProfile: { self: true },
       confidence: "medium",
       reasons: ["Summoning spell adds an ally to the battlefield."],
@@ -271,7 +418,7 @@ export function classifySpell(spell) {
   // Catch-all: a combat-castable spell with no recognized tactical pattern still
   // surfaces as a low-priority option rather than being dropped.
   return inferred("utility", {
-    activityProfile: baseProfile(["utility"]),
+    activityProfile: { ...baseProfile(["utility"]), ...spellFacts },
     targetingProfile: { self: true },
     confidence: "low",
     reasons: ["Spell is available but has no recognized combat pattern."],
