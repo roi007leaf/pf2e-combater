@@ -5031,6 +5031,69 @@ try {
     ["Calder Stoneplow"],
   );
   assert.equal(namedTokenContext.battlefield.targets[0].name, "Calder Stoneplow");
+
+  const ownedActor = {
+    id: "actor-owned",
+    uuid: "Actor.actor-owned",
+    name: "Owned Hero",
+    img: "owned.webp",
+    type: "character",
+    system: { attributes: { hp: { value: 10, max: 10 } } },
+    itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [] },
+    items: [],
+    testUserPermission: () => true,
+  };
+  const unownedActor = {
+    ...ownedActor,
+    id: "actor-unowned",
+    uuid: "Actor.actor-unowned",
+    name: "Unowned Hero",
+    testUserPermission: () => false,
+  };
+  const selectedCombatant = {
+    id: "combatant-owned",
+    actor: ownedActor,
+    name: "Owned Hero",
+    tokenId: "token-owned",
+    token: { object: { id: "token-owned", document: { id: "token-owned", x: 0, y: 0, width: 1, height: 1 }, actor: ownedActor } },
+  };
+  const unownedCombatant = {
+    id: "combatant-unowned",
+    actor: unownedActor,
+    name: "Unowned Hero",
+    tokenId: "token-unowned",
+    token: { object: { id: "token-unowned", document: { id: "token-unowned", x: 5, y: 0, width: 1, height: 1 }, actor: unownedActor } },
+  };
+  globalThis.game = {
+    user: { isGM: false },
+    combat: {
+      id: "combat-builder",
+      round: 1,
+      turn: 0,
+      started: true,
+      combatant: selectedCombatant,
+      combatants: [selectedCombatant, unownedCombatant],
+    },
+  };
+  globalThis.canvas = {
+    grid: { size: 5 },
+    tokens: {
+      controlled: [],
+      placeables: [selectedCombatant.token.object, unownedCombatant.token.object],
+    },
+  };
+  const selectedContext = readCombatContext("test", { combatant: selectedCombatant });
+  assert.equal(selectedContext.combatant.id, "combatant-owned");
+  const blockedContext = readCombatContext("test", { combatant: unownedCombatant });
+  assert.equal(blockedContext, null);
+  globalThis.game.combat.combatant = unownedCombatant;
+  globalThis.canvas.tokens.controlled = [selectedCombatant.token.object];
+  const controlledContext = readCombatContext("test");
+  assert.equal(controlledContext.combatant.id, "combatant-owned");
+  globalThis.game.user.isGM = true;
+  globalThis.canvas.tokens.controlled = [];
+  const gmContext = readCombatContext("test", { combatant: unownedCombatant });
+  assert.equal(gmContext.combatant.id, "combatant-unowned");
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;

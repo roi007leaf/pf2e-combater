@@ -267,8 +267,16 @@ function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
   };
 }
 
-function canReadActor(actor) {
-  return Boolean(actor && (game?.user?.isGM || actor.isOwner));
+function actorOwnedByUser(actor, user) {
+  if (actor?.isOwner) return true;
+  if (typeof actor?.testUserPermission !== "function") return false;
+
+  const ownerPermission = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  return actor.testUserPermission(user, ownerPermission);
+}
+
+function canReadActor(actor, user = globalThis.game?.user) {
+  return Boolean(actor && (user?.isGM || actorOwnedByUser(actor, user)));
 }
 
 function tokenMatchesTarget(token, target) {
@@ -347,8 +355,25 @@ function tokenInCombat(combat, token) {
     || tokenMatchesCombatant(token, combat.combatant);
 }
 
-export function readCombatContext(refreshSource = "manual") {
-  const combatant = game?.combat?.combatant ?? null;
+function selectedEncounterCombatant(options = {}) {
+  const combat = options.combat ?? globalThis.game?.combat ?? null;
+  if (options.combatant) return options.combatant;
+
+  const selectedToken = (globalThis.canvas?.tokens?.controlled ?? [])
+    .find((token) => tokenInCombat(combat, token));
+  if (!selectedToken) return combat?.combatant ?? null;
+
+  const combatants = collectionValues(combat?.combatants);
+  return combatants.find((combatant) => tokenMatchesCombatant(selectedToken, combatant))
+    ?? combat?.combatant
+    ?? null;
+}
+
+export function readCombatContext(refreshSource = "manual", options = {}) {
+  const combat = options.combat ?? globalThis.game?.combat ?? null;
+  if (!combat?.started) return null;
+
+  const combatant = selectedEncounterCombatant({ ...options, combat });
   const actor = combatant?.actor ?? null;
   if (!canReadActor(actor)) return null;
 
@@ -358,7 +383,7 @@ export function readCombatContext(refreshSource = "manual") {
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
   const tokens = placeables.filter((token) => tokenActor(token));
-  const combatTokens = tokens.filter((token) => tokenInCombat(game?.combat, token));
+  const combatTokens = tokens.filter((token) => tokenInCombat(combat, token));
   const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
   const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
 
@@ -380,16 +405,16 @@ export function readCombatContext(refreshSource = "manual") {
   const targets = targetTokens
     .filter(Boolean)
     .map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
-  const movementSpent = movementActionsSpent(game?.combat);
+  const movementSpent = movementActionsSpent(combat);
 
   return {
     refreshSource,
     isGM: canSeeDefenses,
     combat: {
-      id: game.combat.id,
-      round: game.combat.round,
-      turn: game.combat.turn,
-      started: game.combat.started,
+      id: combat.id,
+      round: combat.round,
+      turn: combat.turn,
+      started: combat.started,
     },
     combatant: {
       id: combatant.id,
