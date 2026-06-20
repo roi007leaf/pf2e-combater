@@ -661,10 +661,14 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   const destinationCenter = explicitDestination(step);
   if (!destinationCenter) return null;
 
-  const destinationPlacement = placementForCenter(destinationCenter, footprint, gridSize);
+  const destinationVisible = pointVisible(destinationCenter, options);
+  const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
   const destinationMarker = xMarkerForPlacement(destinationPlacement);
-  const route = directRouteToCenter(origin, destinationCenter, distanceFeet, gridSize, options);
-  const destinationAvailable = Array.isArray(route)
+  const route = destinationVisible
+    ? directRouteToCenter(origin, destinationCenter, distanceFeet, gridSize, options)
+    : null;
+  const destinationAvailable = destinationVisible
+    && Array.isArray(route)
     && (route.length > 0 || pointKey(origin) === pointKey(destinationCenter));
   const stridePath = destinationAvailable
     ? [{
@@ -690,7 +694,9 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
     destinationAvailable,
     destinationIllegalReason: destinationAvailable
       ? ""
-      : explicitDestinationReason(origin, destinationCenter, distanceFeet, options),
+      : (destinationVisible
+        ? explicitDestinationReason(origin, destinationCenter, distanceFeet, options)
+        : "Destination is not visible."),
     stridePath,
     reachableCenters: [],
     reachablePlacements: [],

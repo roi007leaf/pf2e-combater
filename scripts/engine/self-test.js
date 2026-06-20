@@ -1633,7 +1633,37 @@ assert.equal(blockedExplicitMovementPreview.destinationAvailable, false);
 assert.equal(blockedExplicitMovementPreview.destinationCenter.x, 10);
 assert.equal(blockedExplicitMovementPreview.recommendedCenter, null);
 assert.equal(blockedExplicitMovementPreview.stridePath.length, 0);
+assert.ok(blockedExplicitMovementPreview.destinationPlacement);
+assert.ok(blockedExplicitMovementPreview.destinationMarker);
 assert.match(blockedExplicitMovementPreview.destinationIllegalReason, /movement path/i);
+
+const hiddenExplicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Fallback Target", token: { center: { x: -25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: () => false,
+  pointVisible: (point) => point.x !== 10 || point.y !== 0,
+});
+assert.equal(hiddenExplicitMovementPreview.enabled, true);
+assert.equal(hiddenExplicitMovementPreview.destinationAvailable, false);
+assert.equal(hiddenExplicitMovementPreview.destinationIllegalReason, "Destination is not visible.");
+assert.equal(hiddenExplicitMovementPreview.destinationPlacement, null);
+assert.equal(hiddenExplicitMovementPreview.destinationMarker, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedCenter, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedPlacement, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedMarker, null);
+assert.deepEqual(hiddenExplicitMovementPreview.stridePath, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachableCenters, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachablePlacements, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachableMarkers, []);
 
 const previousDestinationPickerCanvas = globalThis.canvas;
 try {
@@ -1659,11 +1689,28 @@ try {
     },
   };
   const chosenDestinations = [];
+  const suppressed = [];
   const picker = chooseDestination({ onChoose: (destination) => chosenDestinations.push(destination) });
   assert.ok(picker);
   assert.equal(typeof pointerHandler, "function");
-  pointerHandler({ global: { x: 12, y: 18 } });
+  pointerHandler({
+    button: 2,
+    global: { x: 12, y: 18 },
+    preventDefault: () => suppressed.push("secondary-default"),
+    stopPropagation: () => suppressed.push("secondary-propagation"),
+  });
+  assert.deepEqual(chosenDestinations, []);
+  assert.deepEqual(suppressed, []);
+  assert.equal(pointerRemoved, false);
+  assert.equal(typeof pointerHandler, "function");
+  pointerHandler({
+    button: 0,
+    global: { x: 12, y: 18 },
+    preventDefault: () => suppressed.push("primary-default"),
+    stopPropagation: () => suppressed.push("primary-propagation"),
+  });
   assert.deepEqual(chosenDestinations, [{ x: 15, y: 15 }]);
+  assert.deepEqual(suppressed, ["primary-default", "primary-propagation"]);
   assert.equal(pointerRemoved, true);
   assert.equal(pointerHandler, null);
 } finally {

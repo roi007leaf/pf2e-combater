@@ -66,10 +66,18 @@ function addPointerHandler(stage, handler) {
     };
   }
   if (typeof stage?.addEventListener === "function") {
-    stage.addEventListener("pointerdown", handler, { once: true });
+    stage.addEventListener("pointerdown", handler);
     return () => stage.removeEventListener?.("pointerdown", handler);
   }
   return null;
+}
+
+function isPrimaryPointerEvent(event) {
+  const button = event?.button
+    ?? event?.data?.button
+    ?? event?.nativeEvent?.button
+    ?? event?.originalEvent?.button;
+  return button === undefined || button === null || button === 0;
 }
 
 export function cancelDestinationPicker() {
@@ -85,6 +93,10 @@ export function chooseDestination({ onChoose } = {}) {
   if (!stage || typeof onChoose !== "function") return null;
 
   const handler = (event) => {
+    if (!isPrimaryPointerEvent(event)) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
     try {
       const rawPoint = eventCanvasPoint(event);
       if (!rawPoint) return;
