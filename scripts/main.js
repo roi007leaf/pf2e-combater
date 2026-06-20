@@ -76,7 +76,7 @@ Hooks.on("updateCombat", async (combat, changed) => {
   if (combat !== game.combat) return;
   if (!combat.started) return;
   if (!("turn" in changed) && !("round" in changed)) return;
-  if (!setting(SETTINGS.autoOpen)) return;
+  if (!setting(SETTINGS.autoOpen) && !activePanel) return;
   await openCurrent("combat-turn");
 });
 

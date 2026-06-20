@@ -364,7 +364,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._plan = null;
     this._builder = null;
     this._pinnedPlanId = null;
+    this._selectedCombatant = options.combatant ?? null;
     this._restoredPosition = false;
+  }
+
+  async setCombatant(combatant) {
+    this._selectedCombatant = combatant ?? null;
+    await this.refresh("combatant-selection");
   }
 
   async refresh(refreshSource = "manual") {
@@ -377,7 +383,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext(options) {
     await super._prepareContext(options);
 
-    const context = readCombatContext(this.refreshSource);
+    const context = readCombatContext(this.refreshSource, { combatant: this._selectedCombatant });
     this._context = context;
 
     if (!context) {

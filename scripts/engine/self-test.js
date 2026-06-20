@@ -53,8 +53,17 @@ import { STORAGE_KEYS } from "../constants.js";
 
 const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
 const panelSource = readFileSync(new URL("../ui/CombaterPanel.js", import.meta.url), "utf8");
+const mainSource = readFileSync(new URL("../main.js", import.meta.url), "utf8");
 assert.ok(panelSource.includes("\"◆\""), "panel action costs should use real diamond glyphs");
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
+assert.ok(panelSource.includes("setCombatant(combatant)"), "panel should expose explicit combatant selection");
+assert.ok(panelSource.includes("combatant: this._selectedCombatant"), "panel context should use selected explicit combatant");
+assert.equal(
+  mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\r\n  await openCurrent(\"combat-turn\")")
+    || mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\n  await openCurrent(\"combat-turn\")"),
+  false,
+  "combat-turn refresh should not be skipped while panel is already open and autoOpen is false",
+);
 assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
 assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
 for (const oldTabId of ["plan", "alternatives", "debug"]) {
@@ -6851,6 +6860,8 @@ try {
   globalThis.canvas.tokens.controlled = [selectedCombatant.token.object];
   const controlledContext = readCombatContext("test");
   assert.equal(controlledContext.combatant.id, "combatant-owned");
+  globalThis.canvas.tokens.controlled = [unownedCombatant.token.object];
+  assert.equal(readCombatContext("test"), null);
   globalThis.game.user.isGM = true;
   globalThis.canvas.tokens.controlled = [];
   const gmContext = readCombatContext("test", { combatant: unownedCombatant });
