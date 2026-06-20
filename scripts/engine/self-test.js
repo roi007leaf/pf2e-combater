@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
@@ -12,6 +13,9 @@ import { readSpellActions } from "../readers/spell-reader.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
 import { coverageForItems } from "../dev/coverage.js";
+import { coveredClassSlugs } from "../rules/class-tactics.js";
+import { KNOWN_SUBCLASS_SLUGS } from "../rules/class-tactics-data/index.js";
+import { displayStepEntries } from "../ui/display-steps.js";
 import {
   captureMovementOrigin,
   consumeTokenRefreshChange,
@@ -25,6 +29,8 @@ import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
+import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
+import { registerSettings, SETTINGS } from "../settings.js";
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
@@ -249,6 +255,140 @@ const noTargetBuild = buildCandidates({
   targets: undefined,
 });
 assert.equal(noTargetBuild.candidates.some((action) => ["step", "stride", "strike"].includes(action.slug)), false);
+
+const aggroDefenderTarget = {
+  id: "defender",
+  name: "Shield Guard",
+  distance: 5,
+  hpPercent: 0.95,
+  ac: 27,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [{ slug: "raise-a-shield", name: "Raise a Shield" }],
+        spell: [],
+        spellcastingEntry: [],
+        weapon: [{ name: "Shield Boss", system: { traits: { value: [] } } }],
+      },
+      system: { attributes: { hp: { value: 60, max: 60 }, ac: { value: 27 } } },
+    },
+  },
+};
+const aggroHealerTarget = {
+  id: "healer",
+  name: "Temple Healer",
+  distance: 30,
+  hpPercent: 0.9,
+  ac: 18,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [],
+        spell: [{ id: "heal", slug: "heal", name: "Heal", system: { traits: { value: ["healing"] } } }],
+        spellcastingEntry: [{ system: { prepared: { value: "prepared" }, slots: { slot1: { prepared: [{ id: "heal" }] } } } }],
+        weapon: [],
+      },
+      system: { attributes: { hp: { value: 45, max: 50 }, ac: { value: 18 } } },
+    },
+  },
+};
+const aggroCasterTarget = {
+  id: "caster",
+  name: "Battle Mage",
+  distance: 25,
+  hpPercent: 0.7,
+  ac: 16,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [],
+        spell: [{
+          slug: "fireball",
+          name: "Fireball",
+          system: { traits: { value: ["fire"] }, defense: { save: { statistic: "reflex" } } },
+        }, {
+          slug: "slow",
+          name: "Slow",
+          system: { traits: { value: ["incapacitation"] }, defense: { save: { statistic: "will" } } },
+        }],
+        spellcastingEntry: [{ system: { prepared: { value: "prepared" }, slots: { slot3: { value: 1 } } } }],
+        weapon: [],
+      },
+      system: { attributes: { hp: { value: 28, max: 40 }, ac: { value: 16 } } },
+    },
+  },
+};
+const npcAggroContext = {
+  isGM: true,
+  actor: {
+    id: "mitflit",
+    name: "Mitflit",
+    document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 10, max: 10 } } } },
+  },
+  profile: {
+    actorType: "npc",
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    skills: {},
+  },
+  token: { id: "mitflit-token", name: "Mitflit", center: { x: 0, y: 0 } },
+  targets: [aggroDefenderTarget],
+  battlefield: {
+    targets: [aggroDefenderTarget],
+    enemies: [aggroDefenderTarget, aggroHealerTarget, aggroCasterTarget],
+    allies: [],
+  },
+};
+const healerAggro = aggroProfile(npcAggroContext, aggroHealerTarget);
+assert.equal(healerAggro.roles.includes("healer"), true);
+assert.equal(healerAggro.gmOnly, true);
+assert.ok(aggroTargetValue(npcAggroContext, { role: "damage" }, "damage", aggroHealerTarget)
+  > aggroTargetValue(npcAggroContext, { role: "damage" }, "damage", aggroDefenderTarget));
+const npcAggroShot = scoreCandidate(npcAggroContext, {
+  id: "shortbow",
+  name: "Shortbow",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  range: { max: 60 },
+});
+assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
+
+const npcAggroControl = scoreCandidate(npcAggroContext, {
+  id: "slow",
+  name: "Slow",
+  slug: "slow",
+  source: "spell-inferred",
+  actionCost: 2,
+  role: "control",
+  targetingProfile: { enemy: true, maxRange: 60 },
+  saveProfile: { stat: "will" },
+});
+assert.equal(npcAggroControl.suggestedTarget.name, "Battle Mage");
+
+const playerSafeAggroShot = scoreCandidate({
+  ...npcAggroContext,
+  isGM: false,
+  profile: { ...npcAggroContext.profile, actorType: "character" },
+}, {
+  id: "shortbow",
+  name: "Shortbow",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  range: { max: 60 },
+});
+assert.equal(playerSafeAggroShot.suggestedTarget.name, "Battle Mage");
+assert.equal(playerSafeAggroShot.reasons.some((reason) => /aggro|healer|caster/i.test(reason)), false);
 
 const pressureContext = {
   profile: { hpPercent: 1, hasShield: true, conditions: { slugs: [], values: {} } },
@@ -518,6 +658,76 @@ const boundedPlans = buildTurnPlans(fighterContext, manyFreeActions);
 assert.ok(boundedPlans.length <= 256);
 assert.ok(boundedPlans.every((plan) => plan.steps.filter((step) => step.actionCost === 0).length <= 1));
 
+const bespellCandidate = {
+  id: "bespell-strikes",
+  name: "Bespell Strikes",
+  slug: "bespell-strikes",
+  actionCost: 0,
+  score: 120,
+  confidence: "high",
+  role: "setup",
+  source: "system-inferred",
+  activityProfile: {
+    includes: ["setup"],
+    damageBuff: true,
+    previousActionRequirements: ["non-cantrip-spell"],
+  },
+  gatingProfile: {
+    eventTriggerOnly: true,
+    eventTriggers: ["previous-action", "spell-cast"],
+    previousActionRequirements: ["non-cantrip-spell"],
+  },
+  setupFor: ["strike", "damage"],
+  reason: "Bespell Strikes requires a prior non-cantrip spell.",
+};
+const nonCantripSpellCandidate = {
+  id: "frostbite",
+  name: "Frostbite",
+  slug: "frostbite",
+  actionCost: 2,
+  score: 90,
+  confidence: "high",
+  source: "spell-inferred",
+  role: "save-damage",
+  rank: 1,
+  castRank: 1,
+  isCantrip: false,
+  reason: "Frostbite can damage a target.",
+};
+const cantripSpellCandidate = {
+  ...nonCantripSpellCandidate,
+  id: "electric-arc",
+  name: "Electric Arc",
+  slug: "electric-arc",
+  score: 91,
+  rank: 0,
+  castRank: 0,
+  isCantrip: true,
+};
+const bespellStrikeCandidate = {
+  id: "staff-strike",
+  name: "Staff",
+  slug: "strike",
+  actionCost: 1,
+  score: 85,
+  confidence: "high",
+  source: "strike",
+  range: { max: 5 },
+  reason: "Staff Strike.",
+};
+const bespellPlan = bestTurnPlan(fighterContext, [
+  bespellCandidate,
+  nonCantripSpellCandidate,
+  bespellStrikeCandidate,
+]);
+assert.deepEqual(bespellPlan.steps.map((step) => step.slug), ["frostbite", "bespell-strikes", "strike"]);
+assert.equal(bestTurnPlan(fighterContext, [bespellCandidate]).steps.some((step) => step.slug === "bespell-strikes"), false);
+assert.equal(
+  bestTurnPlan(fighterContext, [bespellCandidate, cantripSpellCandidate, bespellStrikeCandidate])
+    .steps.some((step) => step.slug === "bespell-strikes"),
+  false,
+);
+
 const slowedContext = {
   ...fighterContext,
   profile: {
@@ -621,6 +831,67 @@ const quickenedEffectProfile = readActorProfile({
 assert.deepEqual(quickenedEffectProfile.conditions.slugs, []);
 assert.deepEqual(quickenedEffectProfile.effects.map((effect) => effect.slug), ["quickened"]);
 assert.equal(actionBudget({ profile: quickenedEffectProfile }).quickenedActions, 1);
+
+const alchemistSubclassProfile = readActorProfile({
+  id: "alchemist-subclass-actor",
+  name: "Alchemist Subclass Actor",
+  itemTypes: {
+    class: [{ name: "Alchemist", type: "class", system: { slug: "alchemist" } }],
+    feat: [{
+      id: "field-bomber",
+      name: "Bomber",
+      type: "feat",
+      system: {
+        category: "classfeature",
+        slug: "bomber",
+        traits: { value: ["alchemist"], otherTags: ["alchemist-research-field"] },
+      },
+    }, {
+      id: "weapon-specialization",
+      name: "Weapon Specialization",
+      type: "feat",
+      system: {
+        category: "classfeature",
+        slug: "weapon-specialization",
+        traits: { value: ["alchemist"], otherTags: [] },
+      },
+    }],
+    condition: [],
+    effect: [],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(alchemistSubclassProfile.classSlugs, ["alchemist"]);
+assert.deepEqual(alchemistSubclassProfile.subclassSlugs, ["bomber"]);
+assert.equal(KNOWN_SUBCLASS_SLUGS.has("bomber"), true);
+
+const kineticistGateProfile = readActorProfile({
+  id: "kineticist-gate-actor",
+  name: "Kineticist Gate Actor",
+  itemTypes: {
+    class: [{ name: "Kineticist", type: "class", system: { slug: "kineticist" } }],
+    feat: [{
+      id: "fire-gate",
+      name: "Fire Gate",
+      type: "feat",
+      system: { category: "classfeature", slug: "fire-gate", traits: { value: [] } },
+    }],
+    condition: [],
+    effect: [],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(kineticistGateProfile.subclassSlugs, ["fire-gate"]);
 
 const quickenedEffectContext = {
   ...quickenedContext,
@@ -758,6 +1029,46 @@ const speedProfile = readActorProfile({
 });
 assert.equal(speedProfile.speed, 35);
 assert.deepEqual(speedProfile.effects, []);
+
+const perceptionProfile = readActorProfile({
+  id: "perceptive",
+  name: "Perceptive",
+  type: "character",
+  items: [],
+  itemTypes: { condition: [] },
+  system: {
+    perception: { rank: 1, mod: 9 },
+    attributes: {
+      hp: { value: 10, max: 10 },
+    },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(perceptionProfile.skills.perception, { rank: 1, mod: 9 });
+
+const npcTopLevelSkillsProfile = readActorProfile({
+  id: "npc-skills",
+  name: "NPC Skills",
+  type: "npc",
+  items: [],
+  itemTypes: { condition: [] },
+  skills: {
+    acrobatics: { rank: 1, mod: 8 },
+  },
+  perception: { rank: null, mod: 6 },
+  system: {
+    attributes: {
+      hp: { value: 10, max: 10 },
+    },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(npcTopLevelSkillsProfile.skills.acrobatics, { rank: 1, mod: 8 });
+assert.deepEqual(npcTopLevelSkillsProfile.skills.perception, { rank: null, mod: 6 });
 
 const classProfile = readActorProfile({
   id: "fighter-class-actor",
@@ -1666,6 +1977,78 @@ const activeTriggeredAction = readActionSources({
 }).find((action) => action.slug === "quick-tempered");
 assert.equal(activeTriggeredAction.available, true);
 
+const generatedTriggerContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          id: "follow-up-feint",
+          name: "Follow-Up Feint",
+          slug: "follow-up-feint",
+          type: "action",
+          actionType: "free",
+          actions: 0,
+          description: "<p><strong>Trigger</strong> Your last action was a Strike.</p><p>The target is off-guard to your next Strike.</p>",
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+};
+const blockedGeneratedTrigger = readActionSources(generatedTriggerContext)
+  .find((action) => action.slug === "follow-up-feint");
+assert.equal(blockedGeneratedTrigger.available, false);
+assert.equal(blockedGeneratedTrigger.unavailableReason, "Trigger is not active: Your last action was a Strike.");
+const activeGeneratedTrigger = readActionSources({
+  ...generatedTriggerContext,
+  triggerEvents: ["after-strike"],
+}).find((action) => action.slug === "follow-up-feint");
+assert.equal(activeGeneratedTrigger.available, true);
+
+const failedCheckTriggerContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [ {
+          id: "lucky-retry",
+          name: "Lucky Retry",
+          slug: "lucky-retry",
+          type: "action",
+          actionType: "free",
+          actions: 0,
+          description: "<p><strong>Trigger</strong> You fail a skill check.</p><p>You gain a +1 status bonus to the reroll.</p>",
+        } ],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+};
+const blockedFailedCheckTrigger = readActionSources(failedCheckTriggerContext)
+  .find((action) => action.slug === "lucky-retry");
+assert.equal(blockedFailedCheckTrigger.available, false);
+assert.equal(blockedFailedCheckTrigger.unavailableReason, "Trigger is not active: You fail a skill check.");
+const activeFailedCheckTrigger = readActionSources({
+  ...failedCheckTriggerContext,
+  triggerEvents: ["after-check-fail"],
+}).find((action) => action.slug === "lucky-retry");
+assert.equal(activeFailedCheckTrigger.available, true);
+
 const amiriContext = {
   actor: {
     id: "amiri-1",
@@ -1676,7 +2059,9 @@ const amiriContext = {
       speed: 25,
       reach: 5,
       conditions: { slugs: [], values: {} },
-      skills: {},
+      skills: {
+        acrobatics: { rank: 1, mod: 7 },
+      },
     },
     document: {
       system: {
@@ -1727,7 +2112,9 @@ const amiriContext = {
     speed: 25,
     reach: 5,
     conditions: { slugs: [], values: {} },
-    skills: {},
+    skills: {
+      acrobatics: { rank: 1, mod: 7 },
+    },
   },
   targets: [{
     id: "target-1",
@@ -1875,6 +2262,72 @@ assert.ok(
   hydraBest.steps.some((step) => ["focused-assault", "storm-of-jaws"].includes(step.slug)),
   `Hydra best plan should use a two-action activity, got ${hydraBest.summary}`,
 );
+
+const npcUtilityContext = {
+  ...hydraContext,
+  actor: {
+    ...hydraContext.actor,
+    document: {
+      system: {
+        actions: [{
+          slug: "claw",
+          type: "strike",
+          label: "Claw",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "claw",
+            system: { traits: { value: [] } },
+          },
+          roll: () => null,
+        }, {
+          slug: "pose-menacingly",
+          type: "action",
+          label: "Pose Menacingly",
+          actions: { value: 1 },
+          visible: true,
+          description: {
+            value: "<p>The monster takes an impressive pose.</p>",
+          },
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+};
+const npcUtilityBuild = buildCandidates(npcUtilityContext);
+assert.equal(npcUtilityBuild.candidates.some((candidate) => candidate.slug === "pose-menacingly"), false);
+assert.equal(npcUtilityBuild.detected.some((candidate) => candidate.slug === "pose-menacingly"), true);
+assert.equal(
+  npcUtilityBuild.rejected.some((entry) =>
+    entry.action?.slug === "pose-menacingly"
+    && entry.reason === "Low-confidence NPC utility hidden because stronger combat options exist.",
+  ),
+  true,
+);
+
+const npcOnlyUtilityBuild = buildCandidates({
+  ...npcUtilityContext,
+  actor: {
+    ...npcUtilityContext.actor,
+    document: {
+      ...npcUtilityContext.actor.document,
+      system: {
+        actions: npcUtilityContext.actor.document.system.actions.filter((action) => action.slug === "pose-menacingly"),
+      },
+    },
+  },
+  targets: [],
+  battlefield: { enemies: [], targets: [], allies: [] },
+});
+assert.equal(npcOnlyUtilityBuild.candidates.some((candidate) => candidate.slug === "pose-menacingly"), true);
 
 const hydraRecallKnowledge = readActionSources(hydraContext)
   .find((action) => action.slug === "recall-knowledge");
@@ -2027,6 +2480,56 @@ assert.equal(potionAction.role, "healing");
 const scoredPotion = scoreCandidate(potionContext, potionAction);
 assert.ok(scoredPotion.reasons.includes("Includes Interact to draw or retrieve the consumable."));
 assert.ok(scoredPotion.reasons.includes("Valeros is badly injured."));
+
+const mundaneChalk = {
+  id: "chalk",
+  name: "Chalk",
+  type: "consumable",
+  system: {
+    slug: "chalk",
+    category: "other",
+    usage: { value: "held-in-one-hand" },
+    equipped: { carryType: "worn", handsHeld: 0 },
+    quantity: 10,
+    actionType: { value: "action" },
+    traits: { value: ["common", "consumable"] },
+    description: { value: "<p>A piece of chalk used for marking surfaces.</p>" },
+  },
+};
+assert.equal(readActionCost(mundaneChalk).actionCost, null);
+const chalkContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: { actions: [] },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [mundaneChalk],
+      },
+      items: [],
+    },
+  },
+};
+assert.equal(readActionSources(chalkContext).some((action) => action.slug === "chalk"), false);
+assert.equal(buildCandidates(chalkContext).candidates.some((candidate) => candidate.slug === "chalk"), false);
+
+const poisonDisplaySteps = displayStepEntries([{
+  id: "item-giant-centipede-venom",
+  name: "Interact -> Giant Centipede Venom",
+  actionCost: 3,
+  activationActionCost: 2,
+  interactDrawCost: 1,
+  suggestedTarget: { name: "Mitflit" },
+  reason: "Giant Centipede Venom can force a fortitude save.",
+}]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.step.name), ["Interact", "Giant Centipede Venom"]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.step.actionCost), [1, 2]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.sourceIndex), [0, 0]);
+assert.equal(poisonDisplaySteps[0].step.reason, "Draw or retrieve Giant Centipede Venom.");
+assert.equal(poisonDisplaySteps[1].step.suggestedTarget.name, "Mitflit");
 
 const activatedCloak = {
   id: "cloak-of-illusions",
@@ -2390,6 +2893,18 @@ const drainBondedItemClassification = classifySystemAction({
 }, { actionCost: 0, type: "free" });
 assert.equal(drainBondedItemClassification.role, "resource-recovery");
 
+const rechargeClassification = classifySystemAction({
+  name: "Recharge Breath Weapon",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: { value: "<p>The creature recharges its breath weapon.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(rechargeClassification.role, "resource-recovery");
+assert.equal(rechargeClassification.activityProfile.npcFamily, "recharge");
+
 const runningReloadClassification = classifySystemAction({
   name: "Running Reload",
   system: {
@@ -2448,6 +2963,7 @@ const grabClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(grabClassification.role, "grab");
 assert.equal(grabClassification.activityProfile.includesGrab, true);
+assert.equal(grabClassification.activityProfile.npcFamily, "grab-rider");
 
 const constrictClassification = classifySystemAction({
   name: "Constrict",
@@ -2464,6 +2980,75 @@ assert.equal(constrictClassification.role, "save-damage");
 assert.equal(constrictClassification.saveProfile.stat, "fortitude");
 assert.equal(constrictClassification.damageProfile.formula, "1d8+4");
 assert.equal(constrictClassification.activityProfile.requiresTargetCondition, "grabbed");
+assert.equal(constrictClassification.activityProfile.npcFamily, "grab-followup");
+
+const swallowWholeClassification = classifySystemAction({
+  name: "Swallow Whole",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p>@Damage[2d6[bludgeoning]] @Check[reflex|dc:21] @Localize[PF2E.NPC.Abilities.Glossary.SwallowWhole]</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(swallowWholeClassification.role, "control");
+assert.equal(swallowWholeClassification.activityProfile.npcFamily, "swallow-whole");
+
+const gazeClassification = classifySystemAction({
+  name: "Terrifying Gaze",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: {
+      value: "<p>The monster fixes its gaze on a creature within 30 feet. The target attempts a @Check[will|dc:20] save.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(gazeClassification.role, "control");
+assert.equal(gazeClassification.activityProfile.npcFamily, "gaze");
+
+const auraClassification = classifySystemAction({
+  name: "Frightful Aura",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "defensive",
+    traits: { value: ["aura"] },
+    description: { value: "<p>Allies near the creature are bolstered by its aura.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(auraClassification.role, "buff");
+assert.equal(auraClassification.activityProfile.npcFamily, "aura");
+
+const formUpClassification = classifySystemAction({
+  name: "Form Up",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    traits: { value: ["troop"] },
+    description: { value: "<p>The troop reforms its space.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(formUpClassification.role, "mobility");
+assert.equal(formUpClassification.activityProfile.npcFamily, "troop-action");
+
+const deathBurstClassification = classifySystemAction({
+  name: "Death Throes",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: null },
+    category: "offensive",
+    description: {
+      value: "<p>When reduced to 0 Hit Points, the creature explodes. @Template[type:burst|distance:10] @Damage[2d6[fire]] @Check[reflex|dc:18|basic]</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(deathBurstClassification.role, "area-damage");
+assert.equal(deathBurstClassification.activityProfile.npcFamily, "death-trigger");
 
 const breathWeaponContext = {
   ...hydraContext,
@@ -2516,9 +3101,24 @@ const breathWeaponCandidate = buildCandidates(breathWeaponContext).candidates
   .find((candidate) => candidate.name === "Breath Weapon");
 assert.equal(breathWeaponCandidate.source, "system-inferred");
 assert.equal(breathWeaponCandidate.role, "area-damage");
+assert.equal(breathWeaponCandidate.activityProfile.npcFamily, "breath-weapon");
 assert.equal(breathWeaponCandidate.targetingProfile.area, true);
 assert.equal(breathWeaponCandidate.saveProfile.stat, "reflex");
 assert.ok(breathWeaponCandidate.score > 100);
+assert.ok(breathWeaponCandidate.reasons.includes("NPC signature area ability can catch multiple enemies."));
+const breathWeaponFallbackStrike = scoreCandidate(breathWeaponContext, {
+  id: "fallback-claw",
+  name: "Fallback Claw",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 30, increment: 30 },
+  averageDamage: 12,
+});
+assert.ok(
+  breathWeaponCandidate.score > breathWeaponFallbackStrike.score,
+  `breath weapon should beat plain Strike when it catches multiple enemies, got ${breathWeaponCandidate.score} vs ${breathWeaponFallbackStrike.score}`,
+);
 
 const trampleClassification = classifySystemAction({
   name: "Trample",
@@ -2533,6 +3133,7 @@ const trampleClassification = classifySystemAction({
 }, { actionCost: 3, type: "action" });
 assert.equal(trampleClassification.role, "mobility-attack");
 assert.equal(trampleClassification.activityProfile.strideCount, 2);
+assert.equal(trampleClassification.activityProfile.npcFamily, "trample");
 assert.equal(trampleClassification.saveProfile.stat, "reflex");
 
 const reactionContext = {
@@ -3800,6 +4401,282 @@ assert.ok(
   spellCrowdedPlans.some((plan) => plan.steps.some((step) => step.id === "staff-fallback")),
   "spell-heavy candidate pool should still keep a martial fallback plan",
 );
+const supportCrowdedPlans = buildTurnPlans(spellcasterSpellPriorityContext, [
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: `spell-crowd-${index}`,
+    name: `Spell Crowd ${index}`,
+    slug: `spell-crowd-${index}`,
+    actionCost: 1,
+    source: "spell-inferred",
+    role: "damage",
+    score: 200 - index,
+    confidence: "medium",
+  })),
+  {
+    id: "invisibility",
+    name: "Invisibility",
+    slug: "invisibility",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "stealth-defense",
+    score: 70,
+    confidence: "medium",
+  },
+]);
+assert.ok(
+  supportCrowdedPlans.some((plan) => plan.steps.some((step) => step.id === "invisibility")),
+  "spell-heavy candidate pool should still keep stealth-defense support like Invisibility",
+);
+const weakAthleticsWizardContext = {
+  ...spellcasterSpellPriorityContext,
+  profile: {
+    ...spellcasterSpellPriorityContext.profile,
+    classSlugs: ["wizard"],
+    attackModifier: 8,
+    skills: {
+      athletics: { rank: 0, mod: 1 },
+    },
+  },
+  actor: {
+    ...spellcasterSpellPriorityContext.actor,
+    profile: {
+      ...spellcasterSpellPriorityContext.profile,
+      classSlugs: ["wizard"],
+      attackModifier: 8,
+      skills: {
+        athletics: { rank: 0, mod: 1 },
+      },
+    },
+  },
+  isGM: false,
+};
+const weakAthleticsWizardCandidates = [
+  scoreCandidate(weakAthleticsWizardContext, {
+    id: "wizard-grapple",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "generic",
+    role: "control",
+    skill: "athletics",
+    targetSave: "fortitude",
+    requiresEnemyInReach: true,
+    attackTrait: true,
+  }),
+  scoreCandidate(weakAthleticsWizardContext, {
+    id: "wizard-electric-arc",
+    name: "Electric Arc",
+    slug: "electric-arc",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "save-damage",
+    damageProfile: { average: 7, type: "electricity", types: ["electricity"] },
+    saveProfile: { stat: "reflex", basic: true },
+    activityProfile: { includes: ["damage"], cantrip: true, averageDamage: 7 },
+    targetingProfile: { enemy: true, maxRange: 30 },
+  }),
+];
+const weakAthleticsWizardPlan = bestTurnPlan(weakAthleticsWizardContext, weakAthleticsWizardCandidates);
+assert.ok(
+  !weakAthleticsWizardPlan.steps.some((step) => step.slug === "grapple"),
+  `untrained wizard should not fill a spell turn with Grapple, got ${weakAthleticsWizardPlan.summary}`,
+);
+
+const skillGateTarget = {
+  id: "skill-gate-target",
+  name: "Mitflit",
+  distance: 5,
+  hpPercent: 1,
+  conditions: [],
+};
+function skillGateContext(skills, actorType = "character", target = skillGateTarget) {
+  const profile = {
+    actorType,
+    hpPercent: 1,
+    speed: 25,
+    reach: 5,
+    handsFree: 2,
+    hasShield: false,
+    conditions: { slugs: [], values: {} },
+    skills,
+  };
+  const actorDocument = {
+    id: `skill-gate-${actorType}`,
+    name: "Skill Gate Actor",
+    type: actorType,
+    system: { actions: [] },
+    itemTypes: {
+      action: [],
+      feat: [],
+      feature: [],
+      consumable: [],
+      spell: [],
+      spellcastingEntry: [],
+    },
+    items: [],
+  };
+  return {
+    actor: { id: actorDocument.id, name: actorDocument.name, document: actorDocument, profile },
+    profile,
+    token: { id: `token-${actorType}`, name: actorDocument.name, center: { x: 0, y: 0 } },
+    targets: [target],
+    battlefield: { targets: [target], enemies: [target], allies: [] },
+    isGM: false,
+  };
+}
+
+const untrainedSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 0, mod: 5 },
+  intimidation: { rank: 0, mod: 5 },
+  deception: { rank: 0, mod: 5 },
+  acrobatics: { rank: 0, mod: 5 },
+}));
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "grapple"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "trip"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "shove"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "demoralize"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "feint"), false);
+assert.ok(untrainedSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "grapple" && reason === "Requires trained Athletics.",
+));
+assert.ok(untrainedSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "demoralize" && reason === "Requires trained Intimidation.",
+));
+
+const trainedSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 1, mod: 7 },
+  intimidation: { rank: 1, mod: 7 },
+  deception: { rank: 1, mod: 7 },
+  acrobatics: { rank: 1, mod: 7 },
+}));
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "trip"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "shove"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "feint"), true);
+
+const hiddenSkillGateTarget = {
+  ...skillGateTarget,
+  id: "hidden-skill-gate-target",
+  distance: 30,
+  conditions: ["hidden"],
+};
+const untrainedPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: 0, mod: 6 },
+}, "character", hiddenSkillGateTarget));
+assert.equal(untrainedPerceptionGate.candidates.some((action) => action.slug === "seek"), false);
+assert.ok(untrainedPerceptionGate.rejected.some(({ action, reason }) =>
+  action.slug === "seek" && reason === "Requires trained Perception.",
+));
+
+const trainedPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: 1, mod: 8 },
+}, "character", hiddenSkillGateTarget));
+assert.equal(trainedPerceptionGate.candidates.some((action) => action.slug === "seek"), true);
+
+const originalGameForUntrainedSkillSetting = globalThis.game;
+const registeredSettings = [];
+try {
+  globalThis.game = {
+    settings: {
+      register: (moduleId, key, config) => registeredSettings.push({ moduleId, key, config }),
+      get: (_moduleId, key) => key === SETTINGS.hideUntrainedSkillActions ? false : undefined,
+    },
+  };
+  registerSettings();
+  const hideUntrainedSkillActionsSetting = registeredSettings.find((entry) =>
+    entry.key === SETTINGS.hideUntrainedSkillActions,
+  );
+  assert.equal(hideUntrainedSkillActionsSetting?.config?.default, true);
+  assert.equal(hideUntrainedSkillActionsSetting?.config?.scope, "world");
+
+  const visibleUntrainedPcSkillGate = buildCandidates(skillGateContext({
+    athletics: { rank: 0, mod: 5 },
+    intimidation: { rank: 0, mod: 5 },
+  }));
+  assert.equal(visibleUntrainedPcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+  assert.equal(visibleUntrainedPcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+  const visibleUntrainedNpcSkillGate = buildCandidates(skillGateContext({
+    athletics: { rank: 0, mod: 5 },
+    intimidation: { rank: 0, mod: 5 },
+  }, "npc"));
+  assert.equal(visibleUntrainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+  assert.equal(visibleUntrainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+} finally {
+  globalThis.game = originalGameForUntrainedSkillSetting;
+}
+
+const npcSkillGate = buildCandidates(skillGateContext({}, "npc"));
+assert.equal(npcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(npcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const untrainedNpcSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 0, mod: 5 },
+  intimidation: { rank: 0, mod: 5 },
+}, "npc"));
+assert.equal(untrainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), false);
+assert.equal(untrainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), false);
+assert.ok(untrainedNpcSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "grapple" && reason === "Requires trained Athletics.",
+));
+
+const trainedNpcSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 1, mod: 7 },
+  intimidation: { rank: 1, mod: 7 },
+}, "npc"));
+assert.equal(trainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(trainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const unknownNpcRankSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: null, mod: 5 },
+  intimidation: { rank: null, mod: 5 },
+}, "npc"));
+assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const unknownNpcPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: null, mod: 8 },
+}, "npc", hiddenSkillGateTarget));
+assert.equal(unknownNpcPerceptionGate.candidates.some((action) => action.slug === "seek"), true);
+
+const pf2eClassSlugs = [
+  "alchemist",
+  "animist",
+  "barbarian",
+  "bard",
+  "champion",
+  "cleric",
+  "commander",
+  "druid",
+  "exemplar",
+  "fighter",
+  "guardian",
+  "gunslinger",
+  "inventor",
+  "investigator",
+  "kineticist",
+  "magus",
+  "monk",
+  "oracle",
+  "psychic",
+  "ranger",
+  "rogue",
+  "sorcerer",
+  "summoner",
+  "swashbuckler",
+  "thaumaturge",
+  "witch",
+  "wizard",
+];
+const coveredClasses = coveredClassSlugs();
+for (const slug of pf2eClassSlugs) {
+  assert.ok(coveredClasses.includes(slug), `missing class tactic coverage for ${slug}`);
+}
+assert.ok(coveredClasses.includes("runesmith"));
+const classTacticsSource = readFileSync(new URL("../rules/class-tactics.js", import.meta.url), "utf8");
+assert.equal(classTacticsSource.includes("const CLASS_TACTICS = {"), false);
+assert.equal(classTacticsSource.includes("  alchemist: {"), false);
 
 const fighterClassTacticContext = {
   ...fighterContext,
@@ -3878,7 +4755,7 @@ assert.ok(
 );
 assert.ok(gunslingerRangedStrike.reasons.some((reason) => reason.includes("Gunslinger") && reason.includes("ranged")));
 
-function classContext(slug, { combatState = {}, target = null, allies = [] } = {}) {
+function classContext(slug, { combatState = {}, target = null, allies = [], subclassSlugs = [] } = {}) {
   const activeTarget = target ?? { ...fighterContext.targets[0], distance: 5 };
   return {
     ...fighterClassTacticContext,
@@ -3886,6 +4763,8 @@ function classContext(slug, { combatState = {}, target = null, allies = [] } = {
       ...fighterContext.profile,
       classSlug: slug,
       classSlugs: [slug],
+      subclassSlug: subclassSlugs[0] ?? null,
+      subclassSlugs,
       combatState,
     },
     targets: [activeTarget],
@@ -3924,6 +4803,98 @@ function expectReason(scored, text) {
     `expected reason containing "${text}", got ${scored.reasons.join(" | ")}`,
   );
 }
+
+expectReason(
+  scoreCandidate(classContext("alchemist", { subclassSlugs: ["bomber"] }), mergeCandidate("quick-bomber", "Quick Bomber")),
+  "Bomber field favors bombs",
+);
+expectReason(
+  scoreCandidate(classContext("alchemist", {
+    subclassSlugs: ["chirurgeon"],
+    allies: [{ id: "ally-1", name: "Ally", hpPercent: 0.45 }],
+  }), {
+    id: "healing-elixir",
+    name: "Healing Elixir",
+    slug: "healing-elixir",
+    actionCost: 1,
+    source: "item",
+    type: "consumable",
+    item: { type: "consumable", system: { traits: { value: ["alchemical", "elixir"] } } },
+    role: "healing",
+    activityProfile: { includes: ["healing"] },
+    targetingProfile: { ally: true },
+  }),
+  "Chirurgeon field favors healing",
+);
+expectReason(
+  scoreCandidate(classContext("kineticist", { subclassSlugs: ["fire-gate"] }), {
+    id: "elemental-blast-fire",
+    name: "Elemental Blast (Fire)",
+    slug: "elemental-blast",
+    actionCost: 1,
+    source: "system-inferred",
+    role: "damage",
+    traits: ["kineticist", "impulse", "fire"],
+    activityProfile: { impulse: true, includes: ["damage"] },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  }),
+  "Fire gate favors fire impulses",
+);
+expectReason(
+  scoreCandidate(classContext("ranger", {
+    subclassSlugs: ["flurry"],
+    target: { ...fighterContext.targets[0], distance: 5, effects: [{ slug: "hunted-prey" }] },
+  }), mergeCandidate("hunted-shot", "Hunted Shot")),
+  "Flurry edge favors multiple attacks",
+);
+expectReason(
+  scoreCandidate(classContext("magus", {
+    subclassSlugs: ["starlit-span"],
+    combatState: { spellstrikeCharged: true },
+    target: { ...fighterContext.targets[0], distance: 40 },
+  }), {
+    id: "ranged-spellstrike",
+    name: "Ranged Spellstrike",
+    slug: "spellstrike",
+    actionCost: 2,
+    source: "system-inferred",
+    role: "damage",
+    traits: ["magus", "ranged"],
+    activityProfile: { includes: ["spell", "strike"], includesStrike: true, spellstrike: true },
+    targetingProfile: { enemy: true, maxRange: 120 },
+  }),
+  "Starlit Span favors ranged Spellstrike",
+);
+expectReason(
+  scoreCandidate(classContext("swashbuckler", { subclassSlugs: ["gymnast"] }), mergeCandidate("grapple", "Grapple", {
+    role: "control",
+    activityProfile: { includes: ["control"], appliesCondition: "grabbed" },
+    targetingProfile: { enemy: true, reach: true },
+  })),
+  "Gymnast style favors athletics",
+);
+expectReason(
+  scoreCandidate(classContext("thaumaturge", {
+    subclassSlugs: ["weapon"],
+    target: { ...fighterContext.targets[0], distance: 5, effects: [{ slug: "exploited-vulnerability" }] },
+  }), {
+    id: "weapon-implement-strike",
+    name: "Weapon Implement Strike",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    role: "damage",
+    averageDamage: 8,
+    range: { max: 5 },
+    activityProfile: { includes: ["strike"], includesStrike: true },
+    traits: ["thaumaturge"],
+  }),
+  "Weapon implement favors Strike payoffs",
+);
+expectReason(
+  scoreCandidate(classContext("wizard", { subclassSlugs: ["staff-nexus"] }), mergeCandidate("drain-bonded-item", "Drain Bonded Item")),
+  "Staff Nexus favors staff",
+);
 
 expectReason(
   scoreCandidate(classContext("alchemist"), mergeCandidate("quick-alchemy", "Quick Alchemy")),
@@ -4286,6 +5257,90 @@ assert.ok(
   `kineticist plan should include Elemental Blast, got ${kineticistPlan.summary}`,
 );
 
+const extractElementAction = {
+  id: "extract-element",
+  name: "Extract Element",
+  slug: "extract-element",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "save-damage",
+  traits: ["kineticist", "impulse", "primal"],
+  saveProfile: { stat: "fortitude", basic: false },
+  damageProfile: { average: 10, type: "untyped", types: ["untyped"] },
+  targetingProfile: { enemy: true, maxRange: 30 },
+};
+
+function kineticistExtractContext(target, { isGM = true } = {}) {
+  const enemy = {
+    ...kineticistBlastContext.targets[0],
+    distance: 25,
+    ...target,
+  };
+  return {
+    ...kineticistBlastContext,
+    isGM,
+    targets: [enemy],
+    battlefield: {
+      allies: [],
+      enemies: [enemy],
+      targets: [],
+    },
+  };
+}
+
+const mitflitExtractContext = kineticistExtractContext({
+  id: "mitflit",
+  name: "Mitflit",
+  traits: ["fey", "gremlin"],
+  weaknesses: [{ type: "cold-iron", value: 2 }],
+  resistances: [],
+  immunities: [],
+});
+const invalidExtractElement = scoreCandidate(mitflitExtractContext, extractElementAction);
+assert.equal(invalidExtractElement.score, -999);
+assert.equal(invalidExtractElement.suggestedTarget, null);
+assert.equal(invalidExtractElement.reason, "No valid elemental target.");
+
+const fireTargetExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "fire-target",
+  name: "Fire Elemental",
+  traits: ["elemental", "fire"],
+  weaknesses: [],
+  resistances: [],
+  immunities: [],
+}), extractElementAction);
+assert.equal(fireTargetExtractElement.suggestedTarget?.name, "Fire Elemental");
+assert.ok(fireTargetExtractElement.score > -999);
+
+const fireWeaknessExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "fire-weakness-target",
+  name: "Oil Ooze",
+  traits: ["ooze"],
+  weaknesses: [{ type: "fire", value: 5 }],
+  resistances: [],
+  immunities: [],
+}), extractElementAction);
+assert.equal(fireWeaknessExtractElement.suggestedTarget?.name, "Oil Ooze");
+assert.ok(fireWeaknessExtractElement.score > -999);
+
+const hiddenWeaknessExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "hidden-fire-weakness-target",
+  name: "Unknown Creature",
+  actor: {
+    document: {
+      system: {
+        traits: { value: ["ooze"] },
+        attributes: { weaknesses: [{ type: "fire", value: 5 }] },
+      },
+    },
+  },
+  resistances: null,
+  weaknesses: null,
+  immunities: null,
+}, { isGM: false }), extractElementAction);
+assert.equal(hiddenWeaknessExtractElement.score, -999);
+assert.equal(hiddenWeaknessExtractElement.reason, "No valid elemental target.");
+
 const comboStateProfile = readActorProfile({
   id: "combo-state",
   name: "Combo State",
@@ -4469,8 +5524,64 @@ const activeAuraChannelScore = scoreCandidate({
   activityProfile: { includes: ["setup"], impulse: true },
   targetingProfile: { self: true },
 });
-assert.ok(activeAuraChannelScore.score < channelElementsScore.score);
+assert.equal(activeAuraChannelScore.score, -999);
 assert.ok(activeAuraChannelScore.reasons.includes("Kinetic aura already active; Channel Elements is redundant."));
+
+const effectAuraProfile = readActorProfile({
+  id: "kineticist-aura-actor",
+  name: "Alon",
+  itemTypes: {
+    class: [{ name: "Kineticist", type: "class", system: { slug: "kineticist" } }],
+    effect: [{ name: "Effect: Kinetic Aura", type: "effect" }],
+  },
+  items: [],
+  system: {
+    attributes: { hp: { value: 40, max: 40 } },
+    skills: {},
+    actions: [],
+  },
+});
+assert.equal(effectAuraProfile.combatState.kineticistAuraActive, true);
+const effectAuraChannelScore = scoreCandidate({
+  ...inactiveAuraKineticistContext,
+  profile: effectAuraProfile,
+}, {
+  id: "channel-elements",
+  name: "Channel Elements",
+  slug: "channel-elements",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  traits: ["kineticist", "impulse"],
+  activityProfile: { includes: ["setup"], impulse: true },
+  targetingProfile: { self: true },
+});
+assert.equal(effectAuraChannelScore.score, -999);
+
+const overflowImpulseAction = {
+  id: "blazing-wave",
+  name: "Blazing Wave",
+  slug: "blazing-wave",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "save-damage",
+  traits: ["kineticist", "impulse", "overflow", "fire"],
+  activityProfile: { includes: ["damage"], impulse: true, overflow: true },
+  targetingProfile: { enemy: true, maxRange: 30 },
+  saveProfile: { stat: "reflex", basic: true },
+  damageProfile: { average: 18, type: "fire", types: ["fire"] },
+};
+const inactiveAuraOverflowScore = scoreCandidate(inactiveAuraKineticistContext, overflowImpulseAction);
+assert.ok(channelElementsScore.score > inactiveAuraOverflowScore.score);
+assert.ok(inactiveAuraOverflowScore.reasons.includes("Impulse wants Channel Elements active first."));
+const activeAuraOverflowScore = scoreCandidate({
+  ...inactiveAuraKineticistContext,
+  profile: {
+    ...inactiveAuraKineticistContext.profile,
+    combatState: { kineticistAuraActive: true },
+  },
+}, overflowImpulseAction);
+assert.ok(activeAuraOverflowScore.reasons.includes("Overflow impulse spends the aura for a strong payoff."));
 
 const magusBaseContext = {
   ...fighterClassTacticContext,
@@ -4562,6 +5673,82 @@ const duplicateExploit = scoreCandidate(exploitedThaumaturgeContext, {
   setupFor: exploitVulnerabilityClassification.setupFor,
   traits: ["thaumaturge", "esoterica", "manipulate"],
 });
+assert.equal(duplicateExploit.score, -999);
+assert.equal(duplicateExploit.reason, "Target is already exploited.");
+
+const primaryEvTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ name: "Primary EV Target: Calder Stoneplow" }],
+};
+const primaryEvContext = {
+  ...thaumaturgeClassTacticContext,
+  targets: [primaryEvTarget],
+  battlefield: { targets: [primaryEvTarget], enemies: [primaryEvTarget], allies: [] },
+};
+const duplicatePrimaryEv = scoreCandidate(primaryEvContext, {
+  id: "exploit-vulnerability-primary",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(duplicatePrimaryEv.score, -999);
+assert.equal(duplicatePrimaryEv.reason, "Target is already exploited.");
+
+const personalAntithesisTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ name: "Personal Antithesis" }],
+};
+const duplicatePersonalAntithesis = scoreCandidate({
+  ...thaumaturgeClassTacticContext,
+  targets: [personalAntithesisTarget],
+  battlefield: { targets: [personalAntithesisTarget], enemies: [personalAntithesisTarget], allies: [] },
+}, {
+  id: "exploit-vulnerability-personal-antithesis",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(duplicatePersonalAntithesis.score, -999);
+assert.equal(duplicatePersonalAntithesis.reason, "Target is already exploited.");
+
+const unexploitedSecondTarget = {
+  id: "second-target",
+  name: "Second Target",
+  distance: 10,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetExploit = scoreCandidate({
+  ...thaumaturgeClassTacticContext,
+  targets: [primaryEvTarget],
+  battlefield: { targets: [primaryEvTarget], enemies: [primaryEvTarget, unexploitedSecondTarget], allies: [] },
+}, {
+  id: "exploit-vulnerability-retarget",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(retargetExploit.suggestedTarget?.name, "Second Target");
 const exploitedStrike = scoreCandidate(exploitedThaumaturgeContext, {
   id: "thaumaturge-strike",
   name: "Weapon Strike",
@@ -4571,8 +5758,6 @@ const exploitedStrike = scoreCandidate(exploitedThaumaturgeContext, {
   range: { max: 5 },
   averageDamage: 8,
 });
-assert.ok(exploitedStrike.score > duplicateExploit.score);
-assert.ok(duplicateExploit.reasons.includes("Target is already exploited."));
 assert.ok(exploitedStrike.reasons.includes("Exploited target makes Thaumaturge damage better."));
 
 const rangerClassTacticContext = {
@@ -4650,8 +5835,54 @@ const huntedRangerStrike = scoreCandidate(huntedRangerContext, {
   traits: ["ranger"],
 });
 assert.ok(huntedRangerStrike.score > duplicateHuntPrey.score);
-assert.ok(duplicateHuntPrey.reasons.includes("Target is already hunted prey."));
+assert.equal(duplicateHuntPrey.score, -999);
+assert.equal(duplicateHuntPrey.reason, "Target already has Hunted Prey.");
 assert.ok(huntedRangerStrike.reasons.includes("Hunted prey makes Ranger attacks better."));
+
+const secondPreyTarget = {
+  id: "second-prey",
+  name: "Second Prey",
+  distance: 40,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetHuntPrey = scoreCandidate({
+  ...huntedRangerContext,
+  battlefield: { targets: [huntedPreyTarget], enemies: [huntedPreyTarget, secondPreyTarget], allies: [] },
+}, {
+  id: "hunt-prey-retarget",
+  name: "Hunt Prey",
+  slug: "hunt-prey",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "hunted-prey" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["ranger"],
+});
+assert.equal(retargetHuntPrey.suggestedTarget?.name, "Second Prey");
+
+const wrongPreyContext = {
+  ...rangerClassTacticContext,
+  profile: {
+    ...rangerClassTacticContext.profile,
+    combatState: { huntedPreyActive: true },
+  },
+  targets: [secondPreyTarget],
+  battlefield: { targets: [secondPreyTarget], enemies: [secondPreyTarget], allies: [] },
+};
+const rangerStrikeWrongPrey = scoreCandidate(wrongPreyContext, {
+  id: "ranger-strike-wrong-prey",
+  name: "Longbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 100, increment: 100 },
+  averageDamage: 8,
+});
+assert.ok(rangerStrikeWrongPrey.reasons.includes("This target is not the hunted prey."));
+assert.equal(rangerStrikeWrongPrey.reasons.includes("Hunted prey makes Ranger attacks better."), false);
 
 const investigatorClassTacticContext = {
   ...fighterClassTacticContext,
@@ -4723,8 +5954,54 @@ const devisedInvestigatorStrike = scoreCandidate(devisedInvestigatorContext, {
   averageDamage: 8,
 });
 assert.ok(devisedInvestigatorStrike.score > duplicateDevise.score);
-assert.ok(duplicateDevise.reasons.includes("Devise a Stratagem is already active."));
+assert.equal(duplicateDevise.score, -999);
+assert.equal(duplicateDevise.reason, "Target already has Devised Stratagem.");
 assert.ok(devisedInvestigatorStrike.reasons.includes("Devised Stratagem supports this attack."));
+
+const secondDeviseTarget = {
+  id: "second-devise",
+  name: "Second Suspect",
+  distance: 20,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetDevise = scoreCandidate({
+  ...devisedInvestigatorContext,
+  battlefield: { targets: [devisedTarget], enemies: [devisedTarget, secondDeviseTarget], allies: [] },
+}, {
+  id: "devise-a-stratagem-retarget",
+  name: "Devise a Stratagem",
+  slug: "devise-a-stratagem",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "devised-stratagem" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["investigator"],
+});
+assert.equal(retargetDevise.suggestedTarget?.name, "Second Suspect");
+
+const wrongDeviseContext = {
+  ...investigatorClassTacticContext,
+  profile: {
+    ...investigatorClassTacticContext.profile,
+    combatState: { deviseStratagemActive: true },
+  },
+  targets: [secondDeviseTarget],
+  battlefield: { targets: [secondDeviseTarget], enemies: [secondDeviseTarget], allies: [] },
+};
+const investigatorStrikeWrongDevise = scoreCandidate(wrongDeviseContext, {
+  id: "investigator-strike-wrong-devise",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120, increment: 120 },
+  averageDamage: 8,
+});
+assert.ok(investigatorStrikeWrongDevise.reasons.includes("This target is not the devised target."));
+assert.equal(investigatorStrikeWrongDevise.reasons.includes("Devised Stratagem supports this attack."), false);
 
 const swashbucklerClassTacticContext = {
   ...fighterClassTacticContext,
@@ -4797,6 +6074,7 @@ assert.ok(redundantPanacheGain.reasons.includes("Panache already active; gaining
 
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;
+const previousConst = globalThis.CONST;
 try {
   const makeActor = (id, name, type = "npc") => ({
     id,
@@ -4933,6 +6211,16 @@ try {
   centipedeActor.itemTypes.condition = [];
 
   globalThis.game.user.isGM = false;
+  centipedeActor.itemTypes.effect = [{
+    id: "visible-mark",
+    name: "Visible Mark",
+    slug: "visible-mark",
+  }, {
+    id: "secret-weakness",
+    name: "Secret Weakness",
+    slug: "secret-weakness",
+    hidden: true,
+  }];
   const playerContextWithoutDefenses = readCombatContext("player-test");
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].name, "Giant Centipede");
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].ac, null);
@@ -4941,6 +6229,21 @@ try {
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].resistances, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].weaknesses, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].immunities, null);
+  assert.equal(playerContextWithoutDefenses.battlefield.targets[0].actor.document, undefined);
+  assert.equal(playerContextWithoutDefenses.battlefield.enemies[0].actor.document, undefined);
+  assert.deepEqual(
+    playerContextWithoutDefenses.battlefield.targets[0].effects.map((effect) => effect.name),
+    ["Visible Mark"],
+  );
+  centipedeActor.itemTypes.effect = [];
+
+  enemyToken.hidden = true;
+  enemyToken.document.hidden = true;
+  const playerContextWithoutHiddenEnemy = readCombatContext("player-hidden-token-test");
+  assert.equal(playerContextWithoutHiddenEnemy.battlefield.enemies.length, 0);
+  assert.equal(playerContextWithoutHiddenEnemy.battlefield.targets.length, 0);
+  enemyToken.hidden = false;
+  enemyToken.document.hidden = false;
 
   globalThis.game.user.isGM = true;
   globalThis.game.user.targets = new Set([neutralToken]);
@@ -5032,6 +6335,8 @@ try {
   );
   assert.equal(namedTokenContext.battlefield.targets[0].name, "Calder Stoneplow");
 
+  globalThis.CONST = { DOCUMENT_OWNERSHIP_LEVELS: { OWNER: "OWNER" } };
+  const expectedOwnerPermission = globalThis.CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
   const ownedActor = {
     id: "actor-owned",
     uuid: "Actor.actor-owned",
@@ -5041,7 +6346,10 @@ try {
     system: { attributes: { hp: { value: 10, max: 10 } } },
     itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [] },
     items: [],
-    testUserPermission: () => true,
+    testUserPermission: (_user, permission) => {
+      assert.equal(permission, expectedOwnerPermission);
+      return true;
+    },
   };
   const unownedActor = {
     ...ownedActor,
@@ -5094,9 +6402,34 @@ try {
   globalThis.canvas.tokens.controlled = [];
   const gmContext = readCombatContext("test", { combatant: unownedCombatant });
   assert.equal(gmContext.combatant.id, "combatant-unowned");
+
+  globalThis.game.combat.combatant = selectedCombatant;
+  selectedCombatant.token.object.x = 5;
+  selectedCombatant.token.object.document.x = 5;
+  assert.equal(markMovementActionSpent(selectedCombatant.token.object, {
+    combat: globalThis.game.combat,
+    changed: { x: 5 },
+  }), true);
+  const explicitOtherContext = readCombatContext("explicit-other-movement-test", { combatant: unownedCombatant });
+  assert.equal(explicitOtherContext.combatant.id, "combatant-unowned");
+  assert.equal(explicitOtherContext.actionsSpent.normal, 0);
+  globalThis.canvas.tokens.controlled = [unownedCombatant.token.object];
+  const controlledOtherContext = readCombatContext("controlled-other-movement-test");
+  assert.equal(controlledOtherContext.combatant.id, "combatant-unowned");
+  assert.equal(controlledOtherContext.actionsSpent.normal, 0);
+
+  const foreignCombatant = {
+    id: "combatant-foreign",
+    actor: ownedActor,
+    name: "Foreign Hero",
+    tokenId: "token-foreign",
+    token: { object: { id: "token-foreign", document: { id: "token-foreign", x: 10, y: 0, width: 1, height: 1 }, actor: ownedActor } },
+  };
+  assert.equal(readCombatContext("foreign-combatant-test", { combatant: foreignCombatant }), null);
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;
+  globalThis.CONST = previousConst;
 }
 
 const systemSpellContext = {
@@ -5112,10 +6445,19 @@ const systemSpellContext = {
             time: { value: "1" },
             traits: { value: ["cantrip"] },
             level: { value: 0 },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d4", type: "electricity" } },
             location: { value: "entry-1" },
           },
         }],
-        spellcastingEntry: [],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
       },
     },
   },
@@ -5125,6 +6467,190 @@ assert.equal(hybridSpell.name, "System Electric Arc");
 assert.equal(hybridSpell.actionCost, 1);
 assert.equal(hybridSpell.curated.role, "damage");
 assert.equal(hybridSpell.source, "spell-curated");
+assert.equal(hybridSpell.role, "save-damage");
+assert.equal(hybridSpell.saveProfile.stat, "reflex");
+assert.equal(hybridSpell.damageProfile.average, 5);
+assert.equal(hybridSpell.targetingProfile.maxRange, 30);
+
+const staleCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "stale-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "missing-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
+      },
+    },
+  },
+};
+const staleCantrip = readSpellActions(staleCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(staleCantrip.available, false);
+assert.equal(staleCantrip.unavailableReason, "Spell is not assigned to an active spellcasting entry.");
+
+const mismatchedLocationCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "mismatched-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "old-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "new-entry",
+          system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+        }],
+      },
+    },
+  },
+};
+const mismatchedLocationCantrip = readSpellActions(mismatchedLocationCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(mismatchedLocationCantrip.available, false);
+assert.equal(mismatchedLocationCantrip.spellcastingEntryId, null);
+
+const hiddenEntryCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "hidden-entry-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "hidden-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "hidden-entry",
+          visible: false,
+          system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+        }],
+      },
+    },
+  },
+};
+const hiddenEntryCantrip = readSpellActions(hiddenEntryCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(hiddenEntryCantrip.available, false);
+assert.equal(hiddenEntryCantrip.unavailableReason, "Spell is not assigned to an active spellcasting entry.");
+
+const preparedCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "spellbook-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }, {
+          id: "prepared-electric-arc",
+          name: "Electric Arc",
+          slug: "electric-arc",
+          system: {
+            slug: "electric-arc",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "electricity", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d4", type: "electricity" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "prepared-entry",
+          system: {
+            prepared: { value: "prepared" },
+            slots: { slot0: { prepared: [{ id: "prepared-electric-arc", expended: false }] } },
+          },
+        }],
+      },
+    },
+  },
+};
+const preparedCantrips = readSpellActions(preparedCantripContext);
+const spellbookFrostbite = preparedCantrips.find((spell) => spell.slug === "frostbite");
+assert.equal(spellbookFrostbite.available, false);
+assert.equal(spellbookFrostbite.unavailableReason, "Prepared spell is not available or is expended.");
+const preparedElectricArc = preparedCantrips.find((spell) => spell.slug === "electric-arc");
+assert.equal(preparedElectricArc.available, true);
+
+const itemSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "staff-breathe-fire",
+          name: "Breathe Fire",
+          slug: "breathe-fire",
+          system: {
+            slug: "breathe-fire",
+            time: { value: "2" },
+            traits: { value: ["fire", "manipulate"] },
+            level: { value: 1 },
+            range: { value: "" },
+            area: { type: "cone", value: 15 },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d6", type: "fire" } },
+            location: { value: "staff-entry", uses: { value: 3, max: 3 } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "staff-entry",
+          system: { prepared: { value: "items" }, slots: { slot1: { value: 0 } } },
+        }],
+      },
+    },
+  },
+};
+const itemSpell = readSpellActions(itemSpellContext).find((spell) => spell.slug === "breathe-fire");
+assert.equal(itemSpell.available, true);
+assert.equal(itemSpell.role, "area-damage");
 
 const multiEntrySpellContext = {
   actor: {
@@ -5171,6 +6697,23 @@ const multiEntrySpellContext = {
             defense: { save: { statistic: "reflex", basic: true } },
             damage: { "0": { formula: "6d6", type: "fire" } },
           },
+        }, {
+          id: "uuid-matched",
+          uuid: "Actor.silva.Item.invisibility",
+          sourceId: "Compendium.pf2e.spells-srd.Item.invisibility",
+          name: "Invisibility",
+          slug: "invisibility",
+          system: {
+            slug: "invisibility",
+            time: { value: "2" },
+            traits: { value: ["illusion"] },
+            level: { value: 2 },
+            location: { value: "occult-entry" },
+            range: { value: "30 feet" },
+            target: { value: "1 creature" },
+            duration: { value: "10 minutes" },
+            description: { value: "<p>The target becomes invisible and is undetected by observers.</p>" },
+          },
         }],
         spellcastingEntry: [{
           id: "arcane-entry",
@@ -5191,7 +6734,10 @@ const multiEntrySpellContext = {
           system: {
             prepared: { value: "prepared" },
             statistic: { dc: { value: 20 } },
-            slots: { slot3: { prepared: [{ id: "slot-matched", expended: false }] } },
+            slots: {
+              slot2: { prepared: [{ uuid: "Actor.silva.Item.invisibility", expended: false }] },
+              slot3: { prepared: [{ id: "slot-matched", expended: false }] },
+            },
           },
         }],
       },
@@ -5212,6 +6758,10 @@ const slotMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-sl
 assert.equal(slotMatchedSpell.spellcastingEntryId, "occult-entry");
 assert.equal(slotMatchedSpell.spellDc, 20);
 assert.equal(slotMatchedSpell.available, true);
+const uuidMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-uuid-matched");
+assert.equal(uuidMatchedSpell.spellcastingEntryId, "occult-entry");
+assert.equal(uuidMatchedSpell.available, true);
+assert.equal(uuidMatchedSpell.role, "stealth-defense");
 
 const stanceClassification = classifySystemAction({
   name: "Dragon Stance",
@@ -5257,6 +6807,37 @@ const followUpClassification = classifySystemAction({
 assert.equal(followUpClassification.role, "setup");
 assert.equal(followUpClassification.gatingProfile.eventTriggerOnly, true);
 assert.deepEqual(followUpClassification.gatingProfile.eventTriggers, ["after-strike", "previous-action"]);
+
+const bespellClassification = classifySystemAction({
+  name: "Bespell Strikes",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: 0 },
+    traits: { value: ["wizard"] },
+    description: {
+      value: "<p><strong>Requirements</strong> Your most recent action was to cast a non-cantrip spell.</p><p>Until the end of your turn, one weapon Strike deals extra damage.</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(bespellClassification.role, "setup");
+assert.equal(bespellClassification.targetingProfile.self, true);
+assert.equal(bespellClassification.gatingProfile.eventTriggerOnly, true);
+assert.deepEqual(bespellClassification.gatingProfile.previousActionRequirements, ["non-cantrip-spell"]);
+
+const failedCheckClassification = classifySystemAction({
+  name: "Lucky Retry",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: 0 },
+    traits: { value: ["fortune"] },
+    description: {
+      value: "<p><strong>Trigger</strong> You fail a skill check.</p><p>You gain a +1 status bonus to the reroll.</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(failedCheckClassification.role, "buff");
+assert.equal(failedCheckClassification.gatingProfile.eventTriggerOnly, true);
+assert.deepEqual(failedCheckClassification.gatingProfile.eventTriggers, ["after-check-fail"]);
 
 const fireballClassification = classifySpell({
   name: "Fireball",
@@ -5699,6 +7280,46 @@ const dirgeClassification = classifySpell({
 assert.equal(dirgeClassification.role, "control");
 assert.equal(dirgeClassification.activityProfile.appliesCondition, "frightened");
 assert.equal(dirgeClassification.targetingProfile.area, true);
+assert.equal(dirgeClassification.targetingProfile.selfCentered, true);
+assert.equal(dirgeClassification.targetingProfile.enemy, false);
+
+const baneClassification = classifySpell({
+  name: "Bane",
+  system: {
+    traits: { value: ["concentrate", "manipulate", "mental"] },
+    level: { value: 1 },
+    area: { type: "emanation", value: 5 },
+    target: { value: "enemies in the area" },
+    defense: { save: { statistic: "will", basic: false } },
+    duration: { value: "1 minute" },
+    description: { value: "<p>Enemies in the area must succeed at a Will save.</p>" },
+  },
+});
+assert.equal(baneClassification.role, "control");
+assert.equal(baneClassification.targetingProfile.selfCentered, true);
+assert.equal(baneClassification.targetingProfile.enemy, false);
+const baneScore = scoreCandidate({
+  ...fighterContext,
+  token: { center: { x: 0, y: 0 } },
+  battlefield: {
+    enemies: [
+      { id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } },
+      { id: "far", name: "Far Enemy", distance: 20, token: { center: { x: 400, y: 0 } } },
+    ],
+    allies: [],
+    targets: [{ id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } }],
+  },
+  targets: [{ id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } }],
+}, {
+  id: "spell-bane",
+  name: "Bane",
+  slug: "bane",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...baneClassification,
+});
+assert.equal(baneScore.suggestedTarget, null);
+assert.ok(baneScore.reasons.some((reason) => reason.includes("Bane can affect 1 enemy")));
 
 const healClassification = classifySpell({
   name: "Heal",
@@ -5726,6 +7347,65 @@ assert.equal(heroismClassification.role, "buff");
 assert.equal(heroismClassification.activityProfile.attackBuff, true);
 assert.equal(heroismClassification.targetingProfile.ally, true);
 
+const heroismScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "valeros",
+    name: "Valeros",
+    hpPercent: 1,
+    classSlug: "fighter",
+    hasStrike: true,
+  }, {
+    id: "merisiel",
+    name: "Merisiel",
+    hpPercent: 1,
+    classSlug: "rogue",
+    hasStrike: true,
+    effects: [{ slug: "heroism", name: "Spell Effect: Heroism" }],
+  }, {
+    id: "kyra",
+    name: "Kyra",
+    hpPercent: 1,
+    classSlug: "cleric",
+    hasSpellcasting: true,
+  }],
+}, {
+  id: "heroism",
+  name: "Heroism",
+  slug: "heroism",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...heroismClassification,
+});
+assert.equal(heroismScore.suggestedTarget.name, "Valeros");
+assert.ok(heroismScore.reasons[0].includes("Valeros"));
+
+const alreadyBuffedHeroismScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "valeros",
+    name: "Valeros",
+    hpPercent: 1,
+    classSlug: "fighter",
+    hasStrike: true,
+    effects: [{ slug: "heroism", name: "Spell Effect: Heroism" }],
+  }],
+}, {
+  id: "heroism",
+  name: "Heroism",
+  slug: "heroism",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "buff",
+  activityProfile: { ...heroismClassification.activityProfile, ally: true },
+  targetingProfile: { ally: true, self: false },
+});
+assert.ok(alreadyBuffedHeroismScore.reasons.some((reason) => reason.includes("already has Heroism")));
+
 const liberatingCommandClassification = classifySpell({
   name: "Liberating Command",
   system: {
@@ -5740,8 +7420,68 @@ assert.equal(liberatingCommandClassification.role, "buff");
 assert.equal(liberatingCommandClassification.activityProfile.removesCondition, true);
 assert.equal(liberatingCommandClassification.targetingProfile.ally, true);
 
+const liberatingCommandScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "grabbed-ally",
+    name: "Grabbed Ally",
+    hpPercent: 0.8,
+    conditions: { slugs: ["grabbed"] },
+  }, {
+    id: "free-ally",
+    name: "Free Ally",
+    hpPercent: 0.8,
+  }],
+}, {
+  id: "liberating-command",
+  name: "Liberating Command",
+  slug: "liberating-command",
+  actionCost: 1,
+  source: "spell-inferred",
+  ...liberatingCommandClassification,
+});
+assert.equal(liberatingCommandScore.suggestedTarget.name, "Grabbed Ally");
+
+const invisibilityClassification = classifySpell({
+  name: "Invisibility",
+  system: {
+    traits: { value: ["illusion"] },
+    level: { value: 2 },
+    range: { value: "30 feet" },
+    target: { value: "1 creature" },
+    duration: { value: "10 minutes" },
+    description: { value: "<p>The target becomes invisible and is undetected by observers.</p>" },
+  },
+});
+assert.equal(invisibilityClassification.role, "stealth-defense");
+assert.equal(invisibilityClassification.activityProfile.invisible, true);
+assert.equal(invisibilityClassification.targetingProfile.ally, true);
+const invisibilityScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "injured-rogue",
+    name: "Injured Rogue",
+    hpPercent: 0.4,
+    classSlug: "rogue",
+    hasStrike: true,
+  }],
+}, {
+  id: "invisibility",
+  name: "Invisibility",
+  slug: "invisibility",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...invisibilityClassification,
+});
+assert.equal(invisibilityScore.suggestedTarget.name, "Injured Rogue");
+assert.ok(invisibilityScore.reasons[0].includes("harder to target"));
+
 // A non-combat utility spell is not a buff, but with max-coverage it still
-// surfaces as a low-priority "utility" option rather than being dropped.
+// surfaces as a low-priority exploration option rather than being dropped.
 const utilitySpellNotBuff = classifySpell({
   name: "Detect Magic",
   system: {
@@ -5752,8 +7492,18 @@ const utilitySpellNotBuff = classifySpell({
     description: { value: "<p>You send out a pulse that registers the presence of magic.</p>" },
   },
 });
-assert.equal(utilitySpellNotBuff.role, "utility");
+assert.equal(utilitySpellNotBuff.role, "exploration-utility");
+assert.equal(utilitySpellNotBuff.activityProfile.utilitySubtype, "exploration-utility");
 assert.notEqual(utilitySpellNotBuff.role, "buff");
+const detectMagicScore = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "detect-magic",
+  name: "Detect Magic",
+  slug: "detect-magic",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...utilitySpellNotBuff,
+});
+assert.ok(detectMagicScore.score < cantripDamageScore.score);
 
 const buffActionClassification = classifySystemAction({
   name: "Inspiring Banner",
@@ -6500,6 +8250,33 @@ try {
   const scoredPlainShot = scoreCandidate(rangedRetreatContext, readActionSources(rangedRetreatContext)
     .find((action) => action.source === "strike" && action.name === "Shortbow"));
   assert.ok(scoredRetreat.score > scoredPlainShot.score, "retreat shot should outscore adjacent ranged shot");
+
+  const retreatGrapplePlans = buildTurnPlans(rangedRetreatContext, [{
+    ...retreatAction,
+    score: 80,
+  }, {
+    id: "grapple",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "generic",
+    confidence: "medium",
+    role: "control",
+    skill: "athletics",
+    requiresEnemyInReach: true,
+    attackTrait: true,
+    score: 70,
+    preferredTarget: rangedRetreatContext.battlefield.targets[0],
+    reason: "Target is not grabbed.",
+  }]);
+  assert.equal(
+    retreatGrapplePlans.some((plan) =>
+      plan.steps.some((step) => step.id === retreatAction.id)
+      && plan.steps.some((step) => step.slug === "grapple"),
+    ),
+    false,
+    "retreating out of melee for a ranged attack must not be paired with Grapple",
+  );
 } finally {
   globalThis.canvas = previousRangedRetreatCanvas;
 }
@@ -6684,7 +8461,13 @@ const inferredSpellContext = {
             location: { value: "entry-1" },
           },
         }],
-        spellcastingEntry: [],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
       },
     },
   },
@@ -6843,10 +8626,78 @@ const qualityCoverage = coverageForItems([{
   },
 }]);
 assert.equal(qualityCoverage.quality.lowConfidenceCount, 2);
-assert.equal(qualityCoverage.quality.utilityFallbackCount, 3);
+assert.equal(qualityCoverage.quality.utilityFallbackCount, 2);
 assert.equal(qualityCoverage.quality.likelyMisclassifiedBuffCount, 1);
+assert.equal(qualityCoverage.quality.likelyWrongCount, 1);
+assert.equal(qualityCoverage.quality.eventOnlyCount, 0);
+assert.equal(qualityCoverage.quality.weakCoverageCount, 3);
+assert.equal(qualityCoverage.quality.strongCoverageCount, 0);
+assert.equal(qualityCoverage.effectiveCoveragePct, 0);
 assert.equal(qualityCoverage.lowConfidence.some((entry) => entry.name === "Cryptic Clue"), true);
 assert.equal(qualityCoverage.utilityFallbacks.some((entry) => entry.name === "Seek"), true);
 assert.equal(qualityCoverage.likelyMisclassifiedBuffs[0].name, "Cryptic Clue");
+assert.equal(Array.isArray(qualityCoverage.auditBuckets.unknown), true);
+assert.equal(qualityCoverage.auditBuckets.likelyWrong[0].name, "Cryptic Clue");
+
+const eventCoverage = coverageForItems([{
+  name: "Reactive Strike",
+  type: "action",
+  system: {
+    actionType: { value: "reaction" },
+    actions: { value: null },
+    category: "offensive",
+    description: {
+      value: "<p><strong>Trigger</strong> A creature within reach uses a manipulate action. The monster makes a melee Strike.</p>",
+    },
+  },
+}]);
+assert.equal(eventCoverage.quality.eventOnlyCount, 1);
+assert.equal(eventCoverage.auditBuckets.eventOnly[0].name, "Reactive Strike");
+
+const playerUnsafeReasonScore = scoreCandidate({
+  isGM: false,
+  profile: { hp: { percent: 1 }, speed: 25, reach: 5 },
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  enemies: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  allies: [],
+}, {
+  id: "burn",
+  name: "Burn",
+  slug: "burn",
+  source: "spell-inferred",
+  role: "damage",
+  actionCost: 2,
+  targetingProfile: { enemy: true, maxRange: 60 },
+  damageProfile: { average: 10, type: "fire", types: ["fire"] },
+  reasons: [
+    "Goblin has fire weakness 5.",
+    "Reflex DC 17 vs spell DC 21.",
+    "Goblin resists fire 10.",
+  ],
+});
+assert.ok(!playerUnsafeReasonScore.reasons.some((reason) => /weakness|resists|immune|spell DC|DC \d+/i.test(reason)));
+assert.ok(!/weakness|resists|immune|spell DC|DC \d+/i.test(playerUnsafeReasonScore.reason));
+assert.equal(playerUnsafeReasonScore.reason, "Burn can damage Goblin.");
+
+const gmUnsafeReasonScore = scoreCandidate({
+  isGM: true,
+  profile: { hp: { percent: 1 }, speed: 25, reach: 5 },
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  enemies: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  allies: [],
+}, {
+  id: "burn",
+  name: "Burn",
+  slug: "burn",
+  source: "spell-inferred",
+  role: "damage",
+  actionCost: 2,
+  targetingProfile: { enemy: true, maxRange: 60 },
+  damageProfile: { average: 10, type: "fire", types: ["fire"] },
+  reasons: ["Goblin has fire weakness 5."],
+});
+assert.ok(gmUnsafeReasonScore.reasons.includes("Goblin has fire weakness 5."));
 
 console.log("PF2e Combater self-test passed");

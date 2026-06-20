@@ -5,16 +5,17 @@ import { movementActionsSpent } from "./token-refresh.js";
 const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
 
-function actorSummary(actor) {
+function actorSummary(actor, { includeDocument = true } = {}) {
   if (!actor) return null;
-  return {
+  const summary = {
     id: actor.id,
     uuid: actor.uuid,
     name: actor.name,
     img: actor.img,
-    document: actor,
     documentName: actor.documentName ?? "Actor",
   };
+  if (includeDocument) summary.document = actor;
+  return summary;
 }
 
 function tokenDisplayName(token, actor = tokenActor(token)) {
@@ -43,6 +44,19 @@ function tokenSummary(token) {
 
 function tokenActor(token) {
   return token?.actor ?? token?.document?.actor ?? null;
+}
+
+function tokenHidden(token) {
+  const document = token?.document ?? token;
+  return token?.hidden === true
+    || document?.hidden === true
+    || token?.visible === false
+    || token?.isVisible === false;
+}
+
+function canUseTokenForPlayerContext(token) {
+  if (game?.user?.isGM === true) return true;
+  return !tokenHidden(token);
 }
 
 function actorType(actor) {
@@ -248,13 +262,13 @@ function attackTargetableConditions(conditions) {
 function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
   const actor = tokenActor(token);
   const conditions = readConditions(actor);
-  const effects = readEffects(actor);
+  const effects = readEffects(actor, { includeHidden: canSeeDefenses });
   const visionerDetectionState = readVisionerDetectionState(tokenSummary(originToken), tokenSummary(token));
   return {
     id: token?.id ?? token?.document?.id,
     name: tokenDisplayName(token, actor),
     disposition: tokenDisposition(token),
-    actor: actorSummary(actor),
+    actor: actorSummary(actor, { includeDocument: canSeeDefenses }),
     token: tokenSummary(token),
     distance: measureDistance(originToken, token),
     visionerDetectionState,
@@ -355,9 +369,30 @@ function tokenInCombat(combat, token) {
     || tokenMatchesCombatant(token, combat.combatant);
 }
 
+function combatantTokenReference(combatant) {
+  return combatant?.token?.object
+    ?? combatant?.token
+    ?? combatant?.tokenDocument
+    ?? combatant?.document?.token
+    ?? { id: combatant?.tokenId, uuid: combatant?.tokenUuid };
+}
+
+function combatantInCombat(combat, combatant) {
+  if (!combatant) return false;
+  const combatants = collectionValues(combat?.combatants);
+  return combatants.some((candidate) =>
+    candidate === combatant
+      || (combatant.id !== null && combatant.id !== undefined && candidate?.id === combatant.id)
+      || (combatant.uuid !== null && combatant.uuid !== undefined && candidate?.uuid === combatant.uuid)
+      || tokenMatchesCombatant(combatantTokenReference(combatant), candidate),
+  );
+}
+
 function selectedEncounterCombatant(options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
-  if (options.combatant) return options.combatant;
+  if (options.combatant) {
+    return combatantInCombat(combat, options.combatant) ? options.combatant : null;
+  }
 
   const selectedToken = (globalThis.canvas?.tokens?.controlled ?? [])
     .find((token) => tokenInCombat(combat, token));
@@ -382,7 +417,9 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const activeTokenName = tokenDisplayName(activeToken, actor);
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
-  const tokens = placeables.filter((token) => tokenActor(token));
+  const tokens = placeables
+    .filter((token) => tokenActor(token))
+    .filter(canUseTokenForPlayerContext);
   const combatTokens = tokens.filter((token) => tokenInCombat(combat, token));
   const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
   const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
@@ -405,7 +442,7 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const targets = targetTokens
     .filter(Boolean)
     .map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
-  const movementSpent = movementActionsSpent(combat);
+  const movementSpent = movementActionsSpent({ ...combat, combatant });
 
   return {
     refreshSource,
