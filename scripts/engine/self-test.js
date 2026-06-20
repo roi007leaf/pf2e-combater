@@ -351,6 +351,32 @@ assert.equal(quickenedBuilderModel.remainingActions, 0);
 assert.equal(quickenedBuilderModel.remainingNormalActions, 0);
 assert.equal(quickenedBuilderModel.remainingTotalActions, 1);
 
+const mixedQuickenedDraftBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: {
+      conditions: { slugs: ["quickened"], values: { quickened: null } },
+      effects: [{ slug: "quickened", name: "Quickened" }],
+    },
+  },
+  candidates: [
+    { id: "strike", slug: "strike", source: "strike", name: "Strike", actionCost: 1, score: 30 },
+    { id: "aid", slug: "aid", source: "generic", name: "Aid", actionCost: 1, score: 20 },
+    { id: "heal", slug: "heal", source: "spell-inferred", name: "Heal", actionCost: 2, score: 10 },
+    { id: "power-attack", slug: "power-attack", source: "generic", name: "Power Attack", actionCost: 2, score: 5 },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "strike", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "heal", actionCost: 2 },
+    ],
+  },
+});
+assert.equal(mixedQuickenedDraftBuilderModel.actionBudget.quickenedActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.remainingNormalActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.remainingTotalActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, false);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+
 const staleBudgetBuilderModel = buildActionBuilderModel({
   context: { actionsSpent: { normal: 2, total: 2 } },
   candidates: [{ id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10 }],

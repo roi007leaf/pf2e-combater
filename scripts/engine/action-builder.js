@@ -60,9 +60,10 @@ function draftUsage(steps) {
       usage.reaction += 1;
     } else if (cost > 0) {
       usage.normal += cost;
+      if (quickenedEligible(step?.action, cost)) usage.quickenedEligibleCost += cost;
     }
     return usage;
-  }, { normal: 0, reaction: 0 });
+  }, { normal: 0, reaction: 0, quickenedEligibleCost: 0 });
 }
 
 function firstValidCost(...costs) {
@@ -234,11 +235,12 @@ export function buildActionBuilderModel({ context, candidates, plans = [], draft
   const keyedActionByKey = new Map(keyedActions.map(({ key, action }) => [key, action]));
   const resolvedDraftSteps = resolveDraftSteps(draft, keyedActionByKey, uniqueBaseKeys);
   const usage = draftUsage(resolvedDraftSteps);
-  const normalRemaining = Math.max(0, budget.normalActions - usage.normal);
-  const quickenedUsed = Math.max(0, usage.normal - budget.normalActions);
+  const quickenedUsed = Math.min(budget.quickenedActions ?? 0, usage.quickenedEligibleCost);
+  const normalUsed = usage.normal - quickenedUsed;
+  const normalRemaining = Math.max(0, budget.normalActions - normalUsed);
   const quickenedRemaining = Math.max(0, (budget.quickenedActions ?? 0) - quickenedUsed);
   const remainingNormalActions = normalRemaining;
-  const remainingTotalActions = Math.max(0, normalRemaining + quickenedRemaining);
+  const remainingTotalActions = Math.max(0, budget.normalActions + (budget.quickenedActions ?? 0) - usage.normal);
   const remainingActions = remainingNormalActions;
   const reactionPlanned = usage.reaction > 0;
   const decoratedActions = sortedKeyedActions
