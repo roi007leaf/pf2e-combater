@@ -55,7 +55,7 @@ function draftUsage(steps) {
   const usableSteps = Array.isArray(steps) ? steps : [];
   return usableSteps.reduce((usage, step) => {
     if (step?.stale) return usage;
-    const cost = firstValidCost(step?.action?.actionCost, step?.action?.cost, step?.actionCost, step?.cost);
+    const cost = draftStepCost(step);
     if (cost === "reaction") {
       usage.reaction += 1;
     } else if (cost > 0) {
@@ -64,6 +64,10 @@ function draftUsage(steps) {
     }
     return usage;
   }, { normal: 0, reaction: 0, quickenedEligibleCost: 0 });
+}
+
+function draftStepCost(step) {
+  return firstValidCost(step?.actionCost, step?.cost, step?.action?.actionCost, step?.action?.cost);
 }
 
 function firstValidCost(...costs) {
@@ -202,10 +206,13 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
   const action = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
   const stale = !action;
   const missingDestination = Boolean(action?.requiresDestination) && !step?.destination;
+  const plannedCost = draftStepCost({ ...step, action });
   return {
     ...step,
     key,
     action,
+    cost: plannedCost,
+    actionCost: plannedCost,
     stale,
     warning: stale
       ? "Action is no longer available."

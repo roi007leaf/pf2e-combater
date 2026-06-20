@@ -69,6 +69,15 @@ for (const eventHook of [
 ]) {
   assert.ok(panelTemplateSource.includes(eventHook), `panel template should expose ${eventHook}`);
 }
+for (const selectorHook of [
+  "data-open-action",
+  "data-open-draft-step",
+  "data-preview-step",
+  "data-preview-draft-step",
+]) {
+  assert.ok(panelTemplateSource.includes(selectorHook), `panel template should expose ${selectorHook}`);
+  assert.ok(panelSource.includes(selectorHook), `panel source should bind ${selectorHook}`);
+}
 assert.ok(panelTemplateSource.includes("combater-debug"), "panel template should keep GM debug foldout");
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
@@ -327,6 +336,23 @@ assert.equal(missingDraftCostBuilderModel.remainingNormalActions, 1);
 assert.equal(missingDraftCostBuilderModel.remainingTotalActions, 1);
 assert.equal(missingDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
 assert.equal(missingDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+
+const plannedDraftCostBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "reload-crossbow", slug: "reload-crossbow", name: "Reload -> Crossbow", actionCost: 1, score: 30 },
+    { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 20 },
+    { id: "power-attack", slug: "power-attack", name: "Power Attack", actionCost: 2, score: 10 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "reload-crossbow", actionCost: 2 }] },
+});
+assert.equal(plannedDraftCostBuilderModel.usage.normal, 2);
+assert.equal(plannedDraftCostBuilderModel.remainingActions, 1);
+assert.equal(plannedDraftCostBuilderModel.remainingNormalActions, 1);
+assert.equal(plannedDraftCostBuilderModel.draft.steps[0].actionCost, 2);
+assert.equal(plannedDraftCostBuilderModel.draft.steps[0].action.actionCost, 1);
+assert.equal(plannedDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
+assert.equal(plannedDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
 
 const warningBuilderModel = buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },

@@ -192,11 +192,15 @@ function decorateAction(action) {
 
 function decorateDraftStep(step, index) {
   const action = step?.action ? decorateAction(step.action) : null;
-  const display = action ?? decorateStep(step, index, index);
+  const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
+  const displaySource = action
+    ? { ...action, actionCost: plannedCost, cost: plannedCost }
+    : step;
+  const display = decorateStep(displaySource, index, index);
   const requiresDestination = isMovementAction(action ?? step);
   return {
-    ...step,
     ...display,
+    ...step,
     action,
     displayIndex: index,
     position: index + 1,
