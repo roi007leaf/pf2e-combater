@@ -365,6 +365,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._builder = null;
     this._pinnedPlanId = null;
     this._selectedCombatant = options.combatant ?? null;
+    this._onClose = typeof options.onClose === "function" ? options.onClose : null;
     this._restoredPosition = false;
   }
 
@@ -525,7 +526,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async close(options) {
     clearMovementPreview();
-    return super.close(options);
+    try {
+      return await super.close(options);
+    } finally {
+      this._onClose?.(this);
+    }
   }
 
   _setExpanded(expanded) {
@@ -748,22 +753,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
-export async function openPanelForCurrentCombatant(activePanel, refreshSource = "manual") {
+export async function openPanelForCurrentCombatant(activePanel, refreshSource = "manual", options = {}) {
   if (activePanel) {
     await activePanel.refresh?.(refreshSource);
     return activePanel;
   }
 
-  const panel = new CombaterPanel({ refreshSource });
+  const panel = new CombaterPanel({ ...options, refreshSource });
   await panel.render({ force: true });
   return panel;
 }
 
-export async function togglePanelForCurrentCombatant(activePanel, refreshSource = "manual") {
+export async function togglePanelForCurrentCombatant(activePanel, refreshSource = "manual", options = {}) {
   if (activePanel?.close) {
     await activePanel.close();
     return null;
   }
 
-  return openPanelForCurrentCombatant(null, refreshSource);
+  return openPanelForCurrentCombatant(null, refreshSource, options);
 }

@@ -58,6 +58,10 @@ assert.ok(panelSource.includes("\"◆\""), "panel action costs should use real d
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
 assert.ok(panelSource.includes("setCombatant(combatant)"), "panel should expose explicit combatant selection");
 assert.ok(panelSource.includes("combatant: this._selectedCombatant"), "panel context should use selected explicit combatant");
+assert.ok(panelSource.includes("this._onClose = typeof options.onClose === \"function\""), "panel should accept close callback");
+assert.ok(panelSource.includes("this._onClose?.(this);"), "panel close should notify owner");
+assert.ok(mainSource.includes("handlePanelClosed(panel)"), "main should clear active panel through close callback");
+assert.ok(mainSource.includes("{ onClose: handlePanelClosed }"), "main should pass close callback when opening panel");
 assert.equal(
   mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\r\n  await openCurrent(\"combat-turn\")")
     || mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\n  await openCurrent(\"combat-turn\")"),

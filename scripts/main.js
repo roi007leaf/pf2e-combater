@@ -16,9 +16,13 @@ function activeContext() {
   return activePanel?.context ?? activePanel?._context ?? null;
 }
 
+function handlePanelClosed(panel) {
+  if (activePanel === panel) activePanel = null;
+}
+
 async function openCurrent(source) {
   const { openPanelForCurrentCombatant } = await import("./ui/CombaterPanel.js");
-  activePanel = await openPanelForCurrentCombatant(activePanel, source);
+  activePanel = await openPanelForCurrentCombatant(activePanel, source, { onClose: handlePanelClosed });
 }
 
 function scheduleRefresh(source) {
@@ -47,7 +51,7 @@ Hooks.once("init", () => {
     editable: [{ key: "KeyC", modifiers: ["Alt", "Shift"] }],
     onDown: async () => {
       const { togglePanelForCurrentCombatant } = await import("./ui/CombaterPanel.js");
-      activePanel = await togglePanelForCurrentCombatant(activePanel, "keybinding");
+      activePanel = await togglePanelForCurrentCombatant(activePanel, "keybinding", { onClose: handlePanelClosed });
       return true;
     },
   });
@@ -67,8 +71,11 @@ Hooks.on("deleteCombat", (combat) => {
   if (!isActiveCombat && !isCurrentCombat) return;
   clearMovementActionSpends();
   if (activePanel) {
-    activePanel.close();
+    const panel = activePanel;
     activePanel = null;
+    panel.close().catch((error) => {
+      console.warn(`${MODULE_ID} | Close failed`, error);
+    });
   }
 });
 
