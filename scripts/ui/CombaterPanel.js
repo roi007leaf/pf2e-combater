@@ -1,6 +1,11 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 import { SETTINGS, setting } from "../settings.js";
-import { buildActionBuilderModel, actionBuilderKey, ACTION_BUILDER_TABS } from "../engine/action-builder.js";
+import {
+  buildActionBuilderModel,
+  actionBuilderKey,
+  ACTION_BUILDER_TABS,
+  requiresDestinationForAction,
+} from "../engine/action-builder.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
 import { bestTurnPlan, buildTurnPlans } from "../engine/planner.js";
@@ -108,26 +113,8 @@ function rangeLabelFor(step) {
   return Number.isFinite(max) && max > 0 ? `Ranged ${max} ft` : "Ranged";
 }
 
-function movementIncludes(action, value) {
-  return Array.isArray(action?.activityProfile?.includes)
-    && action.activityProfile.includes.map((entry) => String(entry).toLowerCase()).includes(value);
-}
-
-function isMovementAction(action) {
-  const slug = String(action?.slug ?? "").toLowerCase();
-  const source = String(action?.source ?? "").toLowerCase();
-  const role = String(action?.role ?? "").toLowerCase();
-  return action?.requiresDestination === true
-    || slug === "stride"
-    || slug === "step"
-    || source === "movement"
-    || role === "movement"
-    || movementIncludes(action, "move")
-    || Number(action?.activityProfile?.strideCount) > 0;
-}
-
 function withBuilderActionFields(action) {
-  if (!action || action.requiresDestination === true || !isMovementAction(action)) return action;
+  if (!action || action.requiresDestination === true || !requiresDestinationForAction(action)) return action;
   return { ...action, requiresDestination: true };
 }
 
@@ -186,7 +173,7 @@ function decorateAction(action) {
     ...decorated,
     favoriteTitle: action?.favorite ? "Remove favorite" : "Add favorite",
     disabledTitle: action?.disabled ? action.disabledReason : "Add to draft",
-    requiresDestination: isMovementAction(action),
+    requiresDestination: requiresDestinationForAction(action),
   };
 }
 
@@ -197,7 +184,7 @@ function decorateDraftStep(step, index) {
     ? { ...action, actionCost: plannedCost, cost: plannedCost }
     : step;
   const display = decorateStep(displaySource, index, index);
-  const requiresDestination = isMovementAction(action ?? step);
+  const requiresDestination = requiresDestinationForAction(action ?? step);
   return {
     ...display,
     ...step,
@@ -399,6 +386,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     const { candidates, rejected, detected } = buildCandidates(context);
     const builderCandidates = candidates.map(withBuilderActionFields);
+    const builderRejected = rejected.map((entry) => ({
+      ...entry,
+      action: withBuilderActionFields(entry?.action),
+    }));
     const plans = buildTurnPlans(context, builderCandidates);
     const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(context, builderCandidates);
     const draft = readDraftPlan(context);
@@ -412,6 +403,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._builder = decorateBuilder(buildActionBuilderModel({
       context,
       candidates: builderCandidates,
+      rejected: builderRejected,
       plans: plan ? [plan] : plans,
       draft,
       favorites,
@@ -573,7 +565,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     upsertDraftStep(this._context, {
       actionKey: action.key,
       actionCost: action.actionCost ?? action.cost,
-      requiresDestination: isMovementAction(action),
+      requiresDestination: requiresDestinationForAction(action),
     });
     clearMovementPreview();
     await this.render({ force: true });
@@ -617,7 +609,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       instanceId: draftStepId(),
       actionKey: this._actionKeyForStep(step),
       actionCost: step?.actionCost ?? step?.cost,
-      requiresDestination: isMovementAction(step),
+      requiresDestination: requiresDestinationForAction(step),
       ...(step?.destination ? { destination: step.destination } : {}),
     }));
     writeDraftPlan(this._context, { steps });
@@ -663,7 +655,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _showDraftMovementPreview(element) {
     const step = this._findDraftStep(element.dataset.previewDraftStep);
-    if (!step?.action || !isMovementAction(step.action)) return;
+    if (!step?.action || !requiresDestinationForAction(step.action)) return;
     showMovementPreview(this._context, {
       ...step.action,
       destination: step.destination,

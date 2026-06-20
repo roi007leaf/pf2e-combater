@@ -7,6 +7,7 @@ import {
   ACTION_BUILDER_TABS,
   actionBuilderKey,
   buildActionBuilderModel,
+  requiresDestinationForAction,
 } from "./action-builder.js";
 import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
@@ -428,6 +429,44 @@ assert.equal(unavailableDraftBuilderModel.draft.steps[0].stale, false);
 assert.equal(unavailableDraftBuilderModel.draft.steps[0].warning, "Actor is prone; move actions are unavailable.");
 assert.equal(unavailableDraftBuilderModel.draft.steps[1].stale, false);
 assert.equal(unavailableDraftBuilderModel.draft.steps[1].warning, "Reaction already planned.");
+
+const panelRejectedDraftBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    { id: "shield", slug: "shield", name: "Shield", actionCost: 1, score: 20, reason: "Defend." },
+  ],
+  rejected: [{
+    action: {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      available: false,
+      activityProfile: { includes: ["stride"], strideCount: 1 },
+    },
+    reason: "No collision-free movement path.",
+  }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "stride", actionCost: 1 }] },
+});
+assert.equal(panelRejectedDraftBuilderModel.tabs.one.all.some((action) => action.key === "stride"), false);
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].stale, false);
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].action.name, "Stride");
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].warning, "No collision-free movement path.");
+
+const standLikeMoveAction = {
+  id: "stand",
+  slug: "stand",
+  name: "Stand",
+  actionCost: 1,
+  activityProfile: { includes: ["move"], removesCondition: "prone" },
+};
+assert.equal(requiresDestinationForAction(standLikeMoveAction), false);
+const standDraftBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ ...standLikeMoveAction, requiresDestination: requiresDestinationForAction(standLikeMoveAction) }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "stand", actionCost: 1 }] },
+});
+assert.equal(standDraftBuilderModel.draft.steps[0].warning, "");
 
 const quickenedBuilderModel = buildActionBuilderModel({
   context: {

@@ -12,6 +12,7 @@ export const ACTION_BUILDER_TABS = [
 const TAB_BY_COST = new Map(ACTION_BUILDER_TABS.map((tab) => [tab.cost, tab]));
 const TAB_IDS = ACTION_BUILDER_TABS.map((tab) => tab.id);
 const QUICKENED_BUILDER_SLUGS = new Set(["strike", "stride", "step"]);
+const DESTINATION_ACTION_SLUGS = new Set(["stride", "step", "stand-stride"]);
 
 export function actionBuilderKey(action) {
   return action?.id
@@ -82,6 +83,26 @@ function quickenedEligible(action, cost) {
   return cost === 1 && (QUICKENED_BUILDER_SLUGS.has(action?.slug) || action?.source === "strike");
 }
 
+function actionIncludes(action, value) {
+  return Array.isArray(action?.activityProfile?.includes)
+    && action.activityProfile.includes.map((entry) => String(entry).toLowerCase()).includes(value);
+}
+
+export function requiresDestinationForAction(action) {
+  if (!action) return false;
+  if (action.requiresDestination === true) return true;
+
+  const slug = String(action?.slug ?? "").toLowerCase();
+  const source = String(action?.source ?? "").toLowerCase();
+  const role = String(action?.role ?? "").toLowerCase();
+  return DESTINATION_ACTION_SLUGS.has(slug)
+    || actionIncludes(action, "stride")
+    || actionIncludes(action, "step")
+    || Number(action?.activityProfile?.strideCount) > 0
+    || source === "movement"
+    || role === "movement";
+}
+
 function targetLabel(action) {
   const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target;
   const name = target?.name ?? target?.label;
@@ -91,6 +112,7 @@ function targetLabel(action) {
 function actionUnavailableReason(action) {
   return action?.disabledReason
     || action?.unavailableReason
+    || action?.rejectionReason
     || action?.reason
     || "Action is no longer available.";
 }
@@ -198,6 +220,46 @@ function assignActionKeys(actions) {
   return { keyedActions, baseKeyCounts };
 }
 
+function normalizeDraftOnlyActions(unavailableActions, rejected) {
+  return [...(unavailableActions ?? []), ...(rejected ?? [])]
+    .map((entry) => {
+      const action = entry?.action ?? entry;
+      if (!action) return null;
+
+      const rejectionReason = entry?.reason;
+      const disabledReason = action.disabledReason ?? action.unavailableReason ?? rejectionReason;
+      return {
+        ...action,
+        disabled: action.disabled ?? true,
+        ...(disabledReason ? { disabledReason } : {}),
+        ...(rejectionReason ? { rejectionReason } : {}),
+      };
+    })
+    .filter(Boolean);
+}
+
+function draftResolutionMap(keyedActions, draftOnlyActions) {
+  const { keyedActions: keyedDraftOnlyActions } = assignActionKeys(draftOnlyActions);
+  const draftKeyedActions = [...keyedActions];
+  const actionByKey = new Map(keyedActions.map(({ key, action }) => [key, action]));
+
+  for (const entry of keyedDraftOnlyActions) {
+    if (actionByKey.has(entry.key)) continue;
+    draftKeyedActions.push(entry);
+    actionByKey.set(entry.key, entry.action);
+  }
+
+  const baseKeyCounts = new Map();
+  for (const { baseKey } of draftKeyedActions) {
+    baseKeyCounts.set(baseKey, (baseKeyCounts.get(baseKey) ?? 0) + 1);
+  }
+  const uniqueBaseKeys = new Map(draftKeyedActions
+    .filter(({ baseKey }) => baseKeyCounts.get(baseKey) === 1)
+    .map(({ key, baseKey }) => [baseKey, key]));
+
+  return { actionByKey, uniqueBaseKeys };
+}
+
 function emptyTabs() {
   return Object.fromEntries(TAB_IDS.map((id) => [
     id,
@@ -214,7 +276,7 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
   const key = step?.actionKey ?? step?.key ?? actionBuilderKey(step);
   const action = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
   const stale = !action;
-  const missingDestination = Boolean(action?.requiresDestination) && !step?.destination;
+  const missingDestination = requiresDestinationForAction(action) && !step?.destination;
   const unavailableWarning = action?.availabilityWarning || (action?.available === false ? actionUnavailableReason(action) : "");
   const plannedCost = draftStepCost({ ...step, action });
   return {
@@ -236,21 +298,27 @@ function resolveDraftSteps(draft, actionByKey, uniqueBaseKeys) {
     : [];
 }
 
-export function buildActionBuilderModel({ context, candidates, plans = [], draft, favorites = new Set() }) {
+export function buildActionBuilderModel({
+  context,
+  candidates,
+  unavailableActions = [],
+  rejected = [],
+  plans = [],
+  draft,
+  favorites = new Set(),
+}) {
   const budget = actionBudget(context);
   const tabs = emptyTabs();
   const favoriteSet = favorites instanceof Set ? favorites : new Set(favorites ?? []);
+  const draftOnlyActions = normalizeDraftOnlyActions(unavailableActions, rejected);
   const { keyedActions, baseKeyCounts } = assignActionKeys(candidates ?? []);
   const sortedKeyedActions = [...keyedActions].toSorted((left, right) => {
     const scoreDelta = scoreValue(right.action) - scoreValue(left.action);
     if (scoreDelta !== 0) return scoreDelta;
     return actionName(left.action).localeCompare(actionName(right.action));
   });
-  const uniqueBaseKeys = new Map(keyedActions
-    .filter(({ baseKey }) => baseKeyCounts.get(baseKey) === 1)
-    .map(({ key, baseKey }) => [baseKey, key]));
-  const keyedActionByKey = new Map(keyedActions.map(({ key, action }) => [key, action]));
-  const resolvedDraftSteps = resolveDraftSteps(draft, keyedActionByKey, uniqueBaseKeys);
+  const rawDraftResolution = draftResolutionMap(keyedActions, draftOnlyActions);
+  const resolvedDraftSteps = resolveDraftSteps(draft, rawDraftResolution.actionByKey, rawDraftResolution.uniqueBaseKeys);
   const usage = draftUsage(resolvedDraftSteps);
   const quickenedUsed = Math.min(budget.quickenedActions ?? 0, usage.quickenedEligibleCost);
   const normalUsed = usage.normal - quickenedUsed;
@@ -270,8 +338,31 @@ export function buildActionBuilderModel({ context, candidates, plans = [], draft
       quickenedRemaining,
       reactionPlanned,
     }));
+  const { keyedActions: keyedDraftOnlyActions } = assignActionKeys(draftOnlyActions);
+  const decoratedDraftOnlyActions = keyedDraftOnlyActions
+    .filter(({ key }) => !decoratedActions.some((action) => action.key === key))
+    .map(({ action, key, baseKey }) => decorateAction(action, {
+      key,
+      baseKey,
+      favorites: favoriteSet,
+      baseKeyCounts,
+      normalRemaining,
+      quickenedRemaining,
+      reactionPlanned,
+    }));
   const actionByKey = new Map(decoratedActions.map((action) => [action.key, action]));
-  const draftSteps = resolveDraftSteps(draft, actionByKey, uniqueBaseKeys);
+  for (const action of decoratedDraftOnlyActions) {
+    if (!actionByKey.has(action.key)) actionByKey.set(action.key, action);
+  }
+  const decoratedDraftResolution = draftResolutionMap(
+    decoratedActions.map((action) => ({
+      action,
+      key: action.key,
+      baseKey: action.baseKey,
+    })),
+    decoratedDraftOnlyActions,
+  );
+  const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys);
 
   for (const action of decoratedActions) {
     tabs[action.tabId].all.push(action);
