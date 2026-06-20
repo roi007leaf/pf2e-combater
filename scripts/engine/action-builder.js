@@ -88,11 +88,18 @@ function targetLabel(action) {
   return name ? `Target: ${name}` : "";
 }
 
+function actionUnavailableReason(action) {
+  return action?.disabledReason
+    || action?.unavailableReason
+    || action?.reason
+    || "Action is no longer available.";
+}
+
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
-  if (action?.available === false) {
+  if (action?.available === false || action?.disabled === true) {
     return {
       disabled: true,
-      disabledReason: action?.unavailableReason ?? "Action is not available.",
+      disabledReason: actionUnavailableReason(action),
     };
   }
 
@@ -124,6 +131,7 @@ function favoriteApplies(favorites, key, baseKey, baseKeyCounts) {
 function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned }) {
   const cost = normalizeCost(action?.actionCost ?? action?.cost);
   const tab = tabForCost(cost);
+  const availabilityWarning = action?.available === false || action?.disabled === true ? actionUnavailableReason(action) : "";
   const disabled = disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned });
   const confidence = action?.confidence ?? "low";
   return {
@@ -134,6 +142,7 @@ function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normal
     cost,
     favorite: favoriteApplies(favorites, key, baseKey, baseKeyCounts),
     ...disabled,
+    availabilityWarning,
     targetLabel: targetLabel(action),
     reason: action?.reason ?? action?.reasons?.[0] ?? "",
     confidenceLabel: confidenceLabel(confidence),
@@ -206,6 +215,7 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
   const action = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
   const stale = !action;
   const missingDestination = Boolean(action?.requiresDestination) && !step?.destination;
+  const unavailableWarning = action?.availabilityWarning || (action?.available === false ? actionUnavailableReason(action) : "");
   const plannedCost = draftStepCost({ ...step, action });
   return {
     ...step,
@@ -216,7 +226,7 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
     stale,
     warning: stale
       ? "Action is no longer available."
-      : missingDestination ? "Choose a destination." : "",
+      : unavailableWarning || (missingDestination ? "Choose a destination." : ""),
   };
 }
 

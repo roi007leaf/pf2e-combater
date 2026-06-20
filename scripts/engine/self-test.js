@@ -330,6 +330,7 @@ assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
 assert.equal(builderModel.tabs.two.all[0].key, "fireball");
 assert.equal(builderModel.tabs.two.all[0].disabled, true);
 assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
+assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
@@ -391,6 +392,42 @@ assert.equal(warningBuilderModel.draft.steps[0].stale, false);
 assert.equal(warningBuilderModel.draft.steps[0].warning, "Choose a destination.");
 assert.equal(warningBuilderModel.draft.steps[1].stale, true);
 assert.equal(warningBuilderModel.draft.steps[1].warning, "Action is no longer available.");
+
+const unavailableDraftBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      score: 10,
+      available: false,
+      unavailableReason: "Actor is prone; move actions are unavailable.",
+      requiresDestination: true,
+    },
+    {
+      id: "reactive-shield",
+      slug: "reactive-shield",
+      name: "Reactive Shield",
+      actionCost: "reaction",
+      score: 8,
+      disabled: true,
+      disabledReason: "Reaction already planned.",
+    },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "stride", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "reactive-shield", actionCost: "reaction" },
+    ],
+  },
+});
+assert.equal(unavailableDraftBuilderModel.draft.steps.length, 2);
+assert.equal(unavailableDraftBuilderModel.draft.steps[0].stale, false);
+assert.equal(unavailableDraftBuilderModel.draft.steps[0].warning, "Actor is prone; move actions are unavailable.");
+assert.equal(unavailableDraftBuilderModel.draft.steps[1].stale, false);
+assert.equal(unavailableDraftBuilderModel.draft.steps[1].warning, "Reaction already planned.");
 
 const quickenedBuilderModel = buildActionBuilderModel({
   context: {
