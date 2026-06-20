@@ -83,6 +83,16 @@ for (const eventHook of [
 ]) {
   assert.ok(panelTemplateSource.includes(eventHook), `panel template should expose ${eventHook}`);
 }
+assert.equal(
+  (panelTemplateSource.match(/data-auto-fill/g) ?? []).length,
+  1,
+  "panel template should expose one top-level Auto-fill button only",
+);
+assert.equal(
+  panelTemplateSource.includes("combater-auto-fill"),
+  false,
+  "panel template should not render an Auto-fill card in every tab",
+);
 for (const selectorHook of [
   "data-open-action",
   "data-open-draft-step",

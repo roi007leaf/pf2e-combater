@@ -50,6 +50,12 @@
     {{/if}}
 
     <div class="combater-actions">
+      {{#if builder}}
+        <button type="button" class="combater-header-autofill" data-auto-fill title="Fill draft from recommended plan" aria-label="Auto-fill draft">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>Auto-fill</span>
+        </button>
+      {{/if}}
       <button type="button" class="icon-button" data-action="refresh" title="Refresh" aria-label="Refresh">
         <i class="fa-solid fa-rotate-right"></i>
       </button>
@@ -77,35 +83,6 @@
               <span class="combater-confidence confidence-medium">{{builder.poolSummary}}</span>
             </div>
             <p>{{builder.totalSummary}}. {{builder.reactionSummary}}.</p>
-          </article>
-
-          <article class="combater-alt combater-builder-card combater-auto-fill">
-            <div class="combater-alt-head">
-              <span class="combater-alt-title">
-                <strong>Auto-fill</strong>
-              </span>
-              <button type="button" class="combater-alt-promote" data-auto-fill title="Fill draft from recommended plan">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                <span>Auto-fill</span>
-              </button>
-            </div>
-            <div class="combater-sequence small">
-              {{#each plan.steps}}
-                <button type="button" class="combater-chip {{costClass}}" data-preview-plan="auto" data-preview-step="{{index}}" data-execute-step="{{index}}" title="Show {{name}} details">
-                  <span class="combater-chip-cost" aria-label="{{costLabel}}">
-                    {{#each diamonds}}<span>{{this}}</span>{{/each}}
-                  </span>
-                  <span class="combater-chip-text">
-                    <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" title="{{rangeLabel}}"></i>{{/if}}</span>
-                    {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
-                    {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
-                  </span>
-                </button>
-              {{else}}
-                <span class="combater-empty-chip">No auto-fill plan</span>
-              {{/each}}
-            </div>
-            <p>{{plan.reason}}</p>
           </article>
 
           <article class="combater-alt combater-builder-card combater-draft">
