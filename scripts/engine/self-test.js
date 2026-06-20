@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
+import {
+  ACTION_BUILDER_TABS,
+  actionBuilderKey,
+  buildActionBuilderModel,
+} from "./action-builder.js";
 import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
@@ -253,6 +258,63 @@ try {
 assert.equal(Object.hasOwn(globalThis, "game"), hadStorageGame);
 assert.equal(Object.hasOwn(globalThis, "localStorage"), hadLocalStorage);
 assert.equal(Object.hasOwn(globalThis, "foundry"), hadStorageFoundry);
+
+const builderCandidates = [
+  { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10, reason: "Move.", confidence: "medium" },
+  { id: "fireball", slug: "fireball", name: "Fireball", actionCost: 2, score: 30, reason: "Blast.", confidence: "high" },
+  { id: "shield", slug: "shield", name: "Shield", actionCost: 1, score: 20, reason: "Defend.", confidence: "medium" },
+  { id: "wayfinder", slug: "wayfinder", name: "Wayfinder", actionCost: 0, score: 4, reason: "Free.", confidence: "low" },
+  {
+    id: "reactive-shield",
+    slug: "reactive-shield",
+    name: "Reactive Shield",
+    actionCost: "reaction",
+    score: 8,
+    reason: "React.",
+    confidence: "medium",
+  },
+];
+const builderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: builderCandidates,
+  plans: [{ id: "auto", steps: [builderCandidates[2], builderCandidates[1]], summary: "Shield -> Fireball" }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "fireball", actionCost: 2 }] },
+  favorites: new Set(["shield"]),
+});
+assert.deepEqual(ACTION_BUILDER_TABS.map((tab) => tab.id), ["one", "two", "three", "free", "reaction"]);
+assert.equal(actionBuilderKey(builderCandidates[0]), "stride");
+assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
+assert.equal(builderModel.tabs.two.all[0].key, "fireball");
+assert.equal(builderModel.tabs.two.all[0].disabled, true);
+assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
+assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
+assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
+assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const warningBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      score: 10,
+      requiresDestination: true,
+      confidence: "medium",
+    },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "stride", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "missing", actionCost: 1 },
+    ],
+  },
+});
+assert.equal(warningBuilderModel.draft.steps[0].stale, false);
+assert.equal(warningBuilderModel.draft.steps[0].warning, "Choose a destination.");
+assert.equal(warningBuilderModel.draft.steps[1].stale, true);
+assert.equal(warningBuilderModel.draft.steps[1].warning, "Action is no longer available.");
 
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
