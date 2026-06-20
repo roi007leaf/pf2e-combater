@@ -4,10 +4,15 @@ function storage() {
   return globalThis.localStorage ?? null;
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function readStoredFavorites() {
   try {
     const value = storage()?.getItem(STORAGE_KEYS.actionFavorites);
-    return value ? JSON.parse(value) : {};
+    const parsed = value ? JSON.parse(value) : {};
+    return isPlainObject(parsed) ? parsed : {};
   } catch (_error) {
     return {};
   }

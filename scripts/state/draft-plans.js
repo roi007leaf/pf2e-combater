@@ -4,10 +4,15 @@ function storage() {
   return globalThis.localStorage ?? null;
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function readStoredDrafts() {
   try {
     const value = storage()?.getItem(STORAGE_KEYS.draftPlans);
-    return value ? JSON.parse(value) : {};
+    const parsed = value ? JSON.parse(value) : {};
+    return isPlainObject(parsed) ? parsed : {};
   } catch (_error) {
     return {};
   }
@@ -57,16 +62,26 @@ export function writeDraftPlan(context, draft) {
   writeStoredDrafts(drafts);
 }
 
+function draftStepId() {
+  return globalThis.foundry?.utils?.randomID?.()
+    ?? `draft-step-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function upsertDraftStep(context, step) {
   const draft = readDraftPlan(context);
-  const stepIndex = draft.steps.findIndex((entry) => entry.instanceId === step.instanceId);
+  const normalizedStep = {
+    ...step,
+    instanceId: step?.instanceId ?? draftStepId(),
+  };
+  const stepIndex = draft.steps.findIndex((entry) => entry.instanceId === normalizedStep.instanceId);
   const nextSteps = [...draft.steps];
   if (stepIndex >= 0) {
-    nextSteps[stepIndex] = step;
+    nextSteps[stepIndex] = normalizedStep;
   } else {
-    nextSteps.push(step);
+    nextSteps.push(normalizedStep);
   }
   writeDraftPlan(context, { ...draft, steps: nextSteps });
+  return normalizedStep;
 }
 
 export function removeDraftStep(context, instanceId) {

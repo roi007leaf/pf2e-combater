@@ -43,6 +43,7 @@ import { clearMovementPreview, movementPreviewForStep, showMovementPreview } fro
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
 import { registerSettings, SETTINGS } from "../settings.js";
+import { STORAGE_KEYS } from "../constants.js";
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
@@ -176,8 +177,12 @@ assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-t
 assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-other.Item.condition" }, relevanceContext), false);
 assert.equal(documentRelevantToContext({ documentName: "Actor", id: "actor-active" }, relevanceContext), true);
 
+const hadStorageGame = Object.hasOwn(globalThis, "game");
 const previousStorageGame = globalThis.game;
+const hadLocalStorage = Object.hasOwn(globalThis, "localStorage");
 const previousLocalStorage = globalThis.localStorage;
+const hadStorageFoundry = Object.hasOwn(globalThis, "foundry");
+const previousStorageFoundry = globalThis.foundry;
 try {
   const localStore = new Map();
   globalThis.localStorage = {
@@ -203,10 +208,51 @@ try {
   assert.equal(readDraftPlan(builderContext).steps[0].actionKey, "stride");
   removeDraftStep(builderContext, "step-1");
   assert.deepEqual(readDraftPlan(builderContext).steps, []);
+
+  globalThis.foundry = { utils: { randomID: () => "generated-step-id-1" } };
+  const generatedStep = upsertDraftStep(builderContext, { actionKey: "stride", actionCost: 1 });
+  assert.equal(generatedStep.instanceId, "generated-step-id-1");
+  assert.equal(readDraftPlan(builderContext).steps[0].instanceId, "generated-step-id-1");
+  let nextGeneratedId = 2;
+  globalThis.foundry = { utils: { randomID: () => `generated-step-id-${nextGeneratedId++}` } };
+  const secondGeneratedStep = upsertDraftStep(builderContext, { actionKey: "strike", actionCost: 1 });
+  const thirdGeneratedStep = upsertDraftStep(builderContext, { actionKey: "raise-a-shield", actionCost: 1 });
+  assert.notEqual(secondGeneratedStep.instanceId, thirdGeneratedStep.instanceId);
+  assert.deepEqual(readDraftPlan(builderContext).steps.map((step) => step.actionKey), [
+    "stride",
+    "strike",
+    "raise-a-shield",
+  ]);
+
+  for (const invalidValue of ["null", "\"invalid-shape\"", "[]"]) {
+    localStore.set(STORAGE_KEYS.actionFavorites, invalidValue);
+    assert.doesNotThrow(() => toggleActionFavorite(builderContext, "strike-longsword"));
+    assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
+
+    localStore.set(STORAGE_KEYS.draftPlans, invalidValue);
+    assert.doesNotThrow(() => writeDraftPlan(builderContext, { steps: [] }));
+    assert.deepEqual(readDraftPlan(builderContext).steps, []);
+  }
 } finally {
-  globalThis.game = previousStorageGame;
-  globalThis.localStorage = previousLocalStorage;
+  if (hadStorageGame) {
+    globalThis.game = previousStorageGame;
+  } else {
+    delete globalThis.game;
+  }
+  if (hadLocalStorage) {
+    globalThis.localStorage = previousLocalStorage;
+  } else {
+    delete globalThis.localStorage;
+  }
+  if (hadStorageFoundry) {
+    globalThis.foundry = previousStorageFoundry;
+  } else {
+    delete globalThis.foundry;
+  }
 }
+assert.equal(Object.hasOwn(globalThis, "game"), hadStorageGame);
+assert.equal(Object.hasOwn(globalThis, "localStorage"), hadLocalStorage);
+assert.equal(Object.hasOwn(globalThis, "foundry"), hadStorageFoundry);
 
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
