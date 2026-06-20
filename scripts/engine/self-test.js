@@ -52,6 +52,9 @@ import { registerSettings, SETTINGS } from "../settings.js";
 import { STORAGE_KEYS } from "../constants.js";
 
 const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
+const panelSource = readFileSync(new URL("../ui/CombaterPanel.js", import.meta.url), "utf8");
+assert.ok(panelSource.includes("\"◆\""), "panel action costs should use real diamond glyphs");
+assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
 assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
 assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
 for (const oldTabId of ["plan", "alternatives", "debug"]) {

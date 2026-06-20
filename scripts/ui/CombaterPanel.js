@@ -79,7 +79,7 @@ function actionCostLabel(cost) {
 function actionDiamonds(cost) {
   if (cost === "reaction") return ["R"];
   if (cost === 0) return ["F"];
-  return Array.from({ length: Math.max(1, Math.min(3, Number(cost) || 1)) }, () => "â—†");
+  return Array.from({ length: Math.max(1, Math.min(3, Number(cost) || 1)) }, () => "◆");
 }
 
 function stepTraitSlugs(step) {
