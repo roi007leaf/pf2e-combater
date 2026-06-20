@@ -379,6 +379,19 @@ function directRouteToCenter(origin, destination, distanceFeet, gridSize, option
   return null;
 }
 
+function explicitDestination(step) {
+  const x = numeric(step?.destination?.x, NaN);
+  const y = numeric(step?.destination?.y, NaN);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function explicitDestinationReason(origin, destination, distanceFeet, options = {}) {
+  if (!pointVisible(destination, options)) return "Destination is not visible.";
+  if (movementHeuristic(origin, destination) > distanceFeet) return "Destination is beyond movement range.";
+  return "No collision-free movement path to destination.";
+}
+
 function placementForCenter(center, footprint, gridSize) {
   return {
     center,
@@ -644,6 +657,50 @@ function strideStrikePath(context, step, gridSize, options = {}) {
   return { origin, strideCount, destinationCenter: destCenter, footprint, stridePath };
 }
 
+function explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, options = {}) {
+  const destinationCenter = explicitDestination(step);
+  if (!destinationCenter) return null;
+
+  const destinationPlacement = placementForCenter(destinationCenter, footprint, gridSize);
+  const destinationMarker = xMarkerForPlacement(destinationPlacement);
+  const route = directRouteToCenter(origin, destinationCenter, distanceFeet, gridSize, options);
+  const destinationAvailable = Array.isArray(route)
+    && (route.length > 0 || pointKey(origin) === pointKey(destinationCenter));
+  const stridePath = destinationAvailable
+    ? [{
+      index: 1,
+      center: destinationCenter,
+      trail: route,
+      placement: destinationPlacement,
+      marker: destinationMarker,
+      color: STRIDE_COLORS[0],
+    }]
+    : [];
+
+  return {
+    enabled: true,
+    slug: step.slug,
+    explicitDestination: true,
+    origin,
+    distanceFeet,
+    footprint,
+    destinationCenter,
+    destinationPlacement,
+    destinationMarker,
+    destinationAvailable,
+    destinationIllegalReason: destinationAvailable
+      ? ""
+      : explicitDestinationReason(origin, destinationCenter, distanceFeet, options),
+    stridePath,
+    reachableCenters: [],
+    reachablePlacements: [],
+    reachableMarkers: [],
+    recommendedCenter: destinationAvailable ? destinationCenter : null,
+    recommendedPlacement: destinationAvailable ? destinationPlacement : null,
+    recommendedMarker: destinationAvailable ? destinationMarker : null,
+  };
+}
+
 export function movementPreviewForStep(context, step, options = {}) {
   const gridSize = numeric(options.gridSize, 5) || 5;
   const movementOptions = {
@@ -665,6 +722,9 @@ export function movementPreviewForStep(context, step, options = {}) {
 
   const distanceFeet = movementDistanceFeet(context, step);
   const footprint = tokenFootprint(context?.token);
+  const explicitPreview = explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, movementOptions);
+  if (explicitPreview) return explicitPreview;
+
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
   const placements = centers.map((center) => placementForCenter(center, footprint, gridSize));
   const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize);
@@ -818,6 +878,7 @@ export function showMovementPreview(context, step) {
   const sceneStep = step
     ? {
       ...step,
+      ...(step.destination ? { destination: toScene(step.destination) } : {}),
       preferredTarget: step.preferredTarget
         ? { ...step.preferredTarget, token: toSceneToken(step.preferredTarget.token) }
         : step.preferredTarget,
@@ -855,8 +916,12 @@ export function showMovementPreview(context, step) {
   if (!preview.enabled) return null;
 
   const graphics = new PIXI.Graphics();
-  if (preview.stridePath) {
+  if (preview.stridePath?.length) {
     drawStridePath(graphics, preview.origin, preview.stridePath, scale);
+  } else if (preview.explicitDestination && preview.destinationPlacement) {
+    const color = preview.destinationAvailable ? 0xe0b35a : 0xc94f4f;
+    drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.26, color, 0.8);
+    drawXMarker(graphics, preview.destinationMarker, scale, color);
   } else {
     for (const marker of preview.reachableMarkers ?? []) {
       drawPlacement(graphics, marker, scale, 0x66c78f, 0.12, 0x66c78f, 0.32);

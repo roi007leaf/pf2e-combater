@@ -45,6 +45,7 @@ import { readVisionerCoverState, readVisionerDetectionState } from "../integrati
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
+import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
 import { registerSettings, SETTINGS } from "../settings.js";
@@ -1588,6 +1589,87 @@ const wallAwareStridePreview = movementPreviewForStep({
 assert.equal(wallAwareStridePreview.enabled, true);
 assert.notDeepEqual(wallAwareStridePreview.recommendedCenter, { x: 25, y: 0 });
 assert.ok(!wallAwareStridePreview.reachableCenters.some((center) => center.x === 25 && center.y === 0));
+
+const explicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Decoy", token: { center: { x: 25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: () => false,
+  pointVisible: () => true,
+});
+assert.equal(explicitMovementPreview.enabled, true);
+assert.equal(explicitMovementPreview.destinationAvailable, true);
+assert.equal(explicitMovementPreview.destinationCenter.x, 10);
+assert.equal(explicitMovementPreview.destinationCenter.y, 0);
+assert.equal(explicitMovementPreview.recommendedCenter.x, 10);
+assert.equal(explicitMovementPreview.stridePath.length, 1);
+assert.deepEqual(explicitMovementPreview.stridePath[0].trail.map((point) => [point.x, point.y]), [[5, 0], [10, 0]]);
+
+const blockedExplicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Fallback Target", token: { center: { x: -25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: (_from, to) => to.x === 10 && to.y === 0,
+  pointVisible: () => true,
+});
+assert.equal(blockedExplicitMovementPreview.enabled, true);
+assert.equal(blockedExplicitMovementPreview.destinationAvailable, false);
+assert.equal(blockedExplicitMovementPreview.destinationCenter.x, 10);
+assert.equal(blockedExplicitMovementPreview.recommendedCenter, null);
+assert.equal(blockedExplicitMovementPreview.stridePath.length, 0);
+assert.match(blockedExplicitMovementPreview.destinationIllegalReason, /movement path/i);
+
+const previousDestinationPickerCanvas = globalThis.canvas;
+try {
+  delete globalThis.canvas;
+  assert.equal(chooseDestination({ onChoose: () => assert.fail("headless picker must not choose") }), null);
+  assert.doesNotThrow(() => cancelDestinationPicker());
+
+  let pointerHandler = null;
+  let pointerRemoved = false;
+  globalThis.canvas = {
+    grid: { size: 10 },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        pointerHandler = handler;
+      },
+      off: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        assert.equal(handler, pointerHandler);
+        pointerRemoved = true;
+        pointerHandler = null;
+      },
+    },
+  };
+  const chosenDestinations = [];
+  const picker = chooseDestination({ onChoose: (destination) => chosenDestinations.push(destination) });
+  assert.ok(picker);
+  assert.equal(typeof pointerHandler, "function");
+  pointerHandler({ global: { x: 12, y: 18 } });
+  assert.deepEqual(chosenDestinations, [{ x: 15, y: 15 }]);
+  assert.equal(pointerRemoved, true);
+  assert.equal(pointerHandler, null);
+} finally {
+  cancelDestinationPicker();
+  globalThis.canvas = previousDestinationPickerCanvas;
+}
 
 const previousWallPreviewCanvas = globalThis.canvas;
 const previousWallPreviewFoundry = globalThis.foundry;
