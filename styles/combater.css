@@ -261,13 +261,18 @@
 .pf2e-combater .combater-tabs {
   display: flex;
   gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
   border-top: 1px solid var(--combater-line);
   border-bottom: 1px solid var(--combater-line);
   padding: 0 10px;
   background: #1d2025;
+  scrollbar-width: thin;
 }
 
 .pf2e-combater .combater-tabs button {
+  flex: 1 1 72px;
+  min-width: 0;
   border: 0;
   border-bottom: 2px solid transparent;
   padding: 8px 10px 6px;
@@ -275,6 +280,7 @@
   color: var(--combater-muted);
   font-size: 12px;
   font-weight: 700;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
@@ -287,6 +293,7 @@
   max-height: min(520px, calc(100vh - 140px));
   overflow: auto;
   padding: 10px;
+  scrollbar-width: thin;
 }
 
 .pf2e-combater .combater-plan-list,
@@ -352,6 +359,7 @@
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  min-width: 0;
 }
 
 .pf2e-combater .combater-alt-step-body {
@@ -363,22 +371,31 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .pf2e-combater .combater-alt-promote {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
   padding: 3px 8px;
   border: 1px solid var(--combater-line);
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--combater-surface);
   color: var(--combater-muted);
   font-size: 10px;
   font-weight: 600;
-  white-space: nowrap;
   cursor: pointer;
+}
+
+.pf2e-combater .combater-alt-promote span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pf2e-combater .combater-alt-promote:hover,
@@ -409,7 +426,9 @@
 .pf2e-combater .combater-step-cost {
   display: inline-flex;
   gap: 1px;
-  min-width: 32px;
+  flex: 0 0 28px;
+  justify-content: center;
+  min-width: 28px;
   padding-top: 2px;
   font-size: 11px;
   font-weight: 900;
@@ -424,6 +443,124 @@
 
 .pf2e-combater .combater-run {
   flex: 0 0 auto;
+}
+
+.pf2e-combater .combater-builder-card {
+  background: linear-gradient(180deg, #272c33 0%, var(--combater-surface-raised) 100%);
+}
+
+.pf2e-combater .combater-builder-card > .combater-alt-head {
+  min-height: 24px;
+}
+
+.pf2e-combater .combater-action-pool .combater-confidence {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-auto-fill .combater-alt-head {
+  align-items: flex-start;
+}
+
+.pf2e-combater .combater-auto-fill [data-auto-fill] {
+  min-height: 26px;
+  border-color: #6d5934;
+  background: #2f281f;
+  color: var(--combater-two);
+}
+
+.pf2e-combater .combater-auto-fill [data-auto-fill]:hover,
+.pf2e-combater .combater-auto-fill [data-auto-fill]:focus-visible {
+  border-color: var(--combater-two);
+  color: var(--combater-ink);
+}
+
+.pf2e-combater .combater-draft .combater-alt-details,
+.pf2e-combater .combater-action-section .combater-alt-details {
+  gap: 6px;
+  margin-top: 7px;
+  padding-top: 7px;
+}
+
+.pf2e-combater .combater-draft-step,
+.pf2e-combater .combater-action-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+  border-radius: 6px;
+  padding: 6px;
+  background: rgb(18 20 24 / 44%);
+}
+
+.pf2e-combater .combater-draft-step {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.pf2e-combater .combater-draft-step:hover,
+.pf2e-combater .combater-action-row:hover {
+  background: rgb(121 174 232 / 9%);
+}
+
+.pf2e-combater .combater-draft-step.has-warning {
+  border-left: 2px solid var(--combater-two);
+  padding-left: 5px;
+  background: rgb(224 179 90 / 8%);
+}
+
+.pf2e-combater .combater-draft-step.has-warning .combater-target,
+.pf2e-combater .combater-draft > p:last-child {
+  color: var(--combater-two);
+}
+
+.pf2e-combater .combater-action-row.is-favorite {
+  background: rgb(224 179 90 / 7%);
+}
+
+.pf2e-combater .combater-favorite.is-active {
+  border-color: #8d6f35;
+  color: var(--combater-two);
+}
+
+.pf2e-combater .combater-action-row.is-disabled {
+  opacity: 0.58;
+}
+
+.pf2e-combater .combater-action-row.is-disabled .combater-alt-step-body h4,
+.pf2e-combater .combater-draft-step.is-disabled .combater-alt-step-body h4 {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.pf2e-combater .combater-action-row.is-disabled .combater-target {
+  color: var(--combater-three);
+}
+
+.pf2e-combater .combater-add-action:disabled,
+.pf2e-combater .combater-add-action[disabled] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pf2e-combater .combater-action-section .combater-target,
+.pf2e-combater .combater-draft-step .combater-target {
+  display: inline;
+  margin-right: 6px;
+  overflow-wrap: anywhere;
+}
+
+.pf2e-combater .combater-action-section p,
+.pf2e-combater .combater-draft-step p {
+  margin-top: 4px;
+}
+
+.pf2e-combater .combater-action-row .combater-alt-promote,
+.pf2e-combater .combater-draft-step .combater-alt-promote {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .pf2e-combater .combater-alt-head strong {
@@ -444,7 +581,7 @@
 }
 
 .pf2e-combater .combater-debug summary {
-  padding: 8px 9px;
+  padding: 6px 8px;
   color: var(--combater-ink);
   font-size: 12px;
   font-weight: 700;
@@ -455,11 +592,11 @@
 .pf2e-combater .debug-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.45fr) minmax(0, 0.4fr) minmax(0, 0.35fr);
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
   border-top: 1px solid var(--combater-line);
-  padding: 6px 9px;
+  padding: 5px 8px;
   color: var(--combater-muted);
   font-size: 11px;
   overflow-wrap: anywhere;
@@ -496,5 +633,23 @@
   .pf2e-combater .combater-portrait {
     width: 38px;
     height: 38px;
+  }
+
+  .pf2e-combater .combater-tabs button {
+    flex-basis: 64px;
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 11px;
+  }
+
+  .pf2e-combater .combater-draft-step,
+  .pf2e-combater .combater-action-row {
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .pf2e-combater .combater-step-cost {
+    flex-basis: 22px;
+    min-width: 22px;
   }
 }

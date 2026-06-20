@@ -69,7 +69,7 @@
 
       <section class="combater-body">
         <div class="combater-plan-list">
-          <article class="combater-alt">
+          <article class="combater-alt combater-builder-card combater-action-pool">
             <div class="combater-alt-head">
               <span class="combater-alt-title">
                 <strong>Action pool</strong>
@@ -79,7 +79,7 @@
             <p>{{builder.totalSummary}}. {{builder.reactionSummary}}.</p>
           </article>
 
-          <article class="combater-alt">
+          <article class="combater-alt combater-builder-card combater-auto-fill">
             <div class="combater-alt-head">
               <span class="combater-alt-title">
                 <strong>Auto-fill</strong>
@@ -108,7 +108,7 @@
             <p>{{plan.reason}}</p>
           </article>
 
-          <article class="combater-alt">
+          <article class="combater-alt combater-builder-card combater-draft">
             <div class="combater-alt-head">
               <span class="combater-alt-title">
                 <strong>Draft</strong>
@@ -117,7 +117,7 @@
             </div>
             <div class="combater-alt-details">
               {{#each builder.draft.steps}}
-                <div class="combater-alt-step" data-preview-draft-step="{{instanceId}}">
+                <div class="combater-alt-step combater-draft-step {{#if warning}}has-warning{{/if}} {{#if stale}}is-disabled{{/if}}" data-preview-draft-step="{{instanceId}}">
                   <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
                     {{#each diamonds}}<span>{{this}}</span>{{/each}}
                   </span>
@@ -153,7 +153,7 @@
           {{#each builder.tabsList}}
             {{#if active}}
               {{#each sections}}
-                <article class="combater-alt">
+                <article class="combater-alt combater-builder-card combater-action-section">
                   <div class="combater-alt-head">
                     <span class="combater-alt-title">
                       <strong>{{label}}</strong>
@@ -161,8 +161,8 @@
                   </div>
                   <div class="combater-alt-details">
                     {{#each actions}}
-                      <div class="combater-alt-step">
-                        <button type="button" class="combater-run" data-favorite-action="{{key}}" title="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
+                      <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}}">
+                        <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" title="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
                           <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
                         </button>
                         <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
@@ -178,7 +178,7 @@
                           {{#if disabledReason}}<span class="combater-target">{{disabledReason}}</span>{{/if}}
                           <p>{{reason}}</p>
                         </div>
-                        <button type="button" class="combater-run" data-add-action="{{key}}" title="{{disabledTitle}}" aria-label="Add {{name}}" {{#if disabled}}disabled{{/if}}>
+                        <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" title="{{disabledTitle}}" aria-label="Add {{name}}" {{#if disabled}}disabled{{/if}}>
                           <i class="fa-solid fa-plus"></i>
                         </button>
                       </div>
