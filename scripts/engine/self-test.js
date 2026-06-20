@@ -10,8 +10,20 @@ import { classifySpell } from "./spell-classifier.js";
 import { readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
+import {
+  favoriteKey,
+  readActionFavorites,
+  toggleActionFavorite,
+} from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
+import {
+  draftPlanKey,
+  readDraftPlan,
+  writeDraftPlan,
+  upsertDraftStep,
+  removeDraftStep,
+} from "../state/draft-plans.js";
 import { coverageForItems } from "../dev/coverage.js";
 import { coveredClassSlugs } from "../rules/class-tactics.js";
 import { KNOWN_SUBCLASS_SLUGS } from "../rules/class-tactics-data/index.js";
@@ -163,6 +175,38 @@ assert.equal(
 assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-target.Item.condition" }, relevanceContext), true);
 assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-other.Item.condition" }, relevanceContext), false);
 assert.equal(documentRelevantToContext({ documentName: "Actor", id: "actor-active" }, relevanceContext), true);
+
+const previousStorageGame = globalThis.game;
+const previousLocalStorage = globalThis.localStorage;
+try {
+  const localStore = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => localStore.has(key) ? localStore.get(key) : null,
+    setItem: (key, value) => localStore.set(key, String(value)),
+    removeItem: (key) => localStore.delete(key),
+  };
+  const builderContext = {
+    combat: { id: "combat-1", round: 2 },
+    combatant: { id: "combatant-1" },
+    actor: { uuid: "Actor.actor-1" },
+  };
+  globalThis.game = { user: { id: "user-1" } };
+  assert.equal(favoriteKey(builderContext, "strike-longsword"), "user-1|Actor.actor-1|strike-longsword");
+  assert.deepEqual(readActionFavorites(builderContext), new Set());
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], []);
+  assert.equal(draftPlanKey(builderContext), "user-1|combat-1|2|combatant-1");
+  writeDraftPlan(builderContext, { steps: [] });
+  upsertDraftStep(builderContext, { instanceId: "step-1", actionKey: "stride", actionCost: 1 });
+  assert.equal(readDraftPlan(builderContext).steps[0].actionKey, "stride");
+  removeDraftStep(builderContext, "step-1");
+  assert.deepEqual(readDraftPlan(builderContext).steps, []);
+} finally {
+  globalThis.game = previousStorageGame;
+  globalThis.localStorage = previousLocalStorage;
+}
 
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
