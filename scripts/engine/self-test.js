@@ -51,6 +51,23 @@ import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
 import { registerSettings, SETTINGS } from "../settings.js";
 import { STORAGE_KEYS } from "../constants.js";
 
+const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
+assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
+assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
+for (const oldTabId of ["plan", "alternatives", "debug"]) {
+  assert.equal(panelTemplateSource.includes(`data-tab="${oldTabId}"`), false, `panel template should not expose old ${oldTabId} tab`);
+}
+for (const eventHook of [
+  "data-add-action",
+  "data-remove-draft-step",
+  "data-favorite-action",
+  "data-auto-fill",
+  "data-choose-destination",
+]) {
+  assert.ok(panelTemplateSource.includes(eventHook), `panel template should expose ${eventHook}`);
+}
+assert.ok(panelTemplateSource.includes("combater-debug"), "panel template should keep GM debug foldout");
+
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
 

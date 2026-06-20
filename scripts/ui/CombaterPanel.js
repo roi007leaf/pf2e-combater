@@ -1,16 +1,21 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 import { SETTINGS, setting } from "../settings.js";
+import { buildActionBuilderModel, actionBuilderKey, ACTION_BUILDER_TABS } from "../engine/action-builder.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
 import { bestTurnPlan, buildTurnPlans } from "../engine/planner.js";
+import { readActionFavorites, toggleActionFavorite } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
+import { readDraftPlan, writeDraftPlan, upsertDraftStep, removeDraftStep } from "../state/draft-plans.js";
 import { clearMovementPreview, showMovementPreview } from "./movement-preview.js";
-import { selectableAlternativePlans, selectDisplayPlan } from "./plan-selection.js";
+import { displayStepEntries } from "./display-steps.js";
+import { selectDisplayPlan } from "./plan-selection.js";
+import { chooseDestination } from "./destination-picker.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
-const DEFAULT_TAB = "plan";
-const TABS = new Set(["plan", "alternatives", "debug"]);
+const DEFAULT_TAB = "one";
+const TABS = new Set(ACTION_BUILDER_TABS.map((tab) => tab.id));
 const RESET_PIN_REFRESH_SOURCES = new Set([
   "actor-update",
   "button",
@@ -74,7 +79,7 @@ function actionCostLabel(cost) {
 function actionDiamonds(cost) {
   if (cost === "reaction") return ["R"];
   if (cost === 0) return ["F"];
-  return Array.from({ length: Math.max(1, Math.min(3, Number(cost) || 1)) }, () => "◆");
+  return Array.from({ length: Math.max(1, Math.min(3, Number(cost) || 1)) }, () => "â—†");
 }
 
 function stepTraitSlugs(step) {
@@ -103,13 +108,49 @@ function rangeLabelFor(step) {
   return Number.isFinite(max) && max > 0 ? `Ranged ${max} ft` : "Ranged";
 }
 
-function decorateStep(step, index) {
-  const cost = step?.actionCost ?? 1;
-  const targetName = step?.suggestedTarget?.name ?? "";
+function movementIncludes(action, value) {
+  return Array.isArray(action?.activityProfile?.includes)
+    && action.activityProfile.includes.map((entry) => String(entry).toLowerCase()).includes(value);
+}
+
+function isMovementAction(action) {
+  const slug = String(action?.slug ?? "").toLowerCase();
+  const source = String(action?.source ?? "").toLowerCase();
+  const role = String(action?.role ?? "").toLowerCase();
+  return action?.requiresDestination === true
+    || slug === "stride"
+    || slug === "step"
+    || source === "movement"
+    || role === "movement"
+    || movementIncludes(action, "move")
+    || Number(action?.activityProfile?.strideCount) > 0;
+}
+
+function withBuilderActionFields(action) {
+  if (!action || action.requiresDestination === true || !isMovementAction(action)) return action;
+  return { ...action, requiresDestination: true };
+}
+
+function destinationLabel(destination) {
+  const x = Number(destination?.x);
+  const y = Number(destination?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return "";
+  return `Destination: ${Math.round(x)}, ${Math.round(y)}`;
+}
+
+function draftStepId() {
+  return globalThis.foundry?.utils?.randomID?.()
+    ?? `draft-step-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
+  const cost = step?.actionCost ?? step?.cost ?? 1;
+  const targetName = step?.suggestedTarget?.name ?? step?.preferredTarget?.name ?? "";
   const rangeLabel = rangeLabelFor(step);
   return {
     ...step,
-    index,
+    index: sourceIndex,
+    displayIndex,
     costClass: actionCostClass(cost),
     costLabel: actionCostLabel(cost),
     diamonds: actionDiamonds(cost),
@@ -124,14 +165,87 @@ function decorateStep(step, index) {
 
 function decoratePlan(plan, index = 0) {
   const confidence = plan?.confidence ?? "low";
+  const steps = displayStepEntries(plan?.steps)
+    .map((entry, stepIndex) => decorateStep(entry.step, stepIndex, entry.sourceIndex));
   return {
     ...plan,
     index,
     rank: index + 1,
     confidenceLabel: confidenceLabel(confidence),
     confidenceClass: String(confidence),
-    steps: (plan?.steps ?? []).map((step, stepIndex) => decorateStep(step, stepIndex)),
+    steps,
+    hasSteps: steps.length > 0,
     reason: plan?.reason ?? plan?.steps?.[0]?.reason ?? "No recommendation available.",
+  };
+}
+
+function decorateAction(action) {
+  const cost = action?.actionCost ?? action?.cost ?? 1;
+  const decorated = decorateStep(action, 0, 0);
+  return {
+    ...decorated,
+    favoriteTitle: action?.favorite ? "Remove favorite" : "Add favorite",
+    disabledTitle: action?.disabled ? action.disabledReason : "Add to draft",
+    requiresDestination: isMovementAction(action),
+  };
+}
+
+function decorateDraftStep(step, index) {
+  const action = step?.action ? decorateAction(step.action) : null;
+  const display = action ?? decorateStep(step, index, index);
+  const requiresDestination = isMovementAction(action ?? step);
+  return {
+    ...step,
+    ...display,
+    action,
+    displayIndex: index,
+    position: index + 1,
+    instanceId: step?.instanceId,
+    name: action?.name ?? step?.name ?? step?.actionKey ?? "Unknown action",
+    reason: action?.reason ?? step?.reason ?? "",
+    targetLabel: action?.targetLabel ?? "",
+    requiresDestination,
+    destinationLabel: destinationLabel(step?.destination),
+    warning: step?.warning === "Choose a destination." ? "Choose destination." : step?.warning,
+  };
+}
+
+function decorateBuilderTab(tab, activeTab) {
+  const sections = [
+    { id: "favorites", label: "Favorites", actions: tab.favorites.map(decorateAction) },
+    { id: "recommended", label: "Recommended", actions: tab.recommended.map(decorateAction) },
+    { id: "all", label: "All", actions: tab.all.map(decorateAction) },
+  ];
+  return {
+    ...tab,
+    active: tab.id === activeTab,
+    sections: sections.map((section) => ({
+      ...section,
+      hasActions: section.actions.length > 0,
+    })),
+  };
+}
+
+function decorateBuilder(builder, activeTab) {
+  if (!builder) return null;
+  const draftSteps = (builder.draft?.steps ?? []).map(decorateDraftStep);
+  const active = TABS.has(activeTab) ? activeTab : DEFAULT_TAB;
+  return {
+    ...builder,
+    tabsList: ACTION_BUILDER_TABS.map((tab) => decorateBuilderTab(builder.tabs[tab.id], active)),
+    activeTab: active,
+    activeTabLabel: ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action",
+    draft: {
+      ...(builder.draft ?? {}),
+      steps: draftSteps,
+      hasSteps: draftSteps.length > 0,
+      countLabel: draftSteps.length ? `${draftSteps.length} step${draftSteps.length === 1 ? "" : "s"}` : "Empty",
+      confidenceClass: draftSteps.length ? "medium" : "low",
+      warnings: [...new Set(draftSteps.map((step) => step.warning).filter(Boolean))],
+    },
+    poolSummary: `${builder.remainingNormalActions} normal action${builder.remainingNormalActions === 1 ? "" : "s"} left`,
+    totalSummary: `${builder.remainingTotalActions} total action${builder.remainingTotalActions === 1 ? "" : "s"} left`,
+    reactionSummary: builder.usage?.reaction ? "Reaction planned" : "Reaction open",
   };
 }
 
@@ -188,6 +302,19 @@ async function createGuidance(step, actor) {
   globalThis.ui?.notifications?.info?.(`${step?.name ?? "Recommended action"}: ${step?.reason ?? "Review recommendation."}`);
 }
 
+async function confirmReplaceDraft() {
+  const message = "Replace current draft with Auto-fill plan?";
+  const dialog = globalThis.foundry?.applications?.api?.DialogV2;
+  if (dialog?.confirm) {
+    return dialog.confirm({
+      window: { title: "Replace draft" },
+      content: `<p>${escapeHtml(message)}</p>`,
+      yes: { label: "Replace" },
+      no: { label: "Cancel" },
+    });
+  }
+  return globalThis.window?.confirm?.(message) ?? true;
+}
 
 class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
@@ -231,8 +358,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._detected = [];
     this._plans = [];
     this._plan = null;
+    this._builder = null;
     this._pinnedPlanId = null;
-    this._expandedAltId = null;
     this._restoredPosition = false;
   }
 
@@ -255,44 +382,52 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       this._detected = [];
       this._plans = [];
       this._plan = null;
+      this._builder = null;
       return this._viewContext(null);
     }
 
     const { candidates, rejected, detected } = buildCandidates(context);
-    const plans = buildTurnPlans(context, candidates);
-    const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(context, candidates);
+    const builderCandidates = candidates.map(withBuilderActionFields);
+    const plans = buildTurnPlans(context, builderCandidates);
+    const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(context, builderCandidates);
+    const draft = readDraftPlan(context);
+    const favorites = readActionFavorites(context);
 
-    this._candidates = candidates;
+    this._candidates = builderCandidates;
     this._rejected = rejected;
     this._detected = detected;
     this._plans = plans;
     this._plan = plan;
+    this._builder = decorateBuilder(buildActionBuilderModel({
+      context,
+      candidates: builderCandidates,
+      plans: plan ? [plan] : plans,
+      draft,
+      favorites,
+    }), this.activeTab);
 
     return this._viewContext(context);
   }
 
   _viewContext(context) {
     const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
-    if (!showDebug && this.activeTab === "debug") this.activeTab = DEFAULT_TAB;
-
-    const plan = decoratePlan(this._plan, 0);
-    const alternatives = selectableAlternativePlans(this._plans, this._plan)
-      .slice(0, 6)
-      .map((candidatePlan, index) => ({
-        ...decoratePlan(candidatePlan, index + 1),
-        detailsExpanded: candidatePlan?.id === this._expandedAltId,
-      }));
+    const autoFill = decoratePlan(this._builder?.autoFill ?? this._plan, 0);
+    const draftSteps = this._builder?.draft?.steps ?? [];
+    const headerSteps = draftSteps.length ? draftSteps : autoFill.steps;
+    const headerMode = draftSteps.length ? "Draft" : "Auto-fill";
 
     return {
       actor: context?.actor ?? null,
       token: context?.token ?? null,
-      plan,
-      alternatives,
+      plan: autoFill,
+      headerSteps,
+      headerMode,
+      headerSummary: draftSteps.length
+        ? `${draftSteps.length} selected step${draftSteps.length === 1 ? "" : "s"}`
+        : autoFill.summary,
+      builder: this._builder,
       expanded: this.expanded,
       activeTab: this.activeTab,
-      activeTabPlan: this.activeTab === "plan",
-      activeTabAlternatives: this.activeTab === "alternatives",
-      activeTabDebug: this.activeTab === "debug",
       showDebug,
       hasContext: Boolean(context),
       refreshSource: this.refreshSource,
@@ -326,13 +461,39 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => this._setActiveTab(button.dataset.tab));
     }
 
-    for (const button of element.querySelectorAll("[data-execute-step]")) {
-      button.addEventListener("click", () => this.executeStep(Number(button.dataset.executeStep)));
+    for (const button of element.querySelectorAll("[data-add-action]")) {
+      button.addEventListener("click", () => this._addAction(button.dataset.addAction));
     }
 
-    for (const button of element.querySelectorAll("[data-execute-alt-step]")) {
-      button.addEventListener("click", () =>
-        this.executeAltStep(button.dataset.executeAltPlan, Number(button.dataset.executeAltStep)));
+    for (const button of element.querySelectorAll("[data-remove-draft-step]")) {
+      button.addEventListener("click", () => this._removeDraftStep(button.dataset.removeDraftStep));
+    }
+
+    for (const button of element.querySelectorAll("[data-favorite-action]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._toggleFavorite(button.dataset.favoriteAction);
+      });
+    }
+
+    for (const button of element.querySelectorAll("[data-auto-fill]")) {
+      button.addEventListener("click", () => this._autoFillDraft());
+    }
+
+    for (const button of element.querySelectorAll("[data-choose-destination]")) {
+      button.addEventListener("click", () => this._chooseDestination(button.dataset.chooseDestination));
+    }
+
+    for (const button of element.querySelectorAll("[data-open-action]")) {
+      button.addEventListener("click", () => this._openBuilderAction(button.dataset.openAction));
+    }
+
+    for (const button of element.querySelectorAll("[data-open-draft-step]")) {
+      button.addEventListener("click", () => this._openDraftStep(button.dataset.openDraftStep));
+    }
+
+    for (const button of element.querySelectorAll("[data-execute-step]")) {
+      button.addEventListener("click", () => this.executeStep(Number(button.dataset.executeStep)));
     }
 
     for (const previewElement of element.querySelectorAll("[data-preview-step]")) {
@@ -341,21 +502,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       previewElement.addEventListener("pointercancel", () => clearMovementPreview());
     }
 
-    for (const promote of element.querySelectorAll("[data-promote-plan]")) {
-      promote.addEventListener("click", () => this._promotePlan(promote.dataset.promotePlan));
-    }
-
-    for (const toggle of element.querySelectorAll("[data-toggle-alt]")) {
-      toggle.addEventListener("click", (event) => {
-        if (event.target.closest("[data-promote-plan]")) return;
-        this._toggleAltDetails(toggle.dataset.toggleAlt);
-      });
-      toggle.addEventListener("keydown", (event) => {
-        if (!["Enter", " "].includes(event.key)) return;
-        if (event.target.closest("[data-promote-plan]")) return;
-        event.preventDefault();
-        this._toggleAltDetails(toggle.dataset.toggleAlt);
-      });
+    for (const previewElement of element.querySelectorAll("[data-preview-draft-step]")) {
+      previewElement.addEventListener("pointerenter", () => this._showDraftMovementPreview(previewElement));
+      previewElement.addEventListener("pointerleave", () => clearMovementPreview());
+      previewElement.addEventListener("pointercancel", () => clearMovementPreview());
     }
 
     if (readSetting(SETTINGS.rememberPanelPosition, true)) {
@@ -381,25 +531,112 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this.render({ force: true });
   }
 
-  _promotePlan(planId) {
-    if (!this._plans.some((plan) => plan?.id === planId)) return;
-    this._pinnedPlanId = planId;
-    this.activeTab = DEFAULT_TAB;
-    writePanelState({ activeTab: DEFAULT_TAB });
-    clearMovementPreview();
-    this.render({ force: true });
+  _findBuilderAction(actionKey) {
+    if (!actionKey) return null;
+    for (const tab of Object.values(this._builder?.tabs ?? {})) {
+      const action = tab.all.find((entry) => entry.key === actionKey);
+      if (action) return action;
+    }
+    return null;
   }
 
-  _toggleAltDetails(planId) {
-    if (!planId) return;
-    this._expandedAltId = this._expandedAltId === planId ? null : planId;
+  _findDraftStep(instanceId) {
+    return this._builder?.draft?.steps?.find((step) => step.instanceId === instanceId) ?? null;
+  }
+
+  _draftHasManualSteps() {
+    return (this._builder?.draft?.steps?.length ?? 0) > 0;
+  }
+
+  async _addAction(actionKey) {
+    const action = this._findBuilderAction(actionKey);
+    if (!this._context || !action || action.disabled) {
+      if (action?.disabledReason) globalThis.ui?.notifications?.warn?.(action.disabledReason);
+      return;
+    }
+
+    upsertDraftStep(this._context, {
+      actionKey: action.key,
+      actionCost: action.actionCost ?? action.cost,
+      requiresDestination: isMovementAction(action),
+    });
     clearMovementPreview();
-    this.render({ force: true });
+    await this.render({ force: true });
+  }
+
+  async _removeDraftStep(instanceId) {
+    if (!this._context || !instanceId) return;
+    removeDraftStep(this._context, instanceId);
+    clearMovementPreview();
+    await this.render({ force: true });
+  }
+
+  async _toggleFavorite(actionKey) {
+    if (!this._context || !actionKey) return;
+    toggleActionFavorite(this._context, actionKey);
+    await this.render({ force: true });
+  }
+
+  _actionKeyForStep(step) {
+    const key = actionBuilderKey(step);
+    const direct = this._findBuilderAction(key);
+    if (direct) return direct.key;
+
+    for (const tab of Object.values(this._builder?.tabs ?? {})) {
+      const action = tab.all.find((candidate) =>
+        candidate.baseKey === key
+        || candidate.slug === step?.slug
+        || candidate.id === step?.id
+        || candidate.item?.uuid === step?.item?.uuid);
+      if (action) return action.key;
+    }
+    return key;
+  }
+
+  async _autoFillDraft() {
+    const autoFill = this._builder?.autoFill;
+    if (!this._context || !autoFill?.steps?.length) return;
+    if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
+
+    const steps = autoFill.steps.map((step) => ({
+      instanceId: draftStepId(),
+      actionKey: this._actionKeyForStep(step),
+      actionCost: step?.actionCost ?? step?.cost,
+      requiresDestination: isMovementAction(step),
+      ...(step?.destination ? { destination: step.destination } : {}),
+    }));
+    writeDraftPlan(this._context, { steps });
+    clearMovementPreview();
+    await this.render({ force: true });
+  }
+
+  _chooseDestination(instanceId) {
+    const step = this._findDraftStep(instanceId);
+    if (!this._context || !step) return;
+
+    const picker = chooseDestination({
+      onChoose: (destination) => {
+        const current = readDraftPlan(this._context).steps.find((entry) => entry.instanceId === instanceId) ?? step;
+        upsertDraftStep(this._context, { ...current, destination });
+        clearMovementPreview();
+        this.render({ force: true });
+      },
+    });
+    if (!picker) globalThis.ui?.notifications?.warn?.("Canvas destination picker is not available.");
+  }
+
+  async _openBuilderAction(actionKey) {
+    await this._executeStep(this._findBuilderAction(actionKey));
+  }
+
+  async _openDraftStep(instanceId) {
+    const step = this._findDraftStep(instanceId);
+    await this._executeStep(step?.action ?? step);
   }
 
   _planForPreview(element) {
     const planId = element.dataset.previewPlan;
-    if (!planId || planId === "main") return this._plan;
+    if (!planId || planId === "main" || planId === "auto") return this._builder?.autoFill ?? this._plan;
     return this._plans.find((plan) => plan?.id === planId) ?? null;
   }
 
@@ -407,6 +644,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const plan = this._planForPreview(element);
     const step = plan?.steps?.[Number(element.dataset.previewStep)];
     showMovementPreview(this._context, step);
+  }
+
+  _showDraftMovementPreview(element) {
+    const step = this._findDraftStep(element.dataset.previewDraftStep);
+    if (!step?.action || !isMovementAction(step.action)) return;
+    showMovementPreview(this._context, {
+      ...step.action,
+      destination: step.destination,
+      requiresDestination: true,
+    });
   }
 
   _restorePosition() {
@@ -476,12 +723,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async executeStep(index) {
-    await this._executeStep(this._plan?.steps?.[index]);
-  }
-
-  async executeAltStep(planId, index) {
-    const plan = this._plans.find((candidate) => candidate?.id === planId);
-    await this._executeStep(plan?.steps?.[index]);
+    await this._executeStep(this._builder?.autoFill?.steps?.[index] ?? this._plan?.steps?.[index]);
   }
 
   async _executeStep(step) {
