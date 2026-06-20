@@ -316,6 +316,59 @@ assert.equal(warningBuilderModel.draft.steps[0].warning, "Choose a destination."
 assert.equal(warningBuilderModel.draft.steps[1].stale, true);
 assert.equal(warningBuilderModel.draft.steps[1].warning, "Action is no longer available.");
 
+const quickenedBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: { conditions: { slugs: ["quickened"], values: { quickened: null } } },
+  },
+  candidates: [
+    { id: "full-turn", slug: "full-turn", name: "Full Turn", actionCost: 3, score: 1 },
+    { id: "strike", slug: "strike", source: "strike", name: "Strike", actionCost: 1, score: 30 },
+    { id: "aid", slug: "aid", source: "generic", name: "Aid", actionCost: 1, score: 20 },
+    { id: "heal", slug: "heal", source: "spell-inferred", name: "Heal", actionCost: 2, score: 10 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "full-turn", actionCost: 3 }] },
+});
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "strike").disabled, false);
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, true);
+assert.equal(quickenedBuilderModel.tabs.two.all.find((action) => action.key === "heal").disabled, true);
+
+const staleBudgetBuilderModel = buildActionBuilderModel({
+  context: { actionsSpent: { normal: 2, total: 2 } },
+  candidates: [{ id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10 }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "missing-three", actionCost: 3 }] },
+});
+assert.equal(staleBudgetBuilderModel.usage.normal, 0);
+assert.equal(staleBudgetBuilderModel.draft.steps[0].stale, true);
+assert.equal(staleBudgetBuilderModel.tabs.one.all[0].disabled, false);
+
+const staleReactionBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ id: "reactive-shield", slug: "reactive-shield", name: "Reactive Shield", actionCost: "reaction", score: 10 }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "missing-reaction", actionCost: "reaction" }] },
+});
+assert.equal(staleReactionBuilderModel.usage.reaction, 0);
+assert.equal(staleReactionBuilderModel.draft.steps[0].stale, true);
+assert.equal(staleReactionBuilderModel.tabs.reaction.all[0].disabled, false);
+
+const collisionBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "duplicate-action", slug: "first", name: "First Duplicate", actionCost: 1, score: 20 },
+    { id: "duplicate-action", slug: "second", name: "Second Duplicate", actionCost: 1, score: 10 },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "duplicate-action", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "duplicate-action#2", actionCost: 1 },
+    ],
+  },
+  favorites: new Set(["duplicate-action#2"]),
+});
+assert.deepEqual(collisionBuilderModel.tabs.one.all.map((action) => action.key), ["duplicate-action", "duplicate-action#2"]);
+assert.deepEqual(collisionBuilderModel.tabs.one.all.map((action) => action.baseKey), ["duplicate-action", "duplicate-action"]);
+assert.deepEqual(collisionBuilderModel.tabs.one.favorites.map((action) => action.key), ["duplicate-action#2"]);
+assert.deepEqual(collisionBuilderModel.draft.steps.map((step) => step.action.name), ["First Duplicate", "Second Duplicate"]);
+
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
     id: "excellent",

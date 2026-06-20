@@ -11,6 +11,7 @@ export const ACTION_BUILDER_TABS = [
 
 const TAB_BY_COST = new Map(ACTION_BUILDER_TABS.map((tab) => [tab.cost, tab]));
 const TAB_IDS = ACTION_BUILDER_TABS.map((tab) => tab.id);
+const QUICKENED_BUILDER_SLUGS = new Set(["strike", "stride", "step"]);
 
 export function actionBuilderKey(action) {
   return action?.id
@@ -49,9 +50,10 @@ function sortActions(actions) {
   });
 }
 
-function draftUsage(draft) {
-  const steps = Array.isArray(draft?.steps) ? draft.steps : [];
-  return steps.reduce((usage, step) => {
+function draftUsage(steps) {
+  const usableSteps = Array.isArray(steps) ? steps : [];
+  return usableSteps.reduce((usage, step) => {
+    if (step?.stale) return usage;
     const cost = normalizeCost(step?.actionCost ?? step?.cost);
     if (cost === "reaction") {
       usage.reaction += 1;
@@ -62,13 +64,17 @@ function draftUsage(draft) {
   }, { normal: 0, reaction: 0 });
 }
 
+function quickenedEligible(action, cost) {
+  return cost === 1 && (QUICKENED_BUILDER_SLUGS.has(action?.slug) || action?.source === "strike");
+}
+
 function targetLabel(action) {
   const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target;
   const name = target?.name ?? target?.label;
   return name ? `Target: ${name}` : "";
 }
 
-function disabledState(action, cost, remainingActions, reactionPlanned) {
+function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
   if (action?.available === false) {
     return {
       disabled: true,
@@ -83,6 +89,9 @@ function disabledState(action, cost, remainingActions, reactionPlanned) {
     };
   }
 
+  const remainingActions = quickenedEligible(action, cost)
+    ? normalRemaining + quickenedRemaining
+    : normalRemaining;
   if (typeof cost === "number" && cost > 0 && cost > remainingActions) {
     return {
       disabled: true,
@@ -93,24 +102,46 @@ function disabledState(action, cost, remainingActions, reactionPlanned) {
   return { disabled: false, disabledReason: "" };
 }
 
-function decorateAction(action, { favorites, remainingActions, reactionPlanned }) {
-  const key = actionBuilderKey(action);
+function favoriteApplies(favorites, key, baseKey, baseKeyCounts) {
+  if (favorites.has(key)) return true;
+  return baseKeyCounts.get(baseKey) === 1 && favorites.has(baseKey);
+}
+
+function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned }) {
   const cost = normalizeCost(action?.actionCost ?? action?.cost);
   const tab = tabForCost(cost);
-  const disabled = disabledState(action, cost, remainingActions, reactionPlanned);
+  const disabled = disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned });
   const confidence = action?.confidence ?? "low";
   return {
     ...action,
     key,
+    baseKey,
     tabId: tab.id,
     cost,
-    favorite: favorites.has(key),
+    favorite: favoriteApplies(favorites, key, baseKey, baseKeyCounts),
     ...disabled,
     targetLabel: targetLabel(action),
     reason: action?.reason ?? action?.reasons?.[0] ?? "",
     confidenceLabel: confidenceLabel(confidence),
     confidenceClass: String(confidence),
   };
+}
+
+function assignActionKeys(actions) {
+  const baseKeyCounts = new Map();
+  const seen = new Map();
+  const keyedActions = actions.map((action) => {
+    const baseKey = actionBuilderKey(action);
+    baseKeyCounts.set(baseKey, (baseKeyCounts.get(baseKey) ?? 0) + 1);
+    const count = (seen.get(baseKey) ?? 0) + 1;
+    seen.set(baseKey, count);
+    return {
+      action,
+      baseKey,
+      key: count === 1 ? baseKey : `${baseKey}#${count}`,
+    };
+  });
+  return { keyedActions, baseKeyCounts };
 }
 
 function emptyTabs() {
@@ -125,9 +156,9 @@ function emptyTabs() {
   ]));
 }
 
-function decorateDraftStep(step, actionByKey) {
+function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
   const key = step?.actionKey ?? step?.key ?? actionBuilderKey(step);
-  const action = actionByKey.get(key) ?? null;
+  const action = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
   const stale = !action;
   const missingDestination = Boolean(action?.requiresDestination) && !step?.destination;
   return {
@@ -141,20 +172,40 @@ function decorateDraftStep(step, actionByKey) {
   };
 }
 
+function resolveDraftSteps(draft, actionByKey, uniqueBaseKeys) {
+  return Array.isArray(draft?.steps)
+    ? draft.steps.map((step) => decorateDraftStep(step, actionByKey, uniqueBaseKeys))
+    : [];
+}
+
 export function buildActionBuilderModel({ context, candidates, plans = [], draft, favorites = new Set() }) {
   const budget = actionBudget(context);
-  const usage = draftUsage(draft);
-  const remainingActions = Math.max(0, budget.totalActions - usage.normal);
-  const reactionPlanned = usage.reaction > 0;
   const tabs = emptyTabs();
   const favoriteSet = favorites instanceof Set ? favorites : new Set(favorites ?? []);
-  const decoratedActions = sortActions(candidates ?? [])
-    .map((action) => decorateAction(action, {
+  const { keyedActions, baseKeyCounts } = assignActionKeys(sortActions(candidates ?? []));
+  const uniqueBaseKeys = new Map(keyedActions
+    .filter(({ baseKey }) => baseKeyCounts.get(baseKey) === 1)
+    .map(({ key, baseKey }) => [baseKey, key]));
+  const keyedActionByKey = new Map(keyedActions.map(({ key, action }) => [key, action]));
+  const resolvedDraftSteps = resolveDraftSteps(draft, keyedActionByKey, uniqueBaseKeys);
+  const usage = draftUsage(resolvedDraftSteps);
+  const normalRemaining = Math.max(0, budget.normalActions - usage.normal);
+  const quickenedUsed = Math.max(0, usage.normal - budget.normalActions);
+  const quickenedRemaining = Math.max(0, (budget.quickenedActions ?? 0) - quickenedUsed);
+  const remainingActions = Math.max(0, normalRemaining + quickenedRemaining);
+  const reactionPlanned = usage.reaction > 0;
+  const decoratedActions = keyedActions
+    .map(({ action, key, baseKey }) => decorateAction(action, {
+      key,
+      baseKey,
       favorites: favoriteSet,
-      remainingActions,
+      baseKeyCounts,
+      normalRemaining,
+      quickenedRemaining,
       reactionPlanned,
     }));
   const actionByKey = new Map(decoratedActions.map((action) => [action.key, action]));
+  const draftSteps = resolveDraftSteps(draft, actionByKey, uniqueBaseKeys);
 
   for (const action of decoratedActions) {
     tabs[action.tabId].all.push(action);
@@ -164,10 +215,6 @@ export function buildActionBuilderModel({ context, candidates, plans = [], draft
     tab.favorites = tab.all.filter((action) => action.favorite);
     tab.recommended = tab.all.filter((action) => !action.disabled).slice(0, 3);
   }
-
-  const draftSteps = Array.isArray(draft?.steps)
-    ? draft.steps.map((step) => decorateDraftStep(step, actionByKey))
-    : [];
 
   return {
     context,
