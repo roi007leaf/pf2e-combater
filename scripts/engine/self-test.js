@@ -2356,6 +2356,38 @@ assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
 
+// --- Unconditional actions: builder model resolves the list (Task 3) ---
+{
+  const ucModel = buildActionBuilderModel({
+    context: { profile: { actions: 3 } },
+    candidates: [],
+    plans: [],
+    draft: {
+      steps: [{ instanceId: "p1", actionKey: "stride", actionCost: 1 }],
+      unconditional: [
+        { instanceId: "u1", actionKey: "stride", actionCost: 1 },
+        { instanceId: "u2", actionKey: "strike", actionCost: 1 },
+      ],
+    },
+  });
+  assert.deepEqual(ucModel.draft.unconditional.map((s) => s.instanceId), ["u1", "u2"],
+    "builder model should resolve the unconditional list parallel to steps");
+  // resolveDraftSteps adds resolver-only fields (key/warning) the raw input lacks.
+  assert.equal(ucModel.draft.unconditional[0].key, "stride",
+    "unconditional entries should be data-resolved like plan steps");
+  assert.equal(typeof ucModel.draft.unconditional[1].warning, "string",
+    "resolved unconditional entries should carry a warning field");
+  assert.equal(ucModel.draft.steps.length, 1, "plan steps should be unchanged");
+  const baseModel = buildActionBuilderModel({
+    context: { profile: { actions: 3 } },
+    candidates: [],
+    plans: [],
+    draft: { steps: [{ instanceId: "p1", actionKey: "stride", actionCost: 1 }] },
+  });
+  assert.equal(ucModel.remainingTotalActions, baseModel.remainingTotalActions,
+    "unconditional steps must not consume the action budget");
+}
+
 const atomicBuilderModel = buildActionBuilderModel({
   context: {},
   candidates: [

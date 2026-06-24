@@ -40,7 +40,9 @@ const SYNTHETIC_INTERACT_ACTION = {
   reason: "Draw, retrieve, or manipulate an item.",
 };
 
-const SUSTAIN_A_SPELL_ACTION = {
+// No longer injected into the builder tabs (the sustained-spells section handles sustaining),
+// but kept as a self-contained template the section uses to build a Sustain step.
+export const SUSTAIN_A_SPELL_ACTION = {
   id: "sustain-a-spell",
   name: "Sustain a Spell",
   slug: "sustain-a-spell",
@@ -680,14 +682,14 @@ function actionUnavailableReason(action) {
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
   if (action?.available === false || action?.disabled === true) {
     return {
-      disabled: true,
+      disabled: false,
       disabledReason: actionUnavailableReason(action),
     };
   }
 
   if (cost === "reaction" && reactionPlanned) {
     return {
-      disabled: true,
+      disabled: false,
       disabledReason: "Reaction already planned.",
     };
   }
@@ -697,7 +699,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     : normalRemaining;
   if (typeof cost === "number" && cost > 0 && cost > remainingActions) {
     return {
-      disabled: true,
+      disabled: false,
       disabledReason: "Not enough actions remaining.",
     };
   }
@@ -790,7 +792,7 @@ function normalizeDraftOnlyActions(unavailableActions, rejected) {
       const disabledReason = action.disabledReason ?? action.unavailableReason ?? rejectionReason;
       return {
         ...action,
-        disabled: action.disabled ?? true,
+        disabled: false,
         ...(disabledReason ? { disabledReason } : {}),
         ...(rejectionReason ? { rejectionReason } : {}),
       };
@@ -851,40 +853,21 @@ function quickenedShelfActions(actions) {
     });
 }
 
-function disabledActionReason(action) {
-  return String(
-    action?.disabledReason
-      ?? action?.unavailableReason
-      ?? action?.rejectionReason
-      ?? action?.reason
-      ?? "",
-  ).toLowerCase();
-}
-
 function showDisabledInBuilder(action) {
-  if (!action?.disabled && action?.available !== false) return false;
-  if (action?.tacticSlug === "elemental-blast") return true;
-
-  const reason = disabledActionReason(action);
-  const blockedMovement = reason.includes("move actions are unavailable")
-    || reason.includes("collision-free movement path")
-    || reason.includes("movement path");
-  if (!blockedMovement) return false;
-
-  const slug = String(action?.slug ?? "").toLowerCase();
-  const role = String(action?.role ?? "").toLowerCase();
-  return DESTINATION_ACTION_SLUGS.has(slug)
-    || role === "mobility"
-    || role === "movement"
-    || actionIncludes(action, "move")
-    || actionIncludes(action, "stride")
-    || actionIncludes(action, "step")
-    || Number(action?.activityProfile?.strideCount) > 0;
+  return Boolean(action);
 }
 
-function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
+function draftStepActionOverride(step, draftStepActions) {
+  if (!step?.instanceId || !draftStepActions) return null;
+  if (draftStepActions instanceof Map) return draftStepActions.get(step.instanceId) ?? null;
+  if (typeof draftStepActions === "object") return draftStepActions[step.instanceId] ?? null;
+  return null;
+}
+
+function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions = null) {
   const key = step?.actionKey ?? step?.key ?? actionBuilderKey(step);
-  const action = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
+  const resolvedAction = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
+  const action = draftStepActionOverride(step, draftStepActions) ?? resolvedAction;
   const stale = !action;
   const missingDestination = requiresDestinationForAction(action) && !step?.destination;
   const unavailableWarning = action?.availabilityWarning || (action?.available === false ? actionUnavailableReason(action) : "");
@@ -902,9 +885,9 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys) {
   };
 }
 
-function resolveDraftSteps(draft, actionByKey, uniqueBaseKeys) {
+function resolveDraftSteps(draft, actionByKey, uniqueBaseKeys, draftStepActions = null) {
   return Array.isArray(draft?.steps)
-    ? draft.steps.map((step) => decorateDraftStep(step, actionByKey, uniqueBaseKeys))
+    ? draft.steps.map((step) => decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions))
     : [];
 }
 
@@ -916,17 +899,15 @@ export function buildActionBuilderModel({
   rejected = [],
   plans = [],
   draft,
+  draftStepActions = null,
   favorites = new Set(),
 }) {
   const budget = actionBudget(context);
   const tabs = emptyTabs();
   const favoriteSet = favorites instanceof Set ? favorites : new Set(favorites ?? []);
-  // Offer Sustain a Spell (1 action) when a spellcaster has a sustainable spell available — it's
-  // used on a later turn to keep a previously-cast spell going, not the turn it's cast.
-  const availableCandidates = actorHasSpellcastingEntry(context) && hasSustainableSpellCandidate(candidates)
-    ? [...(Array.isArray(candidates) ? candidates : []), SUSTAIN_A_SPELL_ACTION]
-    : (candidates ?? []);
-  const normalizedCandidates = builderActionRows(availableCandidates);
+  // The dedicated sustained-spells section handles sustaining, so no "Sustain a Spell" action
+  // is injected into the builder tabs.
+  const normalizedCandidates = builderActionRows(candidates ?? []);
   const draftOnlyActions = builderActionRows(normalizeDraftOnlyActions(unavailableActions, rejected), { includeSyntheticInteract: false });
   const { keyedActions, baseKeyCounts } = assignActionKeys(normalizedCandidates);
   const sortedKeyedActions = [...keyedActions].toSorted((left, right) => {
@@ -939,7 +920,7 @@ export function buildActionBuilderModel({
     { includeSyntheticInteract: false },
   );
   const rawDraftResolution = draftResolutionMap(keyedActions, draftOnlyActions, fallbackDraftActions);
-  const resolvedDraftSteps = resolveDraftSteps(draft, rawDraftResolution.actionByKey, rawDraftResolution.uniqueBaseKeys);
+  const resolvedDraftSteps = resolveDraftSteps(draft, rawDraftResolution.actionByKey, rawDraftResolution.uniqueBaseKeys, draftStepActions);
   const usage = draftUsage(resolvedDraftSteps);
   // Anticipate Haste-style quickened during planning: the condition isn't applied until the spell
   // executes, so a drafted quickening spell aimed at the current combatant grants the extra action now.
@@ -1005,7 +986,7 @@ export function buildActionBuilderModel({
     decoratedDraftOnlyActions,
     decoratedDraftFallbackActions,
   );
-  const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys);
+  const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions);
 
   for (const action of decoratedActions) {
     tabs[action.tabId].all.push(action);
@@ -1039,6 +1020,7 @@ export function buildActionBuilderModel({
     draft: {
       ...(draft ?? {}),
       steps: draftSteps,
+      unconditional: resolveDraftSteps({ steps: draft?.unconditional ?? [] }, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions),
       warnings: draftSteps.filter((step) => step.warning).map((step) => step.warning),
     },
     autoFill: plans[0] ?? null,
