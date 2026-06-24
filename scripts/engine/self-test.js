@@ -248,6 +248,12 @@ assert.equal(
 assert.equal(panelSource.includes("Execute next"), false, "panel should not expose Execute next state");
 assert.ok(panelSource.includes("_executeDraftStep(instanceId"), "panel should execute an explicit draft step by id");
 assert.ok(panelTemplateSource.includes("Reset execution"), "panel should expose execution reset");
+// --- Unconditional actions: template (Task 5) ---
+assert.ok(panelTemplateSource.includes("data-add-target"), "template should render the add-target toggle");
+assert.ok(panelTemplateSource.includes("builder.unconditional.hasEntries"), "template should gate the unconditional card");
+assert.ok(panelTemplateSource.includes("combater-unconditional"), "template should render an unconditional card");
+assert.ok(panelTemplateSource.includes("Unconditional actions"), "unconditional card should carry its title");
+assert.ok(/data-add-target="\{\{id\}\}"/.test(panelTemplateSource), "toggle should iterate the add-target options");
 assert.ok(panelSource.includes("executeDraftStep"), "panel should use action executor instead of advisory-only execution");
 assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
 assert.ok(panelSource.includes("revertDraftExecution"), "panel reset should revert executed steps, not only clear status");
