@@ -89,6 +89,12 @@ const utilityFallbackRows = report.utilityFallbacks
 const likelyMisclassifiedBuffRows = report.likelyMisclassifiedBuffs
   .slice(0, 200)
   .map((entry) => `- ${entry.name} [${entry.classTrait}] -> \`${entry.role}\``);
+const eventOnlyRows = report.eventOnly
+  .slice(0, 200)
+  .map((entry) => `- ${entry.name} [${entry.classTrait}] -> \`${entry.role}\``);
+const likelyWrongRows = report.likelyWrong
+  .slice(0, 200)
+  .map((entry) => `- ${entry.name} [${entry.classTrait}] -> \`${entry.role}\``);
 
 // Group unknown by their most distinctive trait so we can spot whole families to fix.
 const traitBuckets = {};
@@ -114,13 +120,19 @@ Packs read: ${Object.entries(perPack).map(([k, v]) => `${k}=${v}`).join(", ")}
 - Total items: **${report.total}**
 - Active (combat-usable) actions: **${report.activeCount}**
 - Classified: **${report.classifiedCount}** (${report.coveragePct}%)
+- Effective strong coverage: **${report.quality.strongCoverageCount}** (${report.effectiveCoveragePct}%)
+- Weak classified coverage: **${report.quality.weakCoverageCount}**
 - Unknown (active but unclassified): **${report.unknownCount}**
 
 ## Quality audit buckets
 
+- Strong classified: **${report.quality.strongCoverageCount}**
+- Weak classified: **${report.quality.weakCoverageCount}**
 - Low-confidence classified: **${report.quality.lowConfidenceCount}**
 - Utility/generic fallback classified: **${report.quality.utilityFallbackCount}**
 - Likely buff/support but classified elsewhere: **${report.quality.likelyMisclassifiedBuffCount}**
+- Likely wrong classified: **${report.quality.likelyWrongCount}**
+- Event-only / trigger-only classified: **${report.quality.eventOnlyCount}**
 
 ## Classified by role
 
@@ -138,6 +150,10 @@ ${section("Quality - utility/generic fallbacks", utilityFallbackRows)}
 
 ${section("Quality - likely buff/support misclassified", likelyMisclassifiedBuffRows)}
 
+${section("Quality - likely wrong classified", likelyWrongRows)}
+
+${section("Quality - event-only / trigger-only classified", eventOnlyRows)}
+
 ${section("Unknown - grouped by class", classRows)}
 `;
 
@@ -146,16 +162,17 @@ writeFileSync(OUT, md);
 writeFileSync(
   UNKNOWNS_OUT,
   JSON.stringify(
-    report.unknown.map((entry) => ({
-      name: entry.name,
-      classTrait: entry.classTrait,
-      traits: entry.traits,
-      save: entry.save,
-      hasDamage: entry.hasDamage,
-      area: entry.area,
-      range: entry.range,
-      desc: entry.desc,
-    })),
+    {
+      summary: {
+        activeCount: report.activeCount,
+        classifiedCount: report.classifiedCount,
+        unknownCount: report.unknownCount,
+        coveragePct: report.coveragePct,
+        effectiveCoveragePct: report.effectiveCoveragePct,
+        quality: report.quality,
+      },
+      buckets: report.auditBuckets,
+    },
     null,
     2,
   ),

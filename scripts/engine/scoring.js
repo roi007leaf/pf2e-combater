@@ -1,6 +1,22 @@
 import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
 import { classTacticAdjustment } from "../rules/class-tactics.js";
 import { battlefieldPressure, threatsAtCenter } from "../rules/battlefield-analysis.js";
+import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
+import { readCombatState, targetHasMarkState } from "../rules/combat-state.js";
+import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../rules/exploit-vulnerability.js";
+import { npcTacticAdjustment } from "../rules/npc-tactics.js";
+import { SETTINGS, setting } from "../settings.js";
+import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
+
+const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
+const ELEMENT_DAMAGE_FALLBACKS = {
+  air: ["electricity"],
+  earth: ["bludgeoning"],
+  fire: ["fire"],
+  metal: ["piercing", "slashing"],
+  water: ["cold"],
+  wood: ["vitality"],
+};
 
 function firstTarget(context) {
   return context?.targets?.[0] ?? context?.battlefield?.targets?.[0] ?? null;
@@ -49,6 +65,40 @@ function collectionValues(collection) {
   return [];
 }
 
+function slugText(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function valueSlugs(value) {
+  if (!value) return [];
+  if (typeof value === "string") return [slugText(value)].filter(Boolean);
+  if (Array.isArray(value)) return value.flatMap(valueSlugs);
+  if (value instanceof Set) return Array.from(value).flatMap(valueSlugs);
+  if (value instanceof Map) return Array.from(value.values()).flatMap(valueSlugs);
+  if (typeof value !== "object") return [slugText(value)].filter(Boolean);
+
+  const direct = value.slug ?? value.name ?? value.label ?? value.type;
+  if (direct) return [slugText(direct)].filter(Boolean);
+  if (Array.isArray(value.value) || typeof value.value === "string") return valueSlugs(value.value);
+  if (Array.isArray(value.traits)) return valueSlugs(value.traits);
+  return [];
+}
+
+function readSetting(key, fallback) {
+  try {
+    const value = setting(key);
+    return value === undefined ? fallback : value;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
 function contextActorDocument(context) {
   const candidates = [
     context?.actor?.document,
@@ -59,6 +109,99 @@ function contextActorDocument(context) {
   return candidates.find((candidate) =>
     candidate && typeof candidate === "object" && (candidate.system || candidate.items || candidate.itemTypes),
   ) ?? null;
+}
+
+function itemSlug(item) {
+  return slugText(item?.slug ?? item?.system?.slug?.value ?? item?.system?.slug ?? item?.name);
+}
+
+function actorItems(actor, type = null) {
+  const typed = type ? collectionValues(actor?.itemTypes?.[type]) : [];
+  const typedIds = new Set(typed.map((item) => item?.id ?? item?._id).filter(Boolean));
+  const fallback = collectionValues(actor?.items)
+    .filter((item) => !type || item?.type === type)
+    .filter((item) => !typedIds.has(item?.id ?? item?._id));
+  return [...typed, ...fallback];
+}
+
+function elementalBlastItem(actor) {
+  return actorItems(actor, "action")
+    .find((item) => itemSlug(item) === "elemental-blast")
+    ?? null;
+}
+
+function kineticistElementProfiles(context, action) {
+  const actor = contextActorDocument(context);
+  const item = elementalBlastItem(actor);
+  const selections = item?.flags?.pf2e?.damageSelections ?? {};
+  const flag = actor?.flags?.pf2e?.kineticist?.elementalBlast;
+  const profiles = new Map();
+
+  const addProfile = (rawElement, rawTypes = []) => {
+    const element = slugText(rawElement);
+    if (!KINETICIST_ELEMENT_SLUGS.has(element)) return;
+
+    const selected = selections?.[rawElement] ?? selections?.[element];
+    const damageTypeValues = [
+      selected,
+      ...(Array.isArray(rawTypes) ? rawTypes : [rawTypes]),
+      ...(ELEMENT_DAMAGE_FALLBACKS[element] ?? []),
+    ];
+    const damageTypesForElement = [...new Set(damageTypeValues.map(slugText).filter(Boolean))];
+    const existing = profiles.get(element) ?? { element, damageTypes: [] };
+    profiles.set(element, {
+      element,
+      damageTypes: [...new Set([...existing.damageTypes, ...damageTypesForElement])],
+    });
+  };
+
+  if (flag && typeof flag === "object") {
+    for (const entry of Object.values(flag)) {
+      if (!entry || typeof entry !== "object" || !entry.element) continue;
+      addProfile(entry.element, [
+        entry.damageType,
+        ...(Array.isArray(entry.damageTypes) ? entry.damageTypes : []),
+      ]);
+    }
+  }
+
+  if (action?.elementalBlastConfig?.element) {
+    addProfile(action.elementalBlastConfig.element, [
+      action.elementalBlastConfig.damageType,
+      ...(Array.isArray(action.elementalBlastConfig.damageTypes) ? action.elementalBlastConfig.damageTypes : []),
+      ...damageTypes(action),
+    ]);
+  }
+
+  for (const trait of actionTraitSlugs(action)) {
+    if (KINETICIST_ELEMENT_SLUGS.has(trait)) addProfile(trait, damageTypes(action));
+  }
+
+  return Array.from(profiles.values());
+}
+
+function targetActorDocument(target) {
+  const actor = target?.actor?.document ?? target?.actor?.object ?? target?.actor;
+  return actor && typeof actor === "object" ? actor : null;
+}
+
+function systemTraitSlugs(document) {
+  return valueSlugs(document?.system?.traits?.value ?? document?.system?.traits);
+}
+
+function targetTraitSlugs(context, target) {
+  const visible = [
+    target?.traits,
+    target?.traitSlugs,
+    target?.system?.traits?.value,
+    target?.system?.traits,
+  ].flatMap(valueSlugs);
+
+  const hidden = canUseTargetDefenses(context)
+    ? systemTraitSlugs(targetActorDocument(target))
+    : [];
+
+  return new Set([...visible, ...hidden].filter(Boolean));
 }
 
 function hasSpellcastingCapability(context) {
@@ -149,6 +292,11 @@ function isAreaAction(action, role) {
     || ["burst", "cone", "line", "emanation"].includes(type);
 }
 
+function isSelfCenteredAreaAction(action) {
+  const type = String(action?.targetingProfile?.type ?? "").toLowerCase();
+  return action?.targetingProfile?.selfCentered === true || type === "emanation";
+}
+
 function requiresTargetableEnemy(action, role) {
   if (isAreaAction(action, role)) return false;
   return action?.source === "strike"
@@ -207,7 +355,14 @@ function defenseEntries(value) {
 }
 
 function entryType(entry) {
-  return String(entry?.type ?? entry?.slug ?? entry?.label ?? entry?.name ?? "").toLowerCase();
+  return slugText(
+    entry?.type?.value
+      ?? entry?.type
+      ?? entry?.slug?.value
+      ?? entry?.slug
+      ?? entry?.label
+      ?? entry?.name,
+  );
 }
 
 function entryValue(entry) {
@@ -557,12 +712,17 @@ function offensiveTargetValue(context, action, role, target) {
 
   const adjustment = damageAdjustment(context, action, target);
   if (adjustment) value += adjustment.scoreDelta;
+  value += aggroTargetValue(context, action, role, target);
   value += (1 - hpPercent(target)) * 4;
   return value;
 }
 
-function canAffectTarget(action, target) {
+function canAffectTarget(context, action, target) {
   if (action?.slug === "demoralize" && hasDemoralizeImmunity(target)) return false;
+  if (isExtractElementAction(action) && !canExtractElementFromTarget(context, action, target)) return false;
+  if (isExploitVulnerabilityAction(action) && hasExploitVulnerabilityMark(target)) return false;
+  const mark = action?.activityProfile?.targetMark;
+  if (mark && targetHasMarkState(target, mark)) return false;
   return true;
 }
 
@@ -570,15 +730,17 @@ function targetPoolForAction(context, action, role, needsTargetableEnemy) {
   const values = needsTargetableEnemy
     ? attackableEnemies(context)
     : enemies(context);
-  return values.filter((target) => canAffectTarget(action, target));
+  return values.filter((target) => canAffectTarget(context, action, target));
 }
 
 function bestTargetForAction(context, action, role) {
   const needsTargetableEnemy = requiresTargetableEnemy(action, role);
+  if (isSelfCenteredAreaAction(action)) return null;
+
   if (
     action?.preferredTarget
     && (!needsTargetableEnemy || canAttackTarget(action.preferredTarget))
-    && canAffectTarget(action, action.preferredTarget)
+    && canAffectTarget(context, action, action.preferredTarget)
   ) {
     return action.preferredTarget;
   }
@@ -593,7 +755,7 @@ function bestTargetForAction(context, action, role) {
         offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
       )[0];
     }
-    return canAttackTarget(target) && canAffectTarget(action, target) ? target : null;
+    return canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
   }
 
   if (isOffensiveRole(role)) {
@@ -606,7 +768,7 @@ function bestTargetForAction(context, action, role) {
         offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
       )[0];
     }
-    return canAttackTarget(target) && canAffectTarget(action, target) ? target : (enemyValues[0] ?? null);
+    return canAttackTarget(target) && canAffectTarget(context, action, target) ? target : (enemyValues[0] ?? null);
   }
 
   if (needsTargetableEnemy) {
@@ -650,6 +812,14 @@ function hasAnyCondition(entity, slugs) {
   return slugs.some((slug) => hasCondition(entity, slug));
 }
 
+function targetMarkLabel(mark) {
+  return slugText(mark)
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function hasEffect(entity, slug) {
   const normalized = String(slug ?? "").toLowerCase();
   return collectionValues(entity?.effects).some((effect) => {
@@ -663,6 +833,185 @@ function hasEffect(entity, slug) {
   });
 }
 
+function hasEffectSlug(entity, slug) {
+  const normalized = slugText(slug);
+  return collectionValues(entity?.effects).some((effect) => [
+    effect?.slug,
+    effect?.name,
+    effect?.label,
+    effect?.sourceId,
+  ].map(slugText).some((value) => value === normalized || value.includes(normalized)));
+}
+
+function isChannelElementsAction(action) {
+  return [
+    action?.slug,
+    action?.tacticSlug,
+    action?.name,
+  ].map(slugText).includes("channel-elements");
+}
+
+function kineticAuraActive(context, profile) {
+  const states = [
+    profile?.combatState,
+    context?.combatState,
+    context?.actor?.profile?.combatState,
+  ];
+  if (states.some((state) => state?.kineticistAuraActive === true || state?.channelElementsActive === true)) {
+    return true;
+  }
+
+  const actorState = readCombatState(contextActorDocument(context));
+  if (actorState.kineticistAuraActive === true || actorState.channelElementsActive === true) return true;
+
+  return hasCondition(profile, "kinetic-aura")
+    || hasCondition(profile, "channel-elements")
+    || hasEffectSlug(profile, "kinetic-aura")
+    || hasEffectSlug(profile, "channel-elements");
+}
+
+function activeBuffKeys(action) {
+  const profile = action?.activityProfile ?? {};
+  return [
+    action?.slug,
+    action?.name,
+    profile.appliesCondition,
+    ...(Array.isArray(profile.appliesConditions) ? profile.appliesConditions : []),
+    ...(profile.invisible ? ["invisible"] : []),
+    ...(profile.hidden ? ["hidden", "undetected"] : []),
+    ...(profile.concealed ? ["concealed"] : []),
+  ].map(slugText).filter(Boolean);
+}
+
+function targetAlreadyHasBuff(entity, action) {
+  return activeBuffKeys(action).some((slug) => hasCondition(entity, slug) || hasEffect(entity, slug));
+}
+
+function selfEntity(context) {
+  const ref = actorTarget(context);
+  return {
+    ...(context?.profile ?? {}),
+    id: ref.id,
+    uuid: ref.uuid,
+    name: ref.name,
+  };
+}
+
+function entityClassSlugs(entity) {
+  return new Set([
+    ...valueSlugs(entity?.classSlugs),
+    ...valueSlugs(entity?.classes),
+    ...valueSlugs(entity?.classSlug),
+    ...valueSlugs(entity?.class),
+    ...valueSlugs(entity?.traits),
+  ]);
+}
+
+const MARTIAL_CLASS_SLUGS = new Set([
+  "barbarian",
+  "champion",
+  "commander",
+  "exemplar",
+  "fighter",
+  "guardian",
+  "gunslinger",
+  "inventor",
+  "investigator",
+  "kineticist",
+  "magus",
+  "monk",
+  "ranger",
+  "rogue",
+  "swashbuckler",
+  "thaumaturge",
+]);
+
+const SPELLCASTER_CLASS_SLUGS = new Set([
+  "animist",
+  "bard",
+  "cleric",
+  "druid",
+  "oracle",
+  "psychic",
+  "sorcerer",
+  "summoner",
+  "witch",
+  "wizard",
+]);
+
+function isMartialRecipient(entity) {
+  const slugs = entityClassSlugs(entity);
+  return [...slugs].some((slug) => MARTIAL_CLASS_SLUGS.has(slug))
+    || entity?.hasStrike === true
+    || Number(entity?.attackModifier) > 0;
+}
+
+function isSpellcasterRecipient(entity) {
+  const slugs = entityClassSlugs(entity);
+  return [...slugs].some((slug) => SPELLCASTER_CLASS_SLUGS.has(slug))
+    || entity?.hasSpellcasting === true
+    || Number(entity?.spellDc ?? entity?.spellDC) > 0;
+}
+
+function isPrimarySpellcaster(entity) {
+  const slugs = entityClassSlugs(entity);
+  const hasCasterClass = [...slugs].some((slug) => SPELLCASTER_CLASS_SLUGS.has(slug));
+  const hasMartialClass = [...slugs].some((slug) => MARTIAL_CLASS_SLUGS.has(slug));
+  return hasCasterClass && !hasMartialClass;
+}
+
+function buffRecipients(context, action) {
+  const targeting = action?.targetingProfile ?? {};
+  const recipients = [];
+  if (targeting.self !== false) recipients.push({ entity: selfEntity(context), type: "self" });
+  if (targeting.ally) {
+    for (const ally of allies(context)) recipients.push({ entity: ally, type: "ally" });
+  }
+  return recipients.length ? recipients : [{ entity: selfEntity(context), type: "self" }];
+}
+
+function buffRecipientValue(context, action, recipient) {
+  const entity = recipient?.entity;
+  if (!entity || hpPercent(entity) <= 0) return -Infinity;
+
+  const profile = action?.activityProfile ?? {};
+  let value = recipient.type === "self" ? 8 : 12;
+
+  if (targetAlreadyHasBuff(entity, action)) value -= 60;
+  if (hpPercent(entity) < 0.5) value += 14;
+
+  if (profile.attackBuff || profile.damageBuff) {
+    if (isMartialRecipient(entity)) value += 24;
+    else if (isSpellcasterRecipient(entity)) value += 8;
+    else value += 12;
+  }
+
+  if (profile.extraAction) {
+    value += isMartialRecipient(entity) || isSpellcasterRecipient(entity) ? 22 : 14;
+  }
+
+  if (profile.acBuff || profile.saveBuff || profile.resistance || profile.tempHp || profile.stealthDefense) {
+    value += enemies(context).length ? 14 : 4;
+    if (hpPercent(entity) < 0.75) value += 8;
+  }
+
+  if (profile.removesCondition) {
+    const constrained = hasAnyCondition(entity, ["grabbed", "restrained", "immobilized", "slowed", "stunned", "paralyzed"]);
+    value += constrained ? 42 : -16;
+  }
+
+  return value;
+}
+
+function bestBuffRecipient(context, action) {
+  return buffRecipients(context, action)
+    .map((recipient) => ({
+      ...recipient,
+      value: buffRecipientValue(context, action, recipient),
+    }))
+    .toSorted((left, right) => right.value - left.value)[0] ?? null;
+}
+
 function canAttackTarget(entity) {
   if (entity?.attackTargetable === false) return false;
   const state = detectionState(entity);
@@ -672,6 +1021,47 @@ function canAttackTarget(entity) {
 
 function attackableEnemies(context) {
   return enemies(context).filter(canAttackTarget);
+}
+
+function isExtractElementAction(action) {
+  return [
+    action?.slug,
+    action?.tacticSlug,
+    action?.name,
+  ].map(slugText).includes("extract-element");
+}
+
+function targetDefenseValues(context, target, key) {
+  const direct = defenseEntries(target?.[key]);
+  if (!canUseTargetDefenses(context)) return direct;
+
+  const document = targetActorDocument(target);
+  const actorValues = defenseEntries(
+    document?.system?.attributes?.[key]
+      ?? document?.system?.[key],
+  );
+  return [...direct, ...actorValues];
+}
+
+function targetHasMatchingDefense(context, target, types) {
+  if (!canUseTargetDefenses(context) || !types.length) return false;
+  return ["resistances", "weaknesses", "immunities"].some((key) =>
+    targetDefenseValues(context, target, key)
+      .some((entry) => types.some((type) => matchesDamageType(entry, type))),
+  );
+}
+
+function canExtractElementFromTarget(context, action, target) {
+  if (!target) return false;
+
+  const profiles = kineticistElementProfiles(context, action);
+  if (!profiles.length) return false;
+
+  const traits = targetTraitSlugs(context, target);
+  if (profiles.some((profile) => traits.has(profile.element))) return true;
+
+  const damageTypeSet = new Set(profiles.flatMap((profile) => profile.damageTypes));
+  return targetHasMatchingDefense(context, target, Array.from(damageTypeSet));
 }
 
 function actionIncludes(action, slug) {
@@ -810,6 +1200,40 @@ function skillEntry(profile, slug) {
   };
 }
 
+function isPlayerCharacterProfile(profile) {
+  return String(profile?.actorType ?? profile?.type ?? "").toLowerCase() === "character";
+}
+
+function isNpcProfile(profile) {
+  return String(profile?.actorType ?? profile?.type ?? "").toLowerCase() === "npc";
+}
+
+function trainedSkillRequirement(profile, action) {
+  if (!readSetting(SETTINGS.hideUntrainedSkillActions, true)) return null;
+
+  const skillSlug = String(action?.skill ?? "").toLowerCase();
+  if (!skillSlug) return null;
+  const skill = skillEntry(profile, skillSlug);
+  const npc = isNpcProfile(profile);
+
+  if (Number(skill?.rank) > 0) {
+    return null;
+  }
+
+  if (npc && (!skill || skill.rank === null)) {
+    return null;
+  }
+
+  if (!isPlayerCharacterProfile(profile) && !npc) {
+    return null;
+  }
+
+  return {
+    skill: skillSlug,
+    reason: `Requires trained ${titleCase(skillSlug)}.`,
+  };
+}
+
 function actionSkillDcSlug(action) {
   if (action.targetDefense) return action.targetDefense;
   if (action.targetSave) return action.targetSave;
@@ -904,9 +1328,40 @@ function skillCheckScore(profile, target, action) {
   };
 }
 
+const ATHLETICS_MANEUVER_SLUGS = new Set(["grapple", "trip", "disarm", "shove", "reposition"]);
+
+function ownSkillReliabilityScore(profile, action, context) {
+  if (!ATHLETICS_MANEUVER_SLUGS.has(action?.slug) || action?.skill !== "athletics") return null;
+
+  const skill = skillEntry(profile, "athletics");
+  const spellcasterFallback = hasSpellcastingCapability(context) && (!isMartialRecipient(profile) || isPrimarySpellcaster(profile));
+  const reasons = [];
+  let scoreDelta = 0;
+
+  if (!skill) {
+    scoreDelta -= spellcasterFallback ? 70 : 20;
+    reasons.push("No Athletics data; melee maneuvers are unreliable.");
+  } else if (skill.rank === 0) {
+    scoreDelta -= spellcasterFallback ? 110 : (profile?.actorType === "character" ? 80 : 42);
+    reasons.push("Untrained Athletics makes melee maneuvers poor combat filler.");
+  } else if (Number.isFinite(skill.mod) && skill.mod < 5) {
+    scoreDelta -= spellcasterFallback ? 36 : 12;
+    reasons.push("Low Athletics makes melee maneuvers unreliable.");
+  }
+
+  if (spellcasterFallback) {
+    scoreDelta -= 12;
+    reasons.push("Wizard-like spellcaster should prefer spells over Athletics maneuvers.");
+  }
+
+  return scoreDelta ? { scoreDelta, reasons } : null;
+}
+
 function suggestedTargetFor(context, action, role, preferredTarget = firstTarget(context)) {
   const target = preferredTarget;
   const needsTargetableEnemy = requiresTargetableEnemy(action, role);
+
+  if (isSelfCenteredAreaAction(action)) return null;
 
   if (action.source === "strike") {
     return target ? targetRef(target, "enemy") : null;
@@ -933,8 +1388,14 @@ function suggestedTargetFor(context, action, role, preferredTarget = firstTarget
     return actorTarget(context);
   }
 
-  if (["buff", "setup", "summon", "utility", "transformation", "mobility"].includes(role)) {
+  if (["buff", "stealth-defense", "setup", "summon", "utility", "combat-utility", "exploration-utility", "sustain-control", "transformation", "mobility", "recovery"].includes(role)) {
     const targeting = action.targetingProfile ?? {};
+    if (role === "buff" || role === "stealth-defense") {
+      const recipient = bestBuffRecipient(context, action);
+      if (recipient) return recipient.type === "self"
+        ? actorTarget(context)
+        : targetRef(recipient.entity, recipient.type);
+    }
     // Enemy-targeted setups (Taunt, Feint, Hunt Prey, off-guard setups) point at
     // the enemy; ally/self effects point at an ally or the actor.
     if (targeting.enemy) {
@@ -974,20 +1435,21 @@ function spellTacticalAdjustment(action, role, context) {
     scoreDelta += 10;
     reasons.push("Focus spell is recoverable after combat.");
   } else if (Number(action.rank ?? profile.rank) > 0) {
-    const lowImpact = role === "utility" || (role === "area-damage" && (context?.battlefield?.enemies?.length ?? 0) <= 1);
+    const lowImpact = ["utility", "exploration-utility", "combat-utility"].includes(role)
+      || (role === "area-damage" && (context?.battlefield?.enemies?.length ?? 0) <= 1);
     scoreDelta -= lowImpact ? 14 : 5;
     reasons.push("Uses a ranked spell slot.");
   }
 
   if (profile.sustained) {
-    if (["control", "buff", "summon"].includes(role)) {
+    if (["control", "sustain-control", "buff", "summon"].includes(role)) {
       scoreDelta += 12;
       reasons.push("Sustained spell can keep affecting the fight.");
     } else {
       scoreDelta -= 4;
       reasons.push("Sustaining may cost later actions.");
     }
-  } else if (profile.lastingDuration && ["control", "buff", "defense", "summon"].includes(role)) {
+  } else if (profile.lastingDuration && ["control", "sustain-control", "buff", "stealth-defense", "defense", "summon"].includes(role)) {
     scoreDelta += 8;
     reasons.push("Duration can persist beyond this turn.");
   }
@@ -1012,10 +1474,22 @@ function spellTacticalAdjustment(action, role, context) {
 export function scoreCandidate(context, action) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const role = action.curated?.role ?? action.role;
+  const requiredTraining = trainedSkillRequirement(profile, action);
+  if (requiredTraining) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: requiredTraining.reason,
+      reasons: [requiredTraining.reason],
+    };
+  }
+
   const target = bestTargetForAction(context, action, role);
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
   const reasons = [...(action.reasons ?? [])];
   const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
+  const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
   const targetDamageAdjustment = damageAdjustment(context, action, target);
   const targetSaveScore = saveScoreDelta(context, action, target, profile);
   const pressure = battlefieldPressure(context);
@@ -1033,8 +1507,50 @@ export function scoreCandidate(context, action) {
     };
   }
 
+  if (isExtractElementAction(action) && !target) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: "No valid elemental target.",
+      reasons: ["No valid elemental target."],
+    };
+  }
+
+  if (isExploitVulnerabilityAction(action) && !target && attackableEnemies(context).some(hasExploitVulnerabilityMark)) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: "Target is already exploited.",
+      reasons: ["Target is already exploited."],
+    };
+  }
+
+  const targetMark = action.activityProfile?.targetMark;
+  if (targetMark && !target && attackableEnemies(context).some((enemy) => targetHasMarkState(enemy, targetMark))) {
+    const label = targetMarkLabel(targetMark);
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: `Target already has ${label}.`,
+      reasons: [`Target already has ${label}.`],
+    };
+  }
+
   if (Number(action.interactDrawCost) > 0) {
     reasons.push("Includes Interact to draw or retrieve the consumable.");
+  }
+
+  if (isChannelElementsAction(action) && kineticAuraActive(context, profile)) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: "Kinetic aura already active; Channel Elements is redundant.",
+      reasons: ["Kinetic aura already active; Channel Elements is redundant."],
+    };
   }
 
   if (action.source === "strike" && !target) {
@@ -1047,7 +1563,7 @@ export function scoreCandidate(context, action) {
     };
   }
 
-  if (isAttackLikeAction(action, role) && role !== "area-damage" && !target) {
+  if (isAttackLikeAction(action, role) && !isAreaAction(action, role) && !target) {
     return {
       ...action,
       score: -999,
@@ -1150,9 +1666,23 @@ export function scoreCandidate(context, action) {
     }
   }
 
+  if (action.slug === "retch") {
+    if (!hasCondition(profile, "sickened")) {
+      score = -999;
+      reasons.push("Actor is not sickened.");
+    } else {
+      score += 30;
+      reasons.push("Retch can reduce sickened.");
+      if (enemyInMelee(context)) {
+        score += 6;
+        reasons.push("Reducing sickened helps under melee pressure.");
+      }
+    }
+  }
+
   if (action.activityProfile?.targetMark && target) {
     const mark = action.activityProfile.targetMark;
-    if (hasCondition(target, mark) || hasEffect(target, mark)) {
+    if (targetHasMarkState(target, mark) || hasCondition(target, mark) || hasEffect(target, mark)) {
       score -= 200;
       reasons.push(`${target.name} already has ${mark}.`);
     }
@@ -1330,6 +1860,11 @@ export function scoreCandidate(context, action) {
     }
   }
 
+  const aggro = target ? aggroProfile(context, target) : null;
+  if (aggro?.gmOnly && aggro.roles.length && aggro.score > 0) {
+    reasons.push(`Aggro priority: ${aggro.roles.join(", ")}.`);
+  }
+
   if (isCurated(action) && role === "debuff" && target) {
     score += 20;
     reasons.push(`Debuff spell can pressure ${target.name}.`);
@@ -1466,7 +2001,41 @@ export function scoreCandidate(context, action) {
     }
   }
 
-  if (isCurated(action) && role === "control" && target) {
+  if (isCurated(action) && role === "control" && isAreaAction(action, role)) {
+    const placement = areaPlacement(action, context);
+    const enemiesInArea = placement.enemies;
+    const appliedConditions = [
+      action.activityProfile?.appliesCondition,
+      ...(Array.isArray(action.activityProfile?.appliesConditions) ? action.activityProfile.appliesConditions : []),
+    ].filter(Boolean);
+    areaHitCount = enemiesInArea.length;
+
+    if (!enemiesInArea.length) {
+      score -= 24;
+      reasons.unshift(`No enemy is in ${action.name} area.`);
+    } else if (
+      appliedConditions.length
+      && enemiesInArea.every((enemy) => appliedConditions.some((condition) => hasCondition(enemy, condition)))
+    ) {
+      score -= 8;
+      reasons.unshift(`${action.name} area targets already have ${appliedConditions[0]}.`);
+    } else {
+      const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
+      score += (appliedConditions.length ? 30 : 22) + enemiesInArea.length * 12;
+      reasons.unshift(`${action.name} can affect ${enemiesInArea.length} ${plural(enemiesInArea.length, "enemy", "enemies")}${centerName}.`);
+      if (canUseTargetDefenses(context)) {
+        const saveDeltas = enemiesInArea
+          .map((enemy) => saveScoreDelta(context, action, enemy, profile))
+          .filter(Boolean);
+        const tacticalDelta = Math.round(
+          saveDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.4,
+        );
+        score += tacticalDelta;
+        const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
+        if (bestSave) reasons.push(`Area targets ${titleCase(action.saveProfile?.stat)} saves (${bestSave.label})`);
+      }
+    }
+  } else if (isCurated(action) && role === "control" && target) {
     const requiredCondition = action.activityProfile?.requiresTargetCondition;
     const appliedConditions = [
       action.activityProfile?.appliesCondition,
@@ -1500,8 +2069,9 @@ export function scoreCandidate(context, action) {
   }
 
   if (isCurated(action) && role === "buff") {
-    const allyTarget = action.activityProfile?.ally && allies(context).length > 0;
-    let buffValue = allyTarget ? 16 : 12;
+    const recipient = bestBuffRecipient(context, action);
+    const allyTarget = recipient?.type === "ally";
+    let buffValue = Math.max(0, Number(recipient?.value) || 0);
     if (action.activityProfile?.attackBuff || action.activityProfile?.damageBuff) {
       const attackerCount = [profile, ...allies(context)].filter((entity) => hpPercent(entity) > 0).length;
       buffValue += Math.min(24, 6 + attackerCount * 4);
@@ -1516,10 +2086,27 @@ export function scoreCandidate(context, action) {
       );
       buffValue += constrained ? 28 : 0;
     }
+    if (recipient?.entity && targetAlreadyHasBuff(recipient.entity, action)) {
+      buffValue -= 36;
+      reasons.push(`${recipient.entity.name ?? "Target"} already has ${action.name}.`);
+    }
     score += buffValue;
-    reasons.unshift(allyTarget
-      ? `${action.name} can boost an ally.`
-      : `${action.name} grants the actor a beneficial effect.`);
+    reasons.unshift(action.activityProfile?.extraAction
+      ? `${action.name} grants quickened.`
+      : allyTarget
+        ? `${action.name} can boost ${recipient.entity?.name ?? "an ally"}.`
+        : `${action.name} grants the actor a beneficial effect.`);
+  }
+
+  if (isCurated(action) && role === "stealth-defense") {
+    const recipient = bestBuffRecipient(context, action);
+    const recipientName = recipient?.type === "ally" ? recipient.entity?.name ?? "an ally" : "the actor";
+    score += 22 + Math.max(0, Number(recipient?.value) || 0);
+    if (targetAlreadyHasBuff(recipient?.entity, action)) {
+      score -= 44;
+      reasons.push(`${recipientName} already has ${action.name}.`);
+    }
+    reasons.unshift(`${action.name} can make ${recipientName} harder to target.`);
   }
 
   if (isCurated(action) && role === "summon") {
@@ -1532,6 +2119,21 @@ export function scoreCandidate(context, action) {
   if (role === "utility") {
     score -= 30;
     reasons.unshift(`${action.name} is available; no stronger pattern recognized.`);
+  }
+
+  if (role === "exploration-utility") {
+    score -= enemies(context).length ? 46 : 18;
+    reasons.unshift(`${action.name} is mostly exploration utility.`);
+  }
+
+  if (role === "combat-utility") {
+    score += enemies(context).length ? 4 : -8;
+    reasons.unshift(`${action.name} has situational combat utility.`);
+  }
+
+  if (role === "sustain-control") {
+    score += enemies(context).length ? 18 : 4;
+    reasons.unshift(`${action.name} can maintain ongoing control.`);
   }
 
   if (action.slug === "rage" && !hasCondition(profile, "rage") && !hasCondition(profile, "raging")) {
@@ -1656,11 +2258,19 @@ export function scoreCandidate(context, action) {
     includesStrike: action.activityProfile?.includesStrike === true,
     reloadBeforeStrike: action.activityProfile?.reloadBeforeStrike === true || Number(action.reloadCost) > 0,
     consumable: action.item?.type === "consumable" || action.type === "consumable",
-    isImpulse: actionTraitSlugs(action).includes("impulse") || action.activityProfile?.impulse === true,
+    isImpulse: actionTraitSlugs(action).includes("impulse")
+      || action.activityProfile?.impulse === true
+      || action.activityProfile?.overflow === true,
   });
   if (classAdjustment.scoreDelta) {
     score += classAdjustment.scoreDelta;
     reasons.push(...classAdjustment.reasons);
+  }
+
+  const npcAdjustment = npcTacticAdjustment(context, action, { target, role, areaHitCount });
+  if (npcAdjustment.scoreDelta) {
+    score += npcAdjustment.scoreDelta;
+    reasons.push(...npcAdjustment.reasons);
   }
 
   if (spellAdjustment.scoreDelta) {
@@ -1689,12 +2299,20 @@ export function scoreCandidate(context, action) {
     reasons.push(...skillCheck.reasons);
   }
 
-  return {
+  if (ownSkillReliability) {
+    score += ownSkillReliability.scoreDelta;
+    reasons.push(...ownSkillReliability.reasons);
+  }
+
+  return sanitizeScoredRecommendation({
     ...action,
     score,
     skillCheck,
     suggestedTarget,
     reason: reasons[0] ?? defaultReason(action),
     reasons,
-  };
+  }, {
+    isGM: canUseTargetDefenses(context),
+    fallbackReason: defaultReason(action),
+  });
 }

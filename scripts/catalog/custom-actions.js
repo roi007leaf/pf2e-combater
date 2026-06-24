@@ -1,308 +1,63 @@
+import { COMMON_ACTIONS } from './class-actions/common.js';
+import { ALCHEMIST_ACTIONS } from './class-actions/alchemist.js';
+import { ANIMIST_ACTIONS } from './class-actions/animist.js';
+import { BARBARIAN_ACTIONS } from './class-actions/barbarian.js';
+import { BARD_ACTIONS } from './class-actions/bard.js';
+import { CHAMPION_ACTIONS } from './class-actions/champion.js';
+import { CLERIC_ACTIONS } from './class-actions/cleric.js';
+import { COMMANDER_ACTIONS } from './class-actions/commander.js';
+import { DRUID_ACTIONS } from './class-actions/druid.js';
+import { EXEMPLAR_ACTIONS } from './class-actions/exemplar.js';
+import { FIGHTER_ACTIONS } from './class-actions/fighter.js';
+import { GUARDIAN_ACTIONS } from './class-actions/guardian.js';
+import { GUNSLINGER_ACTIONS } from './class-actions/gunslinger.js';
+import { INVENTOR_ACTIONS } from './class-actions/inventor.js';
+import { INVESTIGATOR_ACTIONS } from './class-actions/investigator.js';
+import { KINETICIST_ACTIONS } from './class-actions/kineticist.js';
+import { MAGUS_ACTIONS } from './class-actions/magus.js';
+import { MONK_ACTIONS } from './class-actions/monk.js';
+import { ORACLE_ACTIONS } from './class-actions/oracle.js';
+import { PSYCHIC_ACTIONS } from './class-actions/psychic.js';
+import { RANGER_ACTIONS } from './class-actions/ranger.js';
+import { ROGUE_ACTIONS } from './class-actions/rogue.js';
+import { RUNESMITH_ACTIONS } from './class-actions/runesmith.js';
+import { SORCERER_ACTIONS } from './class-actions/sorcerer.js';
+import { SUMMONER_ACTIONS } from './class-actions/summoner.js';
+import { SWASHBUCKLER_ACTIONS } from './class-actions/swashbuckler.js';
+import { THAUMATURGE_ACTIONS } from './class-actions/thaumaturge.js';
+import { WITCH_ACTIONS } from './class-actions/witch.js';
+import { WIZARD_ACTIONS } from './class-actions/wizard.js';
+
 export const CUSTOM_ACTION_TACTICS = [
-  {
-    slug: "sudden-charge",
-    role: "mobility-attack",
-    activityProfile: {
-      includes: ["stride", "stride", "strike"],
-      strideCount: 2,
-      includesStrike: true,
-    },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "rage",
-    role: "combat-buff",
-    setupFor: ["strike", "mobility-attack"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "battle-medicine",
-    role: "healing",
-    executable: "pf2e-action",
-    confidence: "high",
-  },
-  {
-    slug: "bon-mot",
-    role: "debuff",
-    executable: "pf2e-action",
-    confidence: "high",
-  },
-  {
-    slug: "power-attack",
-    role: "damage",
-    activityProfile: {
-      includes: ["strike"],
-      includesStrike: true,
-      focusedStrike: true,
-    },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "vicious-swing",
-    role: "damage",
-    activityProfile: {
-      includes: ["strike"],
-      includesStrike: true,
-      focusedStrike: true,
-    },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "spellstrike",
-    role: "damage",
-    activityProfile: {
-      includes: ["spell", "strike"],
-      includesStrike: true,
-      focusedStrike: true,
-      spellstrike: true,
-    },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "recharge-spellstrike",
-    role: "resource-recovery",
-    activityProfile: {
-      includes: ["resource"],
-      rechargeSpellstrike: true,
-    },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "arcane-cascade",
-    role: "setup",
-    activityProfile: {
-      includes: ["setup"],
-      stance: true,
-    },
-    setupFor: ["strike", "damage", "spellstrike"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "hunt-prey",
-    role: "setup",
-    activityProfile: {
-      includes: ["setup"],
-      targetMark: "hunted-prey",
-    },
-    targetingProfile: { enemy: true },
-    setupFor: ["strike", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "hunted-shot",
-    role: "multiattack",
-    activityProfile: {
-      includes: ["strike", "strike"],
-      includesStrike: true,
-      multiStrike: true,
-    },
-    targetingProfile: { enemy: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "twin-takedown",
-    role: "multiattack",
-    activityProfile: {
-      includes: ["strike", "strike"],
-      includesStrike: true,
-      multiStrike: true,
-    },
-    targetingProfile: { enemy: true, reach: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "hunters-aim",
-    role: "damage",
-    activityProfile: {
-      includes: ["strike"],
-      includesStrike: true,
-      focusedStrike: true,
-    },
-    targetingProfile: { enemy: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "devise-a-stratagem",
-    role: "setup",
-    activityProfile: {
-      includes: ["setup"],
-      targetMark: "devised-stratagem",
-    },
-    targetingProfile: { enemy: true },
-    setupFor: ["strike", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "confident-finisher",
-    role: "damage",
-    activityProfile: {
-      includes: ["strike"],
-      includesStrike: true,
-      focusedStrike: true,
-      finisher: true,
-    },
-    targetingProfile: { enemy: true, reach: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "quick-alchemy",
-    role: "setup",
-    activityProfile: { includes: ["setup"], createsConsumable: true },
-    targetingProfile: { self: true },
-    setupFor: ["damage", "healing", "debuff", "control"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "quick-bomber",
-    role: "damage",
-    activityProfile: { includes: ["strike"], includesStrike: true, bomb: true, ranged: true },
-    targetingProfile: { enemy: true, maxRange: 20 },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "lay-on-hands",
-    role: "healing",
-    activityProfile: { includes: ["healing"], focus: true },
-    targetingProfile: { ally: true, self: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "taunt",
-    role: "debuff",
-    activityProfile: { includes: ["debuff"], targetMark: "taunted" },
-    targetingProfile: { enemy: true },
-    setupFor: ["defense", "control"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "overdrive",
-    role: "setup",
-    activityProfile: { includes: ["setup"], damageBuff: true },
-    targetingProfile: { self: true },
-    setupFor: ["strike", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "flurry-of-blows",
-    role: "multiattack",
-    activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true },
-    targetingProfile: { enemy: true, reach: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "unleash-psyche",
-    role: "setup",
-    activityProfile: { includes: ["setup"], spellBuff: true, damageBuff: true },
-    targetingProfile: { self: true },
-    setupFor: ["spell", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "manifest-eidolon",
-    role: "summon",
-    activityProfile: { includes: ["summon"], manifestsCompanion: true },
-    targetingProfile: { self: true },
-    setupFor: ["act-together", "tandem-strike", "tandem-movement"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "act-together",
-    role: "setup",
-    activityProfile: { includes: ["setup"], tandem: true },
-    targetingProfile: { self: true },
-    setupFor: ["strike", "spell", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "tandem-strike",
-    role: "multiattack",
-    activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, tandem: true },
-    targetingProfile: { enemy: true, reach: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "trace-rune",
-    role: "setup",
-    activityProfile: { includes: ["setup"], targetMark: "traced-rune" },
-    targetingProfile: { enemy: true },
-    setupFor: ["invoke-rune", "damage", "control"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "invoke-rune",
-    role: "damage",
-    activityProfile: { includes: ["damage"], invokesRune: true },
-    targetingProfile: { enemy: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "wild-shape",
-    role: "transformation",
-    activityProfile: { includes: ["transformation"], polymorph: true },
-    targetingProfile: { self: true },
-    setupFor: ["strike", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "lingering-composition",
-    role: "setup",
-    activityProfile: { includes: ["setup"], composition: true },
-    targetingProfile: { self: true },
-    setupFor: ["buff"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "courageous-anthem",
-    role: "buff",
-    activityProfile: { includes: ["buff"], composition: true, ally: true, attackBuff: true },
-    targetingProfile: { ally: true, self: true },
-    setupFor: ["strike", "damage"],
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "channel-smite",
-    role: "damage",
-    activityProfile: { includes: ["spell", "strike"], includesStrike: true, focusedStrike: true },
-    targetingProfile: { enemy: true, reach: true },
-    executable: "open-item",
-    confidence: "high",
-  },
-  {
-    slug: "drain-bonded-item",
-    role: "resource-recovery",
-    activityProfile: { includes: ["resource"], recoversSpellResource: true },
-    targetingProfile: { self: true },
-    executable: "open-item",
-    confidence: "high",
-  },
+  ...COMMON_ACTIONS,
+  ...ALCHEMIST_ACTIONS,
+  ...ANIMIST_ACTIONS,
+  ...BARBARIAN_ACTIONS,
+  ...BARD_ACTIONS,
+  ...CHAMPION_ACTIONS,
+  ...CLERIC_ACTIONS,
+  ...COMMANDER_ACTIONS,
+  ...DRUID_ACTIONS,
+  ...EXEMPLAR_ACTIONS,
+  ...FIGHTER_ACTIONS,
+  ...GUARDIAN_ACTIONS,
+  ...GUNSLINGER_ACTIONS,
+  ...INVENTOR_ACTIONS,
+  ...INVESTIGATOR_ACTIONS,
+  ...KINETICIST_ACTIONS,
+  ...MAGUS_ACTIONS,
+  ...MONK_ACTIONS,
+  ...ORACLE_ACTIONS,
+  ...PSYCHIC_ACTIONS,
+  ...RANGER_ACTIONS,
+  ...ROGUE_ACTIONS,
+  ...RUNESMITH_ACTIONS,
+  ...SORCERER_ACTIONS,
+  ...SUMMONER_ACTIONS,
+  ...SWASHBUCKLER_ACTIONS,
+  ...THAUMATURGE_ACTIONS,
+  ...WITCH_ACTIONS,
+  ...WIZARD_ACTIONS,
 ];
 
 export function findCustomActionTactics(slug) {

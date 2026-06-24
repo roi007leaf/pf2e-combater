@@ -1,7 +1,30 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
+import {
+  ACTION_BUILDER_TABS,
+  actionBuilderKey,
+  builderAtomicActionsForStep,
+  buildActionBuilderModel,
+  projectContextForDraftDestination,
+  projectContextForDraftStepOrigin,
+  requiresDestinationForAction,
+} from "./action-builder.js";
+import {
+  createAreaRegionData,
+  currentTargetSelection,
+  executeDraftStep,
+  executionReadinessForStep,
+  nextPendingExecutionStep,
+  requiresAreaMarkerForAction,
+  requiresTargetForAction,
+  resetDraftExecution,
+  setTokenTargets,
+  tokensInAreaMarker,
+} from "./action-executor.js";
+import { revertDraftExecution, revertDraftStep } from "./action-revert.js";
 import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
@@ -9,9 +32,30 @@ import { classifySpell } from "./spell-classifier.js";
 import { readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
+import {
+  favoriteKey,
+  readActionFavorites,
+  toggleActionFavorite,
+} from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
+import {
+  draftPlanKey,
+  readDraftPlan,
+  readSharedDraftPlan,
+  sharedDraftPlanKey,
+  writeDraftPlan,
+  writeSharedDraftPlan,
+  writeSharedDraftPlanActorFlag,
+  writeSharedDraftPlanPayload,
+  upsertDraftStep,
+  removeDraftStep,
+} from "../state/draft-plans.js";
+import * as draftPlanState from "../state/draft-plans.js";
 import { coverageForItems } from "../dev/coverage.js";
+import { coveredClassSlugs } from "../rules/class-tactics.js";
+import { KNOWN_SUBCLASS_SLUGS } from "../rules/class-tactics-data/index.js";
+import { displayStepEntries } from "../ui/display-steps.js";
 import {
   captureMovementOrigin,
   consumeTokenRefreshChange,
@@ -21,10 +65,1601 @@ import {
   tokenUpdateAffectsMovement,
 } from "../state/token-refresh.js";
 import { readVisionerCoverState, readVisionerDetectionState } from "../integrations/visioner.js";
+import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
+import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
 import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
+import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
+import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
+import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
+import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
+import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
+import {
+  readSustainedSpellEntries,
+  removeSustainedSpellEntries,
+  unsustainedSpellCleanupEntries,
+} from "../rules/sustained-spells.js";
+import { registerSettings, SETTINGS } from "../settings.js";
+import { STORAGE_KEYS } from "../constants.js";
+
+const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
+const panelSource = readFileSync(new URL("../ui/CombaterPanel.js", import.meta.url), "utf8");
+const mainSource = readFileSync(new URL("../main.js", import.meta.url), "utf8");
+const actionExecutorSource = readFileSync(new URL("./action-executor.js", import.meta.url), "utf8");
+const panelStyleSource = readFileSync(new URL("../../styles/combater.css", import.meta.url), "utf8");
+const areaPickerSource = readFileSync(new URL("../ui/area-picker.js", import.meta.url), "utf8");
+const actionPreviewSource = readFileSync(new URL("../ui/action-preview.js", import.meta.url), "utf8");
+assert.ok(panelSource.includes("\"◆\""), "panel action costs should use real diamond glyphs");
+assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
+assert.ok(panelSource.includes("setCombatant(combatant"), "panel should expose explicit combatant selection");
+assert.ok(panelSource.includes("combatant: this._selectedCombatant"), "panel context should use selected explicit combatant");
+assert.ok(panelSource.includes("this._onClose = typeof options.onClose === \"function\""), "panel should accept close callback");
+assert.ok(panelSource.includes("this._onClose?.(this);"), "panel close should notify owner");
+assert.ok(panelSource.includes("Quickened actions"), "panel should render a quickened-only action shelf");
+assert.ok(mainSource.includes("handlePanelClosed(panel)"), "main should clear active panel through close callback");
+assert.ok(mainSource.includes("onClose: handlePanelClosed"), "main should pass close callback when opening panel");
+assert.ok(mainSource.includes("let autoOpenSuppressed = false;"), "main should track manual auto-open suppression");
+assert.ok(
+  /async function closeActivePanel\([\s\S]*autoOpenSuppressed = true;/.test(mainSource),
+  "token-tool close should suppress automatic reopen on combatant changes",
+);
+assert.ok(
+  /if \(toggled\) \{[\s\S]*autoOpenSuppressed = false;[\s\S]*await openSelectedOrCurrent\("token-tool"\);/.test(mainSource),
+  "token-tool open should clear automatic reopen suppression",
+);
+assert.ok(
+  /Hooks\.on\("updateCombat"[\s\S]*if \(autoOpenSuppressed && !activePanel\) return;/.test(mainSource),
+  "combat-turn auto-open should stay closed after token-tool toggle off",
+);
+assert.equal(
+  mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\r\n  await openCurrent(\"combat-turn\")")
+  || mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\n  await openCurrent(\"combat-turn\")"),
+  false,
+  "combat-turn refresh should not be skipped while panel is already open and autoOpen is false",
+);
+assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
+assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
+assert.equal(panelTemplateSource.includes("data-tab=\"search\""), false, "search should not be a standalone tab");
+assert.equal(panelTemplateSource.includes("{{#if isSearch}}"), false, "search input should render inside each cost tab, not a search-only tab");
+assert.ok(panelTemplateSource.includes("data-search-actions"), "each action-cost tab should expose an action-search input");
+assert.equal(panelSource.includes("SEARCH_TAB"), false, "panel source should not define a standalone Search tab");
+assert.ok(panelSource.includes("filterBuilderTabActions"), "panel source should filter actions inside each active tab");
+assert.ok(panelSource.includes("groupActionsByBuilderCategory"), "panel should group tab actions into combat categories");
+assert.ok(panelSource.includes("actionDetailChips"), "panel should decorate spell/action detail chips");
+assert.ok(panelTemplateSource.includes("combater-detail-chips"), "panel template should render action detail chips");
+const searchSetterBody = panelSource.match(/_setSearchQuery\(query,\s+input\s+=\s+null\)\s*\{([\s\S]*?)\n\s{2}\}/)?.[1] ?? "";
+assert.ok(searchSetterBody, "search setter should accept the active input element");
+assert.equal(searchSetterBody.includes("this.render"), false, "typing in search should not synchronously re-render and steal focus");
+assert.ok(searchSetterBody.includes("_scheduleSearchRender"), "typing in search should debounce the filtered rerender");
+assert.ok(panelSource.includes("_restoreSearchFocus"), "search rerenders should restore input focus and caret");
+assert.deepEqual(
+  groupActionsByBuilderCategory([
+    { name: "Strike", source: "strike" },
+    { name: "Stride", slug: "stride", role: "mobility" },
+    { name: "Raise a Shield", slug: "raise-a-shield", role: "defense" },
+    { name: "Demoralize", skill: "intimidation", role: "debuff" },
+    { name: "Force Barrage", source: "spell-prepared", activityProfile: { spell: true } },
+    { name: "Quick Bomber", source: "custom-curated", category: "classfeature" },
+    { name: "Potion", item: { type: "consumable" } },
+  ]).map((section) => ({ id: section.id, actions: section.actions.map((action) => action.name) })),
+  [
+    { id: "attacks", actions: ["Strike"] },
+    { id: "movement", actions: ["Stride"] },
+    { id: "defense", actions: ["Raise a Shield"] },
+    { id: "skills", actions: ["Demoralize"] },
+    { id: "spells", actions: ["Force Barrage"] },
+    { id: "items", actions: ["Potion"] },
+    { id: "class", actions: ["Quick Bomber"] },
+  ],
+  "builder tab actions should group into stable combat categories",
+);
+assert.deepEqual(
+  actionDetailChips({
+    name: "Fireball",
+    source: "spell-inferred",
+    rank: 3,
+    spellResource: { label: "Slots 2/4", tooltip: "Rank 3 spell slots: 2/4 left." },
+    spellcastingEntryLabel: "Arcane Spontaneous",
+    spellDc: 21,
+    saveProfile: { stat: "reflex", basic: true },
+    targetingProfile: { area: true, type: "burst", distance: 20, maxRange: 500 },
+    activityProfile: { spell: true, duration: "1 minute", sustained: true },
+    traits: ["incapacitation", "manipulate"],
+  }).map((chip) => chip.label),
+  ["Rank 3", "Slots 2/4", "Arcane Spontaneous", "DC 21 Reflex basic", "20-ft Burst", "Sustain", "Incapacitation", "Manipulate"],
+  "spell action detail chips should show rank, resource, entry, resolution, area, duration, and notable traits",
+);
+assert.ok(panelTemplateSource.includes("combater-sustained-spells"), "panel template should expose sustained spell choices");
+assert.ok(
+  panelTemplateSource.indexOf("combater-sustained-spells") < panelTemplateSource.indexOf("combater-tabs"),
+  "sustained spell section should render above action-cost tabs",
+);
+assert.ok(panelTemplateSource.includes("data-add-sustain-spell"), "sustained spell section should add a chosen Sustain a Spell step");
+assert.ok(panelSource.includes("_chooseSustainedSpellForStep"), "generic Sustain a Spell execution should ask which spell to sustain");
+assert.ok(mainSource.includes("promptUnsustainedSpellCleanup"), "turn changes should prompt cleanup for unsustained spells");
+for (const oldTabId of ["plan", "alternatives", "debug"]) {
+  assert.equal(panelTemplateSource.includes(`data-tab="${oldTabId}"`), false, `panel template should not expose old ${oldTabId} tab`);
+}
+for (const eventHook of [
+  "data-add-action",
+  "data-remove-draft-step",
+  "data-favorite-action",
+  "data-auto-fill",
+  "data-choose-destination",
+  "data-choose-target",
+  "data-choose-area",
+  "data-remove-area",
+  "data-execute-draft-step",
+  "data-reset-execution",
+  "data-revert-step",
+]) {
+  assert.ok(panelTemplateSource.includes(eventHook), `panel template should expose ${eventHook}`);
+}
+assert.equal(panelTemplateSource.includes("data-execute-next"), false, "panel should not expose a global Execute next button");
+assert.equal(
+  panelTemplateSource.includes("data-load-shared-draft"),
+  false,
+  "auto-updating player plans should not expose a redundant Load plan button",
+);
+assert.equal(
+  panelSource.includes("canLoadSharedDraft"),
+  false,
+  "panel model should not carry manual player-plan loading state",
+);
+assert.equal(panelSource.includes("Execute next"), false, "panel should not expose Execute next state");
+assert.ok(panelSource.includes("_executeDraftStep(instanceId"), "panel should execute an explicit draft step by id");
+assert.ok(panelTemplateSource.includes("Reset execution"), "panel should expose execution reset");
+assert.ok(panelSource.includes("executeDraftStep"), "panel should use action executor instead of advisory-only execution");
+assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
+assert.ok(panelSource.includes("revertDraftExecution"), "panel reset should revert executed steps, not only clear status");
+assert.ok(panelSource.includes("revertDraftStep"), "panel should revert an individual executed step");
+assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
+assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");
+assert.ok(
+  /async refresh\([\s\S]*?if \(this\._areaPicker \|\| this\._destinationPicker\)[\s\S]*?return;/.test(panelSource),
+  "refresh must not cancel an in-progress area or destination picker, or the canvas grid/region tools drop mid-selection",
+);
+assert.ok(areaPickerSource.includes("chooseAreaMarker"), "area picker should export chooseAreaMarker");
+assert.ok(panelSource.includes("showActionPreview"), "plan hover should preview movement, target, or area choices");
+assert.ok(panelSource.includes("clearActionPreview"), "plan hover cleanup should clear all action preview overlays");
+assert.ok(panelSource.includes("_pickTemplate"), "panel should let the user pick which template to place");
+assert.ok(panelSource.includes("targetingProfile?.templates"), "panel should read the parsed multi-template list");
+assert.ok(panelSource.includes("_removeAreaTemplate"), "panel should let the user remove a placed template");
+assert.ok(panelTemplateSource.includes("hasAreaMarker"), "remove-template button should only show when a template is set");
+assert.ok(actionPreviewSource.includes("plannedTargetTokens"), "action preview should resolve planned target tokens");
+assert.ok(actionPreviewSource.includes("drawAreaPreview"), "action preview should draw planned area markers");
+assert.equal(
+  panelTemplateSource.includes("data-share-draft"),
+  false,
+  "player plans should auto-sync instead of requiring a manual Share button",
+);
+assert.equal(
+  (panelTemplateSource.match(/data-auto-fill/g) ?? []).length,
+  1,
+  "panel template should expose one top-level Auto-fill button only",
+);
+assert.equal(
+  panelTemplateSource.includes("combater-auto-fill"),
+  false,
+  "panel template should not render an Auto-fill card in every tab",
+);
+assert.ok(panelTemplateSource.includes("builder.poolSummary"), "panel template should show action count in shared header");
+assert.ok(panelTemplateSource.includes("builder.totalSummary"), "panel template should keep total action tooltip in shared header");
+assert.ok(panelTemplateSource.includes("builder.reactionSummary"), "panel template should keep reaction tooltip in shared header");
+assert.ok(panelTemplateSource.includes("combater-meta-row"), "panel header should separate status badges from actor name");
+assert.ok(panelTemplateSource.includes("combater-identity"), "panel header should group portrait and actor status as identity");
+assert.ok(panelTemplateSource.includes("combater-plan-strip"), "panel header should give selected actions a dedicated plan strip");
+assert.ok(panelTemplateSource.includes("combater-step-main"), "selected action rows should separate action title from metadata");
+assert.ok(panelTemplateSource.includes("combater-step-details"), "selected action rows should group target and destination metadata");
+assert.ok(panelTemplateSource.includes("combater-step-tools"), "selected action tool buttons should stay inside the row");
+assert.ok(
+  /grid-template-areas:\s*"identity actions"\s*"plan plan"/.test(panelStyleSource),
+  "panel header should use a two-row grid so action chips do not fight execute controls",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-plan-strip\s*\{[\s\S]*?grid-area:\s*plan;/.test(panelStyleSource),
+  "selected action strip should occupy its own header grid area",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-plan-strip \.combater-sequence\s*\{[\s\S]*?flex-direction:\s*column;/.test(panelStyleSource),
+  "selected action strip should render compact vertical rows instead of stretched slabs",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-plan-strip \.combater-header-step\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/.test(panelStyleSource),
+  "selected action rows should keep step content and row tools aligned",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-step-details\s*\{[\s\S]*?flex-wrap:\s*wrap;/.test(panelStyleSource),
+  "selected action metadata should wrap instead of overlapping",
+);
+assert.equal(
+  /headerSummary:\s*draftSteps\.length/.test(panelSource),
+  false,
+  "selected step count should not render as visible header summary over the plan rows",
+);
+assert.ok(panelTemplateSource.includes("headerConfidenceClass"), "panel template should style header from draft state");
+assert.ok(panelTemplateSource.includes("No selected actions"), "panel template should start with empty draft copy");
+assert.equal(
+  panelSource.includes(": \"No selected actions.\""),
+  false,
+  "empty draft should not duplicate the no-selected-actions copy in header summary",
+);
+assert.ok(
+  panelTemplateSource.includes("{{#if headerSummary}}"),
+  "header summary should only render when non-empty",
+);
+assert.ok(
+  panelSource.includes("remainingQuickenedActions"),
+  "header action pool should include quickened actions left",
+);
+assert.ok(
+  panelSource.includes("builderAtomicActionsForStep"),
+  "auto-fill should split generated combo plan steps into atomic draft actions",
+);
+assert.equal(panelTemplateSource.includes("No usable action"), false, "panel template should not imply auto-fill is selected");
+assert.ok(panelSource.includes("headerSteps: draftSteps"), "panel header should render draft steps only");
+assert.ok(panelSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
+assert.ok(panelSource.includes("this._planningContext = planningContext"), "action-list previews should remember projected draft destination context");
+assert.ok(
+  panelSource.includes("showActionPreview(this._planningContext ?? this._context, step)"),
+  "action-list hover preview should start from projected draft context",
+);
+assert.ok(
+  /_onRender\(context, options\)[\s\S]*_restoreDestinationPickerPreview\(\)/.test(panelSource),
+  "panel render should restore destination picker overlay while picker is active",
+);
+assert.ok(
+  panelSource.includes("this._destinationPicker.preview"),
+  "destination picker refresh should restore the transient waypoint preview instead of resetting to the draft step",
+);
+assert.ok(
+  /chooseDestination\(\{[\s\S]*enableWaypoints:\s*true/.test(panelSource),
+  "stride destination planning should use combater-owned waypoints instead of Foundry's native ruler",
+);
+assert.equal(
+  /_chooseDestination\(instanceId\)[\s\S]*useNativeRuler:\s*true/.test(panelSource),
+  false,
+  "plan-phase destination picking must not call Foundry native ruler because it can move tokens",
+);
+assert.ok(
+  /_clearActionPreviewUnlessPicking\(event\)[\s\S]*const related = event\?\.relatedTarget[\s\S]*if \(!related \|\| !element\?\.contains\?\.\(related\)\) return;/.test(panelSource),
+  "plan hover preview should stay visible when the pointer leaves the panel for the canvas or the pointer is cancelled",
+);
+assert.ok(
+  /_showDraftActionPreview\(element\)[\s\S]*movementPlan:\s*step\.movementPlan/.test(panelSource),
+  "draft movement hover preview should include stored custom waypoint path, not only the final destination",
+);
+assert.equal(
+  GENERIC_ACTIONS.find((action) => action.slug === "raise-a-shield")?.uuid,
+  "Compendium.pf2e.actionspf2e.Item.xjGwis0uaC2305pm",
+  "Raise a Shield should open the PF2e system action compendium entry",
+);
+assert.ok(
+  /_openActionDetails\(step\)[\s\S]*renderSheetFromUuid/.test(panelSource),
+  "action details should resolve compendium UUIDs before chat guidance fallback",
+);
+assert.equal(panelSource.includes("combater is advisory only"), false, "execution should no longer be advisory-only");
+assert.ok(panelSource.includes("readSharedDraftPlan(context)"), "GM panel should read shared player draft plans");
+assert.ok(mainSource.includes("shareDraft"), "main socket listener should receive shared player draft plans");
+assert.ok(panelSource.includes("isPlayerPlan"), "GM header should know when displayed draft is a player plan");
+assert.ok(panelTemplateSource.includes("combater-player-plan-badge"), "GM header should show a visible player-plan badge");
+assert.ok(
+  panelStyleSource.includes(".pf2e-combater .combater-player-plan-badge"),
+  "player-plan badge should have explicit header styling",
+);
+assert.ok(
+  panelSource.includes("gmViewingPlayerPlan"),
+  "GM PC view should be a player-plan mirror instead of an editable GM draft",
+);
+assert.equal(
+  panelSource.includes("const useSharedDraft = !loadedSharedDraft"),
+  false,
+  "loaded/shared GM player plans should keep following live player socket updates",
+);
+assert.equal(
+  panelSource.includes("const sharedDraftAvailable = Boolean(sharedDraft?.steps?.length);"),
+  false,
+  "empty player shared drafts should still count as live updates so GM views clear stale plans",
+);
+assert.ok(
+  /const useSharedDraft = sharedDraftKnown[\s\S]*shouldDisplaySharedDraft\(draft, sharedDraft\)/.test(panelSource),
+  "shared-draft display decision should allow loaded shared drafts to be replaced by newer player payloads",
+);
+assert.ok(panelSource.includes("hasSharedDraftPlan(sharedDraft)"), "GM panel should treat empty player drafts as known shared plans");
+assert.ok(
+  panelSource.includes("isPlayerControlledActor"),
+  "panel should detect player-controlled actors before allowing GM draft edits",
+);
+assert.ok(
+  /this\._builder\.readonly = .*gmViewingPlayerPlan/.test(panelSource),
+  "GM PC view should mark builder readonly",
+);
+assert.ok(
+  panelTemplateSource.includes("{{#unless builder.readonly}}"),
+  "GM PC view should hide top-level edit controls",
+);
+assert.ok(
+  panelTemplateSource.includes("{{#unless readonly}}"),
+  "GM PC view should hide per-action edit controls",
+);
+assert.ok(
+  panelSource.includes("_syncDraftToGM"),
+  "player draft mutations should sync plan to GM automatically",
+);
+assert.ok(
+  panelSource.includes("writeSharedDraftPlanActorFlag"),
+  "player draft sync should mirror the plan onto the owned actor so GM clients update even if module socket delivery is missed",
+);
+assert.ok(
+  /_addAction\(actionKey\)[\s\S]*upsertDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  "adding an action should sync updated player plan to GM",
+);
+assert.ok(
+  /_removeDraftStep\(instanceId\)[\s\S]*removeDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  "removing an action should sync updated player plan to GM",
+);
+assert.ok(
+  /_autoFillDraft\(\)[\s\S]*writeDraftPlan\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  "auto-fill should sync updated player plan to GM",
+);
+assert.ok(
+  /onChoose: (?:async )?\(destination, metadata = \{\}\) =>[\s\S]*_persistActiveDraftStep\(/.test(panelSource),
+  "choosing a movement destination should persist the updated plan",
+);
+assert.ok(
+  /_persistActiveDraftStep\(step\)[\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  "persisting a draft step (local mode) should sync the player plan to GM",
+);
+// GM-executes-player-plan: the GM can run a shared plan on an AFK player's behalf, writing execution
+// state back to the shared draft rather than the GM's local one.
+assert.ok(
+  panelSource.includes("_gmExecuteMode") && panelSource.includes("_canExecuteDraft"),
+  "panel should support GM execution of a player's shared plan",
+);
+assert.ok(
+  /_persistActiveDraftStep\(step\)[\s\S]*writeSharedDraftPlanActorFlag/.test(panelSource),
+  "GM execution should write the shared draft back to the owned actor flag",
+);
+assert.ok(
+  /canExecuteStep:[^\n]*canRunStep/.test(panelSource)
+  && /canReset:[^\n]*gmCanRunPlayerPlan/.test(panelSource),
+  "per-step execute/reset controls should be enabled for a GM viewing a player's shared plan",
+);
+assert.ok(
+  panelSource.includes("executionReadinessForStep(step, action ?? step)"),
+  "draft-step decoration should compute execution readiness from stored dependencies",
+);
+assert.ok(
+  /canExecuteStep:[^\n]*readiness\.status === "ready"/.test(panelSource),
+  "play execution should only be enabled once target/template/destination dependencies are ready",
+);
+assert.ok(
+  panelTemplateSource.includes("{{#if canShowExecuteStep}}")
+  && panelTemplateSource.includes("{{#if executionBlocked}}disabled{{/if}}"),
+  "missing dependencies should leave a disabled play button instead of an executable play button",
+);
+assert.ok(
+  panelStyleSource.includes(".combater-chip-tool:disabled")
+  && panelStyleSource.includes(".combater-step-run.is-execute:disabled"),
+  "disabled play buttons should have explicit non-active styling",
+);
+assert.equal(
+  panelSource.includes("this._handleExecutionChoice(step, readiness.choices[0], event);"),
+  false,
+  "clicking play with missing dependencies should not auto-open target/template/destination pickers",
+);
+assert.ok(
+  panelSource.includes("globalThis.ui?.notifications?.warn?.(readiness.warning"),
+  "manual execute attempts with missing dependencies should warn instead of executing",
+);
+assert.ok(
+  /_executeDraftStep\(instanceId, event\)\s*\{\s*if \(!this\._canExecuteDraft\(\)\)/.test(panelSource),
+  "executing a draft step should allow GM execution, not just editing",
+);
+assert.ok(
+  /canRevertStep: isExecutionDone && canRunStep/.test(panelSource),
+  "per-step revert should be available to the owner or a GM running a player's shared plan",
+);
+assert.ok(
+  panelTemplateSource.includes("{{#if canRevertStep}}"),
+  "step template should gate per-step revert on canRevertStep, not raw readonly",
+);
+assert.ok(
+  panelSource.includes("silent: !notify"),
+  "automatic player plan sync should mark socket payloads silent",
+);
+assert.ok(
+  mainSource.includes("if (!payload.silent)"),
+  "GM should not receive notification spam for automatic plan sync",
+);
+assert.ok(
+  mainSource.includes("writeSharedDraftPlanPayload(payload);\n    scheduleRefresh(\"shared-draft\");")
+  || mainSource.includes("writeSharedDraftPlanPayload(payload);\r\n    scheduleRefresh(\"shared-draft\");"),
+  "shared player draft socket payloads should always refresh an open GM panel",
+);
+assert.equal(
+  mainSource.includes("if (sharedDraftMatchesActiveContext(payload)) scheduleRefresh"),
+  false,
+  "shared player draft refresh should not be blocked by combatant-id matching drift",
+);
+assert.ok(
+  /Hooks\.on\("updateCombat"[\s\S]*resetMovementPreview\(\);[\s\S]*if \(!setting\(SETTINGS\.autoOpen\) && !activePanel\) return;/.test(mainSource),
+  "combat turn updates should clear stride overlay before panel auto-open gating",
+);
+assert.ok(panelSource.includes("hideTarget ? \"\" : decorated.targetLabel"), "panel should support hiding target labels per section");
+assert.equal(
+  panelSource.includes("toward ${name}"),
+  false,
+  "movement draft steps should not label an unknown destination as toward a target",
+);
+assert.ok(
+  panelSource.includes(".filter((action) => !action.favorite)"),
+  "All section should omit favorited actions",
+);
+assert.ok(
+  /decorateAction\(action,\s*\{[^}]*hideTarget: true/.test(panelSource),
+  "All section should hide tactical target labels",
+);
+assert.equal(panelSource.includes("label: \"Recommended\""), false, "panel should not render Recommended inside every tab");
+assert.ok(mainSource.includes("getSceneControlButtons"), "main should add a token toolbar toggle");
+assert.ok(mainSource.includes("toggle-panel"), "token toolbar should expose combater toggle tool");
+assert.ok(mainSource.includes("inlineTurnCombatant("), "automatic panel refresh should follow inline initiative turn");
+assert.ok(mainSource.includes("combatant: panelCombatantForAutomaticOpen()"), "automatic panel open should use resolved panel combatant");
+assert.ok(
+  /function panelCombatantForAutomaticOpen\(\)[\s\S]*game\.user\?\.isGM === true[\s\S]*selectedTokenCombatant\(\) \?\? inlineTurnCombatant\(game\.combat\)/.test(mainSource),
+  "GM automatic panel selection should prefer selected token before current combatant",
+);
+assert.ok(mainSource.includes("function nextOwnedCombatant("), "player automatic panel selection should find next owned combatant");
+assert.ok(mainSource.includes("function combatantOwnedByUser("), "player automatic panel selection should check combatant ownership");
+assert.ok(
+  /function panelCombatantForAutomaticOpen\(\)[\s\S]*nextOwnedCombatant\(game\.combat, game\.user\) \?\? inlineTurnCombatant\(game\.combat\)/.test(mainSource),
+  "player automatic panel selection should prefer next owned combatant before active combatant",
+);
+assert.ok(
+  /function panelCombatantForTokenTool\(\)[\s\S]*game\.user\?\.isGM !== true[\s\S]*return panelCombatantForAutomaticOpen\(\);[\s\S]*selectedTokenCombatant\(\) \?\? panelCombatantForAutomaticOpen\(\)/.test(mainSource),
+  "token toolbar should use next-owned combatant for players and selected token for GM",
+);
+assert.ok(mainSource.includes("combatant: panelCombatantForTokenTool()"), "token toolbar should use role-aware combatant selection");
+assert.ok(panelStyleSource.includes("object-position: center center;"), "panel portrait image should be centered");
+assert.ok(panelStyleSource.includes(".pf2e-combater .combater-meta-row"), "panel header should style status badges as their own row");
+assert.ok(
+  /combater-name-row\s*\{[\s\S]*?justify-content: flex-start;/.test(panelStyleSource),
+  "actor name should not share a squeezed row with status badges",
+);
+assert.ok(
+  /combater-action-row \.combater-alt-promote\s*\{[\s\S]*?width: auto;/.test(panelStyleSource),
+  "action-list name buttons should size to their text instead of spanning the row",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-action-row\s*\{[\s\S]*?content-visibility:\s*auto;[\s\S]*?contain-intrinsic-size:/m.test(panelStyleSource),
+  "action-list rows should use browser render containment so long action lists scroll smoothly",
+);
+assert.ok(
+  /\.pf2e-combater \.combater-body\.is-scrolling \.combater-action-row/.test(panelStyleSource),
+  "action-list scrolling should suppress hover/tooltip pointer work while the wheel is moving",
+);
+assert.ok(
+  panelSource.includes("_activateActionListScrollPerformance(element)")
+  && panelSource.includes("body.addEventListener(\"scroll\", markScrolling, { passive: true })"),
+  "panel render should attach passive action-list scroll performance guard",
+);
+assert.equal(
+  panelSource.includes("draftSteps.length ? draftSteps : autoFill.steps"),
+  false,
+  "panel header should not auto-render auto-fill plan before user chooses it",
+);
+assert.equal(
+  panelTemplateSource.includes("combater-action-pool"),
+  false,
+  "panel template should not render action pool as a repeated tab body card",
+);
+assert.ok(panelTemplateSource.includes("combater-header-step"), "panel template should edit draft steps in shared header");
+assert.equal(
+  panelTemplateSource.includes("<strong>Draft</strong>"),
+  false,
+  "panel template should not render draft plan as a repeated tab body card",
+);
+for (const selectorHook of [
+  "data-open-action",
+  "data-open-draft-step",
+  "data-preview-step",
+  "data-preview-draft-step",
+]) {
+  assert.ok(panelTemplateSource.includes(selectorHook), `panel template should expose ${selectorHook}`);
+  assert.ok(panelSource.includes(selectorHook), `panel source should bind ${selectorHook}`);
+}
+assert.ok(panelTemplateSource.includes("combater-debug"), "panel template should keep GM debug foldout");
+
+const executionTargetAction = {
+  name: "Demoralize",
+  slug: "demoralize",
+  executable: "pf2e-action",
+  targetingProfile: { enemy: true, maxRange: 30 },
+};
+const executionAreaAction = {
+  name: "Stinking Cloud",
+  slug: "stinking-cloud",
+  executable: "open-item",
+  source: "spell-inferred",
+  activityProfile: { spell: true, lastingDuration: true },
+  targetingProfile: { area: true, type: "burst", distance: 20, maxRange: 500 },
+  item: { name: "Stinking Cloud", uuid: "Item.stinking-cloud" },
+};
+assert.equal(requiresTargetForAction(executionTargetAction), true);
+assert.equal(requiresTargetForAction({ name: "Stand", slug: "stand", targetingProfile: { self: true } }), false);
+assert.equal(requiresAreaMarkerForAction(executionAreaAction), true);
+assert.equal(panelSource.includes("plannedTargetDraftFields"), false, "adding or auto-filling a draft action should not persist recommendation targets");
+assert.equal(
+  panelSource.includes("?? action?.suggestedTarget?.name"),
+  false,
+  "draft header labels should not reuse action recommendation targets as selected targets",
+);
+assert.equal(
+  actionExecutorSource.includes("const planned = plannedTargetSelection(action)"),
+  false,
+  "execution readiness should not treat recommendation targets as selected targets",
+);
+assert.deepEqual(
+  executionReadinessForStep({ instanceId: "needs-target" }, executionTargetAction).choices,
+  ["target"],
+  "targeted actions without a planned target should need an execution choice, not a blocking draft warning",
+);
+assert.deepEqual(
+  executionReadinessForStep({
+    instanceId: "suggested-target-is-not-selected",
+  }, {
+    ...executionTargetAction,
+    suggestedTarget: { id: "target-token", name: "Goblin", token: { id: "target-token" } },
+  }).choices,
+  ["target"],
+  "recommended targets should not satisfy execution readiness until the user selects a target",
+);
+const legacyAutoTargetStep = {
+  instanceId: "legacy-auto-target",
+  targetTokenIds: ["target-token"],
+  targetLabel: "Target: Goblin",
+};
+const previousAutoTargetCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = { tokens: { placeables: [{ id: "target-token", name: "Goblin", document: { id: "target-token" } }] } };
+  assert.deepEqual(
+    executionReadinessForStep(legacyAutoTargetStep, {
+      ...executionTargetAction,
+      suggestedTarget: { id: "target-token", name: "Goblin", token: { id: "target-token" } },
+    }).choices,
+    ["target"],
+    "old draft rows with auto-stored recommendation targets should not count as selected targets",
+  );
+  assert.deepEqual(
+    executionReadinessForStep({ ...legacyAutoTargetStep, targetSelection: "manual" }, {
+      ...executionTargetAction,
+      suggestedTarget: { id: "target-token", name: "Goblin", token: { id: "target-token" } },
+    }).choices,
+    [],
+    "manual target picks should keep satisfying execution readiness even when they match the recommendation",
+  );
+} finally {
+  globalThis.canvas = previousAutoTargetCanvas;
+}
+assert.ok(
+  panelSource.includes('targetSelection: "manual"'),
+  "manual target picks should be marked so old auto-target draft fields can be ignored safely",
+);
+assert.deepEqual(
+  executionReadinessForStep({ instanceId: "needs-area" }, executionAreaAction).choices,
+  ["area"],
+  "area actions without a planned marker should need an execution choice",
+);
+assert.equal(
+  nextPendingExecutionStep({
+    steps: [
+      { instanceId: "done", execution: { status: "done" } },
+      { instanceId: "pending" },
+      { instanceId: "later" },
+    ],
+  })?.instanceId,
+  "pending",
+);
+assert.deepEqual(
+  resetDraftExecution({
+    steps: [
+      { instanceId: "done", destination: { x: 10, y: 15 }, execution: { status: "done" } },
+      { instanceId: "failed", targetTokenIds: ["target"], execution: { status: "failed", error: "stale" } },
+    ],
+  }).steps,
+  [
+    { instanceId: "done", destination: { x: 10, y: 15 }, execution: { status: "pending" } },
+    { instanceId: "failed", targetTokenIds: ["target"], execution: { status: "pending" } },
+  ],
+  "reset should clear execution progress without dropping planned defaults",
+);
+
+const sustainedSpellAction = {
+  id: "spell-animated-assault",
+  name: "Animated Assault",
+  slug: "animated-assault",
+  uuid: "Actor.caster.Item.spell-animated-assault",
+  sourceId: "Compendium.pf2e.spells-srd.Item.animated-assault",
+  activityProfile: { spell: true, sustained: true },
+  item: {
+    id: "spell-animated-assault",
+    uuid: "Actor.caster.Item.spell-animated-assault",
+    sourceId: "Compendium.pf2e.spells-srd.Item.animated-assault",
+  },
+};
+const sustainedSpellEffect = {
+  id: "effect-animated-assault",
+  _id: "effect-animated-assault",
+  type: "effect",
+  name: "Spell Effect: Animated Assault",
+  sourceId: "Compendium.pf2e.spell-effects.Item.animated-assault",
+  system: {
+    slug: "spell-effect-animated-assault",
+    source: { value: "Compendium.pf2e.spells-srd.Item.animated-assault" },
+  },
+};
+const sustainedSpellDraft = {
+  steps: [
+    {
+      instanceId: "cast-animated-assault",
+      action: sustainedSpellAction,
+      execution: {
+        status: "done",
+        revert: { ops: [{ kind: "region", regionId: "region-animated-assault", sceneId: "scene-1" }] },
+      },
+    },
+  ],
+};
+const sustainedSpellContext = {
+  actor: {
+    document: {
+      id: "caster",
+      name: "Caster",
+      itemTypes: { effect: [sustainedSpellEffect] },
+      items: [sustainedSpellEffect],
+    },
+  },
+  combat: { id: "combat-1" },
+  combatant: { id: "combatant-1" },
+};
+assert.deepEqual(
+  readSustainedSpellEntries(sustainedSpellContext, [sustainedSpellAction], sustainedSpellDraft).map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    effectIds: entry.effectIds,
+    templateRefs: entry.templateRefs,
+    sustained: entry.sustained,
+  })),
+  [{
+    id: "animated-assault",
+    name: "Animated Assault",
+    effectIds: ["effect-animated-assault"],
+    templateRefs: [{ kind: "region", regionId: "region-animated-assault", sceneId: "scene-1" }],
+    sustained: false,
+  }],
+  "sustained spell reader should connect active spell effects to module-created templates",
+);
+{
+  const previousTemplateGame = globalThis.game;
+  globalThis.game = {
+    scenes: {
+      values: () => [{
+        id: "scene-live",
+        regions: [{
+          id: "region-live-animated-assault",
+          flags: { "pf2e-combater": { originUuid: "Actor.caster.Item.spell-animated-assault" } },
+        }],
+      }],
+    },
+  };
+  try {
+    assert.deepEqual(
+      readSustainedSpellEntries(sustainedSpellContext, [sustainedSpellAction], { steps: [] })[0]?.templateRefs,
+      [{ kind: "region", regionId: "region-live-animated-assault", sceneId: "scene-live" }],
+      "sustained spell reader should find live module template regions when current draft is empty",
+    );
+  } finally {
+    globalThis.game = previousTemplateGame;
+  }
+}
+assert.equal(
+  unsustainedSpellCleanupEntries(sustainedSpellContext, [sustainedSpellAction], {
+    steps: [
+      ...sustainedSpellDraft.steps,
+      {
+        instanceId: "sustain-animated-assault",
+        action: { slug: "sustain-a-spell" },
+        sustainedSpell: { id: "animated-assault", name: "Animated Assault" },
+        execution: { status: "done" },
+      },
+    ],
+  }).length,
+  0,
+  "executed Sustain a Spell steps should suppress end-turn cleanup for the selected spell",
+);
+{
+  const removed = [];
+  const deletedRegions = [];
+  const cleanupContext = {
+    actor: {
+      document: {
+        id: "caster",
+        name: "Caster",
+        itemTypes: { effect: [sustainedSpellEffect] },
+        items: [sustainedSpellEffect],
+        deleteEmbeddedDocuments: async (type, ids) => {
+          removed.push({ type, ids });
+          return ids;
+        },
+      },
+    },
+  };
+  const previousCleanupGame = globalThis.game;
+  globalThis.game = {
+    scenes: {
+      get: (id) => id === "scene-1"
+        ? { deleteEmbeddedDocuments: async (type, ids) => deletedRegions.push({ type, ids }) }
+        : null,
+    },
+  };
+  try {
+    await removeSustainedSpellEntries(cleanupContext, readSustainedSpellEntries(sustainedSpellContext, [sustainedSpellAction], sustainedSpellDraft));
+  } finally {
+    globalThis.game = previousCleanupGame;
+  }
+  assert.deepEqual(removed, [{ type: "Item", ids: ["effect-animated-assault"] }], "cleanup should remove unsustained spell effects");
+  assert.deepEqual(deletedRegions, [{ type: "Region", ids: ["region-animated-assault"] }], "cleanup should remove unsustained spell templates");
+}
+
+const previousExecutionGame = globalThis.game;
+const previousExecutionCanvas = globalThis.canvas;
+const previousExecutionChatMessage = globalThis.ChatMessage;
+try {
+  const targetCalls = [];
+  const pf2eActionCalls = [];
+  const tokenUpdates = [];
+  const tokenMoves = [];
+  const movementStarts = [];
+  const conditionUpdates = [];
+  const conditionIncreases = [];
+  const regionCreates = [];
+  const regionDeletes = [];
+  const messageDeletes = [];
+  const damageRolls = [];
+  const damageMessages = [];
+  const actorDocument = {
+    name: "Valeros",
+    decreaseCondition: async (slug, options = {}) => {
+      conditionUpdates.push({ slug, options });
+    },
+    increaseCondition: async (slug, options = {}) => {
+      conditionIncreases.push({ slug, options });
+    },
+  };
+  const actorToken = {
+    id: "actor-token",
+    center: { x: 0, y: 0 },
+    document: {
+      id: "actor-token",
+      width: 1,
+      height: 1,
+      update: async (data) => {
+        tokenUpdates.push(data);
+      },
+      move: async (waypoint, options = {}) => {
+        tokenMoves.push({ waypoint, options });
+        return true;
+      },
+      movement: { state: "completed", id: null },
+      startMovement: async (id) => {
+        movementStarts.push(id);
+        return true;
+      },
+    },
+  };
+  const targetToken = {
+    id: "target-token",
+    name: "Goblin",
+    document: {
+      id: "target-token",
+      uuid: "Scene.scene.Token.target-token",
+      actor: { name: "Goblin" },
+    },
+    setTarget: (selected, options = {}) => {
+      targetCalls.push({ selected, options });
+    },
+  };
+  globalThis.canvas = {
+    grid: { size: 5, distance: 5 },
+    scene: {
+      id: "scene-1",
+      grid: { distance: 5 },
+      createEmbeddedDocuments: async (type, documents) => {
+        regionCreates.push({ type, documents });
+        return documents.map((document, index) => ({ ...document, id: `region-${regionCreates.length}-${index}` }));
+      },
+      deleteEmbeddedDocuments: async (type, ids) => {
+        regionDeletes.push({ type, ids });
+        return ids;
+      },
+    },
+    tokens: {
+      placeables: [actorToken, targetToken],
+      setTargets: (ids) => targetCalls.push({ reset: ids }),
+    },
+    walls: { placeables: [] },
+  };
+  const chatMessages = new Map([
+    ["msg-strike-1", { id: "msg-strike-1", delete: async () => { messageDeletes.push("msg-strike-1"); } }],
+  ]);
+  globalThis.game = {
+    user: { id: "user-1", targets: new Set() },
+    scenes: { get: (id) => (id === "scene-1" ? globalThis.canvas.scene : null) },
+    messages: { get: (id) => chatMessages.get(id) ?? null },
+    pf2e: {
+      DamageRoll: class {
+        constructor(formula) {
+          this.formula = formula;
+          damageRolls.push({ formula });
+        }
+
+        async evaluate() {
+          return this;
+        }
+
+        async toMessage(messageData = {}) {
+          damageMessages.push(messageData);
+          return { id: `dmg-msg-${damageRolls.length}` };
+        }
+      },
+      actions: new Map([
+        [
+          "demoralize",
+          {
+            use: async (options) => {
+              pf2eActionCalls.push(options);
+              return { ok: true };
+            },
+          },
+        ],
+        [
+          "create-a-diversion",
+          {
+            variants: [{ slug: "distracting-words" }, { slug: "gesture" }, { slug: "trick" }],
+            use: async (options) => {
+              pf2eActionCalls.push(options);
+              return { ok: true };
+            },
+          },
+        ],
+      ]),
+    },
+  };
+  globalThis.ChatMessage = {
+    getSpeaker: () => ({}),
+    deleteDocuments: async (ids) => { messageDeletes.push(...ids); },
+  };
+  const executionContext = {
+    actor: { document: actorDocument },
+    token: { id: "actor-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  };
+
+  globalThis.game.user.targets = new Set([targetToken]);
+  assert.deepEqual(currentTargetSelection().targetTokenIds, ["target-token"]);
+  assert.deepEqual(
+    executionReadinessForStep({ instanceId: "current-target-step" }, executionTargetAction).choices,
+    ["target"],
+    "current Foundry target selection alone should not satisfy execution readiness",
+  );
+  const currentTargetResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "current-target-step" },
+    action: executionTargetAction,
+    event: { type: "click" },
+  });
+  assert.equal(currentTargetResult.status, "needs-choice");
+  assert.deepEqual(currentTargetResult.choices, ["target"]);
+  const manualStoredTargetResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "manual-target-step", targetTokenIds: ["target-token"], targetSelection: "manual" },
+    action: executionTargetAction,
+    event: { type: "click" },
+  });
+  assert.equal(manualStoredTargetResult.status, "done");
+  assert.deepEqual(manualStoredTargetResult.patch.targetTokenIds, ["target-token"]);
+  assert.equal(pf2eActionCalls.at(-1).target.name, "Goblin");
+  globalThis.game.user.targets = new Set();
+
+  const plannedTargetAction = {
+    ...executionTargetAction,
+    suggestedTarget: { id: "target-token", name: "Goblin", token: { id: "target-token" } },
+  };
+  assert.deepEqual(
+    executionReadinessForStep({ instanceId: "planned-target-step" }, plannedTargetAction).choices,
+    ["target"],
+    "plan-phase recommendation target should not satisfy execution readiness when no current target is selected",
+  );
+  const plannedTargetResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "planned-target-step" },
+    action: plannedTargetAction,
+    event: { type: "click" },
+  });
+  assert.equal(plannedTargetResult.status, "needs-choice");
+  assert.deepEqual(plannedTargetResult.choices, ["target"]);
+
+  const targetResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "target-step", targetTokenIds: ["stale-token"] },
+    action: executionTargetAction,
+    choices: { targetTokenIds: ["target-token"] },
+    event: { type: "click" },
+  });
+  assert.equal(targetResult.status, "done");
+  assert.deepEqual(targetResult.patch.targetTokenIds, ["target-token"]);
+  assert.equal(targetCalls.some((call) => call.selected === true), true, "execution should set stored target");
+  assert.equal(pf2eActionCalls[0].target.name, "Goblin");
+  assert.equal(pf2eActionCalls[0].variant, undefined, "single-variant actions should not force a variant");
+
+  // Multi-variant skill actions must pass a variant or PF2e's use() throws.
+  const diversionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "diversion-step" },
+    action: { name: "Create a Diversion", slug: "create-a-diversion", executable: "pf2e-action" },
+    event: { type: "click" },
+  });
+  assert.equal(diversionResult.status, "done");
+  assert.equal(pf2eActionCalls.at(-1).variant, "distracting-words", "a multi-variant action should default to its first variant");
+
+  const diversionTrickResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "diversion-trick-step" },
+    action: { name: "Create a Diversion", slug: "create-a-diversion", executable: "pf2e-action", variant: "trick" },
+    event: { type: "click" },
+  });
+  assert.equal(diversionTrickResult.status, "done");
+  assert.equal(pf2eActionCalls.at(-1).variant, "trick", "an explicit valid action.variant should be honoured");
+
+  // Open-item actions that parsed an @Damage formula auto-roll typed damage to chat.
+  const damageActionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "damage-action-step" },
+    action: {
+      name: "Searing Blast",
+      executable: "open-item",
+      item: { name: "Searing Blast" },
+      damageProfile: { formula: "6d6", type: "fire" },
+    },
+  });
+  assert.equal(damageActionResult.status, "done");
+  assert.deepEqual(damageRolls.at(-1), { formula: "(6d6)[fire]" }, "an action with @Damage should auto-roll typed damage");
+  assert.equal(
+    damageMessages.at(-1)?.flags?.pf2e?.context?.type,
+    "damage-roll",
+    "auto-rolled damage messages should include PF2e damage context for Toolbelt merge",
+  );
+  assert.deepEqual(
+    damageMessages.at(-1)?.flags?.pf2e?.context?.options,
+    ["item:slug:searing-blast", "self:action:slug:searing-blast"],
+    "PF2e damage context should include an options array for Toolbelt merge",
+  );
+  assert.ok(
+    damageActionResult.patch.execution.revert?.ops?.some((op) => op.kind === "chat" && op.messageId === "dmg-msg-1"),
+    "the auto-rolled damage message should be revertible",
+  );
+
+  // @Damage only in the description (no parsed damageProfile.formula) should still auto-roll.
+  const damageFromDescription = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "damage-desc-step" },
+    action: {
+      name: "Cinder Burst",
+      executable: "open-item",
+      item: { name: "Cinder Burst", system: { description: { value: "Deals @Damage[1d10[cold]]." } } },
+    },
+  });
+  assert.equal(damageFromDescription.status, "done");
+  assert.deepEqual(damageRolls.at(-1), { formula: "(1d10)[cold]" }, "@Damage in the description should auto-roll even without a damageProfile");
+
+  for (const actionCost of [1, 2, 3]) {
+    const beforeDamageCount = damageRolls.length;
+    const forceBarrageResult = await executeDraftStep({
+      context: executionContext,
+      step: { instanceId: `force-barrage-${actionCost}a` },
+      action: {
+        name: "Force Barrage",
+        slug: "force-barrage",
+        executable: "open-item",
+        actionCost,
+        item: { name: "Force Barrage" },
+        activityProfile: { spell: true, damageScalesWithActions: true },
+        damageProfile: { formula: "1d4+1", type: "force" },
+      },
+    });
+    assert.equal(forceBarrageResult.status, "done");
+    const newDamageRolls = damageRolls.slice(beforeDamageCount);
+    assert.deepEqual(
+      newDamageRolls,
+      Array.from({ length: actionCost }, () => ({ formula: "(1d4+1)[force]" })),
+      `${actionCost}-action Force Barrage should roll one damage message per action`,
+    );
+    const damageRevertOps = forceBarrageResult.patch.execution.revert?.ops
+      ?.filter((op) => op.kind === "chat" && /^dmg-msg-/.test(op.messageId)) ?? [];
+    assert.deepEqual(
+      damageRevertOps.map((op) => op.messageId),
+      Array.from({ length: actionCost }, (_value, index) => `dmg-msg-${beforeDamageCount + index + 1}`),
+      `${actionCost}-action Force Barrage should make every damage message revertible`,
+    );
+  }
+
+  // Multiple distinct @Template embeds are surfaced so the player can pick which to place.
+  // Both description sources are set so rawDescription concatenates them (doubling matches);
+  // the picker must still show each distinct shape only once.
+  const twinBlastDescription = "Make a basic Reflex save. Deals @Damage[6d6][fire]. Choose @Template[type:burst|distance:20] or @Template[type:cone|distance:30].";
+  const twinBlast = classifySystemAction({
+    name: "Twin Blast",
+    description: { value: twinBlastDescription },
+    system: { description: { value: twinBlastDescription } },
+  }, { actionCost: 2 });
+  assert.ok(twinBlast, "a damaging multi-template action should classify");
+  assert.equal(twinBlast.targetingProfile?.templates?.length, 2, "duplicate @Template matches should be collapsed to distinct shapes");
+  assert.deepEqual(twinBlast.targetingProfile.templates.map((template) => template.type), ["burst", "cone"]);
+  assert.equal(twinBlast.targetingProfile.templates[1].distance, 30);
+
+  const movementResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "move-step", destination: { x: 5, y: 0 } },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(movementResult.status, "done");
+  assert.deepEqual(tokenMoves.at(-1), {
+    waypoint: { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
+    options: { method: "api", showRuler: true },
+  });
+  assert.deepEqual(tokenUpdates, [], "execution movement should use Foundry movement API instead of raw document update");
+
+  const stepMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "step-move-step", destination: { x: 0, y: 5 } },
+    action: { name: "Step", slug: "step", executable: "chat-guidance" },
+  });
+  assert.equal(stepMovementResult.status, "done");
+  assert.deepEqual(tokenMoves.at(-1), {
+    waypoint: { x: -2.5, y: 2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
+    options: { method: "api", showRuler: true },
+  }, "executing a planned Step should move with Foundry's walk movement mode to the selected adjacent square");
+
+  const sparseStepMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "sparse-step-move-step",
+      actionKey: "step",
+      requiresDestination: true,
+      destination: { x: 5, y: 0 },
+    },
+    action: { name: "Step", executable: "chat-guidance" },
+  });
+  assert.equal(sparseStepMovementResult.status, "done");
+  assert.deepEqual(tokenMoves.at(-1), {
+    waypoint: { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
+    options: { method: "api", showRuler: true },
+  }, "Step execution should use the stored draft destination with Foundry's walk movement mode even when the resolved action lacks a slug");
+
+  const beforeWaypointFailureMoveCount = tokenMoves.length;
+  const waypointPathFailure = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "over-budget-waypoint-step",
+      destination: { x: 0, y: 20 },
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }],
+      },
+    },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(waypointPathFailure.status, "failed");
+  assert.equal(waypointPathFailure.error, "Waypoint path is beyond movement range.");
+  assert.equal(tokenMoves.length, beforeWaypointFailureMoveCount, "over-budget custom waypoint path should not move the token");
+
+  const waypointPathResult = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "waypoint-move-step",
+      destination: { x: 10, y: 10 },
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 5, y: 0 }, { x: 10, y: 10 }],
+      },
+    },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(waypointPathResult.status, "done");
+  assert.deepEqual(
+    tokenMoves.slice(-2).map((entry) => entry.waypoint),
+    [
+      { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
+      { x: 7.5, y: 7.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
+    ],
+    "custom waypoint execution should move through stored waypoints without native movement plan side effects",
+  );
+
+  globalThis.canvas.grid.size = 100;
+  globalThis.canvas.scene.grid.distance = 5;
+  actorToken.center = { x: 50, y: 50 };
+  executionContext.token.center = { x: 50, y: 50 };
+  const scaledMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "scaled-move-step", destination: { x: 150, y: 50 } },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(scaledMovementResult.status, "done");
+  assert.equal(
+    scaledMovementResult.error,
+    undefined,
+    "executor should validate movement in scene distance units, not raw canvas pixels",
+  );
+  assert.deepEqual(tokenMoves.at(-1).waypoint, {
+    x: 100,
+    y: 0,
+    action: "walk",
+    explicit: true,
+    checkpoint: true,
+    snapped: true,
+  });
+  globalThis.canvas.grid.size = 5;
+  globalThis.canvas.scene.grid.distance = 5;
+  actorToken.center = { x: 0, y: 0 };
+  executionContext.token.center = { x: 0, y: 0 };
+
+  actorToken.document.movement = { state: "planned", id: "planned-move" };
+  const plannedMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "planned-move-step",
+      destination: { x: 10, y: 0 },
+      movementPlan: { id: "planned-move" },
+    },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(plannedMovementResult.status, "done");
+  assert.equal(movementStarts.at(-1), "planned-move");
+
+  globalThis.game.combat = { combatant: { tokenId: "other-token" } };
+  actorToken.document.movement = { state: "completed", id: null };
+  const offTurnMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "off-turn-move-step", destination: { x: 15, y: 0 } },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(offTurnMovementResult.status, "failed");
+  assert.equal(offTurnMovementResult.error, "Token can only move on its turn.");
+  delete globalThis.game.combat;
+
+  const standResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "stand-step" },
+    action: { name: "Stand", slug: "stand", executable: "pf2e-action" },
+  });
+  assert.equal(standResult.status, "done");
+  assert.deepEqual(conditionUpdates.at(-1), { slug: "prone", options: { forceRemove: true } });
+
+  const retchResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "retch-step" },
+    action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+    choices: { retchSucceeded: true },
+  });
+  assert.equal(retchResult.status, "done");
+  assert.deepEqual(conditionUpdates.at(-1), { slug: "sickened", options: {} });
+
+  const areaMarker = { shape: "burst", center: { x: 100, y: 200 }, distance: 20, label: "Burst 20 ft" };
+  const regionData = createAreaRegionData({ context: executionContext, action: executionAreaAction, marker: areaMarker });
+  assert.equal(regionData.shapes[0].type, "circle");
+  assert.equal(regionData.shapes[0].x, 100);
+  assert.equal(regionData.shapes[0].y, 200);
+  assert.equal(regionData.shapes[0].radius, 20);
+
+  const areaResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "area-step", areaMarker },
+    action: executionAreaAction,
+  });
+  assert.equal(areaResult.status, "done");
+  assert.equal(regionCreates.at(-1).type, "Region");
+
+  // An instantaneous AoE spell (no sustained/lasting duration) targets but leaves no template.
+  const instantBurstMarker = { shape: "burst", center: { x: 300, y: 300 }, distance: 20 };
+  const instantVictim = { id: "burst-victim", center: { x: 305, y: 300 }, setTarget: () => { } };
+  const placeablesBeforeInstant = globalThis.canvas.tokens.placeables;
+  globalThis.canvas.tokens.placeables = [instantVictim];
+  const regionCountBeforeInstant = regionCreates.length;
+  const instantAreaResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "instant-area-step", areaMarker: instantBurstMarker },
+    action: {
+      name: "Fireball",
+      slug: "fireball",
+      executable: "open-item",
+      source: "spell-inferred",
+      activityProfile: { spell: true },
+      targetingProfile: { area: true, type: "burst", distance: 20 },
+    },
+  });
+  assert.equal(instantAreaResult.status, "done");
+  assert.equal(regionCreates.length, regionCountBeforeInstant, "an instantaneous area spell should not leave a persistent region");
+  assert.ok(
+    !(instantAreaResult.patch.execution.revert?.ops ?? []).some((op) => op.kind === "region"),
+    "an instantaneous area spell should have no region revert op",
+  );
+  assert.deepEqual(instantAreaResult.patch.targetTokenIds, ["burst-victim"], "tokens in the burst are still targeted");
+  globalThis.canvas.tokens.placeables = placeablesBeforeInstant;
+
+  // Tokens whose center falls inside a placed template become targets.
+  const burstMarker = { shape: "burst", center: { x: 100, y: 200 }, distance: 20 };
+  const insideTokenA = { id: "inside-a", center: { x: 105, y: 200 }, setTarget: () => { } };
+  const insideTokenB = { id: "inside-b", center: { x: 100, y: 215 }, setTarget: () => { } };
+  const outsideToken = { id: "outside", center: { x: 100, y: 230 }, setTarget: () => { } };
+  const previousAreaPlaceables = globalThis.canvas.tokens.placeables;
+  globalThis.canvas.tokens.placeables = [insideTokenA, insideTokenB, outsideToken];
+  const insideTokens = tokensInAreaMarker({ context: executionContext, action: executionAreaAction, marker: burstMarker });
+  assert.deepEqual(
+    insideTokens.map((token) => token.id).sort(),
+    ["inside-a", "inside-b"],
+    "tokensInAreaMarker should return only tokens whose center is within the burst radius",
+  );
+  assert.equal(setTokenTargets(insideTokens), 2, "setTokenTargets should target each in-area token");
+  globalThis.canvas.tokens.placeables = previousAreaPlaceables;
+
+  const coneMarker = { shape: "cone", center: { x: 0, y: 0 }, distance: 30, rotation: 0 };
+  const coneAction = { name: "Burning Hands", targetingProfile: { type: "cone", distance: 30, width: 5 } };
+  const coneHit = { id: "cone-hit", center: { x: 20, y: 2 }, setTarget: () => { } };
+  const coneMiss = { id: "cone-miss", center: { x: -20, y: 0 }, setTarget: () => { } };
+  globalThis.canvas.tokens.placeables = [coneHit, coneMiss];
+  const coneTokens = tokensInAreaMarker({ context: executionContext, action: coneAction, marker: coneMarker });
+  assert.deepEqual(
+    coneTokens.map((token) => token.id),
+    ["cone-hit"],
+    "tokensInAreaMarker should respect cone direction and angle",
+  );
+  globalThis.canvas.tokens.placeables = previousAreaPlaceables;
+
+  // --- Revert execution ---------------------------------------------------
+  const moveRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "move-step", execution: movementResult.patch.execution },
+  });
+  assert.equal(moveRevert.status, "reverted");
+  assert.equal(moveRevert.patch.execution.status, "pending", "revert should reset the step to pending");
+  assert.deepEqual(tokenUpdates.at(-1), { x: -2.5, y: -2.5 }, "reverting a move should reposition the token to its captured origin");
+
+  const standRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "stand-step", execution: standResult.patch.execution },
+  });
+  assert.equal(standRevert.status, "reverted");
+  assert.deepEqual(conditionIncreases.at(-1), { slug: "prone", options: {} }, "reverting Stand should re-apply prone");
+
+  const retchRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "retch-step", execution: retchResult.patch.execution },
+  });
+  assert.equal(retchRevert.status, "reverted");
+  assert.deepEqual(conditionIncreases.at(-1), { slug: "sickened", options: {} }, "reverting a successful Retch should restore sickened");
+
+  const retchFailResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "retch-fail-step" },
+    action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+    choices: { retchSucceeded: false },
+  });
+  assert.equal(retchFailResult.status, "done");
+  assert.equal(retchFailResult.patch.execution.revert, undefined, "a failed Retch check should attach no revert payload");
+
+  assert.ok(
+    areaResult.patch.execution.revert?.ops?.some((op) => op.kind === "region"),
+    "executing an area action should capture a region revert op",
+  );
+  const areaRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "area-step", execution: areaResult.patch.execution },
+  });
+  assert.equal(areaRevert.status, "reverted");
+  assert.deepEqual(regionDeletes.at(-1), { type: "Region", ids: ["region-1-0"] }, "reverting an area action should delete the placed region");
+
+  globalThis.game.user.targets = new Set([targetToken]);
+  let strikeRollParams = null;
+  const strikeResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "strike-revert-step", targetTokenIds: ["target-token"], targetSelection: "manual" },
+    action: {
+      name: "Strike",
+      slug: "strike",
+      executable: "strike",
+      strike: {
+        roll: async (params) => {
+          strikeRollParams = params;
+          return { documentName: "ChatMessage", id: "msg-strike-1" };
+        },
+      },
+    },
+    event: { type: "click" },
+  });
+  globalThis.game.user.targets = new Set();
+  assert.equal(strikeResult.status, "done");
+  assert.ok(
+    targetCalls.some((call) => call.selected === true),
+    "strike execution should set the Foundry target before rolling",
+  );
+  assert.equal(
+    strikeRollParams?.target,
+    undefined,
+    "strike roll should rely on the selected target (game.user.targets), not a malformed target param",
+  );
+  const strikeRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "strike-revert-step", execution: strikeResult.patch.execution },
+  });
+  assert.equal(strikeRevert.status, "reverted");
+  assert.ok(messageDeletes.includes("msg-strike-1"), "reverting a strike should delete the produced chat message");
+  assert.ok(
+    strikeRevert.warnings.some((warning) => /undo them manually/i.test(warning)),
+    "strike revert should warn about effects applied to the target",
+  );
+
+  const demoralizeRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "target-step", execution: targetResult.patch.execution },
+  });
+  assert.equal(demoralizeRevert.status, "reverted");
+  assert.ok(
+    demoralizeRevert.warnings.some((warning) => /could not be tracked/i.test(warning)),
+    "an opened PF2e action without a trackable chat message should warn for manual undo",
+  );
+
+  const preparedSpellSlot = { id: "prepared-spell", spellId: "prepared-spell", expended: false };
+  const preparedSpellSlotUpdates = [];
+  const preparedSpellEntry = {
+    id: "prepared-entry",
+    uuid: "Actor.valeros.Item.prepared-entry",
+    system: {
+      prepared: { value: "prepared" },
+      slots: { slot1: { prepared: [preparedSpellSlot] } },
+    },
+    update: async (data) => {
+      preparedSpellSlotUpdates.push(data);
+      if (Object.prototype.hasOwnProperty.call(data, "system.slots.slot1.prepared.0.expended")) {
+        preparedSpellSlot.expended = data["system.slots.slot1.prepared.0.expended"];
+      }
+    },
+    cast: async (_item, options = {}) => {
+      assert.equal(options.rank, 1);
+      preparedSpellSlot.expended = true;
+      return { documentName: "ChatMessage", id: "msg-prepared-cast" };
+    },
+  };
+  actorDocument.itemTypes = { spellcastingEntry: [preparedSpellEntry] };
+  const preparedSpellResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "prepared-spell-step" },
+    action: {
+      id: "spell-prepared",
+      name: "Magic Missile",
+      slug: "magic-missile",
+      source: "spell-curated",
+      executable: "open-item",
+      item: {
+        id: "prepared-spell",
+        uuid: "Actor.valeros.Item.prepared-spell",
+        slug: "magic-missile",
+        type: "spell",
+      },
+      spellcastingEntryId: "prepared-entry",
+      spellcastingEntryUuid: "Actor.valeros.Item.prepared-entry",
+      spellcastingEntryType: "prepared",
+      castRank: 1,
+      rank: 1,
+      location: "prepared-entry",
+    },
+  });
+  assert.equal(preparedSpellResult.status, "done");
+  assert.equal(preparedSpellSlot.expended, true, "test cast should expend the prepared spell");
+  const preparedSlotOp = preparedSpellResult.patch.execution.revert?.ops?.find((op) => op.kind === "slot");
+  assert.equal(preparedSlotOp.slotKey, "slot1", "prepared spell revert should record the prepared slot key");
+  assert.equal(preparedSlotOp.preparedIndex, 0, "prepared spell revert should record the prepared slot index");
+  const preparedSpellRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "prepared-spell-step", execution: preparedSpellResult.patch.execution },
+  });
+  assert.equal(preparedSpellRevert.status, "reverted");
+  assert.equal(preparedSpellSlot.expended, false, "reverting a prepared spell should unexpend that prepared slot");
+  assert.deepEqual(
+    preparedSpellSlotUpdates.at(-1),
+    { "system.slots.slot1.prepared.0.expended": false },
+    "prepared spell revert should update the exact prepared spell slot",
+  );
+
+  const preparedApiSlot = { id: "prepared-api-spell", expended: true };
+  const preparedApiCalls = [];
+  actorDocument.itemTypes = {
+    spellcastingEntry: [{
+      id: "prepared-api-entry",
+      uuid: "Actor.valeros.Item.prepared-api-entry",
+      system: {
+        prepared: { value: "prepared" },
+        slots: { slot1: { prepared: [preparedApiSlot] } },
+      },
+      setSlotExpendedState: async (groupId, slotIndex, value) => {
+        preparedApiCalls.push({ groupId, slotIndex, value });
+        preparedApiSlot.expended = value;
+      },
+      update: async () => {
+        throw new Error("prepared slot array path update should not be used when PF2e API is available");
+      },
+    }],
+  };
+  const preparedApiRevert = await revertDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "prepared-api-step",
+      execution: {
+        status: "done",
+        revert: {
+          ops: [{
+            kind: "slot",
+            entryId: "prepared-api-entry",
+            entryUuid: "Actor.valeros.Item.prepared-api-entry",
+            rank: 1,
+            slotId: "prepared-api-entry",
+            slotIdExplicit: false,
+            slotKey: "slot1",
+            preparedIndex: 0,
+            preparedExpendedBefore: false,
+          }],
+          manualWarnings: [],
+        },
+      },
+    },
+  });
+  assert.equal(preparedApiRevert.status, "reverted");
+  assert.equal(preparedApiSlot.expended, false, "prepared spell revert should use PF2e slot API when available");
+  assert.deepEqual(
+    preparedApiCalls.at(-1),
+    { groupId: 1, slotIndex: 0, value: false },
+    "prepared spell revert should pass rank and prepared slot index to PF2e",
+  );
+
+  const legacyPreparedSlot = { id: "legacy-prepared-spell", expended: true };
+  const legacyPreparedCalls = [];
+  actorDocument.itemTypes = {
+    spellcastingEntry: [{
+      id: "legacy-prepared-entry",
+      uuid: "Actor.valeros.Item.legacy-prepared-entry",
+      system: {
+        prepared: { value: "prepared" },
+        slots: { slot1: { prepared: [legacyPreparedSlot] } },
+      },
+      setSlotExpendedState: async (groupId, slotIndex, value) => {
+        legacyPreparedCalls.push({ groupId, slotIndex, value });
+        legacyPreparedSlot.expended = value;
+      },
+    }],
+  };
+  const legacyPreparedRevert = await revertDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "legacy-prepared-step",
+      execution: {
+        status: "done",
+        revert: {
+          ops: [{
+            kind: "slot",
+            entryId: "legacy-prepared-entry",
+            entryUuid: "Actor.valeros.Item.legacy-prepared-entry",
+            rank: 1,
+            slotId: "legacy-prepared-entry",
+            slotIdExplicit: false,
+          }],
+          manualWarnings: [],
+        },
+      },
+    },
+  });
+  assert.equal(legacyPreparedRevert.status, "reverted");
+  assert.equal(legacyPreparedSlot.expended, false, "legacy prepared spell undo should unexpend the only expended prepared slot");
+  assert.deepEqual(
+    legacyPreparedCalls.at(-1),
+    { groupId: 1, slotIndex: 0, value: false },
+    "legacy prepared spell undo should infer the prepared slot index from the expended slot",
+  );
+
+  const spontaneousSlotUpdates = [];
+  const spontaneousEntry = {
+    id: "spont-entry",
+    uuid: "Actor.valeros.Item.spont-entry",
+    system: {
+      prepared: { value: "spontaneous" },
+      slots: { slot2: { value: 1, max: 2 } },
+    },
+    update: async (data) => {
+      spontaneousSlotUpdates.push(data);
+      if (Object.prototype.hasOwnProperty.call(data, "system.slots.slot2.value")) {
+        spontaneousEntry.system.slots.slot2.value = data["system.slots.slot2.value"];
+      }
+    },
+    cast: async (_item, options = {}) => {
+      assert.equal(options.rank, 2);
+      spontaneousEntry.system.slots.slot2.value = 0;
+      return { documentName: "ChatMessage", id: "msg-spont-cast" };
+    },
+  };
+  actorDocument.itemTypes = { spellcastingEntry: [spontaneousEntry] };
+  const spontaneousSpellResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "spontaneous-spell-step" },
+    action: {
+      id: "spell-spont",
+      name: "Blur",
+      slug: "blur",
+      source: "spell-curated",
+      executable: "open-item",
+      item: {
+        id: "spont-spell",
+        uuid: "Actor.valeros.Item.spont-spell",
+        slug: "blur",
+        type: "spell",
+      },
+      spellcastingEntryId: "spont-entry",
+      spellcastingEntryUuid: "Actor.valeros.Item.spont-entry",
+      spellcastingEntryType: "spontaneous",
+      castRank: 2,
+      rank: 2,
+      location: "spont-entry",
+    },
+  });
+  assert.equal(spontaneousSpellResult.status, "done");
+  assert.equal(spontaneousEntry.system.slots.slot2.value, 0, "test cast should spend the spontaneous slot");
+  const spontaneousSlotOp = spontaneousSpellResult.patch.execution.revert?.ops?.find((op) => op.kind === "slot");
+  assert.equal(spontaneousSlotOp.slotKey, "slot2", "spontaneous spell revert should record the rank slot key");
+  assert.equal(spontaneousSlotOp.valueBefore, 1, "spontaneous spell revert should record the pre-cast slot count");
+  const spontaneousSpellRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "spontaneous-spell-step", execution: spontaneousSpellResult.patch.execution },
+  });
+  assert.equal(spontaneousSpellRevert.status, "reverted");
+  assert.equal(spontaneousEntry.system.slots.slot2.value, 1, "reverting a spontaneous spell should restore the slot count");
+  assert.deepEqual(
+    spontaneousSlotUpdates.at(-1),
+    { "system.slots.slot2.value": 1 },
+    "spontaneous spell revert should update the rank's remaining slot count",
+  );
+
+  const increasesBeforeRevertAll = conditionIncreases.length;
+  const revertAll = await revertDraftExecution({
+    context: executionContext,
+    draft: {
+      steps: [
+        { instanceId: "all-stand", execution: standResult.patch.execution },
+        { instanceId: "all-retch", execution: retchResult.patch.execution },
+      ],
+    },
+  });
+  assert.deepEqual(
+    conditionIncreases.slice(increasesBeforeRevertAll).map((entry) => entry.slug),
+    ["sickened", "prone"],
+    "revert-all should undo completed steps in reverse execution order",
+  );
+  assert.ok(
+    revertAll.draft.steps.every((step) => step.execution.status === "pending"),
+    "revert-all should reset every step to pending",
+  );
+} finally {
+  globalThis.game = previousExecutionGame;
+  globalThis.canvas = previousExecutionCanvas;
+  globalThis.ChatMessage = previousExecutionChatMessage;
+}
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
@@ -158,6 +1793,810 @@ assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-t
 assert.equal(documentRelevantToContext({ type: "condition", uuid: "Actor.actor-other.Item.condition" }, relevanceContext), false);
 assert.equal(documentRelevantToContext({ documentName: "Actor", id: "actor-active" }, relevanceContext), true);
 
+const hadStorageGame = Object.hasOwn(globalThis, "game");
+const previousStorageGame = globalThis.game;
+const hadLocalStorage = Object.hasOwn(globalThis, "localStorage");
+const previousLocalStorage = globalThis.localStorage;
+const hadStorageFoundry = Object.hasOwn(globalThis, "foundry");
+const previousStorageFoundry = globalThis.foundry;
+try {
+  const localStore = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => localStore.has(key) ? localStore.get(key) : null,
+    setItem: (key, value) => localStore.set(key, String(value)),
+    removeItem: (key) => localStore.delete(key),
+  };
+  const builderContext = {
+    combat: { id: "combat-1", round: 2 },
+    combatant: { id: "combatant-1" },
+    actor: { uuid: "Actor.actor-1" },
+  };
+  globalThis.game = { user: { id: "user-1" } };
+  assert.equal(favoriteKey(builderContext, "strike-longsword"), "user-1|Actor.actor-1|strike-longsword");
+  assert.deepEqual(readActionFavorites(builderContext), new Set());
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], []);
+  assert.equal(draftPlanKey(builderContext), "user-1|combat-1|2|combatant-1");
+  assert.equal(sharedDraftPlanKey(builderContext), "combat-1|2|combatant-1");
+  writeDraftPlan(builderContext, { steps: [] });
+  upsertDraftStep(builderContext, { instanceId: "step-1", actionKey: "stride", actionCost: 1 });
+  assert.equal(readDraftPlan(builderContext).steps[0].actionKey, "stride");
+  removeDraftStep(builderContext, "step-1");
+  assert.deepEqual(readDraftPlan(builderContext).steps, []);
+
+  globalThis.foundry = { utils: { randomID: () => "generated-step-id-1" } };
+  const generatedStep = upsertDraftStep(builderContext, { actionKey: "stride", actionCost: 1 });
+  assert.equal(generatedStep.instanceId, "generated-step-id-1");
+  assert.equal(readDraftPlan(builderContext).steps[0].instanceId, "generated-step-id-1");
+  let nextGeneratedId = 2;
+  globalThis.foundry = { utils: { randomID: () => `generated-step-id-${nextGeneratedId++}` } };
+  const secondGeneratedStep = upsertDraftStep(builderContext, { actionKey: "strike", actionCost: 1 });
+  const thirdGeneratedStep = upsertDraftStep(builderContext, { actionKey: "raise-a-shield", actionCost: 1 });
+  assert.notEqual(secondGeneratedStep.instanceId, thirdGeneratedStep.instanceId);
+  assert.deepEqual(readDraftPlan(builderContext).steps.map((step) => step.actionKey), [
+    "stride",
+    "strike",
+    "raise-a-shield",
+  ]);
+
+  writeSharedDraftPlan(builderContext, {
+    steps: [{ instanceId: "shared-1", actionKey: "stride", actionCost: 1 }],
+    userId: "user-1",
+    userName: "Player One",
+  });
+  assert.equal(readSharedDraftPlan(builderContext).steps[0].actionKey, "stride");
+  assert.equal(readSharedDraftPlan(builderContext).userName, "Player One");
+  writeSharedDraftPlanPayload({
+    combatId: "combat-1",
+    round: 2,
+    combatantId: "combatant-1",
+    steps: [{ instanceId: "shared-2", actionKey: "strike", actionCost: 1 }],
+    userId: "user-2",
+    userName: "Player Two",
+  });
+  assert.equal(readSharedDraftPlan(builderContext).steps[0].actionKey, "strike");
+  assert.equal(readSharedDraftPlan(builderContext).userName, "Player Two");
+
+  let actorSharedDrafts = {};
+  const actorFlagDocument = {
+    uuid: "Actor.actor-1",
+    getFlag: (scope, key) => scope === "pf2e-combater" && key === "sharedDraftPlans" ? actorSharedDrafts : undefined,
+    setFlag: async (scope, key, value) => {
+      if (scope === "pf2e-combater" && key === "sharedDraftPlans") actorSharedDrafts = value;
+      return value;
+    },
+  };
+  const actorFlagContext = {
+    ...builderContext,
+    actor: { uuid: "Actor.actor-1", document: actorFlagDocument },
+    combatant: { ...builderContext.combatant, actor: actorFlagDocument },
+  };
+  localStore.set(STORAGE_KEYS.sharedDraftPlans, "{}");
+  assert.equal(
+    await writeSharedDraftPlanActorFlag(actorFlagContext, {
+      steps: [{ instanceId: "shared-flag-1", actionKey: "haste", actionCost: 2 }],
+      userId: "user-2",
+      userName: "Player Two",
+      updatedAt: 500,
+    }),
+    true,
+    "owned actor flag should accept mirrored player shared drafts",
+  );
+  assert.equal(
+    readSharedDraftPlan(actorFlagContext).steps[0].actionKey,
+    "haste",
+    "GM should read player plan from the actor flag when no socket-local shared draft exists",
+  );
+  localStore.set(STORAGE_KEYS.sharedDraftPlans, JSON.stringify({
+    [sharedDraftPlanKey(builderContext)]: {
+      steps: [{ instanceId: "stale-local", actionKey: "shield", actionCost: 1 }],
+      userId: "user-2",
+      userName: "Player Two",
+      updatedAt: 400,
+    },
+  }));
+  assert.equal(
+    readSharedDraftPlan(actorFlagContext).steps[0].actionKey,
+    "haste",
+    "GM should prefer the newer actor-flag player plan over stale socket-local storage",
+  );
+  await writeSharedDraftPlanActorFlag(actorFlagContext, {
+    steps: [],
+    userId: "user-2",
+    userName: "Player Two",
+    updatedAt: 600,
+  });
+  assert.deepEqual(
+    readSharedDraftPlan(actorFlagContext).steps,
+    [],
+    "GM should clear stale local player plan when the actor flag mirrors an empty player draft",
+  );
+
+  assert.equal(typeof draftPlanState.shouldDisplaySharedDraft, "function");
+  assert.equal(
+    draftPlanState.shouldDisplaySharedDraft(
+      { steps: [{ actionKey: "old-local" }], updatedAt: 100 },
+      { steps: [{ actionKey: "new-shared" }], updatedAt: 200 },
+    ),
+    true,
+    "new player shared draft should replace stale GM local draft in live view",
+  );
+  assert.equal(
+    draftPlanState.shouldDisplaySharedDraft(
+      { steps: [{ actionKey: "new-local" }], updatedAt: 300 },
+      { steps: [{ actionKey: "old-shared" }], updatedAt: 200 },
+    ),
+    false,
+    "older player shared draft should not replace a newer GM local edit",
+  );
+  assert.equal(
+    draftPlanState.shouldDisplaySharedDraft(
+      { steps: [{ actionKey: "loaded-shared" }], source: "shared", updatedAt: 300 },
+      { steps: [{ actionKey: "shared" }], updatedAt: 200 },
+    ),
+    true,
+    "GM copies of shared player drafts should stay linked to live player updates",
+  );
+  assert.equal(
+    draftPlanState.shouldDisplaySharedDraft(
+      { steps: [{ actionKey: "stale-loaded-shared" }], source: "shared", updatedAt: 300 },
+      { steps: [], userId: "user-2", userName: "Player Two", updatedAt: 400 },
+    ),
+    true,
+    "GM copies of shared player drafts should clear when the player removes every planned action",
+  );
+
+  for (const invalidValue of ["null", "\"invalid-shape\"", "[]"]) {
+    localStore.set(STORAGE_KEYS.actionFavorites, invalidValue);
+    assert.doesNotThrow(() => toggleActionFavorite(builderContext, "strike-longsword"));
+    assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
+
+    localStore.set(STORAGE_KEYS.draftPlans, invalidValue);
+    assert.doesNotThrow(() => writeDraftPlan(builderContext, { steps: [] }));
+    assert.deepEqual(readDraftPlan(builderContext).steps, []);
+
+    localStore.set(STORAGE_KEYS.sharedDraftPlans, invalidValue);
+    assert.doesNotThrow(() => writeSharedDraftPlan(builderContext, { steps: [] }));
+    assert.deepEqual(readSharedDraftPlan(builderContext).steps, []);
+  }
+} finally {
+  if (hadStorageGame) {
+    globalThis.game = previousStorageGame;
+  } else {
+    delete globalThis.game;
+  }
+  if (hadLocalStorage) {
+    globalThis.localStorage = previousLocalStorage;
+  } else {
+    delete globalThis.localStorage;
+  }
+  if (hadStorageFoundry) {
+    globalThis.foundry = previousStorageFoundry;
+  } else {
+    delete globalThis.foundry;
+  }
+}
+assert.equal(Object.hasOwn(globalThis, "game"), hadStorageGame);
+assert.equal(Object.hasOwn(globalThis, "localStorage"), hadLocalStorage);
+assert.equal(Object.hasOwn(globalThis, "foundry"), hadStorageFoundry);
+
+const builderCandidates = [
+  { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10, reason: "Move.", confidence: "medium" },
+  { id: "fireball", slug: "fireball", name: "Fireball", actionCost: 2, score: 30, reason: "Blast.", confidence: "high" },
+  { id: "shield", slug: "shield", name: "Shield", actionCost: 1, score: 20, reason: "Defend.", confidence: "medium" },
+  { id: "wayfinder", slug: "wayfinder", name: "Wayfinder", actionCost: 0, score: 4, reason: "Free.", confidence: "low" },
+  {
+    id: "reactive-shield",
+    slug: "reactive-shield",
+    name: "Reactive Shield",
+    actionCost: "reaction",
+    score: 8,
+    reason: "React.",
+    confidence: "medium",
+  },
+];
+const builderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: builderCandidates,
+  plans: [{ id: "auto", steps: [builderCandidates[2], builderCandidates[1]], summary: "Shield -> Fireball" }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "fireball", actionCost: 2 }] },
+  favorites: new Set(["shield"]),
+});
+assert.deepEqual(ACTION_BUILDER_TABS.map((tab) => tab.id), ["one", "two", "three", "free", "reaction"]);
+assert.equal(actionBuilderKey(builderCandidates[0]), "stride");
+assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
+assert.equal(builderModel.tabs.two.all[0].key, "fireball");
+assert.equal(builderModel.tabs.two.all[0].disabled, true);
+assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
+assert.equal(builderModel.draft.steps[0].warning, "");
+assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
+assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
+assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const atomicBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 40 },
+    { id: "longsword", slug: "strike", source: "strike", name: "Longsword", actionCost: 1, score: 30 },
+    {
+      id: "stride-strike-longsword",
+      slug: "stride-strike-longsword",
+      source: "system-inferred",
+      name: "Stride -> Longsword",
+      actionCost: 2,
+      score: 50,
+      activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+    },
+    {
+      id: "power-attack",
+      slug: "power-attack",
+      source: "system-inferred",
+      name: "Power Attack",
+      actionCost: 2,
+      score: 20,
+      activityProfile: { includes: ["strike"], includesStrike: true },
+    },
+    {
+      id: "sudden-charge",
+      slug: "sudden-charge",
+      source: "system-inferred",
+      name: "Sudden Charge",
+      actionCost: 2,
+      score: 15,
+      activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+    },
+  ],
+  draft: { steps: [] },
+});
+assert.equal(atomicBuilderModel.tabs.one.all.some((action) => action.name === "Stride"), true);
+assert.equal(atomicBuilderModel.tabs.one.all.some((action) => action.name === "Longsword"), true);
+assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Stride -> Longsword"), false);
+assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Power Attack"), true);
+assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Sudden Charge"), true);
+assert.deepEqual(
+  builderAtomicActionsForStep(atomicBuilderModel.autoFill ?? {
+    id: "stride-strike-strike-longsword",
+    slug: "stride-strike-longsword",
+    name: "Stride -> Longsword",
+    actionCost: 2,
+    activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+  }).map((action) => [action.name, action.actionCost]),
+  [["Stride", 1], ["Longsword", 1]],
+);
+
+const splitConsumableBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{
+    id: "item-healing-potion-minor",
+    slug: "healing-potion-minor",
+    source: "system-inferred",
+    name: "Interact -> Healing Potion (Minor)",
+    actionCost: 2,
+    activationActionCost: 1,
+    interactDrawCost: 1,
+    score: 30,
+    activityProfile: { consumable: true, interactDraw: true, includes: ["healing", "interact"] },
+  }],
+  draft: { steps: [] },
+});
+assert.equal(splitConsumableBuilderModel.tabs.one.all.some((action) => action.name === "Interact"), true);
+assert.equal(splitConsumableBuilderModel.tabs.one.all.some((action) => action.name === "Healing Potion (Minor)"), true);
+assert.equal(splitConsumableBuilderModel.tabs.two.all.some((action) => action.name === "Interact -> Healing Potion (Minor)"), false);
+
+// Sustain a Spell is a next-turn action: offered whenever a sustainable spell is in the
+// caster's available actions, regardless of the current draft.
+const spellcasterContext = { actor: { document: { itemTypes: { spellcastingEntry: [{ id: "arcane" }] } } } };
+const sustainPresentModel = buildActionBuilderModel({
+  context: spellcasterContext,
+  candidates: [{ id: "web", name: "Web", slug: "web", source: "spell-inferred", actionCost: 2, score: 30, activityProfile: { spell: true, sustained: true, includes: ["control"] } }],
+  draft: { steps: [] },
+});
+assert.equal(
+  sustainPresentModel.tabs.one.all.some((action) => action.name === "Sustain a Spell" && action.actionCost === 1),
+  true,
+  "a spellcaster with a sustainable spell available should be offered Sustain a Spell (1 action), even with an empty draft",
+);
+// Without a spellcasting entry, Sustain a Spell is never offered.
+const nonCasterSustainModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ id: "web", name: "Web", slug: "web", source: "spell-inferred", actionCost: 2, score: 30, activityProfile: { spell: true, sustained: true } }],
+  draft: { steps: [] },
+});
+assert.equal(
+  nonCasterSustainModel.tabs.one.all.some((action) => action.name === "Sustain a Spell"),
+  false,
+  "an actor without a spellcasting entry should not be offered Sustain a Spell",
+);
+const sustainAbsentModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ id: "longsword", name: "Longsword", slug: "longsword", source: "strike", actionCost: 1, score: 20, activityProfile: { includes: ["strike"] } }],
+  draft: { steps: [] },
+});
+assert.equal(
+  sustainAbsentModel.tabs.one.all.some((action) => action.name === "Sustain a Spell"),
+  false,
+  "Sustain a Spell should not appear when the caster has no sustainable spell available",
+);
+// Sustained is the structured duration flag, not any spell that lasts a turn (e.g. Sure Strike).
+const sureStrikeClassification = classifySpell({
+  name: "Sure Strike",
+  system: {
+    duration: { value: "until the end of your turn", sustained: false },
+    description: { value: "The next time you make an attack roll before the end of your turn, roll twice and use the higher result." },
+  },
+});
+assert.equal(
+  Boolean(sureStrikeClassification?.activityProfile?.sustained),
+  false,
+  "a non-sustained spell with a turn-long duration must not be flagged sustainable",
+);
+assert.deepEqual(
+  builderAtomicActionsForStep({
+    id: "item-healing-potion-minor",
+    slug: "healing-potion-minor",
+    name: "Interact -> Healing Potion (Minor)",
+    actionCost: 2,
+    activationActionCost: 1,
+    interactDrawCost: 1,
+  }).map((action) => [action.name, action.actionCost]),
+  [["Interact", 1], ["Healing Potion (Minor)", 1]],
+);
+
+const previousProjectedDraftCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = { grid: { size: 5 }, scene: { grid: { distance: 5 } } };
+  const projectedDraftTarget = {
+    id: "target-ezren",
+    name: "Ezren",
+    distance: 10,
+    token: { center: { x: 10, y: 0 } },
+  };
+  const projectedDraftContext = {
+    actor: {
+      document: {
+        itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [], weapon: [] },
+        items: [],
+        system: {
+          actions: [{
+            slug: "shortsword",
+            label: "Shortsword",
+            name: "Shortsword",
+            type: "strike",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            item: { system: { traits: { value: [] } } },
+          }],
+        },
+      },
+    },
+    token: { center: { x: 0, y: 0 } },
+    profile: {
+      reach: 5,
+      meleeReach: 5,
+      speed: 25,
+      conditions: { slugs: [], values: {} },
+      skills: {},
+    },
+    battlefield: {
+      targets: [projectedDraftTarget],
+      enemies: [projectedDraftTarget],
+      allies: [],
+    },
+  };
+  assert.equal(
+    buildCandidates(projectedDraftContext).candidates.some((action) => action.name === "Shortsword"),
+    false,
+  );
+  const projectedAfterStride = projectContextForDraftDestination(projectedDraftContext, {
+    steps: [{ instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } }],
+  });
+  assert.notEqual(projectedAfterStride, projectedDraftContext);
+  assert.equal(projectedAfterStride.token.center.x, 5);
+  assert.equal(projectedAfterStride.battlefield.targets[0].distance, 5);
+  assert.equal(
+    buildCandidates(projectedAfterStride).candidates.some((action) => action.name === "Shortsword"),
+    true,
+  );
+  const chainedDraft = {
+    steps: [
+      { instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } },
+      { instanceId: "draft-2", actionKey: "stride", requiresDestination: true, destination: { x: 15, y: 0 } },
+    ],
+  };
+  const secondStrideOrigin = projectContextForDraftStepOrigin(projectedDraftContext, chainedDraft, "draft-2");
+  assert.equal(secondStrideOrigin.token.center.x, 5);
+  assert.equal(secondStrideOrigin.token.plannedCenter.x, 5);
+  assert.equal(secondStrideOrigin.battlefield.targets[0].distance, 5);
+  const afterAllStrides = projectContextForDraftDestination(projectedDraftContext, chainedDraft);
+  assert.equal(afterAllStrides.token.center.x, 15);
+  assert.equal(afterAllStrides.token.plannedCenter.x, 15);
+  assert.equal(afterAllStrides.battlefield.targets[0].distance, 5);
+} finally {
+  if (previousProjectedDraftCanvas === undefined) {
+    delete globalThis.canvas;
+  } else {
+    globalThis.canvas = previousProjectedDraftCanvas;
+  }
+}
+
+const projectedDraftFallbackBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ id: "shortsword", slug: "strike", name: "Shortsword", actionCost: 1, score: 20 }],
+  draftFallbackActions: [{ id: "crossbow", slug: "strike", name: "Crossbow", actionCost: 1, score: 10 }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "crossbow", actionCost: 1 }] },
+});
+assert.equal(projectedDraftFallbackBuilderModel.draft.steps[0].stale, false);
+assert.equal(projectedDraftFallbackBuilderModel.draft.steps[0].action.name, "Crossbow");
+assert.equal(projectedDraftFallbackBuilderModel.tabs.one.all.some((action) => action.name === "Crossbow"), false);
+
+const missingDraftCostBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "fireball", slug: "fireball", name: "Fireball", actionCost: 2, score: 30 },
+    { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 20 },
+    { id: "power-attack", slug: "power-attack", name: "Power Attack", actionCost: 2, score: 10 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "fireball" }] },
+});
+assert.equal(missingDraftCostBuilderModel.usage.normal, 2);
+assert.equal(missingDraftCostBuilderModel.remainingActions, 1);
+assert.equal(missingDraftCostBuilderModel.remainingNormalActions, 1);
+assert.equal(missingDraftCostBuilderModel.remainingTotalActions, 1);
+assert.equal(missingDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
+assert.equal(missingDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+
+const plannedDraftCostBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "reload-crossbow", slug: "reload-crossbow", name: "Reload -> Crossbow", actionCost: 1, score: 30 },
+    { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 20 },
+    { id: "power-attack", slug: "power-attack", name: "Power Attack", actionCost: 2, score: 10 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "reload-crossbow", actionCost: 2 }] },
+});
+assert.equal(plannedDraftCostBuilderModel.usage.normal, 2);
+assert.equal(plannedDraftCostBuilderModel.remainingActions, 1);
+assert.equal(plannedDraftCostBuilderModel.remainingNormalActions, 1);
+assert.equal(plannedDraftCostBuilderModel.draft.steps[0].actionCost, 2);
+assert.equal(plannedDraftCostBuilderModel.draft.steps[0].action.actionCost, 1);
+assert.equal(plannedDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
+assert.equal(plannedDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+
+const warningBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      score: 10,
+      requiresDestination: true,
+      confidence: "medium",
+    },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "stride", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "missing", actionCost: 1 },
+    ],
+  },
+});
+assert.equal(warningBuilderModel.draft.steps[0].stale, false);
+assert.equal(warningBuilderModel.draft.steps[0].warning, "Choose destination at execution.");
+assert.equal(warningBuilderModel.draft.steps[1].stale, true);
+assert.equal(warningBuilderModel.draft.steps[1].warning, "Action is no longer available.");
+
+const unavailableDraftBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      score: 10,
+      available: false,
+      unavailableReason: "Actor is prone; move actions are unavailable.",
+      requiresDestination: true,
+    },
+    {
+      id: "reactive-shield",
+      slug: "reactive-shield",
+      name: "Reactive Shield",
+      actionCost: "reaction",
+      score: 8,
+      disabled: true,
+      disabledReason: "Reaction already planned.",
+    },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "stride", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "reactive-shield", actionCost: "reaction" },
+    ],
+  },
+});
+assert.equal(unavailableDraftBuilderModel.draft.steps.length, 2);
+assert.equal(unavailableDraftBuilderModel.draft.steps[0].stale, false);
+assert.equal(unavailableDraftBuilderModel.draft.steps[0].warning, "Actor is prone; move actions are unavailable.");
+assert.equal(unavailableDraftBuilderModel.draft.steps[1].stale, false);
+assert.equal(unavailableDraftBuilderModel.draft.steps[1].warning, "Reaction already planned.");
+
+const panelRejectedDraftBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [
+    { id: "shield", slug: "shield", name: "Shield", actionCost: 1, score: 20, reason: "Defend." },
+  ],
+  rejected: [{
+    action: {
+      id: "stride",
+      slug: "stride",
+      name: "Stride",
+      actionCost: 1,
+      available: false,
+      activityProfile: { includes: ["stride"], strideCount: 1 },
+    },
+    reason: "No collision-free movement path.",
+  }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "stride", actionCost: 1 }] },
+});
+const rejectedStrideRow = panelRejectedDraftBuilderModel.tabs.one.all.find((action) => action.key === "stride");
+assert.ok(rejectedStrideRow, "disabled movement actions should stay visible in action builder");
+assert.equal(rejectedStrideRow.disabled, true);
+assert.equal(rejectedStrideRow.disabledReason, "No collision-free movement path.");
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].stale, false);
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].action.name, "Stride");
+assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].warning, "No collision-free movement path.");
+
+const inapplicableMovementBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [],
+  rejected: [{
+    action: {
+      id: "stand",
+      slug: "stand",
+      name: "Stand",
+      actionCost: 1,
+      available: false,
+      role: "mobility",
+      activityProfile: { includes: ["move"], removesCondition: "prone" },
+      unavailableReason: "Actor is not prone.",
+    },
+    reason: "Actor is not prone.",
+  }],
+  draft: { steps: [] },
+});
+assert.equal(inapplicableMovementBuilderModel.tabs.one.all.some((action) => action.key === "stand"), false);
+
+const standLikeMoveAction = {
+  id: "stand",
+  slug: "stand",
+  name: "Stand",
+  actionCost: 1,
+  activityProfile: { includes: ["move"], removesCondition: "prone" },
+};
+assert.equal(requiresDestinationForAction(standLikeMoveAction), false);
+const standDraftBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ ...standLikeMoveAction, requiresDestination: requiresDestinationForAction(standLikeMoveAction) }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "stand", actionCost: 1 }] },
+});
+assert.equal(standDraftBuilderModel.draft.steps[0].warning, "");
+
+const quickenedBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: { conditions: { slugs: ["quickened"], values: { quickened: null } } },
+  },
+  candidates: [
+    { id: "full-turn", slug: "full-turn", name: "Full Turn", actionCost: 3, score: 1 },
+    { id: "strike", slug: "strike", source: "strike", name: "Strike", actionCost: 1, score: 30 },
+    { id: "aid", slug: "aid", source: "generic", name: "Aid", actionCost: 1, score: 20 },
+    { id: "heal", slug: "heal", source: "spell-inferred", name: "Heal", actionCost: 2, score: 10 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "full-turn", actionCost: 3 }] },
+});
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "strike").disabled, false);
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, true);
+assert.equal(quickenedBuilderModel.tabs.two.all.find((action) => action.key === "heal").disabled, true);
+assert.equal(quickenedBuilderModel.remainingActions, 0);
+assert.equal(quickenedBuilderModel.remainingNormalActions, 0);
+assert.equal(quickenedBuilderModel.remainingQuickenedActions, 1);
+assert.equal(quickenedBuilderModel.remainingTotalActions, 1);
+
+const quickenedShelfBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: { conditions: { slugs: ["quickened"], values: { quickened: null } } },
+  },
+  candidates: [
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 40 },
+    { id: "step", slug: "step", source: "generic", name: "Step", actionCost: 1, score: 30 },
+    { id: "shortsword", slug: "shortsword", source: "strike", name: "Shortsword", actionCost: 1, score: 20 },
+    { id: "aid", slug: "aid", source: "generic", name: "Aid", actionCost: 1, score: 10 },
+    { id: "heal", slug: "heal", source: "spell-inferred", name: "Heal", actionCost: 2, score: 5 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "heal", actionCost: 2 }] },
+});
+assert.deepEqual(quickenedShelfBuilderModel.tabs.one.quickened.map((action) => action.key), ["stride", "shortsword"]);
+assert.equal(quickenedShelfBuilderModel.tabs.two.quickened.length, 0);
+assert.equal(quickenedShelfBuilderModel.tabs.one.quickened.some((action) => action.key === "aid"), false);
+
+const quickenedRejectedStrikeBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: { conditions: { slugs: ["quickened"], values: { quickened: null } } },
+  },
+  candidates: [
+    { id: "strike-crossbow", slug: "strike", source: "strike", name: "Crossbow", actionCost: 1, score: 40 },
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 30 },
+    { id: "step", slug: "step", source: "generic", name: "Step", actionCost: 1, score: 20 },
+  ],
+  rejected: [{
+    action: {
+      id: "strike-shortsword",
+      slug: "strike",
+      source: "strike",
+      name: "Shortsword",
+      actionCost: 1,
+      score: -999,
+      available: false,
+      unavailableReason: "Target is not in reach.",
+    },
+    reason: "Target is not in reach.",
+  }],
+  draft: { steps: [] },
+});
+assert.deepEqual(
+  quickenedRejectedStrikeBuilderModel.tabs.one.quickened.map((action) => action.key),
+  ["strike-crossbow", "stride", "strike-shortsword"],
+);
+assert.equal(quickenedRejectedStrikeBuilderModel.tabs.one.quickened.at(-1).disabled, true);
+
+const mixedQuickenedDraftBuilderModel = buildActionBuilderModel({
+  context: {
+    profile: {
+      conditions: { slugs: ["quickened"], values: { quickened: null } },
+      effects: [{ slug: "quickened", name: "Quickened" }],
+    },
+  },
+  candidates: [
+    { id: "strike", slug: "strike", source: "strike", name: "Strike", actionCost: 1, score: 30 },
+    { id: "aid", slug: "aid", source: "generic", name: "Aid", actionCost: 1, score: 20 },
+    { id: "heal", slug: "heal", source: "spell-inferred", name: "Heal", actionCost: 2, score: 10 },
+    { id: "power-attack", slug: "power-attack", source: "generic", name: "Power Attack", actionCost: 2, score: 5 },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "strike", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "heal", actionCost: 2 },
+    ],
+  },
+});
+assert.equal(mixedQuickenedDraftBuilderModel.actionBudget.quickenedActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.remainingNormalActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.remainingQuickenedActions, 0);
+assert.equal(mixedQuickenedDraftBuilderModel.remainingTotalActions, 1);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, false);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.one.quickened.length, 0);
+
+// Planning a self-cast Haste (slug "haste") anticipates the quickened action before the condition
+// is applied: the current combatant gains an extra Stride/Strike this turn.
+const anticipatedHasteBuilderModel = buildActionBuilderModel({
+  context: {
+    token: { id: "self-token" },
+    profile: { conditions: { slugs: [], values: {} } },
+  },
+  candidates: [
+    { id: "haste", slug: "haste", source: "spell-inferred", name: "Haste", actionCost: 2, score: 50, activityProfile: { extraAction: true }, targetingProfile: { ally: true, self: true } },
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 40 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "haste", actionCost: 2, targetTokenIds: ["self-token"] }] },
+});
+assert.equal(anticipatedHasteBuilderModel.actionBudget.quickenedActions ?? 0, 0);
+assert.equal(anticipatedHasteBuilderModel.remainingNormalActions, 1);
+assert.equal(anticipatedHasteBuilderModel.remainingQuickenedActions, 1);
+assert.equal(anticipatedHasteBuilderModel.remainingTotalActions, 2);
+assert.ok(anticipatedHasteBuilderModel.tabs.one.quickened.some((action) => action.key === "stride"));
+
+// Casting Haste on an ally does NOT quicken the current combatant — no extra action anticipated.
+const allyHasteBuilderModel = buildActionBuilderModel({
+  context: {
+    token: { id: "self-token" },
+    profile: { conditions: { slugs: [], values: {} } },
+  },
+  candidates: [
+    { id: "haste", slug: "haste", source: "spell-inferred", name: "Haste", actionCost: 2, score: 50, activityProfile: { extraAction: true }, targetingProfile: { ally: true, self: true } },
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 40 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "haste", actionCost: 2, targetTokenIds: ["ally-token"] }] },
+});
+assert.equal(allyHasteBuilderModel.remainingQuickenedActions, 0);
+assert.equal(allyHasteBuilderModel.remainingTotalActions, 1);
+assert.equal(allyHasteBuilderModel.tabs.one.quickened.length, 0);
+
+// A non-Haste self-only spell flagged with extraAction (and no explicit target) also anticipates it.
+const extraActionSelfBuilderModel = buildActionBuilderModel({
+  context: {
+    token: { id: "self-token" },
+    profile: { conditions: { slugs: [], values: {} } },
+  },
+  candidates: [
+    { id: "energize", slug: "energize", source: "spell-inferred", name: "Energize", actionCost: 2, score: 50, activityProfile: { extraAction: true }, targetingProfile: { self: true } },
+    { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 40 },
+  ],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "energize", actionCost: 2 }] },
+});
+assert.equal(extraActionSelfBuilderModel.remainingQuickenedActions, 1);
+assert.equal(extraActionSelfBuilderModel.remainingTotalActions, 2);
+
+const staleBudgetBuilderModel = buildActionBuilderModel({
+  context: { actionsSpent: { normal: 2, total: 2 } },
+  candidates: [{ id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10 }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "missing-three", actionCost: 3 }] },
+});
+assert.equal(staleBudgetBuilderModel.usage.normal, 0);
+assert.equal(staleBudgetBuilderModel.draft.steps[0].stale, true);
+assert.equal(staleBudgetBuilderModel.tabs.one.all[0].disabled, false);
+
+const staleReactionBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [{ id: "reactive-shield", slug: "reactive-shield", name: "Reactive Shield", actionCost: "reaction", score: 10 }],
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "missing-reaction", actionCost: "reaction" }] },
+});
+assert.equal(staleReactionBuilderModel.usage.reaction, 0);
+assert.equal(staleReactionBuilderModel.draft.steps[0].stale, true);
+assert.equal(staleReactionBuilderModel.tabs.reaction.all[0].disabled, false);
+
+const collisionBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: [
+    { id: "duplicate-action", slug: "first", name: "First Duplicate", actionCost: 1, score: 20 },
+    { id: "duplicate-action", slug: "second", name: "Second Duplicate", actionCost: 1, score: 10 },
+  ],
+  draft: {
+    steps: [
+      { instanceId: "draft-1", actionKey: "duplicate-action", actionCost: 1 },
+      { instanceId: "draft-2", actionKey: "duplicate-action#2", actionCost: 1 },
+    ],
+  },
+  favorites: new Set(["duplicate-action#2"]),
+});
+assert.deepEqual(collisionBuilderModel.tabs.one.all.map((action) => action.key), ["duplicate-action", "duplicate-action#2"]);
+assert.deepEqual(collisionBuilderModel.tabs.one.all.map((action) => action.baseKey), ["duplicate-action", "duplicate-action"]);
+assert.deepEqual(collisionBuilderModel.tabs.one.favorites.map((action) => action.key), ["duplicate-action#2"]);
+assert.deepEqual(collisionBuilderModel.draft.steps.map((step) => step.action.name), ["First Duplicate", "Second Duplicate"]);
+
+const stableDuplicateCandidates = [
+  { id: "dup", item: { uuid: "Item.alpha" }, slug: "dup", name: "Alpha Duplicate", actionCost: 1, score: 10 },
+  { id: "dup", item: { uuid: "Item.beta" }, slug: "dup", name: "Beta Duplicate", actionCost: 1, score: 50 },
+];
+const stableDuplicateHighBeta = buildActionBuilderModel({
+  context: {},
+  candidates: stableDuplicateCandidates,
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "dup#2", actionCost: 1 }] },
+});
+const stableDuplicateHighAlpha = buildActionBuilderModel({
+  context: {},
+  candidates: stableDuplicateCandidates.map((action) => ({
+    ...action,
+    score: action.name.startsWith("Alpha") ? 50 : 10,
+  })),
+  draft: { steps: [{ instanceId: "draft-1", actionKey: "dup#2", actionCost: 1 }] },
+});
+assert.deepEqual(
+  stableDuplicateHighBeta.tabs.one.all.map((action) => `${action.key}:${action.name}`),
+  ["dup#2:Beta Duplicate", "dup:Alpha Duplicate"],
+);
+assert.deepEqual(
+  stableDuplicateHighAlpha.tabs.one.all.map((action) => `${action.key}:${action.name}`),
+  ["dup:Alpha Duplicate", "dup#2:Beta Duplicate"],
+);
+assert.equal(stableDuplicateHighBeta.draft.steps[0].action.name, "Beta Duplicate");
+assert.equal(stableDuplicateHighAlpha.draft.steps[0].action.name, "Beta Duplicate");
+
 const excellentSingleAction = bestTurnPlan(fighterContext, [
   {
     id: "excellent",
@@ -249,6 +2688,212 @@ const noTargetBuild = buildCandidates({
   targets: undefined,
 });
 assert.equal(noTargetBuild.candidates.some((action) => ["step", "stride", "strike"].includes(action.slug)), false);
+
+const sickenedGenericContext = {
+  actor: {
+    document: {
+      system: { actions: [] },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [], weapon: [] },
+      items: [],
+    },
+  },
+  profile: {
+    speed: 25,
+    conditions: { slugs: ["sickened"], values: { sickened: 1 } },
+    skills: {},
+  },
+  token: { id: "actor-token", name: "Actor", center: { x: 0, y: 0 } },
+  battlefield: { targets: [], enemies: [], allies: [] },
+};
+const sickenedSources = readActionSources(sickenedGenericContext);
+assert.equal(sickenedSources.find((action) => action.slug === "retch")?.available, true);
+const retchCandidate = buildCandidates(sickenedGenericContext).candidates.find((action) => action.slug === "retch");
+assert.ok(retchCandidate, "Retch should be a 1-action option while sickened");
+assert.equal(retchCandidate.actionCost, 1);
+assert.equal(retchCandidate.suggestedTarget?.type, "self");
+assert.ok(retchCandidate.reasons.some((reason) => reason.includes("sickened")));
+const healthySources = readActionSources({
+  ...sickenedGenericContext,
+  profile: { ...sickenedGenericContext.profile, conditions: { slugs: [], values: {} } },
+});
+assert.equal(healthySources.find((action) => action.slug === "retch")?.available, false);
+
+const proneGenericTarget = { id: "generic-enemy", name: "Enemy", distance: 20, attackTargetable: true };
+const proneGenericContext = {
+  ...sickenedGenericContext,
+  profile: { ...sickenedGenericContext.profile, conditions: { slugs: ["prone"], values: { prone: 1 } } },
+  targets: [proneGenericTarget],
+  battlefield: { targets: [proneGenericTarget], enemies: [proneGenericTarget], allies: [] },
+};
+const standCandidate = buildCandidates(proneGenericContext).candidates.find((action) => action.slug === "stand");
+assert.ok(standCandidate, "Stand should be a 1-action option while prone");
+assert.equal(standCandidate.actionCost, 1);
+assert.equal(requiresDestinationForAction(standCandidate), false);
+const crawlCandidate = buildCandidates(proneGenericContext).candidates.find((action) => action.slug === "crawl");
+assert.ok(crawlCandidate, "Crawl should be a 1-action movement option while prone");
+assert.equal(crawlCandidate.actionCost, 1);
+assert.equal(requiresDestinationForAction(crawlCandidate), true);
+const projectedAfterStandGeneric = projectContextForDraftDestination(proneGenericContext, {
+  steps: [{ instanceId: "stand-1", actionKey: "stand", actionCost: 1 }],
+});
+assert.equal(projectedAfterStandGeneric.profile.conditions.slugs.includes("prone"), false);
+assert.equal(
+  buildCandidates(projectedAfterStandGeneric).candidates.some((action) => action.slug === "stride"),
+  true,
+  "Stand in draft should restore normal movement actions for later choices",
+);
+
+const immobilizedGenericContext = {
+  ...sickenedGenericContext,
+  profile: { ...sickenedGenericContext.profile, conditions: { slugs: ["immobilized"], values: { immobilized: 1 } } },
+  targets: [proneGenericTarget],
+  battlefield: { targets: [proneGenericTarget], enemies: [proneGenericTarget], allies: [] },
+};
+const immobilizedEscape = readActionSources(immobilizedGenericContext).find((action) => action.slug === "escape");
+assert.equal(immobilizedEscape.available, true);
+const projectedAfterEscape = projectContextForDraftDestination(immobilizedGenericContext, {
+  steps: [{ instanceId: "escape-1", actionKey: "escape", actionCost: 1 }],
+});
+assert.equal(projectedAfterEscape.profile.conditions.slugs.includes("immobilized"), false);
+assert.equal(
+  buildCandidates(projectedAfterEscape).candidates.some((action) => action.slug === "stride"),
+  true,
+  "Escape in draft should restore movement actions for later choices",
+);
+
+const aggroDefenderTarget = {
+  id: "defender",
+  name: "Shield Guard",
+  distance: 5,
+  hpPercent: 0.95,
+  ac: 27,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [{ slug: "raise-a-shield", name: "Raise a Shield" }],
+        spell: [],
+        spellcastingEntry: [],
+        weapon: [{ name: "Shield Boss", system: { traits: { value: [] } } }],
+      },
+      system: { attributes: { hp: { value: 60, max: 60 }, ac: { value: 27 } } },
+    },
+  },
+};
+const aggroHealerTarget = {
+  id: "healer",
+  name: "Temple Healer",
+  distance: 30,
+  hpPercent: 0.9,
+  ac: 18,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [],
+        spell: [{ id: "heal", slug: "heal", name: "Heal", system: { traits: { value: ["healing"] } } }],
+        spellcastingEntry: [{ system: { prepared: { value: "prepared" }, slots: { slot1: { prepared: [{ id: "heal" }] } } } }],
+        weapon: [],
+      },
+      system: { attributes: { hp: { value: 45, max: 50 }, ac: { value: 18 } } },
+    },
+  },
+};
+const aggroCasterTarget = {
+  id: "caster",
+  name: "Battle Mage",
+  distance: 25,
+  hpPercent: 0.7,
+  ac: 16,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: {
+        action: [],
+        spell: [{
+          slug: "fireball",
+          name: "Fireball",
+          system: { traits: { value: ["fire"] }, defense: { save: { statistic: "reflex" } } },
+        }, {
+          slug: "slow",
+          name: "Slow",
+          system: { traits: { value: ["incapacitation"] }, defense: { save: { statistic: "will" } } },
+        }],
+        spellcastingEntry: [{ system: { prepared: { value: "prepared" }, slots: { slot3: { value: 1 } } } }],
+        weapon: [],
+      },
+      system: { attributes: { hp: { value: 28, max: 40 }, ac: { value: 16 } } },
+    },
+  },
+};
+const npcAggroContext = {
+  isGM: true,
+  actor: {
+    id: "mitflit",
+    name: "Mitflit",
+    document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 10, max: 10 } } } },
+  },
+  profile: {
+    actorType: "npc",
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    skills: {},
+  },
+  token: { id: "mitflit-token", name: "Mitflit", center: { x: 0, y: 0 } },
+  targets: [aggroDefenderTarget],
+  battlefield: {
+    targets: [aggroDefenderTarget],
+    enemies: [aggroDefenderTarget, aggroHealerTarget, aggroCasterTarget],
+    allies: [],
+  },
+};
+const healerAggro = aggroProfile(npcAggroContext, aggroHealerTarget);
+assert.equal(healerAggro.roles.includes("healer"), true);
+assert.equal(healerAggro.gmOnly, true);
+assert.ok(aggroTargetValue(npcAggroContext, { role: "damage" }, "damage", aggroHealerTarget)
+  > aggroTargetValue(npcAggroContext, { role: "damage" }, "damage", aggroDefenderTarget));
+const npcAggroShot = scoreCandidate(npcAggroContext, {
+  id: "shortbow",
+  name: "Shortbow",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  range: { max: 60 },
+});
+assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
+
+const npcAggroControl = scoreCandidate(npcAggroContext, {
+  id: "slow",
+  name: "Slow",
+  slug: "slow",
+  source: "spell-inferred",
+  actionCost: 2,
+  role: "control",
+  targetingProfile: { enemy: true, maxRange: 60 },
+  saveProfile: { stat: "will" },
+});
+assert.equal(npcAggroControl.suggestedTarget.name, "Battle Mage");
+
+const playerSafeAggroShot = scoreCandidate({
+  ...npcAggroContext,
+  isGM: false,
+  profile: { ...npcAggroContext.profile, actorType: "character" },
+}, {
+  id: "shortbow",
+  name: "Shortbow",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  range: { max: 60 },
+});
+assert.equal(playerSafeAggroShot.suggestedTarget.name, "Battle Mage");
+assert.equal(playerSafeAggroShot.reasons.some((reason) => /aggro|healer|caster/i.test(reason)), false);
 
 const pressureContext = {
   profile: { hpPercent: 1, hasShield: true, conditions: { slugs: [], values: {} } },
@@ -518,6 +3163,76 @@ const boundedPlans = buildTurnPlans(fighterContext, manyFreeActions);
 assert.ok(boundedPlans.length <= 256);
 assert.ok(boundedPlans.every((plan) => plan.steps.filter((step) => step.actionCost === 0).length <= 1));
 
+const bespellCandidate = {
+  id: "bespell-strikes",
+  name: "Bespell Strikes",
+  slug: "bespell-strikes",
+  actionCost: 0,
+  score: 120,
+  confidence: "high",
+  role: "setup",
+  source: "system-inferred",
+  activityProfile: {
+    includes: ["setup"],
+    damageBuff: true,
+    previousActionRequirements: ["non-cantrip-spell"],
+  },
+  gatingProfile: {
+    eventTriggerOnly: true,
+    eventTriggers: ["previous-action", "spell-cast"],
+    previousActionRequirements: ["non-cantrip-spell"],
+  },
+  setupFor: ["strike", "damage"],
+  reason: "Bespell Strikes requires a prior non-cantrip spell.",
+};
+const nonCantripSpellCandidate = {
+  id: "frostbite",
+  name: "Frostbite",
+  slug: "frostbite",
+  actionCost: 2,
+  score: 90,
+  confidence: "high",
+  source: "spell-inferred",
+  role: "save-damage",
+  rank: 1,
+  castRank: 1,
+  isCantrip: false,
+  reason: "Frostbite can damage a target.",
+};
+const cantripSpellCandidate = {
+  ...nonCantripSpellCandidate,
+  id: "electric-arc",
+  name: "Electric Arc",
+  slug: "electric-arc",
+  score: 91,
+  rank: 0,
+  castRank: 0,
+  isCantrip: true,
+};
+const bespellStrikeCandidate = {
+  id: "staff-strike",
+  name: "Staff",
+  slug: "strike",
+  actionCost: 1,
+  score: 85,
+  confidence: "high",
+  source: "strike",
+  range: { max: 5 },
+  reason: "Staff Strike.",
+};
+const bespellPlan = bestTurnPlan(fighterContext, [
+  bespellCandidate,
+  nonCantripSpellCandidate,
+  bespellStrikeCandidate,
+]);
+assert.deepEqual(bespellPlan.steps.map((step) => step.slug), ["frostbite", "bespell-strikes", "strike"]);
+assert.equal(bestTurnPlan(fighterContext, [bespellCandidate]).steps.some((step) => step.slug === "bespell-strikes"), false);
+assert.equal(
+  bestTurnPlan(fighterContext, [bespellCandidate, cantripSpellCandidate, bespellStrikeCandidate])
+    .steps.some((step) => step.slug === "bespell-strikes"),
+  false,
+);
+
 const slowedContext = {
   ...fighterContext,
   profile: {
@@ -621,6 +3336,67 @@ const quickenedEffectProfile = readActorProfile({
 assert.deepEqual(quickenedEffectProfile.conditions.slugs, []);
 assert.deepEqual(quickenedEffectProfile.effects.map((effect) => effect.slug), ["quickened"]);
 assert.equal(actionBudget({ profile: quickenedEffectProfile }).quickenedActions, 1);
+
+const alchemistSubclassProfile = readActorProfile({
+  id: "alchemist-subclass-actor",
+  name: "Alchemist Subclass Actor",
+  itemTypes: {
+    class: [{ name: "Alchemist", type: "class", system: { slug: "alchemist" } }],
+    feat: [{
+      id: "field-bomber",
+      name: "Bomber",
+      type: "feat",
+      system: {
+        category: "classfeature",
+        slug: "bomber",
+        traits: { value: ["alchemist"], otherTags: ["alchemist-research-field"] },
+      },
+    }, {
+      id: "weapon-specialization",
+      name: "Weapon Specialization",
+      type: "feat",
+      system: {
+        category: "classfeature",
+        slug: "weapon-specialization",
+        traits: { value: ["alchemist"], otherTags: [] },
+      },
+    }],
+    condition: [],
+    effect: [],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(alchemistSubclassProfile.classSlugs, ["alchemist"]);
+assert.deepEqual(alchemistSubclassProfile.subclassSlugs, ["bomber"]);
+assert.equal(KNOWN_SUBCLASS_SLUGS.has("bomber"), true);
+
+const kineticistGateProfile = readActorProfile({
+  id: "kineticist-gate-actor",
+  name: "Kineticist Gate Actor",
+  itemTypes: {
+    class: [{ name: "Kineticist", type: "class", system: { slug: "kineticist" } }],
+    feat: [{
+      id: "fire-gate",
+      name: "Fire Gate",
+      type: "feat",
+      system: { category: "classfeature", slug: "fire-gate", traits: { value: [] } },
+    }],
+    condition: [],
+    effect: [],
+  },
+  system: {
+    attributes: { hp: { value: 10, max: 10 } },
+    movement: { speeds: { land: { value: 25 } } },
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(kineticistGateProfile.subclassSlugs, ["fire-gate"]);
 
 const quickenedEffectContext = {
   ...quickenedContext,
@@ -758,6 +3534,46 @@ const speedProfile = readActorProfile({
 });
 assert.equal(speedProfile.speed, 35);
 assert.deepEqual(speedProfile.effects, []);
+
+const perceptionProfile = readActorProfile({
+  id: "perceptive",
+  name: "Perceptive",
+  type: "character",
+  items: [],
+  itemTypes: { condition: [] },
+  system: {
+    perception: { rank: 1, mod: 9 },
+    attributes: {
+      hp: { value: 10, max: 10 },
+    },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(perceptionProfile.skills.perception, { rank: 1, mod: 9 });
+
+const npcTopLevelSkillsProfile = readActorProfile({
+  id: "npc-skills",
+  name: "NPC Skills",
+  type: "npc",
+  items: [],
+  itemTypes: { condition: [] },
+  skills: {
+    acrobatics: { rank: 1, mod: 8 },
+  },
+  perception: { rank: null, mod: 6 },
+  system: {
+    attributes: {
+      hp: { value: 10, max: 10 },
+    },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.deepEqual(npcTopLevelSkillsProfile.skills.acrobatics, { rank: 1, mod: 8 });
+assert.deepEqual(npcTopLevelSkillsProfile.skills.perception, { rank: null, mod: 6 });
 
 const classProfile = readActorProfile({
   id: "fighter-class-actor",
@@ -1000,6 +3816,1434 @@ assert.equal(wallAwareStridePreview.enabled, true);
 assert.notDeepEqual(wallAwareStridePreview.recommendedCenter, { x: 25, y: 0 });
 assert.ok(!wallAwareStridePreview.reachableCenters.some((center) => center.x === 25 && center.y === 0));
 
+const explicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Decoy", token: { center: { x: 25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: () => false,
+  pointVisible: () => true,
+});
+assert.equal(explicitMovementPreview.enabled, true);
+assert.equal(explicitMovementPreview.destinationAvailable, true);
+assert.equal(explicitMovementPreview.destinationCenter.x, 10);
+assert.equal(explicitMovementPreview.destinationCenter.y, 0);
+assert.equal(explicitMovementPreview.recommendedCenter.x, 10);
+assert.equal(explicitMovementPreview.stridePath.length, 1);
+assert.deepEqual(explicitMovementPreview.stridePath[0].trail.map((point) => [point.x, point.y]), [[5, 0], [10, 0]]);
+
+const blockedExplicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Fallback Target", token: { center: { x: -25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: (_from, to) => to.x === 10 && to.y === 0,
+  pointVisible: () => true,
+});
+assert.equal(blockedExplicitMovementPreview.enabled, true);
+assert.equal(blockedExplicitMovementPreview.destinationAvailable, false);
+assert.equal(blockedExplicitMovementPreview.destinationCenter.x, 10);
+assert.equal(blockedExplicitMovementPreview.recommendedCenter, null);
+assert.equal(blockedExplicitMovementPreview.stridePath.length, 0);
+assert.ok(blockedExplicitMovementPreview.destinationPlacement);
+assert.ok(blockedExplicitMovementPreview.destinationMarker);
+assert.match(blockedExplicitMovementPreview.destinationIllegalReason, /movement path/i);
+
+const hiddenExplicitMovementPreview = movementPreviewForStep({
+  token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [{ name: "Fallback Target", token: { center: { x: -25, y: 0 } }, distance: 25 }],
+  },
+}, {
+  slug: "stride",
+  actionCost: 1,
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  pathBlocked: () => false,
+  pointVisible: (point) => point.x !== 10 || point.y !== 0,
+});
+assert.equal(hiddenExplicitMovementPreview.enabled, true);
+assert.equal(hiddenExplicitMovementPreview.destinationAvailable, false);
+assert.equal(hiddenExplicitMovementPreview.destinationIllegalReason, "Destination is not visible.");
+assert.equal(hiddenExplicitMovementPreview.destinationPlacement, null);
+assert.equal(hiddenExplicitMovementPreview.destinationMarker, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedCenter, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedPlacement, null);
+assert.equal(hiddenExplicitMovementPreview.recommendedMarker, null);
+assert.deepEqual(hiddenExplicitMovementPreview.stridePath, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachableCenters, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachablePlacements, []);
+assert.deepEqual(hiddenExplicitMovementPreview.reachableMarkers, []);
+
+const overBudgetWaypointPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 0, y: 20 },
+  movementPlan: {
+    native: false,
+    waypoints: [{ x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }],
+  },
+}, { gridSize: 5 });
+assert.equal(overBudgetWaypointPreview.enabled, true);
+assert.equal(overBudgetWaypointPreview.explicitDestination, true);
+assert.equal(overBudgetWaypointPreview.destinationAvailable, false);
+assert.equal(overBudgetWaypointPreview.destinationIllegalReason, "Waypoint path is beyond movement range.");
+assert.deepEqual(overBudgetWaypointPreview.stridePath, []);
+
+const partialWaypointPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 0 },
+  movementPlan: {
+    native: false,
+    waypoints: [{ x: 10, y: 0 }],
+  },
+}, { gridSize: 5 });
+assert.equal(partialWaypointPreview.enabled, true);
+assert.equal(partialWaypointPreview.destinationAvailable, true);
+assert.ok(
+  partialWaypointPreview.reachableMarkers.length > 0,
+  "custom waypoint preview should keep reachable grid highlights after setting a waypoint",
+);
+assert.deepEqual(partialWaypointPreview.segmentLabels, [{
+  text: "10 ft",
+  from: { x: 0, y: 0 },
+  to: { x: 10, y: 0 },
+  center: { x: 5, y: 0 },
+}]);
+
+const cumulativeWaypointPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 10 },
+  movementPlan: {
+    native: false,
+    waypoints: [{ x: 10, y: 0 }, { x: 10, y: 10 }],
+  },
+}, { gridSize: 5 });
+assert.deepEqual(
+  cumulativeWaypointPreview.segmentLabels.map((label) => label.text),
+  ["10 ft", "20 ft"],
+  "waypoint distance labels should show cumulative path distance",
+);
+
+const diagonalWaypointPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 10 },
+  movementPlan: {
+    native: false,
+    waypoints: [{ x: 5, y: 5 }, { x: 10, y: 10 }],
+  },
+}, { gridSize: 5 });
+assert.deepEqual(
+  diagonalWaypointPreview.segmentLabels.map((label) => label.text),
+  ["5 ft", "15 ft"],
+  "PF2e diagonal movement should alternate 5 ft, then 10 ft, cumulatively",
+);
+
+const shortDiagonalPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 10 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 10 },
+}, { gridSize: 5 });
+assert.equal(shortDiagonalPreview.destinationAvailable, false);
+assert.equal(shortDiagonalPreview.destinationIllegalReason, "Destination is beyond movement range.");
+
+const shortDiagonalReachablePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 10 } },
+  battlefield: { targets: [] },
+}, { slug: "stride" }, { gridSize: 5 });
+assert.equal(
+  shortDiagonalReachablePreview.reachableCenters.some((center) => center.x === 10 && center.y === 10),
+  false,
+  "reachable grid highlights should respect PF2e 5-10-5 diagonal movement",
+);
+
+const pf2eDifficultTerrainRegion = {
+  shapes: [{ type: "rectangle", x: 7.5, y: -2.5, width: 5, height: 5 }],
+  behaviors: [{
+    type: "modifyMovementCost",
+    system: { difficulties: { walk: 2, step: 1, crawl: 2 } },
+  }],
+};
+const pf2eDifficultTerrainPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 10 } },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 0 },
+}, {
+  gridSize: 5,
+  regions: [pf2eDifficultTerrainRegion],
+});
+assert.equal(pf2eDifficultTerrainPreview.destinationAvailable, false);
+assert.equal(
+  pf2eDifficultTerrainPreview.destinationIllegalReason,
+  "Destination is beyond movement range.",
+  "PF2e difficult terrain behavior should make the entered square cost extra movement",
+);
+assert.equal(
+  movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 10 } },
+    battlefield: { targets: [] },
+  }, { slug: "stride" }, { gridSize: 5, regions: [pf2eDifficultTerrainRegion] })
+    .reachableCenters.some((center) => center.x === 10 && center.y === 0),
+  false,
+  "reachable grid highlights should account for PF2e difficult terrain cost",
+);
+assert.equal(
+  movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 5 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "step",
+    destination: { x: 5, y: 0 },
+  }, { gridSize: 5, regions: [pf2eDifficultTerrainRegion] }).destinationAvailable,
+  true,
+  "PF2e terrain behavior should use action-specific difficulties, so Step ignores walk-only difficult terrain",
+);
+const pf2eGreaterTerrainRegion = {
+  shapes: [{ type: "rectangle", x: 2.5, y: -2.5, width: 5, height: 5 }],
+  behaviors: [{
+    type: "modifyMovementCost",
+    system: { difficulties: { walk: 3 } },
+  }],
+};
+const pf2eGreaterTerrainPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: {
+    profile: { speed: 10 },
+    system: {
+      movement: {
+        terrain: {
+          difficult: { ignored: [{ environment: "all", feature: "all" }] },
+          greater: { ignored: [] },
+        },
+      },
+    },
+  },
+  battlefield: { targets: [] },
+}, {
+  slug: "stride",
+  destination: { x: 5, y: 0 },
+  movementPlan: { native: false, waypoints: [{ x: 5, y: 0 }] },
+}, { gridSize: 5, regions: [pf2eGreaterTerrainRegion] });
+assert.deepEqual(
+  pf2eGreaterTerrainPreview.segmentLabels.map((label) => label.text),
+  ["10 ft"],
+  "PF2e greater difficult terrain should use system mitigation math, not a generic multiplier",
+);
+
+const previousMovementColorGame = globalThis.game;
+try {
+  globalThis.game = { user: { color: "#ff3366" } };
+  const playerColorMovementPreview = movementPreviewForStep({
+    token: { center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 10, y: 0 },
+  }, { gridSize: 5 });
+  assert.equal(playerColorMovementPreview.destinationAvailable, true);
+  assert.equal(
+    playerColorMovementPreview.stridePath[0].color,
+    0xff3366,
+    "planned movement path should use the current user's Foundry color",
+  );
+  assert.equal(
+    playerColorMovementPreview.reachableMarkerColor,
+    0xff3366,
+    "planned movement grid highlights should use the current user's Foundry color",
+  );
+} finally {
+  globalThis.game = previousMovementColorGame;
+}
+
+const previousDestinationPickerCanvas = globalThis.canvas;
+try {
+  delete globalThis.canvas;
+  assert.equal(chooseDestination({ onChoose: () => assert.fail("headless picker must not choose") }), null);
+  assert.doesNotThrow(() => cancelDestinationPicker());
+
+  const nativeRulerPlanCalls = [];
+  const nativeRulerDestinations = [];
+  const nativeRulerTokenEvents = [];
+  let nativeRulerTokenControlled = false;
+  globalThis.canvas = {
+    grid: { size: 10 },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        document: { id: "actor-token", width: 1, height: 1 },
+        layer: {
+          activate: ({ tool } = {}) => nativeRulerTokenEvents.push({ control: "tokens-layer", tool }),
+        },
+        actor: { system: { movement: { speeds: { land: { value: 25, step: 5, crawl: 5 } } } } },
+        control: (options = {}) => {
+          nativeRulerTokenControlled = true;
+          nativeRulerTokenEvents.push({ control: "token", options });
+        },
+        planMovement: async (options) => {
+          assert.equal(nativeRulerTokenControlled, true, "native ruler planning should control the token before planMovement");
+          nativeRulerPlanCalls.push(options);
+          return {
+            id: "planned-move",
+            origin: { x: 0, y: 0, width: 1, height: 1 },
+            destination: { x: 10, y: 20, width: 1, height: 1 },
+            waypoints: [{ x: 10, y: 20, width: 1, height: 1, action: "walk" }],
+          };
+        },
+      }],
+    },
+  };
+  const nativeRulerPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    useNativeRuler: true,
+    onChoose: (destination, metadata) => nativeRulerDestinations.push({ destination, metadata }),
+  });
+  assert.ok(nativeRulerPicker);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(nativeRulerTokenEvents, [
+    { control: "tokens-layer", tool: "select" },
+    { control: "token", options: { releaseOthers: true } },
+  ]);
+  assert.deepEqual(nativeRulerPlanCalls.at(-1), {
+    allowedActions: ["walk"],
+    maxDistance: 25,
+    maxCost: 25,
+    preventDrop: true,
+  });
+  assert.deepEqual(nativeRulerDestinations, [{
+    destination: { x: 15, y: 25 },
+    metadata: {
+      movementPlan: {
+        id: "planned-move",
+        origin: { x: 0, y: 0, width: 1, height: 1 },
+        destination: { x: 10, y: 20, width: 1, height: 1 },
+        waypoints: [{ x: 10, y: 20, width: 1, height: 1, action: "walk" }],
+      },
+    },
+  }]);
+  cancelDestinationPicker();
+
+  nativeRulerTokenControlled = false;
+  nativeRulerTokenEvents.length = 0;
+  const nativeStepPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Step", slug: "step" },
+    useNativeRuler: true,
+    onChoose: () => { },
+  });
+  assert.ok(nativeStepPicker);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(nativeRulerPlanCalls.at(-1), {
+    allowedActions: ["walk"],
+    maxDistance: 5,
+    maxCost: 5,
+    preventDrop: true,
+  }, "native Step planning should use Foundry's walk movement mode capped to one square");
+  cancelDestinationPicker();
+
+  let pointerHandler = null;
+  let pointerRemoved = false;
+  globalThis.canvas = {
+    grid: { size: 10 },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        document: { id: "actor-token", width: 1, height: 1 },
+        planMovement: () => assert.fail("destination click picker should not use token.planMovement by default"),
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        pointerHandler = handler;
+      },
+      off: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        assert.equal(handler, pointerHandler);
+        pointerRemoved = true;
+        pointerHandler = null;
+      },
+    },
+  };
+  const chosenDestinations = [];
+  const suppressed = [];
+  const picker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    onChoose: (destination) => chosenDestinations.push(destination),
+  });
+  assert.ok(picker);
+  assert.equal(picker.native, undefined);
+  assert.equal(typeof pointerHandler, "function");
+  pointerHandler({
+    button: 2,
+    global: { x: 12, y: 18 },
+    preventDefault: () => suppressed.push("secondary-default"),
+    stopPropagation: () => suppressed.push("secondary-propagation"),
+  });
+  assert.deepEqual(chosenDestinations, []);
+  assert.deepEqual(suppressed, []);
+  assert.equal(pointerRemoved, false);
+  assert.equal(typeof pointerHandler, "function");
+  pointerHandler({
+    button: 0,
+    global: { x: 12, y: 18 },
+    preventDefault: () => suppressed.push("primary-default"),
+    stopPropagation: () => suppressed.push("primary-propagation"),
+  });
+  assert.deepEqual(chosenDestinations, [{ x: 15, y: 15 }]);
+  assert.deepEqual(suppressed, ["primary-default", "primary-propagation"]);
+  assert.equal(pointerRemoved, true);
+  assert.equal(pointerHandler, null);
+
+  let projectedOriginPointerHandler = null;
+  const projectedOriginWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => projectedOriginWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 25, step: 5, crawl: 5 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        projectedOriginPointerHandler = handler;
+      },
+      off: () => {
+        projectedOriginPointerHandler = null;
+      },
+    },
+  };
+  const projectedOriginDestinations = [];
+  const projectedOriginPicker = chooseDestination({
+    context: { token: { id: "actor-token", center: { x: 105, y: 5 }, plannedCenter: { x: 105, y: 5 } } },
+    action: { name: "Step", slug: "step" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata) => projectedOriginDestinations.push({ destination, metadata }),
+  });
+  assert.ok(projectedOriginPicker);
+  projectedOriginPointerHandler({
+    button: 0,
+    global: { x: 112, y: 8 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(projectedOriginWarnings, []);
+  assert.deepEqual(projectedOriginDestinations, [{
+    destination: { x: 115, y: 5 },
+    metadata: {},
+  }], "Step after a planned Stride should measure from projected draft origin instead of actual token position");
+
+  let waypointPointerHandler = null;
+  let waypointPointerRemoved = false;
+  const waypointWarnings = [];
+  const previousDestinationUi = globalThis.ui;
+  globalThis.ui = { notifications: { warn: (message) => waypointWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 15 } } } } },
+        planMovement: () => assert.fail("custom waypoint picker must not use token.planMovement"),
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        waypointPointerHandler = handler;
+      },
+      off: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        assert.equal(handler, waypointPointerHandler);
+        waypointPointerRemoved = true;
+        waypointPointerHandler = null;
+      },
+    },
+  };
+  const waypointDestinations = [];
+  const waypointPreviews = [];
+  const waypointPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onPreview: (destination, metadata) => waypointPreviews.push({ destination, metadata }),
+    onChoose: (destination, metadata) => waypointDestinations.push({ destination, metadata }),
+  });
+  assert.ok(waypointPicker);
+  assert.equal(typeof waypointPointerHandler, "function");
+  waypointPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(waypointDestinations, []);
+  assert.equal(waypointPointerRemoved, false);
+  assert.deepEqual(waypointPreviews.at(-1), {
+    destination: { x: 15, y: 15 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 15 }],
+        cost: 5,
+        maxCost: 15,
+      },
+    },
+  });
+  waypointPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 45, y: 15 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(waypointDestinations, []);
+  assert.equal(waypointWarnings.at(-1), "Destination is beyond movement range.");
+  assert.deepEqual(waypointPreviews.at(-1).metadata.movementPlan.waypoints, [{ x: 15, y: 15 }]);
+  waypointPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 22, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(waypointPreviews.at(-1), {
+    destination: { x: 25, y: 15 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 15 }, { x: 25, y: 15 }],
+        cost: 10,
+        maxCost: 15,
+      },
+    },
+  });
+  waypointPointerHandler({
+    button: 2,
+    shiftKey: true,
+    global: { x: 22, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(waypointDestinations, []);
+  assert.deepEqual(waypointPreviews.at(-1), {
+    destination: { x: 15, y: 15 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 15 }],
+        cost: 5,
+        maxCost: 15,
+      },
+    },
+  }, "shift-right-click should remove the last waypoint and keep picker active");
+  waypointPointerHandler({
+    button: 0,
+    global: { x: 22, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(waypointDestinations, [{
+    destination: { x: 25, y: 15 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 15 }, { x: 25, y: 15 }],
+        cost: 10,
+        maxCost: 15,
+      },
+    },
+  }]);
+  assert.equal(waypointPointerRemoved, true);
+
+  let diagonalCostPointerHandler = null;
+  const diagonalCostWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => diagonalCostWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 10 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        diagonalCostPointerHandler = handler;
+      },
+      off: () => {
+        diagonalCostPointerHandler = null;
+      },
+    },
+  };
+  const diagonalCostPreviews = [];
+  const diagonalCostPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onPreview: (destination, metadata) => diagonalCostPreviews.push({ destination, metadata }),
+    onChoose: () => assert.fail("over-budget diagonal waypoint should not finalize"),
+  });
+  assert.ok(diagonalCostPicker);
+  diagonalCostPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  diagonalCostPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 22, y: 28 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.equal(diagonalCostWarnings.at(-1), "Destination is beyond movement range.");
+  assert.deepEqual(
+    diagonalCostPreviews.at(-1).metadata.movementPlan,
+    {
+      native: false,
+      waypoints: [{ x: 15, y: 15 }],
+      cost: 5,
+      maxCost: 10,
+    },
+    "waypoint picker range budget should use PF2e 5-10-5 diagonal movement",
+  );
+
+  let terrainCostPointerHandler = null;
+  const terrainCostWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => terrainCostWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: {
+      grid: { distance: 5 },
+      regions: [{
+        shapes: [{ type: "rectangle", x: 20, y: 10, width: 10, height: 10 }],
+        behaviors: [{
+          type: "modifyMovementCost",
+          system: { difficulties: { walk: 2 } },
+        }],
+      }],
+    },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 15 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 10 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        terrainCostPointerHandler = handler;
+      },
+      off: () => {
+        terrainCostPointerHandler = null;
+      },
+    },
+  };
+  const terrainCostPreviews = [];
+  const terrainCostPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onPreview: (destination, metadata) => terrainCostPreviews.push({ destination, metadata }),
+    onChoose: () => assert.fail("over-budget difficult-terrain waypoint should not finalize"),
+  });
+  assert.ok(terrainCostPicker);
+  terrainCostPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  terrainCostPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 22, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.equal(terrainCostWarnings.at(-1), "Destination is beyond movement range.");
+  assert.deepEqual(
+    terrainCostPreviews.at(-1).metadata.movementPlan,
+    {
+      native: false,
+      waypoints: [{ x: 15, y: 15 }],
+      cost: 5,
+      maxCost: 10,
+    },
+    "waypoint picker range budget should include PF2e difficult terrain behavior cost",
+  );
+
+  let doubleClickPointerHandler = null;
+  let doubleClickPointerRemoved = false;
+  globalThis.canvas.tokens.placeables[0].actor.system.movement.speeds.land.value = 15;
+  globalThis.canvas.scene.regions = [];
+  globalThis.canvas.stage = {
+    on: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      doubleClickPointerHandler = handler;
+    },
+    off: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      assert.equal(handler, doubleClickPointerHandler);
+      doubleClickPointerRemoved = true;
+      doubleClickPointerHandler = null;
+    },
+  };
+  const doubleClickDestinations = [];
+  const doubleClickPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata = {}) => doubleClickDestinations.push({ destination, metadata }),
+  });
+  assert.ok(doubleClickPicker);
+  doubleClickPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(doubleClickDestinations, []);
+  doubleClickPointerHandler({
+    button: 0,
+    detail: 2,
+    shiftKey: true,
+    global: { x: 22, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(doubleClickDestinations, [{
+    destination: { x: 25, y: 15 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 15 }, { x: 25, y: 15 }],
+        cost: 10,
+        maxCost: 15,
+      },
+    },
+  }], "shift-double-click should add the final waypoint and finalize the path");
+  assert.equal(doubleClickPointerRemoved, true);
+
+  let directWaypointPointerHandler = null;
+  globalThis.canvas.stage = {
+    on: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      directWaypointPointerHandler = handler;
+    },
+    off: () => {
+      directWaypointPointerHandler = null;
+    },
+  };
+  const directWaypointDestinations = [];
+  const directWaypointPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata = {}) => directWaypointDestinations.push({ destination, metadata }),
+  });
+  assert.ok(directWaypointPicker);
+  directWaypointPointerHandler({
+    button: 0,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(directWaypointDestinations, [{
+    destination: { x: 15, y: 15 },
+    metadata: {},
+  }], "one-click destination should not store custom waypoint data unless a waypoint was added");
+  globalThis.ui = previousDestinationUi;
+
+  let domPointerHandler = null;
+  let domPointerUpHandler = null;
+  let domClickHandler = null;
+  let domDoubleClickHandler = null;
+  let domContextHandler = null;
+  let domPointerOptions = null;
+  let domPointerRemoved = false;
+  let domPointerUpRemoved = false;
+  let domClickRemoved = false;
+  let domDoubleClickRemoved = false;
+  let domContextRemoved = false;
+  const destinationCanvasView = {
+    addEventListener: (event, handler, options) => {
+      if (event === "pointerdown") {
+        domPointerHandler = handler;
+        domPointerOptions = options;
+      } else if (event === "pointerup") {
+        domPointerUpHandler = handler;
+      } else if (event === "click") {
+        domClickHandler = handler;
+      } else if (event === "dblclick") {
+        domDoubleClickHandler = handler;
+      } else if (event === "contextmenu") {
+        domContextHandler = handler;
+      } else {
+        assert.fail(`unexpected destination picker event listener: ${event}`);
+      }
+    },
+    removeEventListener: (event, handler) => {
+      if (event === "pointerdown") {
+        assert.equal(handler, domPointerHandler);
+        domPointerRemoved = true;
+        domPointerHandler = null;
+      } else if (event === "pointerup") {
+        assert.equal(handler, domPointerUpHandler);
+        domPointerUpRemoved = true;
+        domPointerUpHandler = null;
+      } else if (event === "click") {
+        assert.equal(handler, domClickHandler);
+        domClickRemoved = true;
+        domClickHandler = null;
+      } else if (event === "dblclick") {
+        assert.equal(handler, domDoubleClickHandler);
+        domDoubleClickRemoved = true;
+        domDoubleClickHandler = null;
+      } else if (event === "contextmenu") {
+        assert.equal(handler, domContextHandler);
+        domContextRemoved = true;
+        domContextHandler = null;
+      } else {
+        assert.fail(`unexpected destination picker event cleanup: ${event}`);
+      }
+    },
+    setPointerCapture: (id) => {
+      assert.ok([7, 9].includes(id));
+    },
+    releasePointerCapture: (id) => {
+      assert.ok([7, 9].includes(id));
+    },
+  };
+  const ignoredStageHandlers = [];
+  globalThis.canvas = {
+    app: { view: destinationCanvasView },
+    grid: { size: 10 },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        ignoredStageHandlers.push(handler);
+      },
+      off: () => { },
+    },
+    canvasCoordinatesFromClient: ({ x, y }) => ({ x: x - 100, y: y - 50 }),
+  };
+  const domDestinations = [];
+  const domSuppressed = [];
+  const domPicker = chooseDestination({
+    onChoose: (destination) => domDestinations.push(destination),
+  });
+  assert.ok(domPicker);
+  assert.equal(domPointerOptions?.capture, true);
+  assert.equal(typeof domPointerHandler, "function");
+  assert.equal(typeof domPointerUpHandler, "function");
+  assert.equal(typeof domContextHandler, "function");
+  domPointerHandler({
+    button: 0,
+    pointerId: 7,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 86,
+    preventDefault: () => domSuppressed.push("down-default"),
+    stopPropagation: () => domSuppressed.push("down-propagation"),
+    stopImmediatePropagation: () => domSuppressed.push("down-immediate"),
+  });
+  assert.deepEqual(domDestinations, []);
+  assert.deepEqual(domSuppressed, ["down-default", "down-propagation", "down-immediate"]);
+  assert.equal(domPointerRemoved, false);
+  domPointerUpHandler({
+    button: 0,
+    pointerId: 7,
+    target: { nodeType: 1, contains: () => false },
+    clientX: 124,
+    clientY: 86,
+    preventDefault: () => domSuppressed.push("up-default"),
+    stopPropagation: () => domSuppressed.push("up-propagation"),
+    stopImmediatePropagation: () => domSuppressed.push("up-immediate"),
+  });
+  assert.deepEqual(domDestinations, [{ x: 25, y: 35 }]);
+  assert.deepEqual(domSuppressed, [
+    "down-default",
+    "down-propagation",
+    "down-immediate",
+    "up-default",
+    "up-propagation",
+    "up-immediate",
+  ]);
+  assert.equal(domPointerRemoved, true);
+  assert.equal(domPointerUpRemoved, true);
+  assert.equal(domClickRemoved, true);
+  assert.equal(domContextRemoved, true);
+  assert.equal(domPointerHandler, null);
+
+  domPointerHandler = null;
+  domPointerUpHandler = null;
+  domClickHandler = null;
+  domDoubleClickHandler = null;
+  domContextHandler = null;
+  domPointerRemoved = false;
+  domPointerUpRemoved = false;
+  domClickRemoved = false;
+  domDoubleClickRemoved = false;
+  domContextRemoved = false;
+  globalThis.canvas.tokens = {
+    placeables: [{
+      id: "actor-token",
+      center: { x: 5, y: 5 },
+      document: { id: "actor-token", width: 1, height: 1 },
+      actor: { system: { movement: { speeds: { land: { value: 25 } } } } },
+    }],
+  };
+  const domWaypointDestinations = [];
+  const domWaypointPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata = {}) => domWaypointDestinations.push({ destination, metadata }),
+  });
+  assert.ok(domWaypointPicker);
+  domPointerHandler({
+    button: 0,
+    detail: 1,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 114,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  domPointerUpHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 114,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  assert.deepEqual(domWaypointDestinations, []);
+  assert.equal(domPointerRemoved, false);
+  domPointerHandler({
+    button: 0,
+    detail: 2,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  domPointerUpHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  assert.deepEqual(domWaypointDestinations, [{
+    destination: { x: 25, y: 5 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 5 }, { x: 25, y: 5 }],
+        cost: 10,
+        maxCost: 25,
+      },
+    },
+  }], "DOM shift-double-click should finalize a waypoint path even when pointerup loses click count");
+  assert.equal(domPointerRemoved, true);
+  assert.equal(domPointerUpRemoved, true);
+  assert.equal(domClickRemoved, true);
+  assert.equal(domContextRemoved, true);
+
+  domPointerHandler = null;
+  domPointerUpHandler = null;
+  domClickHandler = null;
+  domDoubleClickHandler = null;
+  domContextHandler = null;
+  domPointerRemoved = false;
+  domPointerUpRemoved = false;
+  domClickRemoved = false;
+  domDoubleClickRemoved = false;
+  domContextRemoved = false;
+  const domDblClickDestinations = [];
+  const domDblClickPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata = {}) => domDblClickDestinations.push({ destination, metadata }),
+  });
+  assert.ok(domDblClickPicker);
+  assert.equal(typeof domDoubleClickHandler, "function");
+  domPointerHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 114,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  domPointerUpHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 114,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  domPointerHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  domPointerUpHandler({
+    button: 0,
+    shiftKey: true,
+    pointerId: 9,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  assert.deepEqual(domDblClickDestinations, []);
+  domDoubleClickHandler({
+    detail: 2,
+    shiftKey: true,
+    target: destinationCanvasView,
+    clientX: 124,
+    clientY: 56,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+    stopImmediatePropagation: () => { },
+  });
+  assert.deepEqual(domDblClickDestinations, [{
+    destination: { x: 25, y: 5 },
+    metadata: {
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 15, y: 5 }, { x: 25, y: 5 }],
+        cost: 10,
+        maxCost: 25,
+      },
+    },
+  }], "DOM dblclick should finalize the existing waypoint path without duplicating the final point");
+  assert.equal(domPointerRemoved, true);
+  assert.equal(domPointerUpRemoved, true);
+  assert.equal(domClickRemoved, true);
+  assert.equal(domDoubleClickRemoved, true);
+  assert.equal(domContextRemoved, true);
+} finally {
+  cancelDestinationPicker();
+  globalThis.canvas = previousDestinationPickerCanvas;
+}
+
+const previousAreaPickerCanvas = globalThis.canvas;
+const previousAreaPickerGame = globalThis.game;
+const previousAreaPickerUi = globalThis.ui;
+const previousAreaPickerConsoleWarn = globalThis.console?.warn;
+try {
+  delete globalThis.canvas;
+  assert.equal(chooseAreaMarker({ onChoose: () => assert.fail("headless area picker must not choose") }), null);
+  assert.doesNotThrow(() => cancelAreaPicker());
+
+  let nativePlacement = null;
+  let nativePlacementCancelled = false;
+  const nativeShape = { type: "cone", x: 40, y: 60, radius: 30, angle: 90, rotation: 25 };
+  globalThis.game = {
+    user: {
+      id: "user-1",
+      color: { toString: () => "#123456" },
+    },
+  };
+  globalThis.canvas = {
+    dimensions: { distance: 5, distancePixels: 2 },
+    grid: { size: 10, distance: 5 },
+    mousePosition: { x: 30, y: 40 },
+    level: { id: "level-1" },
+    tokens: {
+      active: true,
+      placeables: [{ id: "caster-token", center: { x: 0, y: 0 } }],
+      activate: ({ tool } = {}) => {
+        nativeControlEvents.push({ control: "tokens-layer", tool });
+        globalThis.canvas.tokens.active = true;
+        globalThis.canvas.regions.active = false;
+      },
+    },
+    regions: {
+      active: false,
+      activate: ({ tool } = {}) => {
+        nativeControlEvents.push({ control: "regions-layer", tool });
+        globalThis.canvas.regions.active = true;
+        globalThis.canvas.tokens.active = false;
+      },
+      placeRegion: (data, options = {}) => {
+        assert.equal(globalThis.canvas.tokens.active, false, "native region placement should not start while token layer is active");
+        assert.equal(globalThis.canvas.regions.active, true, "native region placement should start from active region layer");
+        nativePlacement = { data, options };
+        options.onChange?.({
+          document: { shapes: [{ toObject: () => nativeShape }] },
+          shape: nativeShape,
+        });
+        return new Promise((resolve) => {
+          nativePlacement.resolve = resolve;
+        });
+      },
+      _cancelPlacement: () => {
+        nativePlacementCancelled = true;
+      },
+    },
+  };
+  const nativeAreas = [];
+  const nativeControlEvents = [];
+  globalThis.ui = {
+    controls: {
+      activate: async (options) => {
+        nativeControlEvents.push(options);
+      },
+    },
+  };
+  const nativePicker = chooseAreaMarker({
+    context: { token: { id: "caster-token", center: { x: 0, y: 0 } } },
+    action: { name: "Breathe Fire", targetingProfile: { type: "cone", distance: 15, width: 5 } },
+    onChoose: (marker) => nativeAreas.push(marker),
+  });
+  assert.ok(nativePicker);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(nativePlacement.data.color, "#123456");
+  assert.equal(nativePlacement.data.highlightMode, "coverage");
+  assert.equal(nativePlacement.data.displayMeasurements, true);
+  assert.deepEqual(nativePlacement.data.levels, ["level-1"]);
+  assert.equal(nativePlacement.data.shapes[0].type, "cone");
+  assert.equal(nativePlacement.data.shapes[0].radius, 30);
+  assert.equal(
+    Object.hasOwn(nativePlacement.data.flags.pf2e, "origin"),
+    false,
+    "planner template regions should not include invalid null PF2e origin flag",
+  );
+  assert.equal(nativePlacement.options.create, false);
+  assert.equal(typeof nativePlacement.options.onChange, "function");
+  assert.equal(typeof nativePlacement.options.preConfirm, "function");
+  assert.deepEqual(nativeAreas, []);
+  assert.equal(nativePlacementCancelled, false);
+  assert.deepEqual(
+    nativeControlEvents,
+    [{ control: "regions", tool: "cone" }, { control: "regions-layer", tool: "cone" }],
+    "native area placement should stay on Region cone tool until placement is confirmed",
+  );
+
+  nativePlacement.options.preConfirm({
+    document: { shapes: [{ toObject: () => nativeShape }] },
+    shape: nativeShape,
+  });
+  nativePlacement.resolve({ shapes: [{ toObject: () => nativeShape }] });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(nativeAreas, [{
+    shape: "cone",
+    center: { x: 40, y: 60 },
+    distance: 15,
+    width: 5,
+    rotation: 25,
+    originTokenId: "caster-token",
+    label: "Cone 15 ft",
+  }]);
+  assert.equal(nativePlacementCancelled, false);
+  assert.deepEqual(
+    nativeControlEvents,
+    [
+      { control: "regions", tool: "cone" },
+      { control: "regions-layer", tool: "cone" },
+      { control: "tokens", tool: "select" },
+      { control: "tokens-layer", tool: "select" },
+    ],
+    "native area placement should show Region tools during placement and return to Token tools after choosing",
+  );
+
+  let stubbornPlacementStartedWithTokenLayer = null;
+  const stubbornNativeEvents = [];
+  let stubbornPlacement = null;
+  globalThis.canvas = {
+    dimensions: { distance: 5, distancePixels: 2 },
+    grid: { size: 10, distance: 5 },
+    mousePosition: { x: 30, y: 40 },
+    tokens: {
+      active: true,
+      placeables: [{ id: "caster-token", center: { x: 0, y: 0 } }],
+      deactivate: () => {
+        stubbornNativeEvents.push("tokens-deactivate");
+        globalThis.canvas.tokens.active = false;
+      },
+    },
+    regions: {
+      active: false,
+      activate: ({ tool } = {}) => {
+        stubbornNativeEvents.push({ control: "regions-layer", tool });
+        globalThis.canvas.regions.active = true;
+      },
+      placeRegion: (data, options = {}) => {
+        stubbornPlacementStartedWithTokenLayer = globalThis.canvas.tokens.active;
+        stubbornPlacement = { data, options };
+        return new Promise((resolve) => {
+          stubbornPlacement.resolve = resolve;
+        });
+      },
+    },
+  };
+  globalThis.ui = {
+    controls: {
+      activate: async (options) => {
+        stubbornNativeEvents.push(options);
+      },
+    },
+  };
+  const stubbornAreas = [];
+  const stubbornPicker = chooseAreaMarker({
+    context: { token: { id: "caster-token", center: { x: 0, y: 0 } } },
+    action: { name: "Breathe Fire", targetingProfile: { type: "cone", distance: 15, width: 5 } },
+    onChoose: (marker) => stubbornAreas.push(marker),
+  });
+  assert.ok(stubbornPicker);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    stubbornPlacementStartedWithTokenLayer,
+    false,
+    "native region placement should force the token layer inactive before calling placeRegion",
+  );
+  assert.deepEqual(
+    stubbornNativeEvents.slice(0, 3),
+    [{ control: "regions", tool: "cone" }, { control: "regions-layer", tool: "cone" }, "tokens-deactivate"],
+    "native region placement should not let token-layer activity make Foundry switch back to Token tools",
+  );
+  stubbornPlacement.options.preConfirm({
+    document: { shapes: [{ toObject: () => nativeShape }] },
+    shape: nativeShape,
+  });
+  stubbornPlacement.resolve({ shapes: [{ toObject: () => nativeShape }] });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stubbornAreas.length, 1);
+
+  const nativeWarnings = [];
+  let fallbackAfterNativeFailure = false;
+  if (globalThis.console) globalThis.console.warn = () => { };
+  globalThis.ui = { notifications: { warn: (message) => nativeWarnings.push(message) } };
+  globalThis.canvas = {
+    app: {
+      canvas: {
+        addEventListener: () => {
+          fallbackAfterNativeFailure = true;
+        },
+      },
+    },
+    regions: {
+      placeRegion: () => {
+        throw new Error("bad region data");
+      },
+    },
+  };
+  const failedNativePicker = chooseAreaMarker({
+    context: { token: { id: "caster-token", center: { x: 0, y: 0 } } },
+    action: { name: "Breathe Fire", targetingProfile: { type: "cone", distance: 15, width: 5 } },
+    onChoose: () => assert.fail("failed native placement must not choose an area"),
+  });
+  assert.ok(failedNativePicker);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(fallbackAfterNativeFailure, false);
+  assert.ok(nativeWarnings.some((message) => message === "Area template preview failed: bad region data"));
+
+  let areaPointerHandler = null;
+  let areaPointerRemoved = false;
+  const view = {
+    addEventListener: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      areaPointerHandler = handler;
+    },
+    removeEventListener: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      assert.equal(handler, areaPointerHandler);
+      areaPointerRemoved = true;
+      areaPointerHandler = null;
+    },
+  };
+  globalThis.canvas = {
+    app: { view },
+    grid: { size: 10 },
+    tokens: { placeables: [{ id: "caster-token", center: { x: 0, y: 0 } }] },
+    canvasCoordinatesFromClient: ({ x, y }) => ({ x: x - 100, y: y - 50 }),
+  };
+  const chosenAreas = [];
+  const picker = chooseAreaMarker({
+    context: { token: { id: "caster-token", center: { x: 0, y: 0 } } },
+    action: { name: "Breathe Fire", targetingProfile: { type: "cone", distance: 15, width: 5 } },
+    onChoose: (marker) => chosenAreas.push(marker),
+  });
+  assert.ok(picker);
+  assert.equal(typeof areaPointerHandler, "function");
+  areaPointerHandler({
+    button: 0,
+    clientX: 124,
+    clientY: 86,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(chosenAreas, [{
+    shape: "cone",
+    center: { x: 25, y: 35 },
+    distance: 15,
+    width: 5,
+    rotation: 54,
+    originTokenId: "caster-token",
+    label: "Cone 15 ft",
+  }]);
+  assert.equal(areaPointerRemoved, true);
+  assert.equal(areaPointerHandler, null);
+
+  let v14PointerHandler = null;
+  let v14PointerRemoved = false;
+  const appCanvas = {
+    addEventListener: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      v14PointerHandler = handler;
+    },
+    removeEventListener: (event, handler) => {
+      assert.equal(event, "pointerdown");
+      assert.equal(handler, v14PointerHandler);
+      v14PointerRemoved = true;
+      v14PointerHandler = null;
+    },
+  };
+  globalThis.canvas = {
+    app: { canvas: appCanvas },
+    grid: { size: 10 },
+    mousePosition: { x: 41, y: 59 },
+    tokens: { placeables: [{ id: "caster-token", center: { x: 0, y: 0 } }] },
+  };
+  const v14Areas = [];
+  const v14Picker = chooseAreaMarker({
+    context: { token: { id: "caster-token", center: { x: 0, y: 0 } } },
+    action: { name: "Breathe Fire", targetingProfile: { type: "cone", distance: 15, width: 5 } },
+    onChoose: (marker) => v14Areas.push(marker),
+  });
+  assert.ok(v14Picker);
+  assert.equal(typeof v14PointerHandler, "function");
+  v14PointerHandler({
+    button: 0,
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(v14Areas, [{
+    shape: "cone",
+    center: { x: 45, y: 55 },
+    distance: 15,
+    width: 5,
+    rotation: 51,
+    originTokenId: "caster-token",
+    label: "Cone 15 ft",
+  }]);
+  assert.equal(v14PointerRemoved, true);
+  assert.equal(v14PointerHandler, null);
+} finally {
+  cancelAreaPicker();
+  globalThis.canvas = previousAreaPickerCanvas;
+  globalThis.game = previousAreaPickerGame;
+  globalThis.ui = previousAreaPickerUi;
+  if (globalThis.console && previousAreaPickerConsoleWarn) globalThis.console.warn = previousAreaPickerConsoleWarn;
+}
+
 const previousWallPreviewCanvas = globalThis.canvas;
 const previousWallPreviewFoundry = globalThis.foundry;
 try {
@@ -1070,6 +5314,14 @@ const stepPreview = movementPreviewForStep({
 assert.equal(stepPreview.enabled, true);
 assert.equal(stepPreview.distanceFeet, 5);
 assert.equal(stepPreview.reachableCenters.length, 8);
+const crawlPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [] },
+}, { slug: "crawl" }, { gridSize: 5 });
+assert.equal(crawlPreview.enabled, true);
+assert.equal(crawlPreview.distanceFeet, 5);
+assert.equal(crawlPreview.reachableCenters.length, 8);
 
 // A Stride -> Stride -> Strike composite previews one landing cell per Stride,
 // each in its own colour, progressing toward the target.
@@ -1249,22 +5501,58 @@ assert.deepEqual(skirmishCompositePreview.stridePath[1].center, { x: 0, y: 0 });
 const previousScaledPreviewCanvas = globalThis.canvas;
 const previousScaledPreviewPixi = globalThis.PIXI;
 try {
+  const previewDrawCalls = [];
   class TestGraphics {
-    lineStyle() {}
-    beginFill() {}
-    drawRect() {}
-    endFill() {}
-    moveTo() {}
-    lineTo() {}
-    destroy() {}
+    constructor() {
+      this.children = [];
+    }
+    lineStyle(width, color, alpha) {
+      previewDrawCalls.push({ type: "lineStyle", width, color, alpha });
+    }
+    beginFill(color, alpha) {
+      previewDrawCalls.push({ type: "beginFill", color, alpha });
+    }
+    drawRect() {
+      previewDrawCalls.push({ type: "drawRect" });
+    }
+    drawCircle(x, y, radius) {
+      previewDrawCalls.push({ type: "drawCircle", x, y, radius });
+    }
+    endFill() { }
+    moveTo() { }
+    lineTo() { }
+    addChild(child) {
+      child.parent = this;
+      this.children.push(child);
+      return child;
+    }
+    destroy() {
+      this.parent = null;
+      this.children = [];
+    }
+  }
+  class TestText {
+    constructor(text = "", style = {}) {
+      this.text = String(text);
+      this.style = style;
+      this.anchor = { set: (x, y = x) => { this.anchorValue = { x, y }; } };
+      this.position = { set: (x, y) => { this.positionValue = { x, y }; } };
+      previewDrawCalls.push({ type: "text", text: this.text, style });
+    }
   }
   const layer = {
+    children: [],
     sortableChildren: false,
     addChild: (child) => {
-      child.parent = { removeChild: () => {} };
+      child.parent = layer;
+      layer.children.push(child);
+    },
+    removeChild: (child) => {
+      layer.children = layer.children.filter((entry) => entry !== child);
+      child.parent = null;
     },
   };
-  globalThis.PIXI = { Graphics: TestGraphics };
+  globalThis.PIXI = { Graphics: TestGraphics, Text: TestText };
   globalThis.canvas = {
     scene: { grid: { distance: 5 } },
     grid: { size: 100 },
@@ -1308,10 +5596,248 @@ try {
   assert.deepEqual(scaledRetreatPreview.origin, { x: 10, y: 10 });
   assert.deepEqual(scaledRetreatPreview.destinationCenter, { x: 5, y: 10 });
   assert.deepEqual(scaledRetreatPreview.stridePath[0].center, { x: 5, y: 10 });
+  const projectedCenterPreview = showMovementPreview({
+    token: { id: "calder-token", center: { x: 100, y: 200 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, { slug: "stride" });
+  assert.equal(projectedCenterPreview.enabled, true);
+  assert.deepEqual(projectedCenterPreview.origin, { x: 5, y: 10 });
+  const plannedCenterPreview = showMovementPreview({
+    token: { id: "calder-token", plannedCenter: { x: 100, y: 200 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, { slug: "stride" });
+  assert.equal(plannedCenterPreview.enabled, true);
+  assert.deepEqual(plannedCenterPreview.origin, { x: 5, y: 10 });
+  const waypointIndicatorPreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 300, y: 300 },
+    movementPlan: {
+      native: false,
+      waypoints: [{ x: 200, y: 300 }, { x: 300, y: 300 }],
+    },
+  });
+  assert.equal(waypointIndicatorPreview.enabled, true);
+  assert.equal(
+    previewDrawCalls.filter((call) => call.type === "drawCircle").length >= 2,
+    true,
+    "custom waypoint preview should draw visible waypoint indicators",
+  );
+  assert.ok(
+    Math.max(...previewDrawCalls
+      .filter((call) => call.type === "drawCircle")
+      .map((call) => call.radius)) >= 10,
+    "custom waypoint indicators should be large enough to read on busy maps",
+  );
+  assert.equal(
+    previewDrawCalls.some((call) => call.type === "text" && call.text === "5 ft"),
+    true,
+    "custom waypoint preview should draw first cumulative distance label",
+  );
+  assert.equal(
+    previewDrawCalls.some((call) => call.type === "text" && call.text === "10 ft"),
+    true,
+    "custom waypoint preview should draw cumulative distance label after second waypoint",
+  );
+  assert.ok(
+    previewDrawCalls
+      .filter((call) => call.type === "text")
+      .every((call) => Number(call.style?.fontSize) >= 16),
+    "custom waypoint labels should scale dynamically from grid size instead of staying tiny",
+  );
+  assert.equal(
+    previewDrawCalls.some((call) => call.type === "text" && call.text.includes("[object Object]")),
+    false,
+    "distance labels should pass text string to PIXI.Text, not constructor options object",
+  );
+  assert.equal(layer.children.length, 1, "movement preview should replace stale overlay graphics");
+  assert.ok(previewDrawCalls.some((call) =>
+    call.type === "lineStyle" && call.color === 0x101418 && call.width >= 4),
+    "movement preview squares should draw a dark contrast border");
+  assert.ok(previewDrawCalls.some((call) =>
+    call.type === "lineStyle" && call.color !== 0x101418 && call.width >= 2 && call.alpha >= 0.88),
+    "movement preview squares should draw visible colored borders");
+  assert.ok(previewDrawCalls.some((call) =>
+    call.type === "beginFill" && call.alpha > 0 && call.alpha <= 0.08),
+    "movement preview square fill should stay light so border is primary");
 } finally {
   clearMovementPreview();
   globalThis.canvas = previousScaledPreviewCanvas;
   globalThis.PIXI = previousScaledPreviewPixi;
+}
+
+const previousStablePreviewCanvas = globalThis.canvas;
+const previousStablePreviewPixi = globalThis.PIXI;
+try {
+  class StableGraphics {
+    lineStyle() { }
+    beginFill() { }
+    drawRect() { }
+    endFill() { }
+    moveTo() { }
+    lineTo() { }
+    destroy() {
+      this.parent = null;
+    }
+  }
+  class StableContainer {
+    constructor() {
+      this.children = [];
+    }
+    addChild(child) {
+      child.parent = this;
+      this.children.push(child);
+      return child;
+    }
+    removeChild(child) {
+      this.children = this.children.filter((entry) => entry !== child);
+      child.parent = null;
+    }
+    destroy() {
+      for (const child of this.children) child.parent = null;
+      this.children = [];
+      this.parent = null;
+    }
+  }
+  const interfaceLayer = { children: [], addChild: (child) => interfaceLayer.children.push(child) };
+  const stageLayer = new StableContainer();
+  globalThis.PIXI = { Graphics: StableGraphics, Container: StableContainer };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 50, distance: 5 },
+    interface: interfaceLayer,
+    stage: stageLayer,
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 100, y: 100 },
+        document: { id: "actor-token", uuid: "Scene.Token.actor-token", width: 1, height: 1 },
+      }],
+    },
+  };
+  const stablePreview = showMovementPreview({
+    token: { id: "actor-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, { slug: "stride" });
+  assert.equal(stablePreview.enabled, true);
+  assert.equal(interfaceLayer.children.length, 0, "movement preview should not mount on Foundry interface layer");
+  assert.equal(stageLayer.children.length, 1, "movement preview should use a module-owned stage overlay");
+  const stablePreviewLayer = stageLayer.children[0];
+  assert.equal(stablePreviewLayer.eventMode, "none");
+  assert.equal(stablePreviewLayer.interactiveChildren, false);
+  assert.equal(stablePreviewLayer.children.length, 1);
+} finally {
+  clearMovementPreview();
+  globalThis.canvas = previousStablePreviewCanvas;
+  globalThis.PIXI = previousStablePreviewPixi;
+}
+
+const previousActionPreviewCanvas = globalThis.canvas;
+const previousActionPreviewPixi = globalThis.PIXI;
+try {
+  const actionPreviewCalls = [];
+  class ActionPreviewGraphics {
+    lineStyle(width, color, alpha) {
+      actionPreviewCalls.push({ type: "lineStyle", width, color, alpha });
+    }
+    beginFill(color, alpha) {
+      actionPreviewCalls.push({ type: "beginFill", color, alpha });
+    }
+    drawRect(x, y, width, height) {
+      actionPreviewCalls.push({ type: "drawRect", x, y, width, height });
+    }
+    drawCircle(x, y, radius) {
+      actionPreviewCalls.push({ type: "drawCircle", x, y, radius });
+    }
+    drawPolygon(points) {
+      actionPreviewCalls.push({ type: "drawPolygon", points });
+    }
+    moveTo(x, y) {
+      actionPreviewCalls.push({ type: "moveTo", x, y });
+    }
+    lineTo(x, y) {
+      actionPreviewCalls.push({ type: "lineTo", x, y });
+    }
+    arc(x, y, radius, start, end) {
+      actionPreviewCalls.push({ type: "arc", x, y, radius, start, end });
+    }
+    endFill() { }
+    destroy() {
+      this.destroyed = true;
+      this.parent = null;
+    }
+  }
+  const actionPreviewLayer = {
+    children: [],
+    sortableChildren: false,
+    addChild: (child) => {
+      child.parent = actionPreviewLayer;
+      actionPreviewLayer.children.push(child);
+    },
+    removeChild: (child) => {
+      actionPreviewLayer.children = actionPreviewLayer.children.filter((entry) => entry !== child);
+      child.parent = null;
+    },
+  };
+  globalThis.PIXI = { Graphics: ActionPreviewGraphics };
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 50, distance: 5 },
+    interface: actionPreviewLayer,
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 100, y: 100 },
+        document: { id: "actor-token", uuid: "Scene.Token.actor-token", width: 1, height: 1 },
+      }, {
+        id: "target-token",
+        center: { x: 200, y: 150 },
+        document: { id: "target-token", uuid: "Scene.Token.target-token", width: 2, height: 1 },
+      }],
+    },
+  };
+  const targetPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Strike",
+    slug: "strike",
+    targetTokenIds: ["target-token"],
+  });
+  assert.equal(targetPreview.type, "target");
+  assert.equal(actionPreviewLayer.children.length, 1);
+  assert.ok(actionPreviewCalls.some((call) =>
+    call.type === "drawRect" && call.x === 150 && call.y === 125 && call.width === 100 && call.height === 50),
+    "target hover preview should frame the planned target token footprint");
+  assert.ok(actionPreviewCalls.some((call) =>
+    call.type === "lineTo" && call.x === 200 && call.y === 150),
+    "target hover preview should draw a line to the planned target");
+
+  actionPreviewCalls.length = 0;
+  const areaPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Fireball",
+    slug: "fireball",
+    areaMarker: { shape: "burst", center: { x: 300, y: 250 }, distance: 20 },
+  });
+  assert.equal(areaPreview.type, "area");
+  assert.equal(actionPreviewLayer.children.length, 1, "area hover preview should replace target preview overlay");
+  assert.ok(actionPreviewCalls.some((call) =>
+    call.type === "drawCircle" && call.x === 300 && call.y === 250 && call.radius === 200),
+    "area hover preview should draw the planned template footprint");
+
+  clearActionPreview();
+  assert.equal(actionPreviewLayer.children.length, 0);
+} finally {
+  clearActionPreview();
+  globalThis.canvas = previousActionPreviewCanvas;
+  globalThis.PIXI = previousActionPreviewPixi;
 }
 
 const previousPreviewVisibilityGame = globalThis.game;
@@ -1666,6 +6192,78 @@ const activeTriggeredAction = readActionSources({
 }).find((action) => action.slug === "quick-tempered");
 assert.equal(activeTriggeredAction.available, true);
 
+const generatedTriggerContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          id: "follow-up-feint",
+          name: "Follow-Up Feint",
+          slug: "follow-up-feint",
+          type: "action",
+          actionType: "free",
+          actions: 0,
+          description: "<p><strong>Trigger</strong> Your last action was a Strike.</p><p>The target is off-guard to your next Strike.</p>",
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+};
+const blockedGeneratedTrigger = readActionSources(generatedTriggerContext)
+  .find((action) => action.slug === "follow-up-feint");
+assert.equal(blockedGeneratedTrigger.available, false);
+assert.equal(blockedGeneratedTrigger.unavailableReason, "Trigger is not active: Your last action was a Strike.");
+const activeGeneratedTrigger = readActionSources({
+  ...generatedTriggerContext,
+  triggerEvents: ["after-strike"],
+}).find((action) => action.slug === "follow-up-feint");
+assert.equal(activeGeneratedTrigger.available, true);
+
+const failedCheckTriggerContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          id: "lucky-retry",
+          name: "Lucky Retry",
+          slug: "lucky-retry",
+          type: "action",
+          actionType: "free",
+          actions: 0,
+          description: "<p><strong>Trigger</strong> You fail a skill check.</p><p>You gain a +1 status bonus to the reroll.</p>",
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+};
+const blockedFailedCheckTrigger = readActionSources(failedCheckTriggerContext)
+  .find((action) => action.slug === "lucky-retry");
+assert.equal(blockedFailedCheckTrigger.available, false);
+assert.equal(blockedFailedCheckTrigger.unavailableReason, "Trigger is not active: You fail a skill check.");
+const activeFailedCheckTrigger = readActionSources({
+  ...failedCheckTriggerContext,
+  triggerEvents: ["after-check-fail"],
+}).find((action) => action.slug === "lucky-retry");
+assert.equal(activeFailedCheckTrigger.available, true);
+
 const amiriContext = {
   actor: {
     id: "amiri-1",
@@ -1676,7 +6274,9 @@ const amiriContext = {
       speed: 25,
       reach: 5,
       conditions: { slugs: [], values: {} },
-      skills: {},
+      skills: {
+        acrobatics: { rank: 1, mod: 7 },
+      },
     },
     document: {
       system: {
@@ -1727,7 +6327,9 @@ const amiriContext = {
     speed: 25,
     reach: 5,
     conditions: { slugs: [], values: {} },
-    skills: {},
+    skills: {
+      acrobatics: { rank: 1, mod: 7 },
+    },
   },
   targets: [{
     id: "target-1",
@@ -1875,6 +6477,72 @@ assert.ok(
   hydraBest.steps.some((step) => ["focused-assault", "storm-of-jaws"].includes(step.slug)),
   `Hydra best plan should use a two-action activity, got ${hydraBest.summary}`,
 );
+
+const npcUtilityContext = {
+  ...hydraContext,
+  actor: {
+    ...hydraContext.actor,
+    document: {
+      system: {
+        actions: [{
+          slug: "claw",
+          type: "strike",
+          label: "Claw",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "claw",
+            system: { traits: { value: [] } },
+          },
+          roll: () => null,
+        }, {
+          slug: "pose-menacingly",
+          type: "action",
+          label: "Pose Menacingly",
+          actions: { value: 1 },
+          visible: true,
+          description: {
+            value: "<p>The monster takes an impressive pose.</p>",
+          },
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+};
+const npcUtilityBuild = buildCandidates(npcUtilityContext);
+assert.equal(npcUtilityBuild.candidates.some((candidate) => candidate.slug === "pose-menacingly"), false);
+assert.equal(npcUtilityBuild.detected.some((candidate) => candidate.slug === "pose-menacingly"), true);
+assert.equal(
+  npcUtilityBuild.rejected.some((entry) =>
+    entry.action?.slug === "pose-menacingly"
+    && entry.reason === "Low-confidence NPC utility hidden because stronger combat options exist.",
+  ),
+  true,
+);
+
+const npcOnlyUtilityBuild = buildCandidates({
+  ...npcUtilityContext,
+  actor: {
+    ...npcUtilityContext.actor,
+    document: {
+      ...npcUtilityContext.actor.document,
+      system: {
+        actions: npcUtilityContext.actor.document.system.actions.filter((action) => action.slug === "pose-menacingly"),
+      },
+    },
+  },
+  targets: [],
+  battlefield: { enemies: [], targets: [], allies: [] },
+});
+assert.equal(npcOnlyUtilityBuild.candidates.some((candidate) => candidate.slug === "pose-menacingly"), true);
 
 const hydraRecallKnowledge = readActionSources(hydraContext)
   .find((action) => action.slug === "recall-knowledge");
@@ -2027,6 +6695,56 @@ assert.equal(potionAction.role, "healing");
 const scoredPotion = scoreCandidate(potionContext, potionAction);
 assert.ok(scoredPotion.reasons.includes("Includes Interact to draw or retrieve the consumable."));
 assert.ok(scoredPotion.reasons.includes("Valeros is badly injured."));
+
+const mundaneChalk = {
+  id: "chalk",
+  name: "Chalk",
+  type: "consumable",
+  system: {
+    slug: "chalk",
+    category: "other",
+    usage: { value: "held-in-one-hand" },
+    equipped: { carryType: "worn", handsHeld: 0 },
+    quantity: 10,
+    actionType: { value: "action" },
+    traits: { value: ["common", "consumable"] },
+    description: { value: "<p>A piece of chalk used for marking surfaces.</p>" },
+  },
+};
+assert.equal(readActionCost(mundaneChalk).actionCost, null);
+const chalkContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      system: { actions: [] },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [mundaneChalk],
+      },
+      items: [],
+    },
+  },
+};
+assert.equal(readActionSources(chalkContext).some((action) => action.slug === "chalk"), false);
+assert.equal(buildCandidates(chalkContext).candidates.some((candidate) => candidate.slug === "chalk"), false);
+
+const poisonDisplaySteps = displayStepEntries([{
+  id: "item-giant-centipede-venom",
+  name: "Interact -> Giant Centipede Venom",
+  actionCost: 3,
+  activationActionCost: 2,
+  interactDrawCost: 1,
+  suggestedTarget: { name: "Mitflit" },
+  reason: "Giant Centipede Venom can force a fortitude save.",
+}]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.step.name), ["Interact", "Giant Centipede Venom"]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.step.actionCost), [1, 2]);
+assert.deepEqual(poisonDisplaySteps.map((entry) => entry.sourceIndex), [0, 0]);
+assert.equal(poisonDisplaySteps[0].step.reason, "Draw or retrieve Giant Centipede Venom.");
+assert.equal(poisonDisplaySteps[1].step.suggestedTarget.name, "Mitflit");
 
 const activatedCloak = {
   id: "cloak-of-illusions",
@@ -2390,6 +7108,18 @@ const drainBondedItemClassification = classifySystemAction({
 }, { actionCost: 0, type: "free" });
 assert.equal(drainBondedItemClassification.role, "resource-recovery");
 
+const rechargeClassification = classifySystemAction({
+  name: "Recharge Breath Weapon",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: { value: "<p>The creature recharges its breath weapon.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(rechargeClassification.role, "resource-recovery");
+assert.equal(rechargeClassification.activityProfile.npcFamily, "recharge");
+
 const runningReloadClassification = classifySystemAction({
   name: "Running Reload",
   system: {
@@ -2448,6 +7178,7 @@ const grabClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(grabClassification.role, "grab");
 assert.equal(grabClassification.activityProfile.includesGrab, true);
+assert.equal(grabClassification.activityProfile.npcFamily, "grab-rider");
 
 const constrictClassification = classifySystemAction({
   name: "Constrict",
@@ -2464,6 +7195,75 @@ assert.equal(constrictClassification.role, "save-damage");
 assert.equal(constrictClassification.saveProfile.stat, "fortitude");
 assert.equal(constrictClassification.damageProfile.formula, "1d8+4");
 assert.equal(constrictClassification.activityProfile.requiresTargetCondition, "grabbed");
+assert.equal(constrictClassification.activityProfile.npcFamily, "grab-followup");
+
+const swallowWholeClassification = classifySystemAction({
+  name: "Swallow Whole",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p>@Damage[2d6[bludgeoning]] @Check[reflex|dc:21] @Localize[PF2E.NPC.Abilities.Glossary.SwallowWhole]</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(swallowWholeClassification.role, "control");
+assert.equal(swallowWholeClassification.activityProfile.npcFamily, "swallow-whole");
+
+const gazeClassification = classifySystemAction({
+  name: "Terrifying Gaze",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: {
+      value: "<p>The monster fixes its gaze on a creature within 30 feet. The target attempts a @Check[will|dc:20] save.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(gazeClassification.role, "control");
+assert.equal(gazeClassification.activityProfile.npcFamily, "gaze");
+
+const auraClassification = classifySystemAction({
+  name: "Frightful Aura",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "defensive",
+    traits: { value: ["aura"] },
+    description: { value: "<p>Allies near the creature are bolstered by its aura.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(auraClassification.role, "buff");
+assert.equal(auraClassification.activityProfile.npcFamily, "aura");
+
+const formUpClassification = classifySystemAction({
+  name: "Form Up",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    traits: { value: ["troop"] },
+    description: { value: "<p>The troop reforms its space.</p>" },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(formUpClassification.role, "mobility");
+assert.equal(formUpClassification.activityProfile.npcFamily, "troop-action");
+
+const deathBurstClassification = classifySystemAction({
+  name: "Death Throes",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: null },
+    category: "offensive",
+    description: {
+      value: "<p>When reduced to 0 Hit Points, the creature explodes. @Template[type:burst|distance:10] @Damage[2d6[fire]] @Check[reflex|dc:18|basic]</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(deathBurstClassification.role, "area-damage");
+assert.equal(deathBurstClassification.activityProfile.npcFamily, "death-trigger");
 
 const breathWeaponContext = {
   ...hydraContext,
@@ -2516,9 +7316,24 @@ const breathWeaponCandidate = buildCandidates(breathWeaponContext).candidates
   .find((candidate) => candidate.name === "Breath Weapon");
 assert.equal(breathWeaponCandidate.source, "system-inferred");
 assert.equal(breathWeaponCandidate.role, "area-damage");
+assert.equal(breathWeaponCandidate.activityProfile.npcFamily, "breath-weapon");
 assert.equal(breathWeaponCandidate.targetingProfile.area, true);
 assert.equal(breathWeaponCandidate.saveProfile.stat, "reflex");
 assert.ok(breathWeaponCandidate.score > 100);
+assert.ok(breathWeaponCandidate.reasons.includes("NPC signature area ability can catch multiple enemies."));
+const breathWeaponFallbackStrike = scoreCandidate(breathWeaponContext, {
+  id: "fallback-claw",
+  name: "Fallback Claw",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 30, increment: 30 },
+  averageDamage: 12,
+});
+assert.ok(
+  breathWeaponCandidate.score > breathWeaponFallbackStrike.score,
+  `breath weapon should beat plain Strike when it catches multiple enemies, got ${breathWeaponCandidate.score} vs ${breathWeaponFallbackStrike.score}`,
+);
 
 const trampleClassification = classifySystemAction({
   name: "Trample",
@@ -2533,6 +7348,7 @@ const trampleClassification = classifySystemAction({
 }, { actionCost: 3, type: "action" });
 assert.equal(trampleClassification.role, "mobility-attack");
 assert.equal(trampleClassification.activityProfile.strideCount, 2);
+assert.equal(trampleClassification.activityProfile.npcFamily, "trample");
 assert.equal(trampleClassification.saveProfile.stat, "reflex");
 
 const reactionContext = {
@@ -2586,6 +7402,136 @@ const shieldBlock = reactionSources.find((action) => action.name === "Shield Blo
 assert.equal(shieldBlock.source, "system-inferred");
 assert.equal(shieldBlock.role, "defense");
 assert.equal(shieldBlock.available, false);
+
+const shieldBlockTriggerContext = {
+  ...reactionContext,
+  actor: {
+    ...reactionContext.actor,
+    profile: {
+      ...reactionContext.actor.profile,
+      effects: [],
+    },
+  },
+  triggerEvents: ["attacked"],
+};
+const shieldBlockNoDefense = readActionSources(shieldBlockTriggerContext)
+  .find((action) => action.name === "Shield Block");
+assert.equal(shieldBlockNoDefense.available, false);
+assert.equal(
+  shieldBlockNoDefense.unavailableReason,
+  "Shield Block requires Raise a Shield or an active Shield spell.",
+);
+
+const shieldBlockWithRaisedShield = readActionSources({
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [{ slug: "effect-raise-a-shield", name: "Effect: Raise a Shield" }],
+    },
+  },
+}).find((action) => action.name === "Shield Block");
+assert.equal(shieldBlockWithRaisedShield.available, true, shieldBlockWithRaisedShield.unavailableReason);
+
+const shieldBlockWithShieldSpell = readActionSources({
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [{ slug: "spell-effect-shield", name: "Spell Effect: Shield" }],
+    },
+  },
+}).find((action) => action.name === "Shield Block");
+assert.equal(shieldBlockWithShieldSpell.available, true, shieldBlockWithShieldSpell.unavailableReason);
+
+const shieldBlockFeatContext = {
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    document: {
+      ...shieldBlockTriggerContext.actor.document,
+      itemTypes: {
+        ...shieldBlockTriggerContext.actor.document.itemTypes,
+        action: [],
+        feat: [{
+          id: "shield-block-feat",
+          name: "Shield Block",
+          type: "feat",
+          system: {
+            actionType: { value: "reaction" },
+            actions: { value: null },
+            category: "defensive",
+            description: {
+              value: "<p><strong>Trigger</strong> You would take damage from a physical attack while your shield is raised.</p><p>You snap your shield into place.</p>",
+            },
+          },
+        }],
+      },
+    },
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [],
+    },
+  },
+};
+const plannedRaiseShieldBlock = readActionSources(projectContextForDraftDestination(shieldBlockFeatContext, {
+  steps: [{
+    instanceId: "raise-shield",
+    actionCost: 1,
+    action: { slug: "raise-a-shield", name: "Raise a Shield", actionCost: 1 },
+  }],
+})).find((action) => action.name === "Shield Block");
+assert.equal(plannedRaiseShieldBlock.available, true, plannedRaiseShieldBlock.unavailableReason);
+
+const noShieldBlockContext = {
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    document: {
+      ...shieldBlockTriggerContext.actor.document,
+      itemTypes: {
+        ...shieldBlockTriggerContext.actor.document.itemTypes,
+        action: [],
+        feat: [],
+      },
+    },
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [],
+    },
+  },
+};
+const plannedRaiseWithoutShieldBlock = readActionSources(projectContextForDraftDestination(noShieldBlockContext, {
+  steps: [{
+    instanceId: "raise-shield-no-feat",
+    actionCost: 1,
+    action: { slug: "raise-a-shield", name: "Raise a Shield", actionCost: 1 },
+  }],
+}));
+assert.equal(
+  plannedRaiseWithoutShieldBlock.some((action) => action.slug === "shield-block"),
+  false,
+  "Raise a Shield should not create Shield Block when no Shield Block feat/action exists",
+);
+
+const plannedShieldSpellBlock = readActionSources(projectContextForDraftDestination(noShieldBlockContext, {
+  steps: [{
+    instanceId: "cast-shield",
+    actionCost: 1,
+    action: {
+      slug: "shield",
+      name: "Shield",
+      actionCost: 1,
+      source: "spell-curated",
+      activityProfile: { spell: true },
+    },
+  }],
+})).find((action) => action.slug === "shield-block");
+assert.ok(plannedShieldSpellBlock, "Shield spell should grant Shield Block even without the Shield Block feat");
+assert.equal(plannedShieldSpellBlock.available, true, plannedShieldSpellBlock.unavailableReason);
+assert.equal(plannedShieldSpellBlock.source, "spell-inferred");
 
 const expandedGenericSlugs = readActionSources({
   ...fighterContext,
@@ -2902,7 +7848,7 @@ try {
     },
   };
 
-const inactiveVisionerSystemSeek = readActionSources({
+  const inactiveVisionerSystemSeek = readActionSources({
     ...fighterContext,
     token: { id: "observer-token" },
     battlefield: {
@@ -3800,6 +8746,282 @@ assert.ok(
   spellCrowdedPlans.some((plan) => plan.steps.some((step) => step.id === "staff-fallback")),
   "spell-heavy candidate pool should still keep a martial fallback plan",
 );
+const supportCrowdedPlans = buildTurnPlans(spellcasterSpellPriorityContext, [
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: `spell-crowd-${index}`,
+    name: `Spell Crowd ${index}`,
+    slug: `spell-crowd-${index}`,
+    actionCost: 1,
+    source: "spell-inferred",
+    role: "damage",
+    score: 200 - index,
+    confidence: "medium",
+  })),
+  {
+    id: "invisibility",
+    name: "Invisibility",
+    slug: "invisibility",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "stealth-defense",
+    score: 70,
+    confidence: "medium",
+  },
+]);
+assert.ok(
+  supportCrowdedPlans.some((plan) => plan.steps.some((step) => step.id === "invisibility")),
+  "spell-heavy candidate pool should still keep stealth-defense support like Invisibility",
+);
+const weakAthleticsWizardContext = {
+  ...spellcasterSpellPriorityContext,
+  profile: {
+    ...spellcasterSpellPriorityContext.profile,
+    classSlugs: ["wizard"],
+    attackModifier: 8,
+    skills: {
+      athletics: { rank: 0, mod: 1 },
+    },
+  },
+  actor: {
+    ...spellcasterSpellPriorityContext.actor,
+    profile: {
+      ...spellcasterSpellPriorityContext.profile,
+      classSlugs: ["wizard"],
+      attackModifier: 8,
+      skills: {
+        athletics: { rank: 0, mod: 1 },
+      },
+    },
+  },
+  isGM: false,
+};
+const weakAthleticsWizardCandidates = [
+  scoreCandidate(weakAthleticsWizardContext, {
+    id: "wizard-grapple",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "generic",
+    role: "control",
+    skill: "athletics",
+    targetSave: "fortitude",
+    requiresEnemyInReach: true,
+    attackTrait: true,
+  }),
+  scoreCandidate(weakAthleticsWizardContext, {
+    id: "wizard-electric-arc",
+    name: "Electric Arc",
+    slug: "electric-arc",
+    actionCost: 2,
+    source: "spell-inferred",
+    role: "save-damage",
+    damageProfile: { average: 7, type: "electricity", types: ["electricity"] },
+    saveProfile: { stat: "reflex", basic: true },
+    activityProfile: { includes: ["damage"], cantrip: true, averageDamage: 7 },
+    targetingProfile: { enemy: true, maxRange: 30 },
+  }),
+];
+const weakAthleticsWizardPlan = bestTurnPlan(weakAthleticsWizardContext, weakAthleticsWizardCandidates);
+assert.ok(
+  !weakAthleticsWizardPlan.steps.some((step) => step.slug === "grapple"),
+  `untrained wizard should not fill a spell turn with Grapple, got ${weakAthleticsWizardPlan.summary}`,
+);
+
+const skillGateTarget = {
+  id: "skill-gate-target",
+  name: "Mitflit",
+  distance: 5,
+  hpPercent: 1,
+  conditions: [],
+};
+function skillGateContext(skills, actorType = "character", target = skillGateTarget) {
+  const profile = {
+    actorType,
+    hpPercent: 1,
+    speed: 25,
+    reach: 5,
+    handsFree: 2,
+    hasShield: false,
+    conditions: { slugs: [], values: {} },
+    skills,
+  };
+  const actorDocument = {
+    id: `skill-gate-${actorType}`,
+    name: "Skill Gate Actor",
+    type: actorType,
+    system: { actions: [] },
+    itemTypes: {
+      action: [],
+      feat: [],
+      feature: [],
+      consumable: [],
+      spell: [],
+      spellcastingEntry: [],
+    },
+    items: [],
+  };
+  return {
+    actor: { id: actorDocument.id, name: actorDocument.name, document: actorDocument, profile },
+    profile,
+    token: { id: `token-${actorType}`, name: actorDocument.name, center: { x: 0, y: 0 } },
+    targets: [target],
+    battlefield: { targets: [target], enemies: [target], allies: [] },
+    isGM: false,
+  };
+}
+
+const untrainedSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 0, mod: 5 },
+  intimidation: { rank: 0, mod: 5 },
+  deception: { rank: 0, mod: 5 },
+  acrobatics: { rank: 0, mod: 5 },
+}));
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "grapple"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "trip"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "shove"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "demoralize"), false);
+assert.equal(untrainedSkillGate.candidates.some((action) => action.slug === "feint"), false);
+assert.ok(untrainedSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "grapple" && reason === "Requires trained Athletics.",
+));
+assert.ok(untrainedSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "demoralize" && reason === "Requires trained Intimidation.",
+));
+
+const trainedSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 1, mod: 7 },
+  intimidation: { rank: 1, mod: 7 },
+  deception: { rank: 1, mod: 7 },
+  acrobatics: { rank: 1, mod: 7 },
+}));
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "trip"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "shove"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+assert.equal(trainedSkillGate.candidates.some((action) => action.slug === "feint"), true);
+
+const hiddenSkillGateTarget = {
+  ...skillGateTarget,
+  id: "hidden-skill-gate-target",
+  distance: 30,
+  conditions: ["hidden"],
+};
+const untrainedPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: 0, mod: 6 },
+}, "character", hiddenSkillGateTarget));
+assert.equal(untrainedPerceptionGate.candidates.some((action) => action.slug === "seek"), false);
+assert.ok(untrainedPerceptionGate.rejected.some(({ action, reason }) =>
+  action.slug === "seek" && reason === "Requires trained Perception.",
+));
+
+const trainedPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: 1, mod: 8 },
+}, "character", hiddenSkillGateTarget));
+assert.equal(trainedPerceptionGate.candidates.some((action) => action.slug === "seek"), true);
+
+const originalGameForUntrainedSkillSetting = globalThis.game;
+const registeredSettings = [];
+try {
+  globalThis.game = {
+    settings: {
+      register: (moduleId, key, config) => registeredSettings.push({ moduleId, key, config }),
+      get: (_moduleId, key) => key === SETTINGS.hideUntrainedSkillActions ? false : undefined,
+    },
+  };
+  registerSettings();
+  const hideUntrainedSkillActionsSetting = registeredSettings.find((entry) =>
+    entry.key === SETTINGS.hideUntrainedSkillActions,
+  );
+  assert.equal(hideUntrainedSkillActionsSetting?.config?.default, true);
+  assert.equal(hideUntrainedSkillActionsSetting?.config?.scope, "world");
+
+  const visibleUntrainedPcSkillGate = buildCandidates(skillGateContext({
+    athletics: { rank: 0, mod: 5 },
+    intimidation: { rank: 0, mod: 5 },
+  }));
+  assert.equal(visibleUntrainedPcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+  assert.equal(visibleUntrainedPcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+  const visibleUntrainedNpcSkillGate = buildCandidates(skillGateContext({
+    athletics: { rank: 0, mod: 5 },
+    intimidation: { rank: 0, mod: 5 },
+  }, "npc"));
+  assert.equal(visibleUntrainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+  assert.equal(visibleUntrainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+} finally {
+  globalThis.game = originalGameForUntrainedSkillSetting;
+}
+
+const npcSkillGate = buildCandidates(skillGateContext({}, "npc"));
+assert.equal(npcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(npcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const untrainedNpcSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 0, mod: 5 },
+  intimidation: { rank: 0, mod: 5 },
+}, "npc"));
+assert.equal(untrainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), false);
+assert.equal(untrainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), false);
+assert.ok(untrainedNpcSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "grapple" && reason === "Requires trained Athletics.",
+));
+
+const trainedNpcSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: 1, mod: 7 },
+  intimidation: { rank: 1, mod: 7 },
+}, "npc"));
+assert.equal(trainedNpcSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(trainedNpcSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const unknownNpcRankSkillGate = buildCandidates(skillGateContext({
+  athletics: { rank: null, mod: 5 },
+  intimidation: { rank: null, mod: 5 },
+}, "npc"));
+assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "grapple"), true);
+assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
+
+const unknownNpcPerceptionGate = buildCandidates(skillGateContext({
+  perception: { rank: null, mod: 8 },
+}, "npc", hiddenSkillGateTarget));
+assert.equal(unknownNpcPerceptionGate.candidates.some((action) => action.slug === "seek"), true);
+
+const pf2eClassSlugs = [
+  "alchemist",
+  "animist",
+  "barbarian",
+  "bard",
+  "champion",
+  "cleric",
+  "commander",
+  "druid",
+  "exemplar",
+  "fighter",
+  "guardian",
+  "gunslinger",
+  "inventor",
+  "investigator",
+  "kineticist",
+  "magus",
+  "monk",
+  "oracle",
+  "psychic",
+  "ranger",
+  "rogue",
+  "sorcerer",
+  "summoner",
+  "swashbuckler",
+  "thaumaturge",
+  "witch",
+  "wizard",
+];
+const coveredClasses = coveredClassSlugs();
+for (const slug of pf2eClassSlugs) {
+  assert.ok(coveredClasses.includes(slug), `missing class tactic coverage for ${slug}`);
+}
+assert.ok(coveredClasses.includes("runesmith"));
+const classTacticsSource = readFileSync(new URL("../rules/class-tactics.js", import.meta.url), "utf8");
+assert.equal(classTacticsSource.includes("const CLASS_TACTICS = {"), false);
+assert.equal(classTacticsSource.includes("  alchemist: {"), false);
 
 const fighterClassTacticContext = {
   ...fighterContext,
@@ -3878,7 +9100,7 @@ assert.ok(
 );
 assert.ok(gunslingerRangedStrike.reasons.some((reason) => reason.includes("Gunslinger") && reason.includes("ranged")));
 
-function classContext(slug, { combatState = {}, target = null, allies = [] } = {}) {
+function classContext(slug, { combatState = {}, target = null, allies = [], subclassSlugs = [] } = {}) {
   const activeTarget = target ?? { ...fighterContext.targets[0], distance: 5 };
   return {
     ...fighterClassTacticContext,
@@ -3886,6 +9108,8 @@ function classContext(slug, { combatState = {}, target = null, allies = [] } = {
       ...fighterContext.profile,
       classSlug: slug,
       classSlugs: [slug],
+      subclassSlug: subclassSlugs[0] ?? null,
+      subclassSlugs,
       combatState,
     },
     targets: [activeTarget],
@@ -3924,6 +9148,98 @@ function expectReason(scored, text) {
     `expected reason containing "${text}", got ${scored.reasons.join(" | ")}`,
   );
 }
+
+expectReason(
+  scoreCandidate(classContext("alchemist", { subclassSlugs: ["bomber"] }), mergeCandidate("quick-bomber", "Quick Bomber")),
+  "Bomber field favors bombs",
+);
+expectReason(
+  scoreCandidate(classContext("alchemist", {
+    subclassSlugs: ["chirurgeon"],
+    allies: [{ id: "ally-1", name: "Ally", hpPercent: 0.45 }],
+  }), {
+    id: "healing-elixir",
+    name: "Healing Elixir",
+    slug: "healing-elixir",
+    actionCost: 1,
+    source: "item",
+    type: "consumable",
+    item: { type: "consumable", system: { traits: { value: ["alchemical", "elixir"] } } },
+    role: "healing",
+    activityProfile: { includes: ["healing"] },
+    targetingProfile: { ally: true },
+  }),
+  "Chirurgeon field favors healing",
+);
+expectReason(
+  scoreCandidate(classContext("kineticist", { subclassSlugs: ["fire-gate"] }), {
+    id: "elemental-blast-fire",
+    name: "Elemental Blast (Fire)",
+    slug: "elemental-blast",
+    actionCost: 1,
+    source: "system-inferred",
+    role: "damage",
+    traits: ["kineticist", "impulse", "fire"],
+    activityProfile: { impulse: true, includes: ["damage"] },
+    targetingProfile: { enemy: true, maxRange: 60 },
+  }),
+  "Fire gate favors fire impulses",
+);
+expectReason(
+  scoreCandidate(classContext("ranger", {
+    subclassSlugs: ["flurry"],
+    target: { ...fighterContext.targets[0], distance: 5, effects: [{ slug: "hunted-prey" }] },
+  }), mergeCandidate("hunted-shot", "Hunted Shot")),
+  "Flurry edge favors multiple attacks",
+);
+expectReason(
+  scoreCandidate(classContext("magus", {
+    subclassSlugs: ["starlit-span"],
+    combatState: { spellstrikeCharged: true },
+    target: { ...fighterContext.targets[0], distance: 40 },
+  }), {
+    id: "ranged-spellstrike",
+    name: "Ranged Spellstrike",
+    slug: "spellstrike",
+    actionCost: 2,
+    source: "system-inferred",
+    role: "damage",
+    traits: ["magus", "ranged"],
+    activityProfile: { includes: ["spell", "strike"], includesStrike: true, spellstrike: true },
+    targetingProfile: { enemy: true, maxRange: 120 },
+  }),
+  "Starlit Span favors ranged Spellstrike",
+);
+expectReason(
+  scoreCandidate(classContext("swashbuckler", { subclassSlugs: ["gymnast"] }), mergeCandidate("grapple", "Grapple", {
+    role: "control",
+    activityProfile: { includes: ["control"], appliesCondition: "grabbed" },
+    targetingProfile: { enemy: true, reach: true },
+  })),
+  "Gymnast style favors athletics",
+);
+expectReason(
+  scoreCandidate(classContext("thaumaturge", {
+    subclassSlugs: ["weapon"],
+    target: { ...fighterContext.targets[0], distance: 5, effects: [{ slug: "exploited-vulnerability" }] },
+  }), {
+    id: "weapon-implement-strike",
+    name: "Weapon Implement Strike",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    role: "damage",
+    averageDamage: 8,
+    range: { max: 5 },
+    activityProfile: { includes: ["strike"], includesStrike: true },
+    traits: ["thaumaturge"],
+  }),
+  "Weapon implement favors Strike payoffs",
+);
+expectReason(
+  scoreCandidate(classContext("wizard", { subclassSlugs: ["staff-nexus"] }), mergeCandidate("drain-bonded-item", "Drain Bonded Item")),
+  "Staff Nexus favors staff",
+);
 
 expectReason(
   scoreCandidate(classContext("alchemist"), mergeCandidate("quick-alchemy", "Quick Alchemy")),
@@ -4274,7 +9590,7 @@ assert.equal(
 );
 assert.ok(
   kineticistBlastSources.find((action) => action.name === "Elemental Blast (Fire) (ranged, 2 actions)").averageDamage
-    > kineticistBlastSources.find((action) => action.name === "Elemental Blast (Fire) (ranged)").averageDamage,
+  > kineticistBlastSources.find((action) => action.name === "Elemental Blast (Fire) (ranged)").averageDamage,
 );
 assert.equal(
   readActionSources(kineticistBlastContext).filter((action) => action.slug === "elemental-blast").length,
@@ -4285,6 +9601,109 @@ assert.ok(
   kineticistPlan.steps.some((step) => step.tacticSlug === "elemental-blast"),
   `kineticist plan should include Elemental Blast, got ${kineticistPlan.summary}`,
 );
+const kineticistBlastBuild = buildCandidates(kineticistBlastContext);
+const kineticistBlastBuilder = buildActionBuilderModel({
+  context: kineticistBlastContext,
+  candidates: kineticistBlastBuild.candidates,
+  rejected: kineticistBlastBuild.rejected,
+  draft: { steps: [] },
+});
+const kineticistBlastOneActionRows = kineticistBlastBuilder.tabs.one.all.map((action) => ({
+  name: action.name,
+  disabled: action.disabled,
+}));
+assert.ok(
+  kineticistBlastOneActionRows.some((action) => action.name === "Elemental Blast (Fire) (ranged)" && !action.disabled),
+  "Action builder should show available ranged Elemental Blast.",
+);
+assert.ok(
+  kineticistBlastOneActionRows.some((action) => action.name === "Elemental Blast (Fire) (melee)" && action.disabled),
+  `Action builder should keep melee Elemental Blast visible as disabled; got ${JSON.stringify(kineticistBlastOneActionRows)}`,
+);
+
+const extractElementAction = {
+  id: "extract-element",
+  name: "Extract Element",
+  slug: "extract-element",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "save-damage",
+  traits: ["kineticist", "impulse", "primal"],
+  saveProfile: { stat: "fortitude", basic: false },
+  damageProfile: { average: 10, type: "untyped", types: ["untyped"] },
+  targetingProfile: { enemy: true, maxRange: 30 },
+};
+
+function kineticistExtractContext(target, { isGM = true } = {}) {
+  const enemy = {
+    ...kineticistBlastContext.targets[0],
+    distance: 25,
+    ...target,
+  };
+  return {
+    ...kineticistBlastContext,
+    isGM,
+    targets: [enemy],
+    battlefield: {
+      allies: [],
+      enemies: [enemy],
+      targets: [],
+    },
+  };
+}
+
+const mitflitExtractContext = kineticistExtractContext({
+  id: "mitflit",
+  name: "Mitflit",
+  traits: ["fey", "gremlin"],
+  weaknesses: [{ type: "cold-iron", value: 2 }],
+  resistances: [],
+  immunities: [],
+});
+const invalidExtractElement = scoreCandidate(mitflitExtractContext, extractElementAction);
+assert.equal(invalidExtractElement.score, -999);
+assert.equal(invalidExtractElement.suggestedTarget, null);
+assert.equal(invalidExtractElement.reason, "No valid elemental target.");
+
+const fireTargetExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "fire-target",
+  name: "Fire Elemental",
+  traits: ["elemental", "fire"],
+  weaknesses: [],
+  resistances: [],
+  immunities: [],
+}), extractElementAction);
+assert.equal(fireTargetExtractElement.suggestedTarget?.name, "Fire Elemental");
+assert.ok(fireTargetExtractElement.score > -999);
+
+const fireWeaknessExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "fire-weakness-target",
+  name: "Oil Ooze",
+  traits: ["ooze"],
+  weaknesses: [{ type: "fire", value: 5 }],
+  resistances: [],
+  immunities: [],
+}), extractElementAction);
+assert.equal(fireWeaknessExtractElement.suggestedTarget?.name, "Oil Ooze");
+assert.ok(fireWeaknessExtractElement.score > -999);
+
+const hiddenWeaknessExtractElement = scoreCandidate(kineticistExtractContext({
+  id: "hidden-fire-weakness-target",
+  name: "Unknown Creature",
+  actor: {
+    document: {
+      system: {
+        traits: { value: ["ooze"] },
+        attributes: { weaknesses: [{ type: "fire", value: 5 }] },
+      },
+    },
+  },
+  resistances: null,
+  weaknesses: null,
+  immunities: null,
+}, { isGM: false }), extractElementAction);
+assert.equal(hiddenWeaknessExtractElement.score, -999);
+assert.equal(hiddenWeaknessExtractElement.reason, "No valid elemental target.");
 
 const comboStateProfile = readActorProfile({
   id: "combo-state",
@@ -4469,8 +9888,64 @@ const activeAuraChannelScore = scoreCandidate({
   activityProfile: { includes: ["setup"], impulse: true },
   targetingProfile: { self: true },
 });
-assert.ok(activeAuraChannelScore.score < channelElementsScore.score);
+assert.equal(activeAuraChannelScore.score, -999);
 assert.ok(activeAuraChannelScore.reasons.includes("Kinetic aura already active; Channel Elements is redundant."));
+
+const effectAuraProfile = readActorProfile({
+  id: "kineticist-aura-actor",
+  name: "Alon",
+  itemTypes: {
+    class: [{ name: "Kineticist", type: "class", system: { slug: "kineticist" } }],
+    effect: [{ name: "Effect: Kinetic Aura", type: "effect" }],
+  },
+  items: [],
+  system: {
+    attributes: { hp: { value: 40, max: 40 } },
+    skills: {},
+    actions: [],
+  },
+});
+assert.equal(effectAuraProfile.combatState.kineticistAuraActive, true);
+const effectAuraChannelScore = scoreCandidate({
+  ...inactiveAuraKineticistContext,
+  profile: effectAuraProfile,
+}, {
+  id: "channel-elements",
+  name: "Channel Elements",
+  slug: "channel-elements",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  traits: ["kineticist", "impulse"],
+  activityProfile: { includes: ["setup"], impulse: true },
+  targetingProfile: { self: true },
+});
+assert.equal(effectAuraChannelScore.score, -999);
+
+const overflowImpulseAction = {
+  id: "blazing-wave",
+  name: "Blazing Wave",
+  slug: "blazing-wave",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "save-damage",
+  traits: ["kineticist", "impulse", "overflow", "fire"],
+  activityProfile: { includes: ["damage"], impulse: true, overflow: true },
+  targetingProfile: { enemy: true, maxRange: 30 },
+  saveProfile: { stat: "reflex", basic: true },
+  damageProfile: { average: 18, type: "fire", types: ["fire"] },
+};
+const inactiveAuraOverflowScore = scoreCandidate(inactiveAuraKineticistContext, overflowImpulseAction);
+assert.ok(channelElementsScore.score > inactiveAuraOverflowScore.score);
+assert.ok(inactiveAuraOverflowScore.reasons.includes("Impulse wants Channel Elements active first."));
+const activeAuraOverflowScore = scoreCandidate({
+  ...inactiveAuraKineticistContext,
+  profile: {
+    ...inactiveAuraKineticistContext.profile,
+    combatState: { kineticistAuraActive: true },
+  },
+}, overflowImpulseAction);
+assert.ok(activeAuraOverflowScore.reasons.includes("Overflow impulse spends the aura for a strong payoff."));
 
 const magusBaseContext = {
   ...fighterClassTacticContext,
@@ -4562,6 +10037,82 @@ const duplicateExploit = scoreCandidate(exploitedThaumaturgeContext, {
   setupFor: exploitVulnerabilityClassification.setupFor,
   traits: ["thaumaturge", "esoterica", "manipulate"],
 });
+assert.equal(duplicateExploit.score, -999);
+assert.equal(duplicateExploit.reason, "Target is already exploited.");
+
+const primaryEvTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ name: "Primary EV Target: Calder Stoneplow" }],
+};
+const primaryEvContext = {
+  ...thaumaturgeClassTacticContext,
+  targets: [primaryEvTarget],
+  battlefield: { targets: [primaryEvTarget], enemies: [primaryEvTarget], allies: [] },
+};
+const duplicatePrimaryEv = scoreCandidate(primaryEvContext, {
+  id: "exploit-vulnerability-primary",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(duplicatePrimaryEv.score, -999);
+assert.equal(duplicatePrimaryEv.reason, "Target is already exploited.");
+
+const personalAntithesisTarget = {
+  ...fighterContext.targets[0],
+  distance: 5,
+  effects: [{ name: "Personal Antithesis" }],
+};
+const duplicatePersonalAntithesis = scoreCandidate({
+  ...thaumaturgeClassTacticContext,
+  targets: [personalAntithesisTarget],
+  battlefield: { targets: [personalAntithesisTarget], enemies: [personalAntithesisTarget], allies: [] },
+}, {
+  id: "exploit-vulnerability-personal-antithesis",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(duplicatePersonalAntithesis.score, -999);
+assert.equal(duplicatePersonalAntithesis.reason, "Target is already exploited.");
+
+const unexploitedSecondTarget = {
+  id: "second-target",
+  name: "Second Target",
+  distance: 10,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetExploit = scoreCandidate({
+  ...thaumaturgeClassTacticContext,
+  targets: [primaryEvTarget],
+  battlefield: { targets: [primaryEvTarget], enemies: [primaryEvTarget, unexploitedSecondTarget], allies: [] },
+}, {
+  id: "exploit-vulnerability-retarget",
+  name: "Exploit Vulnerability",
+  slug: "exploit-vulnerability",
+  actionCost: 1,
+  source: "system-inferred",
+  role: exploitVulnerabilityClassification.role,
+  activityProfile: exploitVulnerabilityClassification.activityProfile,
+  targetingProfile: exploitVulnerabilityClassification.targetingProfile,
+  setupFor: exploitVulnerabilityClassification.setupFor,
+  traits: ["thaumaturge", "esoterica", "manipulate"],
+});
+assert.equal(retargetExploit.suggestedTarget?.name, "Second Target");
 const exploitedStrike = scoreCandidate(exploitedThaumaturgeContext, {
   id: "thaumaturge-strike",
   name: "Weapon Strike",
@@ -4571,8 +10122,6 @@ const exploitedStrike = scoreCandidate(exploitedThaumaturgeContext, {
   range: { max: 5 },
   averageDamage: 8,
 });
-assert.ok(exploitedStrike.score > duplicateExploit.score);
-assert.ok(duplicateExploit.reasons.includes("Target is already exploited."));
 assert.ok(exploitedStrike.reasons.includes("Exploited target makes Thaumaturge damage better."));
 
 const rangerClassTacticContext = {
@@ -4650,8 +10199,54 @@ const huntedRangerStrike = scoreCandidate(huntedRangerContext, {
   traits: ["ranger"],
 });
 assert.ok(huntedRangerStrike.score > duplicateHuntPrey.score);
-assert.ok(duplicateHuntPrey.reasons.includes("Target is already hunted prey."));
+assert.equal(duplicateHuntPrey.score, -999);
+assert.equal(duplicateHuntPrey.reason, "Target already has Hunted Prey.");
 assert.ok(huntedRangerStrike.reasons.includes("Hunted prey makes Ranger attacks better."));
+
+const secondPreyTarget = {
+  id: "second-prey",
+  name: "Second Prey",
+  distance: 40,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetHuntPrey = scoreCandidate({
+  ...huntedRangerContext,
+  battlefield: { targets: [huntedPreyTarget], enemies: [huntedPreyTarget, secondPreyTarget], allies: [] },
+}, {
+  id: "hunt-prey-retarget",
+  name: "Hunt Prey",
+  slug: "hunt-prey",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "hunted-prey" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["ranger"],
+});
+assert.equal(retargetHuntPrey.suggestedTarget?.name, "Second Prey");
+
+const wrongPreyContext = {
+  ...rangerClassTacticContext,
+  profile: {
+    ...rangerClassTacticContext.profile,
+    combatState: { huntedPreyActive: true },
+  },
+  targets: [secondPreyTarget],
+  battlefield: { targets: [secondPreyTarget], enemies: [secondPreyTarget], allies: [] },
+};
+const rangerStrikeWrongPrey = scoreCandidate(wrongPreyContext, {
+  id: "ranger-strike-wrong-prey",
+  name: "Longbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 100, increment: 100 },
+  averageDamage: 8,
+});
+assert.ok(rangerStrikeWrongPrey.reasons.includes("This target is not the hunted prey."));
+assert.equal(rangerStrikeWrongPrey.reasons.includes("Hunted prey makes Ranger attacks better."), false);
 
 const investigatorClassTacticContext = {
   ...fighterClassTacticContext,
@@ -4723,8 +10318,54 @@ const devisedInvestigatorStrike = scoreCandidate(devisedInvestigatorContext, {
   averageDamage: 8,
 });
 assert.ok(devisedInvestigatorStrike.score > duplicateDevise.score);
-assert.ok(duplicateDevise.reasons.includes("Devise a Stratagem is already active."));
+assert.equal(duplicateDevise.score, -999);
+assert.equal(duplicateDevise.reason, "Target already has Devised Stratagem.");
 assert.ok(devisedInvestigatorStrike.reasons.includes("Devised Stratagem supports this attack."));
+
+const secondDeviseTarget = {
+  id: "second-devise",
+  name: "Second Suspect",
+  distance: 20,
+  hpPercent: 1,
+  conditions: [],
+};
+const retargetDevise = scoreCandidate({
+  ...devisedInvestigatorContext,
+  battlefield: { targets: [devisedTarget], enemies: [devisedTarget, secondDeviseTarget], allies: [] },
+}, {
+  id: "devise-a-stratagem-retarget",
+  name: "Devise a Stratagem",
+  slug: "devise-a-stratagem",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "devised-stratagem" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["investigator"],
+});
+assert.equal(retargetDevise.suggestedTarget?.name, "Second Suspect");
+
+const wrongDeviseContext = {
+  ...investigatorClassTacticContext,
+  profile: {
+    ...investigatorClassTacticContext.profile,
+    combatState: { deviseStratagemActive: true },
+  },
+  targets: [secondDeviseTarget],
+  battlefield: { targets: [secondDeviseTarget], enemies: [secondDeviseTarget], allies: [] },
+};
+const investigatorStrikeWrongDevise = scoreCandidate(wrongDeviseContext, {
+  id: "investigator-strike-wrong-devise",
+  name: "Crossbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 120, increment: 120 },
+  averageDamage: 8,
+});
+assert.ok(investigatorStrikeWrongDevise.reasons.includes("This target is not the devised target."));
+assert.equal(investigatorStrikeWrongDevise.reasons.includes("Devised Stratagem supports this attack."), false);
 
 const swashbucklerClassTacticContext = {
   ...fighterClassTacticContext,
@@ -4797,6 +10438,7 @@ assert.ok(redundantPanacheGain.reasons.includes("Panache already active; gaining
 
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;
+const previousConst = globalThis.CONST;
 try {
   const makeActor = (id, name, type = "npc") => ({
     id,
@@ -4933,6 +10575,16 @@ try {
   centipedeActor.itemTypes.condition = [];
 
   globalThis.game.user.isGM = false;
+  centipedeActor.itemTypes.effect = [{
+    id: "visible-mark",
+    name: "Visible Mark",
+    slug: "visible-mark",
+  }, {
+    id: "secret-weakness",
+    name: "Secret Weakness",
+    slug: "secret-weakness",
+    hidden: true,
+  }];
   const playerContextWithoutDefenses = readCombatContext("player-test");
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].name, "Giant Centipede");
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].ac, null);
@@ -4941,6 +10593,21 @@ try {
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].resistances, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].weaknesses, null);
   assert.equal(playerContextWithoutDefenses.battlefield.targets[0].immunities, null);
+  assert.equal(playerContextWithoutDefenses.battlefield.targets[0].actor.document, undefined);
+  assert.equal(playerContextWithoutDefenses.battlefield.enemies[0].actor.document, undefined);
+  assert.deepEqual(
+    playerContextWithoutDefenses.battlefield.targets[0].effects.map((effect) => effect.name),
+    ["Visible Mark"],
+  );
+  centipedeActor.itemTypes.effect = [];
+
+  enemyToken.hidden = true;
+  enemyToken.document.hidden = true;
+  const playerContextWithoutHiddenEnemy = readCombatContext("player-hidden-token-test");
+  assert.equal(playerContextWithoutHiddenEnemy.battlefield.enemies.length, 0);
+  assert.equal(playerContextWithoutHiddenEnemy.battlefield.targets.length, 0);
+  enemyToken.hidden = false;
+  enemyToken.document.hidden = false;
 
   globalThis.game.user.isGM = true;
   globalThis.game.user.targets = new Set([neutralToken]);
@@ -5031,9 +10698,104 @@ try {
     ["Calder Stoneplow"],
   );
   assert.equal(namedTokenContext.battlefield.targets[0].name, "Calder Stoneplow");
+
+  globalThis.CONST = { DOCUMENT_OWNERSHIP_LEVELS: { OWNER: "OWNER" } };
+  const expectedOwnerPermission = globalThis.CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
+  const ownedActor = {
+    id: "actor-owned",
+    uuid: "Actor.actor-owned",
+    name: "Owned Hero",
+    img: "owned.webp",
+    type: "character",
+    system: { attributes: { hp: { value: 10, max: 10 } } },
+    itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [] },
+    items: [],
+    testUserPermission: (_user, permission) => {
+      assert.equal(permission, expectedOwnerPermission);
+      return true;
+    },
+  };
+  const unownedActor = {
+    ...ownedActor,
+    id: "actor-unowned",
+    uuid: "Actor.actor-unowned",
+    name: "Unowned Hero",
+    testUserPermission: () => false,
+  };
+  const selectedCombatant = {
+    id: "combatant-owned",
+    actor: ownedActor,
+    name: "Owned Hero",
+    tokenId: "token-owned",
+    token: { object: { id: "token-owned", document: { id: "token-owned", x: 0, y: 0, width: 1, height: 1 }, actor: ownedActor } },
+  };
+  const unownedCombatant = {
+    id: "combatant-unowned",
+    actor: unownedActor,
+    name: "Unowned Hero",
+    tokenId: "token-unowned",
+    token: { object: { id: "token-unowned", document: { id: "token-unowned", x: 5, y: 0, width: 1, height: 1 }, actor: unownedActor } },
+  };
+  globalThis.game = {
+    user: { isGM: false },
+    combat: {
+      id: "combat-builder",
+      round: 1,
+      turn: 0,
+      started: true,
+      combatant: selectedCombatant,
+      combatants: [selectedCombatant, unownedCombatant],
+    },
+  };
+  globalThis.canvas = {
+    grid: { size: 5 },
+    tokens: {
+      controlled: [],
+      placeables: [selectedCombatant.token.object, unownedCombatant.token.object],
+    },
+  };
+  const selectedContext = readCombatContext("test", { combatant: selectedCombatant });
+  assert.equal(selectedContext.combatant.id, "combatant-owned");
+  const blockedContext = readCombatContext("test", { combatant: unownedCombatant });
+  assert.equal(blockedContext, null);
+  globalThis.game.combat.combatant = unownedCombatant;
+  globalThis.canvas.tokens.controlled = [selectedCombatant.token.object];
+  const controlledContext = readCombatContext("test");
+  assert.equal(controlledContext.combatant.id, "combatant-owned");
+  globalThis.canvas.tokens.controlled = [unownedCombatant.token.object];
+  assert.equal(readCombatContext("test"), null);
+  globalThis.game.user.isGM = true;
+  globalThis.canvas.tokens.controlled = [];
+  const gmContext = readCombatContext("test", { combatant: unownedCombatant });
+  assert.equal(gmContext.combatant.id, "combatant-unowned");
+
+  globalThis.game.combat.combatant = selectedCombatant;
+  selectedCombatant.token.object.x = 5;
+  selectedCombatant.token.object.document.x = 5;
+  assert.equal(markMovementActionSpent(selectedCombatant.token.object, {
+    combat: globalThis.game.combat,
+    changed: { x: 5 },
+  }), true);
+  const explicitOtherContext = readCombatContext("explicit-other-movement-test", { combatant: unownedCombatant });
+  assert.equal(explicitOtherContext.combatant.id, "combatant-unowned");
+  assert.equal(explicitOtherContext.actionsSpent.normal, 0);
+  globalThis.canvas.tokens.controlled = [unownedCombatant.token.object];
+  const controlledOtherContext = readCombatContext("controlled-other-movement-test");
+  assert.equal(controlledOtherContext.combatant.id, "combatant-unowned");
+  assert.equal(controlledOtherContext.actionsSpent.normal, 0);
+
+  const foreignCombatant = {
+    id: "combatant-foreign",
+    actor: ownedActor,
+    name: "Foreign Hero",
+    tokenId: "token-foreign",
+    token: { object: { id: "token-foreign", document: { id: "token-foreign", x: 10, y: 0, width: 1, height: 1 }, actor: ownedActor } },
+  };
+  assert.equal(readCombatContext("foreign-combatant-test", { combatant: foreignCombatant }), null);
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;
+  globalThis.CONST = previousConst;
 }
 
 const systemSpellContext = {
@@ -5049,10 +10811,19 @@ const systemSpellContext = {
             time: { value: "1" },
             traits: { value: ["cantrip"] },
             level: { value: 0 },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d4", type: "electricity" } },
             location: { value: "entry-1" },
           },
         }],
-        spellcastingEntry: [],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
       },
     },
   },
@@ -5062,6 +10833,191 @@ assert.equal(hybridSpell.name, "System Electric Arc");
 assert.equal(hybridSpell.actionCost, 1);
 assert.equal(hybridSpell.curated.role, "damage");
 assert.equal(hybridSpell.source, "spell-curated");
+assert.equal(hybridSpell.role, "save-damage");
+assert.equal(hybridSpell.saveProfile.stat, "reflex");
+assert.equal(hybridSpell.damageProfile.average, 5);
+assert.equal(hybridSpell.targetingProfile.maxRange, 30);
+
+const staleCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "stale-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "missing-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
+      },
+    },
+  },
+};
+const staleCantrip = readSpellActions(staleCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(staleCantrip.available, false);
+assert.equal(staleCantrip.unavailableReason, "Spell is not assigned to an active spellcasting entry.");
+
+const mismatchedLocationCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "mismatched-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "old-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "new-entry",
+          system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+        }],
+      },
+    },
+  },
+};
+const mismatchedLocationCantrip = readSpellActions(mismatchedLocationCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(mismatchedLocationCantrip.available, false);
+assert.equal(mismatchedLocationCantrip.spellcastingEntryId, null);
+
+const hiddenEntryCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "hidden-entry-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "hidden-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "hidden-entry",
+          visible: false,
+          system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+        }],
+      },
+    },
+  },
+};
+const hiddenEntryCantrip = readSpellActions(hiddenEntryCantripContext).find((spell) => spell.slug === "frostbite");
+assert.equal(hiddenEntryCantrip.available, false);
+assert.equal(hiddenEntryCantrip.unavailableReason, "Spell is not assigned to an active spellcasting entry.");
+
+const preparedCantripContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "spellbook-frostbite",
+          name: "Frostbite",
+          slug: "frostbite",
+          system: {
+            slug: "frostbite",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "cold", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "fortitude" } },
+            damage: { "0": { formula: "2d4", type: "cold" } },
+          },
+        }, {
+          id: "prepared-electric-arc",
+          name: "Electric Arc",
+          slug: "electric-arc",
+          system: {
+            slug: "electric-arc",
+            time: { value: "2" },
+            traits: { value: ["cantrip", "electricity", "concentrate", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d4", type: "electricity" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "prepared-entry",
+          system: {
+            prepared: { value: "prepared" },
+            slots: { slot0: { prepared: [{ id: "prepared-electric-arc", expended: false }] } },
+          },
+        }],
+      },
+    },
+  },
+};
+const preparedCantrips = readSpellActions(preparedCantripContext);
+const spellbookFrostbite = preparedCantrips.find((spell) => spell.slug === "frostbite");
+assert.equal(spellbookFrostbite.available, false);
+assert.equal(spellbookFrostbite.unavailableReason, "Prepared spell is not available or is expended.");
+const preparedElectricArc = preparedCantrips.find((spell) => spell.slug === "electric-arc");
+assert.equal(preparedElectricArc.available, true);
+
+const itemSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "staff-breathe-fire",
+          name: "Breathe Fire",
+          slug: "breathe-fire",
+          system: {
+            slug: "breathe-fire",
+            time: { value: "2" },
+            traits: { value: ["fire", "manipulate"] },
+            level: { value: 1 },
+            range: { value: "" },
+            area: { type: "cone", value: 15 },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d6", type: "fire" } },
+            location: { value: "staff-entry", uses: { value: 3, max: 3 } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "staff-entry",
+          system: { prepared: { value: "items" }, slots: { slot1: { value: 0 } } },
+        }],
+      },
+    },
+  },
+};
+const itemSpell = readSpellActions(itemSpellContext).find((spell) => spell.slug === "breathe-fire");
+assert.equal(itemSpell.available, true);
+assert.equal(itemSpell.role, "area-damage");
+assert.equal(itemSpell.spellResource.label, "Uses 3/3");
 
 const multiEntrySpellContext = {
   actor: {
@@ -5079,6 +11035,19 @@ const multiEntrySpellContext = {
             location: { value: "arcane-entry" },
             range: { value: "30 feet" },
             damage: { "0": { formula: "2d6", type: "bludgeoning" } },
+          },
+        }, {
+          id: "arcane-slot-spell",
+          name: "Magic Missile",
+          slug: "magic-missile",
+          system: {
+            slug: "magic-missile",
+            time: { value: "2" },
+            traits: { value: ["force"] },
+            level: { value: 1 },
+            location: { value: "arcane-entry" },
+            range: { value: "120 feet" },
+            damage: { "0": { formula: "1d4+1", type: "force" } },
           },
         }, {
           id: "divine-prepared",
@@ -5108,27 +11077,53 @@ const multiEntrySpellContext = {
             defense: { save: { statistic: "reflex", basic: true } },
             damage: { "0": { formula: "6d6", type: "fire" } },
           },
+        }, {
+          id: "uuid-matched",
+          uuid: "Actor.silva.Item.invisibility",
+          sourceId: "Compendium.pf2e.spells-srd.Item.invisibility",
+          name: "Invisibility",
+          slug: "invisibility",
+          system: {
+            slug: "invisibility",
+            time: { value: "2" },
+            traits: { value: ["illusion"] },
+            level: { value: 2 },
+            location: { value: "occult-entry" },
+            range: { value: "30 feet" },
+            target: { value: "1 creature" },
+            duration: { value: "10 minutes" },
+            description: { value: "<p>The target becomes invisible and is undetected by observers.</p>" },
+          },
         }],
         spellcastingEntry: [{
           id: "arcane-entry",
+          name: "Arcane Spontaneous",
           system: {
             prepared: { value: "spontaneous" },
+            tradition: { value: "arcane" },
             statistic: { dc: { value: 22 } },
-            slots: { slot1: { value: 1 }, slot3: { value: 0, prepared: [] } },
+            slots: { slot1: { value: 1, max: 3 }, slot3: { value: 0, prepared: [] } },
           },
         }, {
           id: "divine-entry",
+          name: "Divine Prepared",
           system: {
             prepared: { value: "prepared" },
+            tradition: { value: "divine" },
             statistic: { dc: { value: 18 } },
             slots: { slot1: { prepared: [{ id: "other-spell", expended: false }] } },
           },
         }, {
           id: "occult-entry",
+          name: "Occult Prepared",
           system: {
             prepared: { value: "prepared" },
+            tradition: { value: "occult" },
             statistic: { dc: { value: 20 } },
-            slots: { slot3: { prepared: [{ id: "slot-matched", expended: false }] } },
+            slots: {
+              slot2: { prepared: [{ uuid: "Actor.silva.Item.invisibility", expended: false }] },
+              slot3: { prepared: [{ id: "slot-matched", expended: false }] },
+            },
           },
         }],
       },
@@ -5140,6 +11135,11 @@ const arcaneCantrip = multiEntrySpells.find((spell) => spell.id === "spell-arcan
 assert.equal(arcaneCantrip.spellcastingEntryId, "arcane-entry");
 assert.equal(arcaneCantrip.spellDc, 22);
 assert.equal(arcaneCantrip.available, true);
+assert.equal(arcaneCantrip.spellResource.label, "No slot");
+assert.equal(arcaneCantrip.spellcastingEntryLabel, "Arcane Spontaneous");
+const arcaneSlotSpell = multiEntrySpells.find((spell) => spell.id === "spell-arcane-slot-spell");
+assert.equal(arcaneSlotSpell.spellResource.label, "Slots 1/3");
+assert.equal(arcaneSlotSpell.spellResource.tooltip, "Rank 1 spell slots: 1/3 left.");
 const divinePrepared = multiEntrySpells.find((spell) => spell.id === "spell-divine-prepared");
 assert.equal(divinePrepared.spellcastingEntryId, "divine-entry");
 assert.equal(divinePrepared.spellDc, 18);
@@ -5149,6 +11149,12 @@ const slotMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-sl
 assert.equal(slotMatchedSpell.spellcastingEntryId, "occult-entry");
 assert.equal(slotMatchedSpell.spellDc, 20);
 assert.equal(slotMatchedSpell.available, true);
+assert.equal(slotMatchedSpell.spellResource.label, "Prepared 1/1");
+assert.equal(slotMatchedSpell.spellResource.tooltip, "Rank 3 prepared slots: 1/1 unexpended.");
+const uuidMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-uuid-matched");
+assert.equal(uuidMatchedSpell.spellcastingEntryId, "occult-entry");
+assert.equal(uuidMatchedSpell.available, true);
+assert.equal(uuidMatchedSpell.role, "stealth-defense");
 
 const stanceClassification = classifySystemAction({
   name: "Dragon Stance",
@@ -5194,6 +11200,37 @@ const followUpClassification = classifySystemAction({
 assert.equal(followUpClassification.role, "setup");
 assert.equal(followUpClassification.gatingProfile.eventTriggerOnly, true);
 assert.deepEqual(followUpClassification.gatingProfile.eventTriggers, ["after-strike", "previous-action"]);
+
+const bespellClassification = classifySystemAction({
+  name: "Bespell Strikes",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: 0 },
+    traits: { value: ["wizard"] },
+    description: {
+      value: "<p><strong>Requirements</strong> Your most recent action was to cast a non-cantrip spell.</p><p>Until the end of your turn, one weapon Strike deals extra damage.</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(bespellClassification.role, "setup");
+assert.equal(bespellClassification.targetingProfile.self, true);
+assert.equal(bespellClassification.gatingProfile.eventTriggerOnly, true);
+assert.deepEqual(bespellClassification.gatingProfile.previousActionRequirements, ["non-cantrip-spell"]);
+
+const failedCheckClassification = classifySystemAction({
+  name: "Lucky Retry",
+  system: {
+    actionType: { value: "free" },
+    actions: { value: 0 },
+    traits: { value: ["fortune"] },
+    description: {
+      value: "<p><strong>Trigger</strong> You fail a skill check.</p><p>You gain a +1 status bonus to the reroll.</p>",
+    },
+  },
+}, { actionCost: 0, type: "free" });
+assert.equal(failedCheckClassification.role, "buff");
+assert.equal(failedCheckClassification.gatingProfile.eventTriggerOnly, true);
+assert.deepEqual(failedCheckClassification.gatingProfile.eventTriggers, ["after-check-fail"]);
 
 const fireballClassification = classifySpell({
   name: "Fireball",
@@ -5636,6 +11673,46 @@ const dirgeClassification = classifySpell({
 assert.equal(dirgeClassification.role, "control");
 assert.equal(dirgeClassification.activityProfile.appliesCondition, "frightened");
 assert.equal(dirgeClassification.targetingProfile.area, true);
+assert.equal(dirgeClassification.targetingProfile.selfCentered, true);
+assert.equal(dirgeClassification.targetingProfile.enemy, false);
+
+const baneClassification = classifySpell({
+  name: "Bane",
+  system: {
+    traits: { value: ["concentrate", "manipulate", "mental"] },
+    level: { value: 1 },
+    area: { type: "emanation", value: 5 },
+    target: { value: "enemies in the area" },
+    defense: { save: { statistic: "will", basic: false } },
+    duration: { value: "1 minute" },
+    description: { value: "<p>Enemies in the area must succeed at a Will save.</p>" },
+  },
+});
+assert.equal(baneClassification.role, "control");
+assert.equal(baneClassification.targetingProfile.selfCentered, true);
+assert.equal(baneClassification.targetingProfile.enemy, false);
+const baneScore = scoreCandidate({
+  ...fighterContext,
+  token: { center: { x: 0, y: 0 } },
+  battlefield: {
+    enemies: [
+      { id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } },
+      { id: "far", name: "Far Enemy", distance: 20, token: { center: { x: 400, y: 0 } } },
+    ],
+    allies: [],
+    targets: [{ id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } }],
+  },
+  targets: [{ id: "adjacent", name: "Adjacent Enemy", distance: 5, token: { center: { x: 100, y: 0 } } }],
+}, {
+  id: "spell-bane",
+  name: "Bane",
+  slug: "bane",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...baneClassification,
+});
+assert.equal(baneScore.suggestedTarget, null);
+assert.ok(baneScore.reasons.some((reason) => reason.includes("Bane can affect 1 enemy")));
 
 const healClassification = classifySpell({
   name: "Heal",
@@ -5663,6 +11740,65 @@ assert.equal(heroismClassification.role, "buff");
 assert.equal(heroismClassification.activityProfile.attackBuff, true);
 assert.equal(heroismClassification.targetingProfile.ally, true);
 
+const heroismScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "valeros",
+    name: "Valeros",
+    hpPercent: 1,
+    classSlug: "fighter",
+    hasStrike: true,
+  }, {
+    id: "merisiel",
+    name: "Merisiel",
+    hpPercent: 1,
+    classSlug: "rogue",
+    hasStrike: true,
+    effects: [{ slug: "heroism", name: "Spell Effect: Heroism" }],
+  }, {
+    id: "kyra",
+    name: "Kyra",
+    hpPercent: 1,
+    classSlug: "cleric",
+    hasSpellcasting: true,
+  }],
+}, {
+  id: "heroism",
+  name: "Heroism",
+  slug: "heroism",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...heroismClassification,
+});
+assert.equal(heroismScore.suggestedTarget.name, "Valeros");
+assert.ok(heroismScore.reasons[0].includes("Valeros"));
+
+const alreadyBuffedHeroismScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "valeros",
+    name: "Valeros",
+    hpPercent: 1,
+    classSlug: "fighter",
+    hasStrike: true,
+    effects: [{ slug: "heroism", name: "Spell Effect: Heroism" }],
+  }],
+}, {
+  id: "heroism",
+  name: "Heroism",
+  slug: "heroism",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "buff",
+  activityProfile: { ...heroismClassification.activityProfile, ally: true },
+  targetingProfile: { ally: true, self: false },
+});
+assert.ok(alreadyBuffedHeroismScore.reasons.some((reason) => reason.includes("already has Heroism")));
+
 const liberatingCommandClassification = classifySpell({
   name: "Liberating Command",
   system: {
@@ -5677,8 +11813,68 @@ assert.equal(liberatingCommandClassification.role, "buff");
 assert.equal(liberatingCommandClassification.activityProfile.removesCondition, true);
 assert.equal(liberatingCommandClassification.targetingProfile.ally, true);
 
+const liberatingCommandScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "grabbed-ally",
+    name: "Grabbed Ally",
+    hpPercent: 0.8,
+    conditions: { slugs: ["grabbed"] },
+  }, {
+    id: "free-ally",
+    name: "Free Ally",
+    hpPercent: 0.8,
+  }],
+}, {
+  id: "liberating-command",
+  name: "Liberating Command",
+  slug: "liberating-command",
+  actionCost: 1,
+  source: "spell-inferred",
+  ...liberatingCommandClassification,
+});
+assert.equal(liberatingCommandScore.suggestedTarget.name, "Grabbed Ally");
+
+const invisibilityClassification = classifySpell({
+  name: "Invisibility",
+  system: {
+    traits: { value: ["illusion"] },
+    level: { value: 2 },
+    range: { value: "30 feet" },
+    target: { value: "1 creature" },
+    duration: { value: "10 minutes" },
+    description: { value: "<p>The target becomes invisible and is undetected by observers.</p>" },
+  },
+});
+assert.equal(invisibilityClassification.role, "stealth-defense");
+assert.equal(invisibilityClassification.activityProfile.invisible, true);
+assert.equal(invisibilityClassification.targetingProfile.ally, true);
+const invisibilityScore = scoreCandidate({
+  ...spellcasterSpellPriorityContext,
+  profile: { name: "Ezren", hpPercent: 1, classSlugs: ["wizard"], speed: 25, reach: 5 },
+  actor: { name: "Ezren" },
+  allies: [{
+    id: "injured-rogue",
+    name: "Injured Rogue",
+    hpPercent: 0.4,
+    classSlug: "rogue",
+    hasStrike: true,
+  }],
+}, {
+  id: "invisibility",
+  name: "Invisibility",
+  slug: "invisibility",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...invisibilityClassification,
+});
+assert.equal(invisibilityScore.suggestedTarget.name, "Injured Rogue");
+assert.ok(invisibilityScore.reasons[0].includes("harder to target"));
+
 // A non-combat utility spell is not a buff, but with max-coverage it still
-// surfaces as a low-priority "utility" option rather than being dropped.
+// surfaces as a low-priority exploration option rather than being dropped.
 const utilitySpellNotBuff = classifySpell({
   name: "Detect Magic",
   system: {
@@ -5689,8 +11885,18 @@ const utilitySpellNotBuff = classifySpell({
     description: { value: "<p>You send out a pulse that registers the presence of magic.</p>" },
   },
 });
-assert.equal(utilitySpellNotBuff.role, "utility");
+assert.equal(utilitySpellNotBuff.role, "exploration-utility");
+assert.equal(utilitySpellNotBuff.activityProfile.utilitySubtype, "exploration-utility");
 assert.notEqual(utilitySpellNotBuff.role, "buff");
+const detectMagicScore = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "detect-magic",
+  name: "Detect Magic",
+  slug: "detect-magic",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...utilitySpellNotBuff,
+});
+assert.ok(detectMagicScore.score < cantripDamageScore.score);
 
 const buffActionClassification = classifySystemAction({
   name: "Inspiring Banner",
@@ -6437,6 +12643,33 @@ try {
   const scoredPlainShot = scoreCandidate(rangedRetreatContext, readActionSources(rangedRetreatContext)
     .find((action) => action.source === "strike" && action.name === "Shortbow"));
   assert.ok(scoredRetreat.score > scoredPlainShot.score, "retreat shot should outscore adjacent ranged shot");
+
+  const retreatGrapplePlans = buildTurnPlans(rangedRetreatContext, [{
+    ...retreatAction,
+    score: 80,
+  }, {
+    id: "grapple",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "generic",
+    confidence: "medium",
+    role: "control",
+    skill: "athletics",
+    requiresEnemyInReach: true,
+    attackTrait: true,
+    score: 70,
+    preferredTarget: rangedRetreatContext.battlefield.targets[0],
+    reason: "Target is not grabbed.",
+  }]);
+  assert.equal(
+    retreatGrapplePlans.some((plan) =>
+      plan.steps.some((step) => step.id === retreatAction.id)
+      && plan.steps.some((step) => step.slug === "grapple"),
+    ),
+    false,
+    "retreating out of melee for a ranged attack must not be paired with Grapple",
+  );
 } finally {
   globalThis.canvas = previousRangedRetreatCanvas;
 }
@@ -6621,7 +12854,13 @@ const inferredSpellContext = {
             location: { value: "entry-1" },
           },
         }],
-        spellcastingEntry: [],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {},
+          },
+        }],
       },
     },
   },
@@ -6780,10 +13019,78 @@ const qualityCoverage = coverageForItems([{
   },
 }]);
 assert.equal(qualityCoverage.quality.lowConfidenceCount, 2);
-assert.equal(qualityCoverage.quality.utilityFallbackCount, 3);
+assert.equal(qualityCoverage.quality.utilityFallbackCount, 2);
 assert.equal(qualityCoverage.quality.likelyMisclassifiedBuffCount, 1);
+assert.equal(qualityCoverage.quality.likelyWrongCount, 1);
+assert.equal(qualityCoverage.quality.eventOnlyCount, 0);
+assert.equal(qualityCoverage.quality.weakCoverageCount, 3);
+assert.equal(qualityCoverage.quality.strongCoverageCount, 0);
+assert.equal(qualityCoverage.effectiveCoveragePct, 0);
 assert.equal(qualityCoverage.lowConfidence.some((entry) => entry.name === "Cryptic Clue"), true);
 assert.equal(qualityCoverage.utilityFallbacks.some((entry) => entry.name === "Seek"), true);
 assert.equal(qualityCoverage.likelyMisclassifiedBuffs[0].name, "Cryptic Clue");
+assert.equal(Array.isArray(qualityCoverage.auditBuckets.unknown), true);
+assert.equal(qualityCoverage.auditBuckets.likelyWrong[0].name, "Cryptic Clue");
+
+const eventCoverage = coverageForItems([{
+  name: "Reactive Strike",
+  type: "action",
+  system: {
+    actionType: { value: "reaction" },
+    actions: { value: null },
+    category: "offensive",
+    description: {
+      value: "<p><strong>Trigger</strong> A creature within reach uses a manipulate action. The monster makes a melee Strike.</p>",
+    },
+  },
+}]);
+assert.equal(eventCoverage.quality.eventOnlyCount, 1);
+assert.equal(eventCoverage.auditBuckets.eventOnly[0].name, "Reactive Strike");
+
+const playerUnsafeReasonScore = scoreCandidate({
+  isGM: false,
+  profile: { hp: { percent: 1 }, speed: 25, reach: 5 },
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  enemies: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  allies: [],
+}, {
+  id: "burn",
+  name: "Burn",
+  slug: "burn",
+  source: "spell-inferred",
+  role: "damage",
+  actionCost: 2,
+  targetingProfile: { enemy: true, maxRange: 60 },
+  damageProfile: { average: 10, type: "fire", types: ["fire"] },
+  reasons: [
+    "Goblin has fire weakness 5.",
+    "Reflex DC 17 vs spell DC 21.",
+    "Goblin resists fire 10.",
+  ],
+});
+assert.ok(!playerUnsafeReasonScore.reasons.some((reason) => /weakness|resists|immune|spell DC|DC \d+/i.test(reason)));
+assert.ok(!/weakness|resists|immune|spell DC|DC \d+/i.test(playerUnsafeReasonScore.reason));
+assert.equal(playerUnsafeReasonScore.reason, "Burn can damage Goblin.");
+
+const gmUnsafeReasonScore = scoreCandidate({
+  isGM: true,
+  profile: { hp: { percent: 1 }, speed: 25, reach: 5 },
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  enemies: [{ id: "goblin", name: "Goblin", distance: 30, hpPercent: 1, conditions: [] }],
+  allies: [],
+}, {
+  id: "burn",
+  name: "Burn",
+  slug: "burn",
+  source: "spell-inferred",
+  role: "damage",
+  actionCost: 2,
+  targetingProfile: { enemy: true, maxRange: 60 },
+  damageProfile: { average: 10, type: "fire", types: ["fire"] },
+  reasons: ["Goblin has fire weakness 5."],
+});
+assert.ok(gmUnsafeReasonScore.reasons.includes("Goblin has fire weakness 5."));
 
 console.log("PF2e Combater self-test passed");

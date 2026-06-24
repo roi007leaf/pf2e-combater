@@ -2,6 +2,9 @@ export const MODULE_ID = "pf2e-combater";
 
 export const STORAGE_KEYS = {
   panelState: `${MODULE_ID}.panelState`,
+  actionFavorites: `${MODULE_ID}.actionFavorites`,
+  draftPlans: `${MODULE_ID}.draftPlans`,
+  sharedDraftPlans: `${MODULE_ID}.sharedDraftPlans`,
 };
 
 export const ACTION_COST = {

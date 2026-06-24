@@ -9,6 +9,7 @@ import {
 } from "../integrations/visioner.js";
 import { compareTacticalCenters } from "../rules/battlefield-analysis.js";
 import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
+import { triggerMatchesContext } from "../rules/event-context.js";
 
 const ACTION_ITEM_TYPES = new Set(["action", "feat", "feature", "consumable"]);
 const ACTIVATABLE_ITEM_TYPES = new Set([
@@ -35,6 +36,7 @@ const ACTION_GLYPHS = {
 const MOVE_ACTION_SLUGS = new Set([
   "balance",
   "climb",
+  "crawl",
   "high-jump",
   "long-jump",
   "sneak",
@@ -43,6 +45,13 @@ const MOVE_ACTION_SLUGS = new Set([
   "stride",
   "swim",
   "tumble-through",
+]);
+const ESCAPE_CONDITIONS = new Set([
+  "grabbed",
+  "grappled",
+  "immobilised",
+  "immobilized",
+  "restrained",
 ]);
 const IMMOBILIZING_CONDITIONS = new Set([
   "grappled",
@@ -152,6 +161,7 @@ export function readActionSources(context) {
     ...readRangedRetreatStrikeActivities(context, generatedStrikes),
     ...readSkirmishStrikeActivities(context, generatedStrikes),
     ...readGeneratedActivities(actor, context),
+    ...readShieldSpellBlockActions(actor, context),
     ...readActorItemActions(actor, context),
   ];
 }
@@ -370,7 +380,8 @@ function readGeneratedActivities(actor, context) {
       const trigger = readTrigger(action.item ?? action);
       const triggerAvailability = readTriggerAvailability(trigger, context);
       const traits = readGeneratedActionTraits(action);
-      const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile: tactic?.activityProfile });
+      const activityProfile = addItemTraitProfile(tactic?.activityProfile, traits);
+      const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
       const available = actionCost !== null
         && actionCost !== Infinity
         && triggerAvailability.available
@@ -395,7 +406,7 @@ function readGeneratedActivities(actor, context) {
         generatedAction: action,
         trigger,
         role: tactic?.role ?? "unknown",
-        activityProfile: tactic?.activityProfile ?? null,
+        activityProfile,
         targetingProfile: tactic?.targetingProfile ?? null,
         saveProfile: tactic?.saveProfile ?? null,
         damageProfile: tactic?.damageProfile ?? null,
@@ -1067,8 +1078,8 @@ function drawStrikeTarget(context, range, readyStrikes) {
   const enemies = contextEnemies(context);
   return [...targets, ...enemies].find((target) =>
     canAttackTarget(target)
-      && !readyStrikeCanReach(readyStrikes, target)
-      && (target?.distance ?? Infinity) <= range.max,
+    && !readyStrikeCanReach(readyStrikes, target)
+    && (target?.distance ?? Infinity) <= range.max,
   ) ?? null;
 }
 
@@ -1215,8 +1226,8 @@ function readStrideStrikeActivities(context, readyStrikes) {
       reasons: [standFirst
         ? `Stand, Stride into reach, and Strike ${target.name}.`
         : strides > 1
-        ? `Stride twice into reach and Strike ${target.name}.`
-        : `Stride into reach and Strike ${target.name}.`],
+          ? `Stride twice into reach and Strike ${target.name}.`
+          : `Stride into reach and Strike ${target.name}.`],
     }];
   });
 }
@@ -1445,10 +1456,12 @@ function readActorItemActions(actor, context) {
     );
     const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = genericActionAvailability(slug, context);
+    const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
     const available = actionCost !== null
       && actionCost !== Infinity
       && itemAvailability.available
       && triggerAvailability.available
+      && shieldBlockAvailability.available
       && movementAvailability.available
       && genericAvailability.available;
 
@@ -1468,7 +1481,11 @@ function readActorItemActions(actor, context) {
       executable: tactic?.executable ?? "open-item",
       detected: true,
       available,
-      unavailableReason: itemAvailability.reason || triggerAvailability.reason || movementAvailability.reason || genericAvailability.reason,
+      unavailableReason: itemAvailability.reason
+        || triggerAvailability.reason
+        || shieldBlockAvailability.reason
+        || movementAvailability.reason
+        || genericAvailability.reason,
       item,
       trigger,
       role: tactic?.role ?? "unknown",
@@ -1487,10 +1504,13 @@ function readActorItemActions(actor, context) {
 }
 
 function readTrigger(item) {
-  const explicit = systemValue(item?.system?.trigger);
+  const explicit = systemValue(item?.system?.trigger ?? item?.trigger);
   if (explicit) return normalizeWhitespace(explicit);
 
-  const html = descriptionHtml(item);
+  const html = [
+    descriptionHtml(item),
+    systemValue(item?.description),
+  ].filter(Boolean).join(" ");
   const triggerMatch = html.match(/<strong>\s*Trigger\s*<\/strong>\s*([^<]+)/i);
   if (triggerMatch?.[1]) return normalizeWhitespace(triggerMatch[1]);
 
@@ -1499,36 +1519,117 @@ function readTrigger(item) {
   return textMatch?.[1] ? normalizeWhitespace(textMatch[1]) : "";
 }
 
-function contextTriggerEvents(context) {
-  const raw = context?.triggerEvents ?? context?.events ?? context?.battlefield?.triggerEvents ?? [];
-  return new Set((Array.isArray(raw) ? raw : [raw]).filter(Boolean).map((event) => String(event).toLowerCase()));
-}
-
-function triggerEventKeys(trigger) {
-  const text = String(trigger ?? "").toLowerCase();
-  const keys = [];
-  if (/\broll(?:ed)? initiative\b/.test(text)) keys.push("initiative", "initiative-roll", "initiative-rolled");
-  if (/\bturn begins\b|\bstart of your turn\b/.test(text)) keys.push("turn-start", "turn-begins");
-  if (/\bend of (?:a|any|your|another) .*turn\b/.test(text)) keys.push("turn-end");
-  if (/\bfail(?:ed|s)? (?:a )?(?:saving throw|save)\b|\bfailed save\b/.test(text)) keys.push("failed-save");
-  if (/\bbefore .* roll\b|\babout to roll\b/.test(text)) keys.push("before-roll");
-  if (/\bafter .* strike\b|\blast action\b.{0,40}\bstrike\b|\bsuccessful strike\b/.test(text)) keys.push("after-strike");
-  if (/\bprevious action\b|\blast action\b|\bnext action\b/.test(text)) keys.push("previous-action");
-  if (/\btargeted\b|\btargets you\b/.test(text)) keys.push("targeted");
-  if (/\bhits? you\b|\bdamages? you\b|\battack\b/.test(text)) keys.push("attacked", "damaged");
-  if (/\bcast(?:s)? a spell\b/.test(text)) keys.push("spell-cast");
-  if (/\bmanipulate\b|\bmove action\b|\branged attack\b|\bleaves a square\b/.test(text)) keys.push("provokes-reaction");
-  return keys;
-}
-
 function readTriggerAvailability(trigger, context) {
   if (!trigger) return availability(true, "");
 
-  const events = contextTriggerEvents(context);
-  const keys = triggerEventKeys(trigger);
-  if (keys.some((key) => events.has(key))) return availability(true, "");
+  if (triggerMatchesContext(trigger, context)) return availability(true, "");
 
   return availability(false, `Trigger is not active: ${trigger}`);
+}
+
+function readShieldBlockAvailability(slug, item, context) {
+  if (!isShieldBlockAction(slug, item)) return availability(true, "");
+  if (shieldBlockDefenseActive(context)) return availability(true, "");
+  return availability(false, "Shield Block requires Raise a Shield or an active Shield spell.");
+}
+
+function isShieldBlockAction(slug, item) {
+  return slug === "shield-block" || slugify(item?.name) === "shield-block";
+}
+
+function actorHasShieldBlockAction(actor) {
+  const items = [
+    ...collectionValues(actor?.itemTypes?.action),
+    ...collectionValues(actor?.itemTypes?.feat),
+    ...collectionValues(actor?.itemTypes?.feature),
+    ...collectionValues(actor?.items),
+  ];
+  return items.some((item) => isShieldBlockAction(slugify(item?.slug ?? item?.system?.slug ?? item?.name), item));
+}
+
+function shieldEffectEntries(context) {
+  const profile = contextProfile(context);
+  const actor = contextActor(context);
+  return [
+    ...collectionValues(profile?.effects),
+    ...collectionValues(context?.actor?.profile?.effects),
+    ...collectionValues(context?.profile?.effects),
+    ...collectionValues(actor?.itemTypes?.effect),
+    ...collectionValues(actor?.items).filter((item) => item?.type === "effect"),
+  ];
+}
+
+function effectSlugKeys(effect) {
+  return [
+    effect?.slug,
+    effect?.name,
+    effect?.sourceId,
+  ].map(slugify).filter(Boolean);
+}
+
+function shieldSpellDefenseActive(context) {
+  const profile = contextProfile(context);
+  if (profile?.combatState?.shieldSpellActive === true) return true;
+
+  return shieldEffectEntries(context).some((effect) =>
+    effectSlugKeys(effect).some((key) =>
+      key === "spell-effect-shield"
+      || key === "effect-shield",
+    ),
+  );
+}
+
+function shieldBlockDefenseActive(context) {
+  const profile = contextProfile(context);
+  if (profile?.combatState?.raisedShieldActive === true || profile?.combatState?.shieldSpellActive === true) {
+    return true;
+  }
+
+  return shieldEffectEntries(context).some((effect) =>
+    effectSlugKeys(effect).some((key) =>
+      key === "effect-raise-a-shield"
+      || key === "raise-a-shield"
+      || key === "raised-shield"
+      || key === "spell-effect-shield"
+      || key === "effect-shield",
+    ),
+  );
+}
+
+function readShieldSpellBlockActions(actor, context) {
+  if (!shieldSpellDefenseActive(context)) return [];
+  if (actorHasShieldBlockAction(actor)) return [];
+
+  const trigger = "You would take damage from an attack while your Shield spell is active.";
+  const triggerAvailability = readTriggerAvailability(trigger, context);
+  const shieldBlockAvailability = readShieldBlockAvailability("shield-block", { name: "Shield Block" }, context);
+  const available = triggerAvailability.available && shieldBlockAvailability.available;
+  return [{
+    id: "spell-shield-block",
+    name: "Shield Block",
+    slug: "shield-block",
+    actionCost: "reaction",
+    actionType: "reaction",
+    activationActionCost: "reaction",
+    source: "spell-inferred",
+    confidence: "high",
+    executable: "chat-guidance",
+    detected: true,
+    available,
+    unavailableReason: triggerAvailability.reason || shieldBlockAvailability.reason,
+    item: null,
+    trigger,
+    role: "defense",
+    activityProfile: { reaction: true, spell: true, shieldBlock: true },
+    targetingProfile: { self: true },
+    saveProfile: null,
+    damageProfile: null,
+    gatingProfile: null,
+    setupFor: [],
+    reasons: ["Shield spell grants Shield Block while active."],
+    traits: [],
+    attackTrait: false,
+  }];
 }
 
 function isGenericAvailable(action, context) {
@@ -1613,6 +1714,11 @@ function isGenericAvailable(action, context) {
       return availability(false, "Actor is not prone.");
     }
   }
+  if (action.requiresSickened) {
+    if (!hasCondition(profile, "sickened")) {
+      return availability(false, "Actor is not sickened.");
+    }
+  }
   if (action.requiresCover) {
     if (action.slug === "take-cover") {
       if (!hasAdjacentCover(context, profile)) {
@@ -1628,8 +1734,8 @@ function isGenericAvailable(action, context) {
     }
   }
   if (action.requiresGrabbedOrRestrained) {
-    if (!hasCondition(profile, "grabbed") && !hasCondition(profile, "restrained")) {
-      return availability(false, "Actor is not grabbed or restrained.");
+    if (![...ESCAPE_CONDITIONS].some((condition) => hasCondition(profile, condition))) {
+      return availability(false, "Actor is not grabbed, restrained, or immobilized.");
     }
   }
   if (action.requiresDyingAlly) {
@@ -1707,13 +1813,13 @@ function hasMovementCollisionChecker(context) {
 
 function basicMovementBlockedByCollision(context, profile, action) {
   const slug = String(action?.slug ?? "").toLowerCase();
-  if (!["step", "stride"].includes(slug)) return false;
+  if (!["crawl", "step", "stride"].includes(slug)) return false;
   if (!hasMovementCollisionChecker(context)) return false;
 
   const origin = centerPoint(context?.token);
   if (!origin) return false;
 
-  const distance = slug === "step" ? 5 : movementRange(profile);
+  const distance = ["crawl", "step"].includes(slug) ? 5 : movementRange(profile);
   const metrics = movementGridMetrics();
   const collisionToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   return !movementReachableCenters(origin, distance, metrics, collisionToken).length;
@@ -1915,10 +2021,10 @@ function hasAdjacentCoverWall(context) {
 function hasAdjacentCover(context, profile) {
   return Boolean(
     profile?.hasAdjacentCover
-      || context?.adjacentCover
-      || context?.battlefield?.hasAdjacentCover
-      || context?.battlefield?.adjacentCover
-      || hasAdjacentCoverWall(context),
+    || context?.adjacentCover
+    || context?.battlefield?.hasAdjacentCover
+    || context?.battlefield?.adjacentCover
+    || hasAdjacentCoverWall(context),
   );
 }
 
@@ -1955,7 +2061,7 @@ function hasSeekTarget(context, enemies) {
     const visionerState = useVisioner
       ? (enemy?.visionerDetectionState
         ?? enemy?.visibility
-        ?? readVisionerDetectionState(observer, enemy))
+        ?? readVisionerDetectionState(enemy, observer))
       : null;
     if (visionerState) return isSeekRelevantVisibility(visionerState);
     if (enemy?.token?.hidden || enemy?.hidden) return true;
@@ -1999,27 +2105,27 @@ function hasTumbleThroughOpportunity(context, targets) {
 
   return targets.some((target) =>
     target?.blocksPath
-      || target?.needThroughEnemy
-      || target?.flankOpportunity
-      || target?.offGuardPayoff,
+    || target?.needThroughEnemy
+    || target?.flankOpportunity
+    || target?.offGuardPayoff,
   );
 }
 
 function hasCoverOrConcealment(profile, context) {
   return Boolean(
     profile?.hasCover
-      || profile?.hasConcealment
-      || context?.battlefield?.hasCover
-      || context?.battlefield?.hasConcealment,
+    || profile?.hasConcealment
+    || context?.battlefield?.hasCover
+    || context?.battlefield?.hasConcealment,
   );
 }
 
 function hasCompanionOrMinion(context, profile) {
   return Boolean(
     profile?.hasCompanion
-      || profile?.hasMinion
-      || context?.companions?.length
-      || context?.minions?.length,
+    || profile?.hasMinion
+    || context?.companions?.length
+    || context?.minions?.length,
   );
 }
 
@@ -2035,6 +2141,18 @@ function hasCondition(entity, slug) {
   return false;
 }
 
+function hasExplicitActionValue(value) {
+  const raw = systemValue(value);
+  return raw !== undefined && raw !== null && String(raw).trim() !== "";
+}
+
+function defaultItemActionCostOnly(item, actionType, actions) {
+  const type = String(systemValue(actionType) ?? "").toLowerCase();
+  if (type !== "action") return false;
+  if (hasExplicitActionValue(actions)) return false;
+  return !["action", "feat", "feature"].includes(item?.type);
+}
+
 export function readActionCost(item) {
   const getterCost = item?.actionCost;
   const getterType = systemValue(getterCost?.type);
@@ -2047,10 +2165,16 @@ export function readActionCost(item) {
   const actionType = systemValue(item?.system?.actionType);
   const actions = systemValue(item?.system?.actions);
   const parsed = parseActionCost(actionType, actions);
-  if (parsed.actionCost !== null) {
+  if (parsed.actionCost !== null && !defaultItemActionCostOnly(item, actionType, actions)) {
     return withConsumableInteractCost(item, parsed);
   }
-  return withConsumableInteractCost(item, readActivationActionCost(item) ?? parsed);
+
+  const activationCost = readActivationActionCost(item);
+  if (activationCost) return withConsumableInteractCost(item, activationCost);
+
+  return withConsumableInteractCost(item, defaultItemActionCostOnly(item, actionType, actions)
+    ? { actionCost: null, type: "unknown", passive: false }
+    : parsed);
 }
 
 function readItemAvailability(item) {
@@ -2072,8 +2196,8 @@ function readItemAvailability(item) {
 
   const frequencyCurrent = Number(systemValue(
     item.system?.frequency?.value
-      ?? item.system?.frequency?.current
-      ?? item.system?.frequency?.remaining,
+    ?? item.system?.frequency?.current
+    ?? item.system?.frequency?.remaining,
   ));
   if (Number.isFinite(frequencyCurrent) && frequencyCurrent <= 0) {
     return { available: false, reason: "Frequency is spent." };
@@ -2196,7 +2320,9 @@ function isHeldItem(item) {
 
 function consumableInteractDrawCost(item, parsedCost) {
   if (!requiresHeldConsumableUse(item) || isHeldItem(item)) return 0;
-  return Number.isFinite(Number(parsedCost?.actionCost)) ? 1 : 0;
+  const actionCost = parsedCost?.actionCost;
+  if (actionCost === null || actionCost === undefined) return 0;
+  return Number.isFinite(Number(actionCost)) ? 1 : 0;
 }
 
 function withConsumableInteractCost(item, parsedCost) {
@@ -2222,10 +2348,14 @@ function addConsumableInteractProfile(activityProfile, parsedCost) {
 }
 
 function addItemTraitProfile(activityProfile, traits) {
-  if (!Array.isArray(traits) || !traits.includes("impulse")) return activityProfile ?? null;
+  if (!Array.isArray(traits)) return activityProfile ?? null;
+  const normalizedTraits = traits.map((trait) => slugify(trait));
+  if (!normalizedTraits.includes("impulse") && !normalizedTraits.includes("overflow")) return activityProfile ?? null;
+  const next = { ...(activityProfile ?? {}) };
+  if (normalizedTraits.includes("impulse")) next.impulse = true;
+  if (normalizedTraits.includes("overflow")) next.overflow = true;
   return {
-    ...(activityProfile ?? {}),
-    impulse: true,
+    ...next,
   };
 }
 

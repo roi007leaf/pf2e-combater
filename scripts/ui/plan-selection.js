@@ -1,5 +1,5 @@
 const ALTERNATIVE_DIVERSITY_WINDOW = 6;
-const BASIC_MOVE_SLUGS = new Set(["step", "stride", "stand", "stand-stride"]);
+const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride", "stand", "stand-stride"]);
 const SKILL_ACTION_SLUGS = new Set([
   "demoralize",
   "recall-knowledge",
@@ -47,13 +47,13 @@ function isItemStep(step) {
 }
 
 function stepCategory(step) {
+  if (["healing", "defense", "buff", "stealth-defense", "self-healing"].includes(step?.role)) return "support";
   if (isStrikeStep(step)) return "strike";
   if (isSpellStep(step)) return "spell";
   if (step?.activityProfile?.impulse === true) return "class";
   if (BASIC_MOVE_SLUGS.has(step?.slug) || step?.role === "mobility") return "movement";
   if (isItemStep(step)) return "item";
   if (step?.skill || SKILL_ACTION_SLUGS.has(step?.slug)) return "skill";
-  if (["healing", "defense", "buff", "self-healing"].includes(step?.role)) return "support";
   if (["custom-curated", "system-inferred"].includes(step?.source)) return "class";
   return "other";
 }

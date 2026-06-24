@@ -117,10 +117,34 @@ function readAreaProfile(spell) {
   const area = spell?.system?.area;
   if (!area) return null;
   const distance = Number(systemValue(area.value ?? area.radius ?? area.distance));
+  const type = String(area.type ?? "area").toLowerCase();
   return {
     area: true,
-    type: String(area.type ?? "area").toLowerCase(),
+    type,
     distance: Number.isFinite(distance) && distance > 0 ? distance : null,
+  };
+}
+
+function isSelfCenteredArea(areaProfile) {
+  return String(areaProfile?.type ?? "").toLowerCase() === "emanation";
+}
+
+function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
+  if (isSelfCenteredArea(areaProfile)) {
+    return {
+      ...areaProfile,
+      ...rangeProfile,
+      selfCentered: true,
+      center: "self",
+      affectsEnemies: true,
+      enemy: false,
+    };
+  }
+
+  return {
+    ...(areaProfile ?? {}),
+    ...rangeProfile,
+    enemy: true,
   };
 }
 
@@ -192,13 +216,17 @@ function readConditionProfile(spell) {
 }
 
 function readDurationProfile(spell) {
-  const duration = normalizeText(systemValue(spell?.system?.duration) ?? spell?.system?.duration ?? "");
-  const text = spellText(spell);
+  const durationData = spell?.system?.duration;
+  const duration = normalizeText(durationData?.value ?? systemValue(durationData) ?? durationData ?? "");
   const instantaneous = !duration || duration === "instantaneous";
+  // "Sustained" is a structured flag on the duration, NOT any spell that mentions "sustain" in
+  // its text (e.g. Sure Strike has a turn-long duration but is not sustainable). Trust the
+  // boolean; only fall back to the duration string itself starting with "sustained".
+  const sustained = durationData?.sustained === true || /^sustained\b/.test(duration);
   return {
     duration: duration || null,
     lastingDuration: !instantaneous,
-    sustained: /\bsustained\b|\bsustain\b/.test(duration) || /\bsustain(?:ed)?\b/.test(text),
+    sustained,
   };
 }
 
@@ -284,7 +312,115 @@ function readBuffProfile(spell) {
   return { ally, attackBuff, damageBuff, acBuff, saveBuff, tempHp, resistance, removesCondition, extraAction };
 }
 
+function readStealthDefenseProfile(spell) {
+  const text = spellText(spell);
+  const invisible = /\binvisible\b|\binvisibility\b/.test(text);
+  const hidden = /\bhidden\b|\bundetected\b|\bunnoticed\b/.test(text);
+  const concealed = /\bconcealed\b|\bconcealment\b|\bobscured\b/.test(text);
+  if (!(invisible || hidden || concealed)) return null;
+
+  const ally = /\bally\b|\ballies\b|\bwilling creature\b|\btarget\b|\bcreature\b/.test(text);
+  return { ally, invisible, hidden, concealed, stealthDefense: true };
+}
+
+function readUtilityProfile(spell, { controlFacts = null } = {}) {
+  const text = spellText(spell);
+  const traits = spellTraits(spell);
+
+  if (/\bsustain\b|\bsustained\b/.test(text) && controlFacts) {
+    return {
+      role: "sustain-control",
+      includes: ["utility", "sustain-control"],
+      confidence: "medium",
+      reason: "Sustained spell can keep a control effect active.",
+    };
+  }
+
+  if (
+    /\bdispel\b|\bcounteract\b|\breveal\b|\bsee invisib|\btrue seeing\b|\bdetect (?:poison|alignment|scrying)\b/.test(text)
+    || traits.includes("counteract")
+  ) {
+    return {
+      role: "combat-utility",
+      includes: ["utility", "combat-utility"],
+      confidence: "medium",
+      reason: "Spell has situational combat utility.",
+    };
+  }
+
+  if (
+    traits.includes("detection")
+    || /\bdetect magic\b|\bread aura\b|\bidentify magic\b|\btranslate\b|\blanguage\b|\blight\b|\bclean\b|\bfood\b|\bwater\b|\btravel\b|\blocate\b|\bmending\b/.test(text)
+  ) {
+    return {
+      role: "exploration-utility",
+      includes: ["utility", "exploration-utility"],
+      confidence: "low",
+      reason: "Spell is mostly useful outside combat.",
+    };
+  }
+
+  return {
+    role: "combat-utility",
+    includes: ["utility", "combat-utility"],
+    confidence: "low",
+    reason: "Spell is available but has no recognized high-value combat pattern.",
+  };
+}
+
+// Multiple @Template embeds in a spell's description mean the caster chooses which area to
+// place; surface them so the panel can prompt. Most spells use the single system.area instead.
+function readSpellTemplates(spell) {
+  const raw = String(systemValue(spell?.system?.description) ?? spell?.system?.description?.value ?? "");
+  const matches = [...raw.matchAll(/@Template\[([^\]]+)\]/gi)];
+  if (!matches.length) return null;
+  const seen = new Set();
+  const templates = matches
+    .map((match) => {
+      const parts = Object.fromEntries(
+        match[1].split("|")
+          .map((part) => part.split(":"))
+          .filter(([key, value]) => key && value)
+          .map(([key, value]) => [key.trim().toLowerCase(), value.trim().toLowerCase()]),
+      );
+      const distance = Number(parts.distance ?? parts.radius ?? parts.length);
+      const width = Number(parts.width);
+      const type = parts.type ?? "area";
+      const label = `${type.charAt(0).toUpperCase()}${type.slice(1)}${Number.isFinite(distance) ? ` ${distance} ft` : ""}`;
+      return {
+        type,
+        distance: Number.isFinite(distance) ? distance : null,
+        ...(Number.isFinite(width) ? { width } : {}),
+        label,
+      };
+    })
+    .filter((template) => {
+      // Dedupe identical shapes — the description's @Template can match more than once.
+      const key = `${template.type}|${template.distance}|${template.width ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return templates.length > 1 ? templates : null;
+}
+
 export function classifySpell(spell) {
+  const result = classifySpellBase(spell);
+  if (!result) return result;
+  const templates = readSpellTemplates(spell);
+  if (templates && templates.length > 1) {
+    result.targetingProfile = {
+      ...(result.targetingProfile ?? {}),
+      area: true,
+      type: result.targetingProfile?.type ?? templates[0].type,
+      distance: result.targetingProfile?.distance ?? templates[0].distance,
+      templates,
+    };
+  }
+  return result;
+}
+
+function classifySpellBase(spell) {
   if (!spell) return null;
 
   const traits = spellTraits(spell);
@@ -311,7 +447,7 @@ export function classifySpell(spell) {
   if (areaProfile && damageProfile) {
     return inferred("area-damage", {
       activityProfile: { ...baseProfile(["damage", "area"]), ...spellFacts },
-      targetingProfile: { ...areaProfile, ...rangeProfile, enemy: true },
+      targetingProfile: enemyEffectTargetingProfile(areaProfile, rangeProfile),
       saveProfile,
       damageProfile,
       confidence: "high",
@@ -351,7 +487,7 @@ export function classifySpell(spell) {
         ...(areaProfile ?? {}),
         ...(controlFacts ?? {}),
       },
-      targetingProfile: { enemy: true, ...rangeProfile, ...(areaProfile ?? {}) },
+      targetingProfile: enemyEffectTargetingProfile(areaProfile, rangeProfile),
       saveProfile,
       confidence: saveProfile || conditionProfile ? "medium" : "high",
       reasons: [saveProfile
@@ -363,6 +499,16 @@ export function classifySpell(spell) {
   }
 
   const selfOnly = targetsSelfOnly(spell, rangeProfile);
+  const stealthDefense = readStealthDefenseProfile(spell);
+
+  if (stealthDefense && !damageProfile && !saveProfile) {
+    return inferred("stealth-defense", {
+      activityProfile: { ...baseProfile(["stealth-defense"]), ...spellFacts, ...stealthDefense },
+      targetingProfile: stealthDefense.ally ? { ally: true, self: true } : { self: true },
+      confidence: "medium",
+      reasons: ["Spell improves stealth or makes the target harder to see."],
+    });
+  }
 
   if (selfOnly && !damageProfile && !saveProfile) {
     const defensive = traits.includes("abjuration")
@@ -417,10 +563,15 @@ export function classifySpell(spell) {
 
   // Catch-all: a combat-castable spell with no recognized tactical pattern still
   // surfaces as a low-priority option rather than being dropped.
-  return inferred("utility", {
-    activityProfile: { ...baseProfile(["utility"]), ...spellFacts },
+  const utility = readUtilityProfile(spell, { controlFacts });
+  return inferred(utility.role, {
+    activityProfile: {
+      ...baseProfile(utility.includes),
+      ...spellFacts,
+      utilitySubtype: utility.role,
+    },
     targetingProfile: { self: true },
-    confidence: "low",
-    reasons: ["Spell is available but has no recognized combat pattern."],
+    confidence: utility.confidence,
+    reasons: [utility.reason],
   });
 }

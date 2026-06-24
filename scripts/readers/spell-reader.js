@@ -14,6 +14,12 @@ function systemValue(value) {
   return value;
 }
 
+function titleCase(value) {
+  return String(value ?? "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function isActorDocument(value) {
   return Boolean(value && typeof value === "object" && (value.system || value.items || value.itemTypes));
 }
@@ -31,8 +37,8 @@ export function readSpellActions(context) {
   return collectionValues(actor?.itemTypes?.spell).flatMap((item) => {
     const slug = slugify(item.slug ?? item.system?.slug ?? item.name);
     const curated = findCuratedSpell(slug);
-    const inferred = curated ? null : classifySpell(item);
-    const tactic = curated ?? inferred;
+    const inferred = classifySpell(item);
+    const tactic = mergeSpellTactic(curated, inferred);
     const parsedTime = readSpellActionCost(item);
     const actionCosts = curated?.actionCost !== undefined
       ? [curated.actionCost]
@@ -41,6 +47,7 @@ export function readSpellActions(context) {
     const spellAvailability = readSpellAvailability(actor, item, entry);
     const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
     const rank = spellRank(item);
+    const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase() || null;
     const variantGroup = `spell-${item.id ?? item._id ?? slug}`;
 
     return actionCosts.map((actionCost) => ({
@@ -76,11 +83,103 @@ export function readSpellActions(context) {
       spellDc: readSpellDc(actor, item, entry),
       spellcastingEntryId: entry?.id ?? entry?._id ?? null,
       spellcastingEntryUuid: entry?.uuid ?? null,
-      spellcastingEntryType: String(systemValue(entry?.system?.prepared) ?? "").toLowerCase() || null,
+      spellcastingEntryType: preparedType,
+      spellcastingEntryLabel: readSpellcastingEntryLabel(entry),
+      spellcastingEntryTradition: readSpellcastingEntryTradition(entry),
+      spellResource: readSpellResource(actor, item, entry),
       location: systemValue(item.system?.location),
       time: systemValue(item.system?.time) ?? "2",
     }));
   });
+}
+
+function compactSaveProfile(tactic) {
+  const stat = String(tactic?.save ?? tactic?.saveProfile?.stat ?? "").toLowerCase();
+  if (!["fortitude", "reflex", "will"].includes(stat)) return null;
+  return {
+    ...(tactic?.saveProfile ?? {}),
+    stat,
+    basic: tactic?.saveProfile?.basic ?? null,
+  };
+}
+
+function compactTargetingProfile(tactic) {
+  const model = String(tactic?.targetModel ?? "").toLowerCase();
+  if (!model) return null;
+  if (model === "self") return { self: true };
+  if (model === "single-ally") return { ally: true, self: true };
+  if (model === "single-enemy") return { enemy: true };
+  if (model === "two-enemies") return { enemy: true, maxTargets: 2 };
+  if (model === "area") return { area: true, enemy: true };
+  return null;
+}
+
+function compactDamageProfile(tactic) {
+  const types = Array.isArray(tactic?.damageTypes)
+    ? tactic.damageTypes.map((type) => String(type).toLowerCase()).filter(Boolean)
+    : [];
+  if (!types.length) return null;
+  return {
+    type: types[0],
+    types,
+  };
+}
+
+function compactActivityProfile(tactic) {
+  const profile = {};
+  if (Array.isArray(tactic?.damageTypes) && tactic.damageTypes.length) {
+    profile.damageTypes = tactic.damageTypes.map((type) => String(type).toLowerCase()).filter(Boolean);
+  }
+  if (tactic?.attack === true) profile.spellAttack = true;
+  if (tactic?.variableActionCost === true) profile.damageScalesWithActions = true;
+  return Object.keys(profile).length ? profile : null;
+}
+
+function mergeObjects(...objects) {
+  const merged = Object.assign({}, ...objects.filter((object) => object && typeof object === "object"));
+  return Object.keys(merged).length ? merged : null;
+}
+
+function mergeArrays(...values) {
+  return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : []).filter(Boolean))];
+}
+
+function preferredSpellRole(curated, inferred) {
+  const curatedRole = curated?.role;
+  const inferredRole = inferred?.role;
+  if (!curatedRole) return inferredRole;
+  if (!inferredRole) return curatedRole;
+  if (curatedRole === "damage" && ["save-damage", "area-damage"].includes(inferredRole)) return inferredRole;
+  if (curatedRole === "control" && inferredRole === "sustain-control") return inferredRole;
+  return curatedRole;
+}
+
+function mergeSpellTactic(curated, inferred) {
+  if (!curated) return inferred;
+  if (!inferred) {
+    return {
+      ...curated,
+      saveProfile: compactSaveProfile(curated),
+      targetingProfile: compactTargetingProfile(curated),
+      damageProfile: compactDamageProfile(curated),
+      activityProfile: compactActivityProfile(curated),
+    };
+  }
+
+  const role = preferredSpellRole(curated, inferred);
+  return {
+    ...inferred,
+    ...curated,
+    role,
+    activityProfile: mergeObjects(inferred.activityProfile, compactActivityProfile(curated), curated.activityProfile),
+    targetingProfile: mergeObjects(compactTargetingProfile(curated), inferred.targetingProfile, curated.targetingProfile),
+    saveProfile: mergeObjects(compactSaveProfile(curated), inferred.saveProfile, curated.saveProfile),
+    damageProfile: mergeObjects(compactDamageProfile(curated), inferred.damageProfile, curated.damageProfile),
+    setupFor: mergeArrays(inferred.setupFor, curated.setupFor),
+    reasons: mergeArrays(curated.reasons, inferred.reasons),
+    confidence: curated.confidence ?? inferred.confidence,
+    executable: curated.executable ?? inferred.executable,
+  };
 }
 
 export function readSpellActionCost(item) {
@@ -132,9 +231,20 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
   if (item.disabled === true || item.system?.disabled === true || item.system?.enabled === false) {
     return { available: false, reason: "Spell is disabled." };
   }
-  if (isCantrip(item)) return { available: true, reason: "" };
 
-  if (!entry) return { available: false, reason: "No spellcasting entry found." };
+  const hasExplicitLocation = Boolean(spellLocation(item));
+  if (hasExplicitLocation && !spellcastingEntryActive(entry)) {
+    return { available: false, reason: "Spell is not assigned to an active spellcasting entry." };
+  }
+
+  if (!entry) {
+    return isCantrip(item)
+      ? { available: true, reason: "" }
+      : { available: false, reason: "No spellcasting entry found." };
+  }
+  if (!spellcastingEntryActive(entry)) {
+    return { available: false, reason: "Spellcasting entry is not active." };
+  }
 
   const preparedType = String(systemValue(entry.system?.prepared) ?? "").toLowerCase();
   if (preparedType === "focus") {
@@ -145,8 +255,14 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
     return preparedSpellAvailable(entry, item);
   }
 
+  if (isCantrip(item)) return { available: true, reason: "" };
+
   if (preparedType === "innate") {
     return innateSpellAvailable(item);
+  }
+
+  if (preparedType === "items") {
+    return itemSpellAvailable(entry, item);
   }
 
   if (preparedType === "spontaneous") {
@@ -154,6 +270,17 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
   }
 
   return { available: false, reason: "Unknown spellcasting preparation type." };
+}
+
+function spellcastingEntryActive(entry) {
+  if (!entry) return false;
+  return entry.visible !== false
+    && entry.system?.visible !== false
+    && entry.hidden !== true
+    && entry.system?.hidden !== true
+    && entry.disabled !== true
+    && entry.system?.disabled !== true
+    && entry.system?.enabled !== false;
 }
 
 function spellLocation(spell) {
@@ -197,6 +324,14 @@ function preparedSpellIdentityValues(preparedSpell) {
     preparedSpell?.itemId,
     preparedSpell?.uuid,
     preparedSpell?.sourceId,
+    preparedSpell?.slug,
+    preparedSpell?.system?.slug,
+    preparedSpell?.spell?.id,
+    preparedSpell?.spell?._id,
+    preparedSpell?.spell?.uuid,
+    preparedSpell?.spell?.sourceId,
+    preparedSpell?.spell?.slug,
+    preparedSpell?.spell?.system?.slug,
   ]
     .filter(Boolean)
     .map((value) => String(value));
@@ -223,6 +358,7 @@ function findSpellcastingEntry(actor, spell) {
     const locationText = String(location);
     const exact = entries.find((entry) => entryIdentityValues(entry).includes(locationText));
     if (exact) return exact;
+    return null;
   }
 
   const slotMatch = entries.find((entry) => entryContainsSpell(entry, spell));
@@ -256,6 +392,139 @@ function numericValue(...values) {
   return null;
 }
 
+function numericCount(...values) {
+  for (const value of values) {
+    const number = Number(systemValue(value));
+    if (Number.isFinite(number) && number >= 0) return number;
+  }
+  return null;
+}
+
+function readSpellcastingEntryTradition(entry) {
+  return String(systemValue(
+    entry?.system?.tradition
+    ?? entry?.tradition
+    ?? entry?.statistic?.tradition,
+  ) ?? "").toLowerCase();
+}
+
+function readSpellcastingEntryLabel(entry) {
+  if (!entry) return "";
+  const name = String(entry.name ?? entry.label ?? "").trim();
+  if (name) return name;
+  const parts = [
+    readSpellcastingEntryTradition(entry),
+    systemValue(entry?.system?.prepared),
+  ].map(titleCase).filter(Boolean);
+  return [...new Set(parts)].join(" ");
+}
+
+function slotForRank(entry, rank) {
+  if (!Number.isFinite(rank)) return null;
+  return entry?.system?.slots?.[`slot${rank}`] ?? null;
+}
+
+function slotRemaining(slot) {
+  return numericCount(slot?.value, slot?.remaining);
+}
+
+function slotMaximum(slot) {
+  return numericCount(slot?.max, slot?.maximum, slot?.maxSlots);
+}
+
+function usesData(spell) {
+  const uses = spell?.system?.location?.uses;
+  if (!uses || typeof uses !== "object") {
+    const value = numericCount(uses);
+    return value === null ? null : { value, max: null };
+  }
+  const value = numericCount(uses?.value, uses?.remaining);
+  const max = numericCount(uses?.max, uses?.maximum);
+  return value === null && max === null ? null : { value: value ?? 0, max };
+}
+
+function countLabel(prefix, value, max = null) {
+  return max !== null ? `${prefix} ${value}/${max}` : `${prefix} ${value}`;
+}
+
+function readPreparedSpellResource(entry, spell, rank) {
+  const slot = slotForRank(entry, rank);
+  const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
+  const spellIds = new Set(spellIdentityValues(spell));
+  const matching = prepared.filter((preparedSpell) =>
+    preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
+  );
+  const availableMatching = matching.filter((preparedSpell) => preparedSpell?.expended !== true).length;
+  const availableRank = prepared.filter((preparedSpell) => preparedSpell?.expended !== true).length;
+  return {
+    type: "prepared",
+    rank,
+    label: `Prepared ${availableMatching}/${matching.length}`,
+    tooltip: Number.isFinite(rank)
+      ? `Rank ${rank} prepared slots: ${availableRank}/${prepared.length} unexpended.`
+      : `${availableMatching}/${matching.length} prepared copies unexpended.`,
+    preparedAvailable: availableMatching,
+    preparedTotal: matching.length,
+    rankAvailable: availableRank,
+    rankTotal: prepared.length,
+  };
+}
+
+function readSlotSpellResource(entry, rank) {
+  const slot = slotForRank(entry, rank);
+  const remaining = slotRemaining(slot) ?? 0;
+  const max = slotMaximum(slot);
+  return {
+    type: "spontaneous",
+    rank,
+    label: countLabel("Slots", remaining, max),
+    tooltip: Number.isFinite(rank)
+      ? `Rank ${rank} spell slots: ${max !== null ? `${remaining}/${max}` : remaining} left.`
+      : `${max !== null ? `${remaining}/${max}` : remaining} spell slots left.`,
+    remaining,
+    max,
+  };
+}
+
+function readFocusSpellResource(actor) {
+  const focus = actor?.system?.resources?.focus;
+  const value = numericCount(focus?.value) ?? 0;
+  const max = numericCount(focus?.max) ?? numericCount(focus?.maximum);
+  return {
+    type: "focus",
+    label: countLabel("Focus", value, max),
+    tooltip: `${max !== null ? `${value}/${max}` : value} focus points left.`,
+    remaining: value,
+    max,
+  };
+}
+
+function readUseSpellResource(spell, type) {
+  const uses = usesData(spell);
+  if (!uses) return { type, label: titleCase(type), tooltip: "" };
+  return {
+    type,
+    label: countLabel("Uses", uses.value, uses.max),
+    tooltip: `${uses.max !== null ? `${uses.value}/${uses.max}` : uses.value} uses left.`,
+    remaining: uses.value,
+    max: uses.max,
+  };
+}
+
+function readSpellResource(actor, spell, entry) {
+  const rank = spellRank(spell);
+  const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
+  if (isCantrip(spell)) {
+    return { type: "cantrip", rank, label: "No slot", tooltip: "Cantrip does not spend a spell slot." };
+  }
+  if (preparedType === "focus" || isFocusSpell(spell, entry)) return readFocusSpellResource(actor);
+  if (preparedType === "prepared") return readPreparedSpellResource(entry, spell, rank);
+  if (preparedType === "spontaneous") return readSlotSpellResource(entry, rank);
+  if (preparedType === "innate") return readUseSpellResource(spell, "innate");
+  if (preparedType === "items") return readUseSpellResource(spell, "item");
+  return Number.isFinite(rank) ? readSlotSpellResource(entry, rank) : null;
+}
+
 function readSpellDc(actor, spell, entry) {
   return numericValue(
     spell?.spellcasting?.statistic?.dc?.value,
@@ -274,14 +543,13 @@ function readSpellDc(actor, spell, entry) {
 
 function preparedSpellAvailable(entry, spell) {
   const slots = entry.system?.slots ?? {};
-  const spellId = spell.id ?? spell._id;
+  const spellIds = new Set(spellIdentityValues(spell));
 
   for (const slot of Object.values(slots)) {
     const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
-    const match = prepared.find((preparedSpell) => {
-      const id = preparedSpell?.id ?? preparedSpell?.spellId ?? preparedSpell?._id;
-      return id && id === spellId;
-    });
+    const match = prepared.find((preparedSpell) =>
+      preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
+    );
     if (match && match.expended !== true) return { available: true, reason: "" };
   }
 
@@ -302,8 +570,14 @@ function slotAvailable(entry, rank) {
   return { available: false, reason: "No spell slots remaining." };
 }
 
-function innateSpellAvailable(spell) {
+function spellLocationUses(spell) {
   const uses = Number(systemValue(spell.system?.location?.uses));
+  if (Number.isFinite(uses)) return uses;
+  return Number(systemValue(spell.system?.location?.uses?.value));
+}
+
+function innateSpellAvailable(spell) {
+  const uses = spellLocationUses(spell);
   if (Number.isFinite(uses)) {
     return uses > 0
       ? { available: true, reason: "" }
@@ -311,6 +585,17 @@ function innateSpellAvailable(spell) {
   }
 
   return { available: true, reason: "" };
+}
+
+function itemSpellAvailable(entry, spell) {
+  const uses = spellLocationUses(spell);
+  if (Number.isFinite(uses)) {
+    return uses > 0
+      ? { available: true, reason: "" }
+      : { available: false, reason: "Item spell has no uses remaining." };
+  }
+
+  return slotAvailable(entry, spellRank(spell));
 }
 
 function focusAvailable(actor) {

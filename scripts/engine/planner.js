@@ -1,4 +1,5 @@
 import { combineConfidence } from "./confidence.js";
+import { contextTriggerEvents } from "../rules/event-context.js";
 
 const BASE_ACTIONS = 3;
 const MAX_CANDIDATES = 12;
@@ -8,9 +9,10 @@ const MAX_PLANS = 256;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const MAP_SCORE_WEIGHT = 3;
-const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride", "step"]);
+// Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
+const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride"]);
 const GENERIC_ATTACK_SLUGS = new Set(["trip", "grapple", "disarm", "shove", "reposition"]);
-const BASIC_MOVE_SLUGS = new Set(["step", "stride"]);
+const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride"]);
 const SKILL_ACTION_SLUGS = new Set([
   "demoralize",
   "recall-knowledge",
@@ -173,13 +175,13 @@ function isItemCandidate(candidate) {
 }
 
 function candidateCategory(candidate) {
+  if (["healing", "defense", "buff", "stealth-defense", "self-healing"].includes(candidate?.role)) return "support";
   if (isStrikeLikeCandidate(candidate)) return "strike";
   if (isSpellAction(candidate)) return "spell";
   if (candidate?.activityProfile?.impulse === true) return "class";
   if (BASIC_MOVE_SLUGS.has(candidate?.slug) || candidate?.role === "mobility") return "movement";
   if (isItemCandidate(candidate)) return "item";
   if (candidate?.skill || SKILL_ACTION_SLUGS.has(candidate?.slug)) return "skill";
-  if (["healing", "defense", "buff", "self-healing"].includes(candidate?.role)) return "support";
   if (["custom-curated", "system-inferred"].includes(candidate?.source)) return "class";
   return "other";
 }
@@ -204,7 +206,11 @@ function selectPlanningCandidates(sortedCandidates) {
   }
 
   for (const candidate of sortedCandidates) add(candidate);
-  return selected;
+  return selected.toSorted((left, right) => {
+    const previousDelta = Number(requiresPreviousAction(left)) - Number(requiresPreviousAction(right));
+    if (previousDelta !== 0) return previousDelta;
+    return selected.indexOf(left) - selected.indexOf(right);
+  });
 }
 
 function reloadCost(candidate) {
@@ -236,6 +242,65 @@ function values(value) {
   if (Array.isArray(value)) return value;
   if (value instanceof Set) return Array.from(value);
   return value === undefined || value === null ? [] : [value];
+}
+
+function previousActionRequirements(candidate) {
+  const eventTriggers = values(candidate?.gatingProfile?.eventTriggers).map(normalizeSlug);
+  const explicit = [
+    ...values(candidate?.activityProfile?.previousActionRequirements),
+    ...values(candidate?.gatingProfile?.previousActionRequirements),
+  ].map(normalizeSlug);
+  if (explicit.length) return [...new Set(explicit)];
+  return eventTriggers.includes("previous-action") ? ["previous-action"] : [];
+}
+
+function requiresPreviousAction(candidate) {
+  return previousActionRequirements(candidate).length > 0;
+}
+
+function isNonCantripSpell(candidate) {
+  if (!isSpellAction(candidate)) return false;
+  if (candidate?.isCantrip === true) return false;
+  const rank = Number(candidate?.castRank ?? candidate?.rank);
+  return Number.isFinite(rank) ? rank > 0 : candidate?.isCantrip === false;
+}
+
+function stepSatisfiesPreviousRequirement(step, requirement) {
+  if (!step) return false;
+  const key = normalizeSlug(requirement);
+  if (key === "previous-action") return true;
+  if (key === "spell" || key === "spell-cast") return isSpellAction(step);
+  if (key === "non-cantrip-spell") return isNonCantripSpell(step);
+  if (key === "strike" || key === "after-strike") return isStrikeLikeCandidate(step);
+  if (key === "attack") return isAttackAction(step);
+  return false;
+}
+
+function stepSatisfiesPreviousRequirements(step, requirements) {
+  const meaningful = requirements.filter((requirement) => requirement !== "previous-action");
+  const valuesToCheck = meaningful.length ? meaningful : requirements;
+  return valuesToCheck.every((requirement) => stepSatisfiesPreviousRequirement(step, requirement));
+}
+
+function contextSatisfiesPreviousRequirements(context, requirements) {
+  const events = contextTriggerEvents(context);
+  if (!events.size) return false;
+  const meaningful = requirements.filter((requirement) => requirement !== "previous-action");
+  if (!meaningful.length) return events.has("previous-action");
+  return meaningful.every((requirement) => {
+    const key = normalizeSlug(requirement);
+    if (key === "non-cantrip-spell") return events.has("non-cantrip-spell");
+    if (key === "spell" || key === "spell-cast") return events.has("spell-cast");
+    if (key === "strike" || key === "after-strike") return events.has("after-strike");
+    return events.has(key);
+  });
+}
+
+function previousActionSatisfied(context, candidate, steps) {
+  const requirements = previousActionRequirements(candidate);
+  if (!requirements.length) return true;
+  if (contextSatisfiesPreviousRequirements(context, requirements)) return true;
+  return stepSatisfiesPreviousRequirements(steps.at(-1), requirements);
 }
 
 function truthyPenalty(value) {
@@ -282,6 +347,8 @@ function candidateSetupKeys(candidate) {
 }
 
 function setupPriority(step, allSteps) {
+  if (requiresPreviousAction(step)) return 1;
+
   if (includesStand(step)) return -2;
 
   if (
@@ -309,6 +376,13 @@ function setupPriority(step, allSteps) {
 
 function orderPlanSteps(steps) {
   return [...steps].toSorted((left, right) => {
+    const leftRequirements = previousActionRequirements(left);
+    const rightRequirements = previousActionRequirements(right);
+    const leftRequiresRight = leftRequirements.length && stepSatisfiesPreviousRequirements(right, leftRequirements);
+    const rightRequiresLeft = rightRequirements.length && stepSatisfiesPreviousRequirements(left, rightRequirements);
+    if (leftRequiresRight && !rightRequiresLeft) return 1;
+    if (rightRequiresLeft && !leftRequiresRight) return -1;
+
     const priorityDelta = setupPriority(left, steps) - setupPriority(right, steps);
     if (priorityDelta !== 0) return priorityDelta;
     return steps.indexOf(left) - steps.indexOf(right);
@@ -353,6 +427,28 @@ function allowsPostChargeTumbleThrough(context) {
 function isMoveAndStrike(step) {
   return step?.activityProfile?.includesStrike === true
     && Number(step?.activityProfile?.strideCount) > 0;
+}
+
+function endsAwayFromMelee(step) {
+  const profile = step?.activityProfile ?? {};
+  const targeting = step?.targetingProfile ?? {};
+  if (profile.retreatToOrigin === true) return false;
+  return profile.retreatBeforeStrike === true
+    || profile.retreatAfterStrike === true
+    || targeting.retreatBeforeStrike === true
+    || targeting.retreatAfterStrike === true;
+}
+
+function isMeleeOnlyAction(candidate) {
+  const targeting = candidate?.targetingProfile ?? {};
+  const range = currentAttackRange(candidate);
+  return candidate?.requiresEnemyInReach === true
+    || targeting.requiresEnemyInReach === true
+    || targeting.reach === true
+    || targeting.melee === true
+    || targeting.meleeOnly === true
+    || GENERIC_ATTACK_SLUGS.has(candidate?.slug)
+    || (candidate?.source === "strike" && Number.isFinite(range) && range <= 5);
 }
 
 function contextTargets(context) {
@@ -437,6 +533,17 @@ function hasPlanConflict(context, candidate, steps) {
     return true;
   }
 
+  const candidateEndsAway = endsAwayFromMelee(candidate);
+  const existingEndsAway = steps.some(endsAwayFromMelee);
+  const candidateMeleeOnly = isMeleeOnlyAction(candidate);
+  const existingMeleeOnly = steps.some(isMeleeOnlyAction);
+  if (
+    (existingEndsAway && candidateMeleeOnly)
+    || (candidateEndsAway && existingMeleeOnly)
+  ) {
+    return true;
+  }
+
   // If an attack already reaches from the current square, don't spend a generic
   // Step/Stride just to pair it with that attack. Movement for closing remains
   // available when the attack is actually out of range.
@@ -515,6 +622,7 @@ export function buildTurnPlans(context, candidates) {
       if (currentUses > 0 && !isRepeatableAttackAction(candidate)) continue;
       if (currentUses >= 3) continue;
       if (strikeAction && strikeCount >= MAX_STRIKE_STEPS) continue;
+      if (!previousActionSatisfied(context, candidate, steps)) continue;
       if (hasPlanConflict(context, candidate, steps)) continue;
 
       const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(candidate) : 0;
@@ -562,8 +670,11 @@ export function buildTurnPlans(context, candidates) {
 
       usedActions.set(key, currentUses + 1);
       steps.push(plannedCandidate);
+      const nextStartIndex = requiresPreviousAction(candidate) && candidateActionCost === 0
+        ? 0
+        : attackAction ? index : index + 1;
       visit(
-        attackAction ? index : index + 1,
+        nextStartIndex,
         steps,
         nextNormalCost,
         nextQuickenedEligibleActions,

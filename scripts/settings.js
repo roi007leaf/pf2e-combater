@@ -5,6 +5,7 @@ const SETTINGS = {
   compactDefault: "compactDefault",
   rememberPanelPosition: "rememberPanelPosition",
   enableSpellRecommendations: "enableSpellRecommendations",
+  hideUntrainedSkillActions: "hideUntrainedSkillActions",
   includeUnknownCustomActions: "includeUnknownCustomActions",
   showDebugTab: "showDebugTab",
 };
@@ -40,6 +41,15 @@ export function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.enableSpellRecommendations, {
     name: "Enable spell recommendations",
     hint: "Include curated spells in recommended full-turn plans.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.hideUntrainedSkillActions, {
+    name: "Hide untrained skill actions",
+    hint: "Hide skill actions when the combatant is not trained in the required skill.",
     scope: "world",
     config: true,
     type: Boolean,

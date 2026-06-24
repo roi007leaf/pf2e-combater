@@ -39,6 +39,97 @@ function itemText(item) {
   ].map(normalize).filter(Boolean).join(" ");
 }
 
+function values(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  if (value instanceof Map) return Array.from(value.values());
+  if (typeof value.values === "function") return Array.from(value.values());
+  if (typeof value === "object") return Object.values(value);
+  return [value];
+}
+
+function conditionEntries(entity) {
+  const conditions = entity?.conditions;
+  if (!conditions) return [];
+  if (Array.isArray(conditions)) return conditions;
+  const slugs = Array.isArray(conditions.slugs) ? conditions.slugs : [];
+  const valued = Object.entries(conditions.values ?? {})
+    .filter(([, value]) => Number(value) > 0)
+    .map(([slug]) => slug);
+  return [...slugs, ...valued];
+}
+
+function entityStateEntries(entity) {
+  return [
+    ...conditionEntries(entity),
+    ...values(entity?.effects),
+    ...values(entity?.actor?.effects),
+    ...values(entity?.actor?.itemTypes?.effect),
+    ...values(entity?.actor?.itemTypes?.condition),
+    ...values(entity?.actor?.document?.itemTypes?.effect),
+    ...values(entity?.actor?.document?.itemTypes?.condition),
+  ];
+}
+
+function entryMatchesPatterns(entry, patterns) {
+  const text = typeof entry === "string" ? normalize(entry) : itemText(entry);
+  return patterns.map(normalize).some((pattern) =>
+    text === pattern
+      || text.includes(pattern)
+      || text.includes(`effect-${pattern}`),
+  );
+}
+
+function stateFlag(entity, keys) {
+  const roots = [
+    entity?.targetState,
+    entity?.combatState,
+    entity?.state,
+  ];
+  return keys.some((key) =>
+    roots.some((root) => root?.[key] === true || root?.[normalize(key)] === true),
+  );
+}
+
+const TARGET_MARK_PATTERNS = {
+  "devised-stratagem": ["devised-stratagem", "devise-a-stratagem"],
+  "exploited-vulnerability": [
+    "exploited-vulnerability",
+    "exploit-vulnerability",
+    "primary-ev-target",
+    "ev-target",
+    "personal-antithesis",
+    "mortal-weakness",
+  ],
+  "hunted-prey": ["hunted-prey", "hunt-prey"],
+  "traced-rune": ["traced-rune", "trace-rune", "etched-rune", "rune"],
+};
+
+export function hasTargetState(target, patterns) {
+  const values = Array.isArray(patterns) ? patterns : [patterns];
+  return entityStateEntries(target).some((entry) => entryMatchesPatterns(entry, values));
+}
+
+export function targetHasMarkState(target, mark) {
+  const normalized = normalize(mark);
+  const patterns = TARGET_MARK_PATTERNS[normalized] ?? [normalized];
+  return hasTargetState(target, patterns);
+}
+
+export function readTargetCombatState(target) {
+  return {
+    devisedStratagem: stateFlag(target, ["devisedStratagem", "devised-stratagem"])
+      || targetHasMarkState(target, "devised-stratagem"),
+    exploited: stateFlag(target, ["exploited", "exploitedVulnerability", "exploited-vulnerability"])
+      || targetHasMarkState(target, "exploited-vulnerability"),
+    huntedPrey: stateFlag(target, ["huntedPrey", "hunted-prey"])
+      || targetHasMarkState(target, "hunted-prey"),
+    tracedRune: stateFlag(target, ["tracedRune", "traced-rune"])
+      || targetHasMarkState(target, "traced-rune"),
+  };
+}
+
 function actorItems(actor, type) {
   const typed = collectionValues(actor?.itemTypes?.[type]);
   const typedIds = new Set(typed.map((item) => item?.id ?? item?._id).filter(Boolean));

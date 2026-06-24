@@ -1,3 +1,5 @@
+import { eventKeysForText } from "../rules/event-context.js";
+
 function textValue(value) {
   if (value && typeof value === "object" && "value" in value) return value.value;
   return value;
@@ -113,34 +115,67 @@ function readDamageProfile(action) {
   };
 }
 
-function readTemplateProfile(action) {
-  const raw = rawDescription(action);
-  const match = raw.match(/@Template\[([^\]]+)\]/i);
-  if (!match) {
-    const text = normalizeText(raw);
-    const textMatch = text.match(/\b(\d+)[ -]foot (cone|line|burst|emanation)\b/)
-      ?? text.match(/\b(cone|line|burst|emanation)\b.{0,24}\b(\d+)\s+feet\b/);
-    if (!textMatch) return null;
-
-    const firstIsNumber = Number.isFinite(Number(textMatch[1]));
-    return {
-      area: true,
-      type: firstIsNumber ? textMatch[2] : textMatch[1],
-      distance: Number(firstIsNumber ? textMatch[1] : textMatch[2]),
-    };
-  }
-
+function parseTemplateToken(inner) {
   const parts = Object.fromEntries(
-    match[1].split("|")
+    String(inner ?? "").split("|")
       .map((part) => part.split(":"))
       .filter(([key, value]) => key && value)
       .map(([key, value]) => [key.trim().toLowerCase(), value.trim().toLowerCase()]),
   );
-  const distance = Number(parts.distance ?? parts.radius ?? parts.length ?? parts.width);
+  const distance = Number(parts.distance ?? parts.radius ?? parts.length);
+  const width = Number(parts.width);
   return {
-    area: true,
     type: parts.type ?? "area",
     distance: Number.isFinite(distance) ? distance : null,
+    ...(Number.isFinite(width) ? { width } : {}),
+  };
+}
+
+function templateLabel(template) {
+  const type = template?.type ? template.type.charAt(0).toUpperCase() + template.type.slice(1) : "Area";
+  return template?.distance ? `${type} ${template.distance} ft` : type;
+}
+
+// All @Template[...] embeds in the description, so a multi-template action/spell can offer the
+// player a choice of which to place. Falls back to a single text-parsed shape (e.g. "30-foot
+// cone") when there are no @Template embeds.
+function readTemplateProfile(action) {
+  const raw = rawDescription(action);
+  const matches = [...raw.matchAll(/@Template\[([^\]]+)\]/gi)];
+  if (matches.length) {
+    const seen = new Set();
+    const templates = matches
+      .map((match) => parseTemplateToken(match[1]))
+      .filter((template) => {
+        if (!template.type) return false;
+        // rawDescription concatenates overlapping sources, so the same @Template can match
+        // more than once — collapse identical shapes so the picker shows each once.
+        const key = `${template.type}|${template.distance}|${template.width ?? ""}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((template) => ({ ...template, label: templateLabel(template) }));
+    const first = templates[0];
+    return {
+      area: true,
+      type: first.type,
+      distance: first.distance,
+      ...(first.width ? { width: first.width } : {}),
+      ...(templates.length > 1 ? { templates } : {}),
+    };
+  }
+
+  const text = normalizeText(raw);
+  const textMatch = text.match(/\b(\d+)[ -]foot (cone|line|burst|emanation)\b/)
+    ?? text.match(/\b(cone|line|burst|emanation)\b.{0,24}\b(\d+)\s+feet\b/);
+  if (!textMatch) return null;
+
+  const firstIsNumber = Number.isFinite(Number(textMatch[1]));
+  return {
+    area: true,
+    type: firstIsNumber ? textMatch[2] : textMatch[1],
+    distance: Number(firstIsNumber ? textMatch[1] : textMatch[2]),
   };
 }
 
@@ -169,17 +204,19 @@ function hasFrequency(action) {
 }
 
 function readEventProfile(text, actionCost) {
-  const triggers = [];
-  if (/\broll(?:ed)? initiative\b|\babout to roll initiative\b/.test(text)) triggers.push("initiative");
-  if (/\bturn begins\b|\bstart of your turn\b|\byour turn begins\b/.test(text)) triggers.push("turn-start");
-  if (/\bfail(?:ed|s)? (?:a )?(?:saving throw|save)\b|\bfailed save\b/.test(text)) triggers.push("failed-save");
-  if (/\bbefore .* roll\b|\babout to roll\b/.test(text)) triggers.push("before-roll");
-  if (/\bafter .* strike\b|\blast action\b.{0,40}\bstrike\b|\bsuccessful strike\b/.test(text)) triggers.push("after-strike");
-  if (/\bprevious action\b|\blast action\b|\bnext action\b/.test(text)) triggers.push("previous-action");
+  const triggers = eventKeysForText(text);
+  const previousActionRequirements = [];
+  const requiresPreviousAction = /\b(?:previous|last|most recent) action\b/.test(text);
+  if (requiresPreviousAction) {
+    if (/\bnon-cantrip spell\b/.test(text)) previousActionRequirements.push("non-cantrip-spell");
+    else if (/\bcast(?:s|ing)?\b.{0,60}\bspell\b|\bspell\b.{0,30}\bcast\b/.test(text)) previousActionRequirements.push("spell-cast");
+    if (/\bstrike\b/.test(text)) previousActionRequirements.push("after-strike");
+  }
 
   return {
-    eventTriggers: [...new Set(triggers)],
+    eventTriggers: triggers,
     eventTriggerOnly: actionCost === "reaction" || (actionCost === 0 && triggers.length > 0) || /\btrigger\b/.test(text),
+    previousActionRequirements,
   };
 }
 
@@ -273,7 +310,25 @@ function inferred(role, {
   };
 }
 
+// Attach a multi-template choice list (and ensure area flags) so the panel can let the player
+// pick which @Template to place. Runs regardless of which classifier branch produced the result.
 export function classifySystemAction(action, parsedCost) {
+  const result = classifySystemActionBase(action, parsedCost);
+  if (!result) return result;
+  const templateProfile = readTemplateProfile(action);
+  if (Array.isArray(templateProfile?.templates) && templateProfile.templates.length > 1) {
+    result.targetingProfile = {
+      ...(result.targetingProfile ?? {}),
+      area: true,
+      type: result.targetingProfile?.type ?? templateProfile.type,
+      distance: result.targetingProfile?.distance ?? templateProfile.distance,
+      templates: templateProfile.templates,
+    };
+  }
+  return result;
+}
+
+function classifySystemActionBase(action, parsedCost) {
   const actionCost = parsedCost?.actionCost;
   if (parsedCost?.passive || actionCost === null || actionCost === undefined) return null;
 
@@ -321,6 +376,7 @@ export function classifySystemAction(action, parsedCost) {
         activityProfile: {
           ...baseProfile(["control"]),
           reaction: true,
+          npcFamily: "swallow-whole",
           requiresAnyTargetCondition: ["grabbed", "restrained"],
           containsTarget: true,
         },
@@ -354,6 +410,29 @@ export function classifySystemAction(action, parsedCost) {
   const mentionsFocusedTarget = /\bsingle .* strike\b|\bone .* strike\b|\bsingle target\b|\bsame target\b|\bfocus/.test(text);
   const acSetupProfile = readAcSetupProfile(text);
   const mentionsFutureAttack = /\bnext (?:strike|attack)\b|\buntil .* next (?:strike|attack)\b/.test(text);
+
+  if (
+    hasName(action, /\bbespell strikes?\b/)
+    || (/\bmost recent action\b.{0,80}\bcast\b.{0,80}\bnon-cantrip spell\b/.test(text) && /\bstrike\b/.test(text))
+  ) {
+    return inferred("setup", {
+      activityProfile: {
+        ...baseProfile(["setup"]),
+        damageBuff: true,
+        spellBuff: true,
+        previousActionRequirements: ["non-cantrip-spell"],
+      },
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile: {
+        ...gatingProfile,
+        eventTriggerOnly: true,
+        previousActionRequirements: ["non-cantrip-spell"],
+      },
+      confidence: "high",
+      reasons: ["Free action requires a prior non-cantrip spell before it can enhance a Strike."],
+    });
+  }
 
   if (acSetupProfile && !saveProfile && !damageProfile && (!mentionsStrike || mentionsFutureAttack)) {
     return inferred("setup", {
@@ -427,6 +506,7 @@ export function classifySystemAction(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["stride"]),
         formation: true,
+        npcFamily: "troop-action",
       },
       targetingProfile: { self: true },
       gatingProfile,
@@ -582,6 +662,7 @@ export function classifySystemAction(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["resource"]),
         recoversSpellResource: true,
+        ...(hasName(action, /\brecharge\b/) || /\brecharge\b/.test(text) ? { npcFamily: "recharge" } : {}),
       },
       targetingProfile: { self: true },
       gatingProfile,
@@ -701,6 +782,7 @@ export function classifySystemAction(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["grab"]),
         includesGrab: true,
+        npcFamily: "grab-rider",
         requiresPreviousStrike: hasName(action, /\bimproved grab\b/) || /\blast action\b.*\bstrike\b/.test(text),
       },
       targetingProfile: { enemy: true, reach: true },
@@ -714,6 +796,7 @@ export function classifySystemAction(action, parsedCost) {
     return inferred("save-damage", {
       activityProfile: {
         ...baseProfile(["damage", "control"]),
+        npcFamily: "grab-followup",
         requiresTargetCondition: "grabbed",
       },
       targetingProfile: { enemy: true, reach: true },
@@ -729,6 +812,7 @@ export function classifySystemAction(action, parsedCost) {
     return inferred("control", {
       activityProfile: {
         ...baseProfile(["damage", "control"]),
+        npcFamily: "swallow-whole",
         requiresTargetCondition: "grabbed",
         containsTarget: true,
       },
@@ -745,6 +829,7 @@ export function classifySystemAction(action, parsedCost) {
     return inferred("mobility-attack", {
       activityProfile: {
         ...baseProfile(["stride", "damage"]),
+        npcFamily: traits.includes("troop") ? "troop-action" : "trample",
         strideCount: /\bdouble\b/.test(text) ? 2 : 1,
       },
       targetingProfile: {
@@ -787,9 +872,31 @@ export function classifySystemAction(action, parsedCost) {
     });
   }
 
+  if (hasName(action, /\bgaze\b/) || /\bgaze\b/.test(text)) {
+    return inferred(damageProfile ? "save-damage" : "control", {
+      activityProfile: {
+        ...baseProfile(["control"]),
+        npcFamily: "gaze",
+      },
+      targetingProfile: { enemy: true, maxRange: rangeProfile.maxRange ?? 30 },
+      saveProfile,
+      damageProfile,
+      gatingProfile,
+      confidence: saveProfile || damageProfile ? "high" : "medium",
+      reasons: ["Gaze ability can pressure enemies without a weapon Strike."],
+    });
+  }
+
   if (templateProfile && saveProfile && damageProfile) {
+    const breathWeapon = hasName(action, /\bbreath(?: weapon)?\b/) || /\bbreathes?\b/.test(text);
+    const deathTrigger = hasName(action, /\bdeath (?:throes|burst|explosion)\b/)
+      || /\bwhen .* dies\b|\bupon death\b|\bwhen reduced to 0 hit points\b/.test(text);
     return inferred("area-damage", {
-      activityProfile: baseProfile(["damage", "area"]),
+      activityProfile: {
+        ...baseProfile(["damage", "area"]),
+        ...(breathWeapon ? { npcFamily: "breath-weapon" } : {}),
+        ...(deathTrigger ? { npcFamily: "death-trigger" } : {}),
+      },
       targetingProfile: { ...templateProfile, ...rangeProfile },
       saveProfile,
       damageProfile,
@@ -825,7 +932,11 @@ export function classifySystemAction(action, parsedCost) {
   const buffProfile = readBuffProfile(text);
   if (buffProfile && !saveProfile && !damageProfile && !mentionsStrike && !offensive) {
     return inferred("buff", {
-      activityProfile: { ...baseProfile(["buff"]), ...buffProfile },
+      activityProfile: {
+        ...baseProfile(["buff"]),
+        ...buffProfile,
+        ...(traits.includes("aura") ? { aura: true, npcFamily: "aura" } : {}),
+      },
       targetingProfile: buffProfile.ally ? { ally: true, self: true } : { self: true },
       setupFor: buffProfile.attackBuff ? ["strike", "damage"] : [],
       gatingProfile,
@@ -892,7 +1003,7 @@ export function classifySystemAction(action, parsedCost) {
 
   if (traits.includes("aura")) {
     return inferred("buff", {
-      activityProfile: { ...baseProfile(["buff"]), aura: true, ally: true },
+      activityProfile: { ...baseProfile(["buff"]), aura: true, ally: true, npcFamily: "aura" },
       targetingProfile: { ally: true, self: true },
       gatingProfile,
       confidence: "medium",

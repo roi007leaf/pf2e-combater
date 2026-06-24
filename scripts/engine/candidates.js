@@ -1,5 +1,6 @@
 import { readActionSources } from "../readers/action-reader.js";
 import { readSpellActions } from "../readers/spell-reader.js";
+import { npcTacticRejection } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
 
@@ -89,6 +90,11 @@ export function buildCandidates(context) {
       continue;
     }
     const scored = scoreCandidate(context, action);
+    const npcRejection = npcTacticRejection(context, scored, detected);
+    if (npcRejection) {
+      rejected.push({ action: scored, reason: npcRejection });
+      continue;
+    }
     if (scored.score <= REJECTED_SCORE) {
       rejected.push({ action: scored, reason: scored.reason || "Action is not useful in current context." });
       continue;
