@@ -271,6 +271,15 @@
   align-items: center;
 }
 
+.pf2e-combater .combater-chip-tool.combater-step-move {
+  color: var(--combater-muted);
+}
+
+.pf2e-combater .combater-chip-tool.combater-step-move:hover,
+.pf2e-combater .combater-chip-tool.combater-step-move:focus-visible {
+  color: var(--combater-text);
+}
+
 /* Step state reads as a colored left spine rather than a full boxy outline. */
 .pf2e-combater .combater-header-step.has-warning .combater-chip {
   box-shadow: inset 3px 0 0 var(--combater-two);
@@ -444,6 +453,57 @@
   color: currentcolor;
   font-size: 10px;
   font-weight: 800;
+}
+
+/* Action-cost shown with PF2e's own action-cost icon images (reliable in the live client,
+   unlike the action-glyph webfont, which Foundry does not expose to module markup).
+   The icons are square, so an explicit square box keeps every glyph identical and aligned
+   regardless of Foundry's base image styling. */
+.pf2e-combater .combater-chip-cost .combater-cost-glyph,
+.pf2e-combater .combater-step-cost .combater-cost-glyph {
+  border: 0;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.pf2e-combater .combater-step-cost .combater-cost-glyph {
+  width: 22px;
+  height: 22px;
+}
+
+.pf2e-combater .combater-chip-cost .combater-cost-glyph {
+  width: 18px;
+  height: 18px;
+}
+
+/* Image + name row inside the recommended-plan chips (chip-text is a column). */
+.pf2e-combater .combater-chip-titlerow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Item image beside the action name in draft chips and the recommended-plan chips. */
+.pf2e-combater .combater-chip-img {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--combater-line);
+  border-radius: 3px;
+  object-fit: cover;
+  background: #11141a;
+}
+
+/* Item image beside the action name in the builder tab rows. */
+.pf2e-combater .combater-action-img {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--combater-line);
+  border-radius: 3px;
+  object-fit: cover;
+  background: #11141a;
 }
 
 .pf2e-combater .combater-chip-text {
@@ -786,8 +846,8 @@
 
 .pf2e-combater .combater-alt-step h4 {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1.25;
   min-width: 0;
 }
@@ -795,16 +855,16 @@
 .pf2e-combater .combater-alt-promote {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   max-width: 100%;
   min-width: 0;
   padding: 3px 8px;
   border: 1px solid var(--combater-line);
   border-radius: 6px;
   background: var(--combater-surface);
-  color: var(--combater-muted);
-  font-size: 10px;
-  font-weight: 600;
+  color: var(--combater-ink);
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -844,9 +904,11 @@
   display: inline-flex;
   gap: 1px;
   flex: 0 0 28px;
+  height: 28px;
+  align-self: start;
   justify-content: center;
+  align-items: center;
   min-width: 28px;
-  padding-top: 2px;
   font-size: 11px;
   font-weight: 900;
 }
@@ -1004,6 +1066,10 @@
   color: var(--combater-three);
 }
 
+.pf2e-combater .combater-action-row .combater-target.is-warning {
+  color: var(--combater-three);
+}
+
 .pf2e-combater .combater-add-action:disabled,
 .pf2e-combater .combater-add-action[disabled] {
   cursor: not-allowed;
@@ -1134,7 +1200,51 @@
   }
 
   .pf2e-combater .combater-step-cost {
-    flex-basis: 22px;
-    min-width: 22px;
+    flex-basis: 24px;
+    min-width: 24px;
   }
+}
+
+.pf2e-combater .combater-unconditional-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  border-top: 1px solid var(--combater-line);
+  background: #1d2025;
+}
+
+.pf2e-combater .combater-unconditional-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.pf2e-combater .combater-add-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+
+.pf2e-combater .combater-add-target-label {
+  font-size: 11px;
+  color: var(--combater-muted);
+}
+
+.pf2e-combater .combater-add-target-btn {
+  border: 1px solid var(--combater-line);
+  border-radius: 6px;
+  padding: 3px 10px;
+  background: var(--combater-surface);
+  color: var(--combater-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-add-target-btn.active {
+  border-color: var(--combater-focus);
+  color: var(--combater-ink);
+  background: var(--combater-surface-raised);
 }
