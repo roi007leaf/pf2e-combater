@@ -25,6 +25,13 @@ import {
   tokensInAreaMarker,
 } from "./action-executor.js";
 import { revertDraftExecution, revertDraftStep } from "./action-revert.js";
+import {
+  areaTimerExpired,
+  buildAreaTimerEffectData,
+  buildAreaTimerFlag,
+  expiredAreaRegionsForScene,
+  parseSpellDuration,
+} from "./area-duration.js";
 import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
@@ -41,6 +48,7 @@ import { readCombatContext } from "../state/combat-context.js";
 import { documentRelevantToContext } from "../state/context-relevance.js";
 import {
   draftPlanKey,
+  emptyDraftPlan,
   readDraftPlan,
   readSharedDraftPlan,
   sharedDraftPlanKey,
@@ -50,6 +58,10 @@ import {
   writeSharedDraftPlanPayload,
   upsertDraftStep,
   removeDraftStep,
+  moveDraftStep,
+  draftListForInstance,
+  hasSharedDraftPlan,
+  shouldDisplaySharedDraft,
 } from "../state/draft-plans.js";
 import * as draftPlanState from "../state/draft-plans.js";
 import { coverageForItems } from "../dev/coverage.js";
@@ -91,7 +103,10 @@ const actionExecutorSource = readFileSync(new URL("./action-executor.js", import
 const panelStyleSource = readFileSync(new URL("../../styles/combater.css", import.meta.url), "utf8");
 const areaPickerSource = readFileSync(new URL("../ui/area-picker.js", import.meta.url), "utf8");
 const actionPreviewSource = readFileSync(new URL("../ui/action-preview.js", import.meta.url), "utf8");
-assert.ok(panelSource.includes("\"◆\""), "panel action costs should use real diamond glyphs");
+assert.ok(panelSource.includes("function actionGlyphIcon"), "panel action costs should map to PF2e action-cost icons");
+assert.ok(panelTemplateSource.includes("combater-cost-glyph"), "panel template should render PF2e action-cost icon images");
+assert.ok(panelSource.includes("icons/actions/OneAction.webp"), "panel should reference the PF2e action-cost icon set");
+assert.ok(panelTemplateSource.includes("combater-chip-img") && panelTemplateSource.includes("combater-action-img"), "panel should show item images beside action names");
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
 assert.ok(panelSource.includes("setCombatant(combatant"), "panel should expose explicit combatant selection");
 assert.ok(panelSource.includes("combatant: this._selectedCombatant"), "panel context should use selected explicit combatant");
@@ -118,6 +133,15 @@ assert.equal(
   || mainSource.includes("if (!setting(SETTINGS.autoOpen)) return;\n  await openCurrent(\"combat-turn\")"),
   false,
   "combat-turn refresh should not be skipped while panel is already open and autoOpen is false",
+);
+assert.ok(
+  /Hooks\.on\("controlToken"[\s\S]*?isGM[\s\S]*?setCombatant/.test(mainSource),
+  "GM panel should follow the selected token via the controlToken hook",
+);
+assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
+assert.ok(
+  /game\.user\?\.isGM === true && activePanel[\s\S]*?refresh\("combat-turn"\)/.test(mainSource),
+  "on turn change the GM panel should refresh in place rather than jump to the active combatant",
 );
 assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
 assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
@@ -185,6 +209,7 @@ for (const oldTabId of ["plan", "alternatives", "debug"]) {
 for (const eventHook of [
   "data-add-action",
   "data-remove-draft-step",
+  "data-move-draft-step",
   "data-favorite-action",
   "data-auto-fill",
   "data-choose-destination",
@@ -198,10 +223,22 @@ for (const eventHook of [
   assert.ok(panelTemplateSource.includes(eventHook), `panel template should expose ${eventHook}`);
 }
 assert.equal(panelTemplateSource.includes("data-execute-next"), false, "panel should not expose a global Execute next button");
+assert.ok(panelSource.includes("projectedDraftStepActions"), "draft steps should resolve actions from their projected origin");
+assert.ok(panelSource.includes("_moveDraftStep"), "panel should support explicit draft-step reordering");
 assert.equal(
   panelTemplateSource.includes("data-load-shared-draft"),
   false,
   "auto-updating player plans should not expose a redundant Load plan button",
+);
+assert.equal(
+  /data-add-action="\{\{key\}\}"[^>]*\{\{#if disabled\}\}disabled\{\{\/if\}\}/.test(panelTemplateSource),
+  false,
+  "builder plus buttons should stay clickable for warned actions",
+);
+assert.equal(
+  /_addAction\(actionKey\)[\s\S]*if \(!this\._context \|\| !action \|\| action\.disabled\)/.test(panelSource),
+  false,
+  "adding an action should not reject advisory warnings",
 );
 assert.equal(
   panelSource.includes("canLoadSharedDraft"),
@@ -583,12 +620,78 @@ const executionAreaAction = {
   slug: "stinking-cloud",
   executable: "open-item",
   source: "spell-inferred",
-  activityProfile: { spell: true, lastingDuration: true },
+  activityProfile: { spell: true, lastingDuration: true, duration: "1 minute" },
   targetingProfile: { area: true, type: "burst", distance: 20, maxRange: 500 },
-  item: { name: "Stinking Cloud", uuid: "Item.stinking-cloud" },
+  item: { name: "Stinking Cloud", uuid: "Item.stinking-cloud", img: "icons/cloud.webp" },
 };
+// --- Auto-expiring area templates: duration parsing & expiry (area-duration.js) ---
+assert.equal(parseSpellDuration("instantaneous"), null, "instantaneous spells get no timer");
+assert.equal(parseSpellDuration(""), null, "empty duration gets no timer");
+assert.equal(parseSpellDuration("unlimited"), null, "unlimited duration gets no timer");
+assert.equal(parseSpellDuration("until the start of your next turn"), null, "'until ...' durations get no timer");
+const oneMinuteTimer = parseSpellDuration("1 minute");
+assert.deepEqual(oneMinuteTimer, { value: 1, unit: "minutes", seconds: 60, rounds: 10, sustained: false });
+assert.deepEqual(parseSpellDuration("2 rounds"), { value: 2, unit: "rounds", seconds: 12, rounds: 2, sustained: false });
+assert.equal(parseSpellDuration("1 hour").seconds, 3600, "hours convert to seconds");
+assert.deepEqual(
+  parseSpellDuration("sustained", { sustained: true }),
+  { value: 1, unit: "minutes", seconds: 60, rounds: 10, sustained: true },
+  "a bare sustained spell caps at one minute",
+);
+const sustainedUpTo = parseSpellDuration("sustained up to 2 rounds", { sustained: true });
+assert.equal(sustainedUpTo.rounds, 2, "'sustained up to N' uses the stated cap");
+assert.equal(sustainedUpTo.sustained, true);
+
+const areaTimerFlag = buildAreaTimerFlag({ duration: oneMinuteTimer, worldTime: 100, round: 3, effectUuid: "Effect.x", casterActorUuid: "Actor.y" });
+assert.deepEqual(areaTimerFlag, {
+  effectUuid: "Effect.x",
+  casterActorUuid: "Actor.y",
+  sustained: false,
+  expiresWorldTime: 160,
+  expiresRound: 13,
+});
+assert.equal(areaTimerExpired(areaTimerFlag, { worldTime: 159, round: 12 }), false, "timer not yet elapsed");
+assert.equal(areaTimerExpired(areaTimerFlag, { worldTime: 160, round: 5 }), true, "elapsed by world time");
+assert.equal(areaTimerExpired(areaTimerFlag, { worldTime: 0, round: 13 }), true, "elapsed by combat round");
+assert.equal(areaTimerExpired(null, { worldTime: 999 }), false, "no flag means never expired");
+
+const areaEffectData = buildAreaTimerEffectData({
+  action: { name: "Darkness", item: { img: "icons/darkness.webp" } },
+  regionId: "region-x",
+  sceneId: "scene-x",
+  duration: oneMinuteTimer,
+  worldTime: 50,
+  initiative: 12,
+});
+assert.equal(areaEffectData.type, "effect");
+assert.equal(areaEffectData.name, "Darkness");
+assert.equal(areaEffectData.img, "icons/darkness.webp");
+assert.deepEqual(areaEffectData.system.duration, { value: 1, unit: "minutes", expiry: null, sustained: false });
+assert.equal(areaEffectData.system.start.value, 50);
+assert.deepEqual(areaEffectData.flags["pf2e-combater"].areaRegion, { regionId: "region-x", sceneId: "scene-x" });
+
+assert.deepEqual(
+  expiredAreaRegionsForScene({
+    id: "scene-x",
+    regions: [
+      { id: "r-live", flags: { "pf2e-combater": { areaTimer: { expiresWorldTime: 200, expiresRound: null, effectUuid: "Effect.a" } } } },
+      { id: "r-dead", flags: { "pf2e-combater": { areaTimer: { expiresWorldTime: 100, expiresRound: null, effectUuid: "Effect.b" } } } },
+      { id: "r-plain", flags: {} },
+    ],
+  }, { worldTime: 150, round: null }),
+  [{ regionId: "r-dead", sceneId: "scene-x", effectUuid: "Effect.b" }],
+  "only regions past their expiry are swept",
+);
+
 assert.equal(requiresTargetForAction(executionTargetAction), true);
 assert.equal(requiresTargetForAction({ name: "Stand", slug: "stand", targetingProfile: { self: true } }), false);
+// A self-directed suggested target (scoring assigns one to defense/self actions) must not
+// force the user to pick a target.
+assert.equal(
+  requiresTargetForAction({ name: "Raise a Shield", slug: "raise-a-shield", executable: "pf2e-action", role: "defense", suggestedTarget: { type: "self", id: "actor-token", name: "Valeros" } }),
+  false,
+  "a self-targeted suggestion should not require choosing a target",
+);
 assert.equal(requiresAreaMarkerForAction(executionAreaAction), true);
 assert.equal(panelSource.includes("plannedTargetDraftFields"), false, "adding or auto-filling a draft action should not persist recommendation targets");
 assert.equal(
@@ -779,6 +882,24 @@ assert.equal(
   0,
   "executed Sustain a Spell steps should suppress end-turn cleanup for the selected spell",
 );
+// A spell cast THIS turn cannot be sustained until next turn, so the cast turn's own draft
+// (which holds the cast step) must suppress end-of-turn cleanup.
+assert.equal(
+  unsustainedSpellCleanupEntries(sustainedSpellContext, [sustainedSpellAction], sustainedSpellDraft).length,
+  0,
+  "a spell cast this turn should not be offered for cleanup at the end of the casting turn",
+);
+// Next turn the cast step is gone from the draft, so the lingering effect IS offered for cleanup.
+assert.equal(
+  unsustainedSpellCleanupEntries(sustainedSpellContext, [sustainedSpellAction], { steps: [] }).length,
+  1,
+  "a spell left unsustained on a later turn should be offered for cleanup",
+);
+assert.equal(
+  readSustainedSpellEntries(sustainedSpellContext, [sustainedSpellAction], { steps: [] })[0]?.spellUuid,
+  "Actor.caster.Item.spell-animated-assault",
+  "sustained spell entries should carry the spell UUID for chat re-posting",
+);
 {
   const removed = [];
   const deletedRegions = [];
@@ -816,9 +937,11 @@ assert.equal(
 const previousExecutionGame = globalThis.game;
 const previousExecutionCanvas = globalThis.canvas;
 const previousExecutionChatMessage = globalThis.ChatMessage;
+const previousExecutionFromUuid = globalThis.fromUuid;
 try {
   const targetCalls = [];
   const pf2eActionCalls = [];
+  const raiseShieldCalls = [];
   const tokenUpdates = [];
   const tokenMoves = [];
   const movementStarts = [];
@@ -826,16 +949,34 @@ try {
   const conditionIncreases = [];
   const regionCreates = [];
   const regionDeletes = [];
+  const regionUpdates = [];
   const messageDeletes = [];
   const damageRolls = [];
   const damageMessages = [];
+  const effectCreates = [];
+  const effectDeletes = [];
+  const carryChanges = [];
+  const createdEffects = new Map();
   const actorDocument = {
     name: "Valeros",
+    uuid: "Actor.valeros",
     decreaseCondition: async (slug, options = {}) => {
       conditionUpdates.push({ slug, options });
     },
     increaseCondition: async (slug, options = {}) => {
       conditionIncreases.push({ slug, options });
+    },
+    changeCarryType: async (item, options = {}) => {
+      carryChanges.push({ item: item?.id ?? item?.name, carryType: options.carryType, handsHeld: options.handsHeld ?? 0 });
+    },
+    createEmbeddedDocuments: async (type, documents) => {
+      return documents.map((document, index) => {
+        const uuid = `Actor.valeros.Item.effect-${effectCreates.length + index + 1}`;
+        effectCreates.push({ type, document });
+        const effect = { ...document, uuid, delete: async () => { effectDeletes.push(uuid); } };
+        createdEffects.set(uuid, effect);
+        return effect;
+      });
     },
   };
   const actorToken = {
@@ -884,6 +1025,10 @@ try {
         regionDeletes.push({ type, ids });
         return ids;
       },
+      updateEmbeddedDocuments: async (type, updates) => {
+        regionUpdates.push({ type, updates });
+        return updates;
+      },
     },
     tokens: {
       placeables: [actorToken, targetToken],
@@ -896,6 +1041,7 @@ try {
   ]);
   globalThis.game = {
     user: { id: "user-1", targets: new Set() },
+    time: { worldTime: 0 },
     scenes: { get: (id) => (id === "scene-1" ? globalThis.canvas.scene : null) },
     messages: { get: (id) => chatMessages.get(id) ?? null },
     pf2e: {
@@ -937,10 +1083,13 @@ try {
       ]),
     },
   };
+  // Raise a Shield is a legacy camelCase function on game.pf2e.actions, not a slug-keyed Action.
+  globalThis.game.pf2e.actions.raiseAShield = async (options) => { raiseShieldCalls.push(options); };
   globalThis.ChatMessage = {
     getSpeaker: () => ({}),
     deleteDocuments: async (ids) => { messageDeletes.push(...ids); },
   };
+  globalThis.fromUuid = async (uuid) => createdEffects.get(uuid) ?? null;
   const executionContext = {
     actor: { document: actorDocument },
     token: { id: "actor-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
@@ -1255,6 +1404,89 @@ try {
   assert.equal(retchResult.status, "done");
   assert.deepEqual(conditionUpdates.at(-1), { slug: "sickened", options: {} });
 
+  // Raise a Shield resolves through PF2e's legacy camelCase function (not a slug Action) and
+  // needs no target — it should report done, not "PF2e action API is not available".
+  const raiseShieldResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "raise-shield-step" },
+    action: {
+      name: "Raise a Shield",
+      slug: "raise-a-shield",
+      executable: "pf2e-action",
+      role: "defense",
+      suggestedTarget: { type: "self", id: "actor-token", name: "Valeros" },
+    },
+  });
+  assert.equal(raiseShieldResult.status, "done", "Raise a Shield should execute via the legacy action function without asking for a target");
+
+  // Drop Prone applies prone; revert clears it.
+  const dropProneResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "drop-prone-step" },
+    action: { name: "Drop Prone", slug: "drop-prone", executable: "drop-prone" },
+  });
+  assert.equal(dropProneResult.status, "done");
+  assert.deepEqual(conditionIncreases.at(-1), { slug: "prone", options: {} }, "Drop Prone should apply the prone condition");
+  const dropProneRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "drop-prone-step", execution: dropProneResult.patch.execution } });
+  assert.equal(dropProneRevert.status, "reverted");
+  assert.deepEqual(conditionUpdates.at(-1), { slug: "prone", options: { forceRemove: true } }, "reverting Drop Prone should clear prone");
+
+  // Draw weapon sets it held; revert restores the prior carry state.
+  const drawWeapon = { id: "sword", name: "Longsword", uuid: "Actor.valeros.Item.sword", actor: actorDocument, system: { equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 1 } } };
+  createdEffects.set(drawWeapon.uuid, drawWeapon);
+  const drawResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "draw-weapon-step" },
+    action: { name: "Draw Longsword", slug: "draw-longsword", executable: "draw-weapon", item: drawWeapon },
+  });
+  assert.equal(drawResult.status, "done");
+  assert.deepEqual(carryChanges.at(-1), { item: "sword", carryType: "held", handsHeld: 1 }, "Draw should put the weapon in hand");
+  const drawRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "draw-weapon-step", execution: drawResult.patch.execution } });
+  assert.equal(drawRevert.status, "reverted");
+  assert.deepEqual(carryChanges.at(-1), { item: "sword", carryType: "worn", handsHeld: 0 }, "reverting Draw should restore the prior carry state");
+
+  // Release (drop) drops a held weapon; revert restores held.
+  const heldWeapon = { id: "dagger", name: "Dagger", uuid: "Actor.valeros.Item.dagger", actor: actorDocument, system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } } };
+  createdEffects.set(heldWeapon.uuid, heldWeapon);
+  const releaseResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "release-weapon-step" },
+    action: { name: "Release Dagger", slug: "release-dagger", executable: "drop-weapon", item: heldWeapon },
+  });
+  assert.equal(releaseResult.status, "done");
+  assert.deepEqual(carryChanges.at(-1), { item: "dagger", carryType: "dropped", handsHeld: 0 }, "Release should drop the held weapon");
+  const releaseRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "release-weapon-step", execution: releaseResult.patch.execution } });
+  assert.equal(releaseRevert.status, "reverted");
+  assert.deepEqual(carryChanges.at(-1), { item: "dagger", carryType: "held", handsHeld: 1 }, "reverting Release should restore the held weapon");
+  assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
+  assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
+
+  // Sustaining re-posts the spell's chat card so the player can re-use its data; the posted
+  // message is recorded as a chat revert op.
+  const sustainChatMessages = [];
+  const sustainSpellItem = {
+    id: "spell-bless",
+    name: "Bless",
+    uuid: "Actor.valeros.Item.spell-bless",
+    toMessage: async () => {
+      sustainChatMessages.push("sustain-msg-1");
+      return { id: "sustain-msg-1" };
+    },
+  };
+  createdEffects.set(sustainSpellItem.uuid, sustainSpellItem);
+  const sustainResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "sustain-step", sustainedSpell: { id: "bless", name: "Bless", spellUuid: sustainSpellItem.uuid } },
+    action: { name: "Sustain a Spell", slug: "sustain-a-spell", executable: "chat-guidance" },
+  });
+  assert.equal(sustainResult.status, "done");
+  assert.equal(sustainChatMessages.length, 1, "sustaining should re-post the spell to chat to reuse its data");
+  assert.deepEqual(
+    sustainResult.patch.execution.revert.ops,
+    [{ kind: "chat", messageId: "sustain-msg-1" }],
+    "sustain should record a chat revert op for the re-posted spell card",
+  );
+
   const areaMarker = { shape: "burst", center: { x: 100, y: 200 }, distance: 20, label: "Burst 20 ft" };
   const regionData = createAreaRegionData({ context: executionContext, action: executionAreaAction, marker: areaMarker });
   assert.equal(regionData.shapes[0].type, "circle");
@@ -1269,6 +1501,16 @@ try {
   });
   assert.equal(areaResult.status, "done");
   assert.equal(regionCreates.at(-1).type, "Region");
+
+  // A lasting-duration area also creates a linked PF2e timer effect and stamps the region.
+  assert.equal(effectCreates.length, 1, "a lasting-duration area should create one timer effect");
+  assert.equal(effectCreates[0].type, "Item");
+  assert.deepEqual(effectCreates[0].document.system.duration, { value: 1, unit: "minutes", expiry: null, sustained: false });
+  assert.equal(effectCreates[0].document.flags["pf2e-combater"].areaRegion.regionId, "region-1-0");
+  assert.equal(regionUpdates.at(-1).updates[0]._id, "region-1-0", "the region should be stamped with its timer flag");
+  assert.ok(regionUpdates.at(-1).updates[0]["flags.pf2e-combater.areaTimer"].effectUuid, "the region timer flag should link the effect");
+  const areaRegionOp = areaResult.patch.execution.revert.ops.find((op) => op.kind === "region");
+  assert.equal(areaRegionOp.effectUuid, "Actor.valeros.Item.effect-1", "the region revert op should carry the linked effect uuid");
 
   // An instantaneous AoE spell (no sustained/lasting duration) targets but leaves no template.
   const instantBurstMarker = { shape: "burst", center: { x: 300, y: 300 }, distance: 20 };
@@ -1335,6 +1577,20 @@ try {
   assert.equal(moveRevert.patch.execution.status, "pending", "revert should reset the step to pending");
   assert.deepEqual(tokenUpdates.at(-1), { x: -2.5, y: -2.5 }, "reverting a move should reposition the token to its captured origin");
 
+  // Reverting a multi-waypoint Stride retraces the path in reverse (skipping the current spot,
+  // ending at the origin) rather than cutting a straight line back.
+  const tokenUpdatesBeforeWaypointRevert = tokenUpdates.length;
+  const waypointRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "waypoint-move-step", execution: waypointPathResult.patch.execution },
+  });
+  assert.equal(waypointRevert.status, "reverted");
+  assert.deepEqual(
+    tokenUpdates.slice(tokenUpdatesBeforeWaypointRevert),
+    [{ x: 2.5, y: -2.5 }, { x: -2.5, y: -2.5 }],
+    "reverting a waypoint stride should retrace the waypoints in reverse, not cut a straight line",
+  );
+
   const standRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "stand-step", execution: standResult.patch.execution },
@@ -1368,6 +1624,7 @@ try {
   });
   assert.equal(areaRevert.status, "reverted");
   assert.deepEqual(regionDeletes.at(-1), { type: "Region", ids: ["region-1-0"] }, "reverting an area action should delete the placed region");
+  assert.ok(effectDeletes.includes("Actor.valeros.Item.effect-1"), "reverting an area action should delete its linked timer effect");
 
   globalThis.game.user.targets = new Set([targetToken]);
   let strikeRollParams = null;
@@ -1659,6 +1916,7 @@ try {
   globalThis.game = previousExecutionGame;
   globalThis.canvas = previousExecutionCanvas;
   globalThis.ChatMessage = previousExecutionChatMessage;
+  globalThis.fromUuid = previousExecutionFromUuid;
 }
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
@@ -1818,13 +2076,18 @@ try {
   assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
   assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
   assert.deepEqual([...readActionFavorites(builderContext)], []);
-  assert.equal(draftPlanKey(builderContext), "user-1|combat-1|2|combatant-1");
-  assert.equal(sharedDraftPlanKey(builderContext), "combat-1|2|combatant-1");
+  // Drafts are keyed per combatant (no round) so a plan survives turn/round changes.
+  assert.equal(draftPlanKey(builderContext), "user-1|combat-1|combatant-1");
+  assert.equal(sharedDraftPlanKey(builderContext), "combat-1|combatant-1");
   writeDraftPlan(builderContext, { steps: [] });
   upsertDraftStep(builderContext, { instanceId: "step-1", actionKey: "stride", actionCost: 1 });
   assert.equal(readDraftPlan(builderContext).steps[0].actionKey, "stride");
   removeDraftStep(builderContext, "step-1");
   assert.deepEqual(readDraftPlan(builderContext).steps, []);
+  upsertDraftStep(builderContext, { instanceId: "step-clear", actionKey: "stride", actionCost: 1 });
+  assert.equal(readDraftPlan(builderContext).steps.length, 1);
+  draftPlanState.clearDraftPlan(builderContext);
+  assert.deepEqual(readDraftPlan(builderContext).steps, [], "clearDraftPlan should drop the stored plan when a turn ends");
 
   globalThis.foundry = { utils: { randomID: () => "generated-step-id-1" } };
   const generatedStep = upsertDraftStep(builderContext, { actionKey: "stride", actionCost: 1 });
@@ -1840,6 +2103,58 @@ try {
     "strike",
     "raise-a-shield",
   ]);
+  assert.equal(moveDraftStep(builderContext, thirdGeneratedStep.instanceId, -1), true);
+  assert.deepEqual(readDraftPlan(builderContext).steps.map((step) => step.actionKey), [
+    "stride",
+    "raise-a-shield",
+    "strike",
+  ]);
+  assert.equal(moveDraftStep(builderContext, generatedStep.instanceId, -1), false);
+  assert.equal(moveDraftStep(builderContext, "missing-step", 1), false);
+
+  // --- Unconditional actions: draft storage (Task 1) ---
+  {
+    const previousStorage = globalThis.localStorage;
+    const store = new Map();
+    globalThis.localStorage = {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => { store.set(key, String(value)); },
+      removeItem: (key) => { store.delete(key); },
+    };
+    const previousGame = globalThis.game;
+    globalThis.game = { user: { id: "user-1", name: "Player One" } };
+    const ctx = { combat: { id: "combat-uc" }, combatant: { id: "combatant-uc" } };
+    try {
+      assert.deepEqual(emptyDraftPlan().unconditional, [], "emptyDraftPlan should include an unconditional list");
+
+      upsertDraftStep(ctx, { instanceId: "p1", actionKey: "stride", actionCost: 1 }, "steps");
+      upsertDraftStep(ctx, { instanceId: "u1", actionKey: "stride", actionCost: 1 }, "unconditional");
+      upsertDraftStep(ctx, { instanceId: "u2", actionKey: "strike", actionCost: 1 }, "unconditional");
+      let draft = readDraftPlan(ctx);
+      assert.deepEqual(draft.steps.map((s) => s.instanceId), ["p1"], "plan list should hold only plan steps");
+      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u1", "u2"], "unconditional list should hold its own steps");
+
+      assert.equal(draftListForInstance(draft, "p1"), "steps");
+      assert.equal(draftListForInstance(draft, "u2"), "unconditional");
+      assert.equal(draftListForInstance(draft, "missing"), "steps", "unknown ids default to the plan list");
+
+      assert.equal(moveDraftStep(ctx, "u2", -1, "unconditional"), true);
+      draft = readDraftPlan(ctx);
+      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u2", "u1"], "move should reorder within the unconditional list");
+      removeDraftStep(ctx, "u1", "unconditional");
+      draft = readDraftPlan(ctx);
+      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u2"], "remove should drop only the targeted unconditional step");
+      assert.deepEqual(draft.steps.map((s) => s.instanceId), ["p1"], "removing an unconditional step must not affect the plan");
+
+      assert.equal(hasSharedDraftPlan({ steps: [], unconditional: [{ instanceId: "u" }] }), true,
+        "an unconditional-only draft should be shareable");
+      assert.equal(shouldDisplaySharedDraft({ steps: [], unconditional: [] }, { steps: [], unconditional: [{ instanceId: "u" }], updatedAt: 5 }), true,
+        "a shared draft with unconditional entries should display over an empty local draft");
+    } finally {
+      globalThis.localStorage = previousStorage;
+      globalThis.game = previousGame;
+    }
+  }
 
   writeSharedDraftPlan(builderContext, {
     steps: [{ instanceId: "shared-1", actionKey: "stride", actionCost: 1 }],
@@ -2008,7 +2323,7 @@ assert.deepEqual(ACTION_BUILDER_TABS.map((tab) => tab.id), ["one", "two", "three
 assert.equal(actionBuilderKey(builderCandidates[0]), "stride");
 assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
 assert.equal(builderModel.tabs.two.all[0].key, "fireball");
-assert.equal(builderModel.tabs.two.all[0].disabled, true);
+assert.equal(builderModel.tabs.two.all[0].disabled, false);
 assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
 assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
@@ -2085,8 +2400,9 @@ assert.equal(splitConsumableBuilderModel.tabs.one.all.some((action) => action.na
 assert.equal(splitConsumableBuilderModel.tabs.one.all.some((action) => action.name === "Healing Potion (Minor)"), true);
 assert.equal(splitConsumableBuilderModel.tabs.two.all.some((action) => action.name === "Interact -> Healing Potion (Minor)"), false);
 
-// Sustain a Spell is a next-turn action: offered whenever a sustainable spell is in the
-// caster's available actions, regardless of the current draft.
+// Sustain a Spell is no longer injected as a builder-tab action — the dedicated sustained-spells
+// section handles sustaining. It must not appear in the tabs even for a caster with a
+// sustainable spell available.
 const spellcasterContext = { actor: { document: { itemTypes: { spellcastingEntry: [{ id: "arcane" }] } } } };
 const sustainPresentModel = buildActionBuilderModel({
   context: spellcasterContext,
@@ -2094,30 +2410,9 @@ const sustainPresentModel = buildActionBuilderModel({
   draft: { steps: [] },
 });
 assert.equal(
-  sustainPresentModel.tabs.one.all.some((action) => action.name === "Sustain a Spell" && action.actionCost === 1),
-  true,
-  "a spellcaster with a sustainable spell available should be offered Sustain a Spell (1 action), even with an empty draft",
-);
-// Without a spellcasting entry, Sustain a Spell is never offered.
-const nonCasterSustainModel = buildActionBuilderModel({
-  context: {},
-  candidates: [{ id: "web", name: "Web", slug: "web", source: "spell-inferred", actionCost: 2, score: 30, activityProfile: { spell: true, sustained: true } }],
-  draft: { steps: [] },
-});
-assert.equal(
-  nonCasterSustainModel.tabs.one.all.some((action) => action.name === "Sustain a Spell"),
+  sustainPresentModel.tabs.one.all.some((action) => action.name === "Sustain a Spell"),
   false,
-  "an actor without a spellcasting entry should not be offered Sustain a Spell",
-);
-const sustainAbsentModel = buildActionBuilderModel({
-  context: {},
-  candidates: [{ id: "longsword", name: "Longsword", slug: "longsword", source: "strike", actionCost: 1, score: 20, activityProfile: { includes: ["strike"] } }],
-  draft: { steps: [] },
-});
-assert.equal(
-  sustainAbsentModel.tabs.one.all.some((action) => action.name === "Sustain a Spell"),
-  false,
-  "Sustain a Spell should not appear when the caster has no sustainable spell available",
+  "Sustain a Spell should not be injected into the builder tabs (the sustained-spells section handles it)",
 );
 // Sustained is the structured duration flag, not any spell that lasts a turn (e.g. Sure Strike).
 const sureStrikeClassification = classifySpell({
@@ -2232,6 +2527,50 @@ assert.equal(projectedDraftFallbackBuilderModel.draft.steps[0].stale, false);
 assert.equal(projectedDraftFallbackBuilderModel.draft.steps[0].action.name, "Crossbow");
 assert.equal(projectedDraftFallbackBuilderModel.tabs.one.all.some((action) => action.name === "Crossbow"), false);
 
+const projectedMeleeDraftActions = {
+  "grapple-after-stride": { id: "grapple", slug: "grapple", name: "Grapple", actionCost: 1, available: true },
+  "grapple-before-stride": {
+    id: "grapple",
+    slug: "grapple",
+    name: "Grapple",
+    actionCost: 1,
+    available: false,
+    unavailableReason: "No enemy in reach.",
+  },
+};
+const projectedMeleeActions = [
+  { id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 20 },
+  { id: "grapple", slug: "grapple", name: "Grapple", actionCost: 1, score: 30 },
+];
+const grappleAfterStrideBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: projectedMeleeActions,
+  draftStepActions: projectedMeleeDraftActions,
+  draft: {
+    steps: [
+      { instanceId: "stride-step", actionKey: "stride", actionCost: 1, destination: { x: 5, y: 0 } },
+      { instanceId: "grapple-after-stride", actionKey: "grapple", actionCost: 1 },
+    ],
+  },
+});
+assert.equal(grappleAfterStrideBuilderModel.draft.steps[1].warning, "");
+const grappleBeforeStrideBuilderModel = buildActionBuilderModel({
+  context: {},
+  candidates: projectedMeleeActions,
+  draftStepActions: projectedMeleeDraftActions,
+  draft: {
+    steps: [
+      { instanceId: "grapple-before-stride", actionKey: "grapple", actionCost: 1 },
+      { instanceId: "stride-step", actionKey: "stride", actionCost: 1, destination: { x: 5, y: 0 } },
+    ],
+  },
+});
+assert.equal(
+  grappleBeforeStrideBuilderModel.draft.steps[0].warning,
+  "No enemy in reach.",
+  "draft melee warnings should use the projected origin before that step, not the final planned position",
+);
+
 const missingDraftCostBuilderModel = buildActionBuilderModel({
   context: {},
   candidates: [
@@ -2246,7 +2585,8 @@ assert.equal(missingDraftCostBuilderModel.remainingActions, 1);
 assert.equal(missingDraftCostBuilderModel.remainingNormalActions, 1);
 assert.equal(missingDraftCostBuilderModel.remainingTotalActions, 1);
 assert.equal(missingDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
-assert.equal(missingDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+assert.equal(missingDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, false);
+assert.equal(missingDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabledReason, "Not enough actions remaining.");
 
 const plannedDraftCostBuilderModel = buildActionBuilderModel({
   context: {},
@@ -2263,7 +2603,8 @@ assert.equal(plannedDraftCostBuilderModel.remainingNormalActions, 1);
 assert.equal(plannedDraftCostBuilderModel.draft.steps[0].actionCost, 2);
 assert.equal(plannedDraftCostBuilderModel.draft.steps[0].action.actionCost, 1);
 assert.equal(plannedDraftCostBuilderModel.tabs.one.all.find((action) => action.key === "stride").disabled, false);
-assert.equal(plannedDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+assert.equal(plannedDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, false);
+assert.equal(plannedDraftCostBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabledReason, "Not enough actions remaining.");
 
 const warningBuilderModel = buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
@@ -2345,8 +2686,8 @@ const panelRejectedDraftBuilderModel = buildActionBuilderModel({
   draft: { steps: [{ instanceId: "draft-1", actionKey: "stride", actionCost: 1 }] },
 });
 const rejectedStrideRow = panelRejectedDraftBuilderModel.tabs.one.all.find((action) => action.key === "stride");
-assert.ok(rejectedStrideRow, "disabled movement actions should stay visible in action builder");
-assert.equal(rejectedStrideRow.disabled, true);
+assert.ok(rejectedStrideRow, "rejected movement actions should stay visible in action builder");
+assert.equal(rejectedStrideRow.disabled, false);
 assert.equal(rejectedStrideRow.disabledReason, "No collision-free movement path.");
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].stale, false);
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].action.name, "Stride");
@@ -2370,7 +2711,8 @@ const inapplicableMovementBuilderModel = buildActionBuilderModel({
   }],
   draft: { steps: [] },
 });
-assert.equal(inapplicableMovementBuilderModel.tabs.one.all.some((action) => action.key === "stand"), false);
+assert.equal(inapplicableMovementBuilderModel.tabs.one.all.some((action) => action.key === "stand"), true);
+assert.equal(inapplicableMovementBuilderModel.tabs.one.all.find((action) => action.key === "stand").disabledReason, "Actor is not prone.");
 
 const standLikeMoveAction = {
   id: "stand",
@@ -2400,8 +2742,10 @@ const quickenedBuilderModel = buildActionBuilderModel({
   draft: { steps: [{ instanceId: "draft-1", actionKey: "full-turn", actionCost: 3 }] },
 });
 assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "strike").disabled, false);
-assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, true);
-assert.equal(quickenedBuilderModel.tabs.two.all.find((action) => action.key === "heal").disabled, true);
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, false);
+assert.equal(quickenedBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabledReason, "Not enough actions remaining.");
+assert.equal(quickenedBuilderModel.tabs.two.all.find((action) => action.key === "heal").disabled, false);
+assert.equal(quickenedBuilderModel.tabs.two.all.find((action) => action.key === "heal").disabledReason, "Not enough actions remaining.");
 assert.equal(quickenedBuilderModel.remainingActions, 0);
 assert.equal(quickenedBuilderModel.remainingNormalActions, 0);
 assert.equal(quickenedBuilderModel.remainingQuickenedActions, 1);
@@ -2452,7 +2796,8 @@ assert.deepEqual(
   quickenedRejectedStrikeBuilderModel.tabs.one.quickened.map((action) => action.key),
   ["strike-crossbow", "stride", "strike-shortsword"],
 );
-assert.equal(quickenedRejectedStrikeBuilderModel.tabs.one.quickened.at(-1).disabled, true);
+assert.equal(quickenedRejectedStrikeBuilderModel.tabs.one.quickened.at(-1).disabled, false);
+assert.equal(quickenedRejectedStrikeBuilderModel.tabs.one.quickened.at(-1).disabledReason, "Target is not in reach.");
 
 const mixedQuickenedDraftBuilderModel = buildActionBuilderModel({
   context: {
@@ -2479,7 +2824,8 @@ assert.equal(mixedQuickenedDraftBuilderModel.remainingNormalActions, 1);
 assert.equal(mixedQuickenedDraftBuilderModel.remainingQuickenedActions, 0);
 assert.equal(mixedQuickenedDraftBuilderModel.remainingTotalActions, 1);
 assert.equal(mixedQuickenedDraftBuilderModel.tabs.one.all.find((action) => action.key === "aid").disabled, false);
-assert.equal(mixedQuickenedDraftBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, true);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabled, false);
+assert.equal(mixedQuickenedDraftBuilderModel.tabs.two.all.find((action) => action.key === "power-attack").disabledReason, "Not enough actions remaining.");
 assert.equal(mixedQuickenedDraftBuilderModel.tabs.one.quickened.length, 0);
 
 // Planning a self-cast Haste (slug "haste") anticipates the quickened action before the condition
@@ -2531,6 +2877,34 @@ const extraActionSelfBuilderModel = buildActionBuilderModel({
 });
 assert.equal(extraActionSelfBuilderModel.remainingQuickenedActions, 1);
 assert.equal(extraActionSelfBuilderModel.remainingTotalActions, 2);
+assert.equal(
+  classifySpell({ name: "Haste", system: { description: { value: "Magic speeds a willing creature." } } })?.activityProfile?.extraAction,
+  true,
+  "Haste should be classified as an extra-action/quickened buff",
+);
+const hasteBuffScore = scoreCandidate({
+  ...fighterContext,
+  allies: [{ id: "calder", name: "Calder", hpPercent: 1, classSlug: "fighter" }],
+  battlefield: {
+    ...(fighterContext.battlefield ?? {}),
+    allies: [{ id: "calder", name: "Calder", hpPercent: 1, classSlug: "fighter" }],
+  },
+}, {
+  id: "haste",
+  slug: "haste",
+  source: "spell-inferred",
+  name: "Haste",
+  actionCost: 2,
+  role: "buff",
+  activityProfile: { includes: ["buff"] },
+  targetingProfile: { ally: true, self: true },
+});
+assert.ok(hasteBuffScore.reasons.some((reason) => reason === "Haste grants quickened."));
+assert.equal(
+  hasteBuffScore.reasons.some((reason) => reason.includes("boost Calder")),
+  false,
+  "Haste reason should say it grants quickened without naming who it boosts",
+);
 
 const staleBudgetBuilderModel = buildActionBuilderModel({
   context: { actionsSpent: { normal: 2, total: 2 } },
@@ -6264,6 +6638,125 @@ const activeFailedCheckTrigger = readActionSources({
 }).find((action) => action.slug === "lucky-retry");
 assert.equal(activeFailedCheckTrigger.available, true);
 
+// Reactions (unlike triggered free actions) should be listed as available on the actor's own
+// turn even when their trigger is not currently firing — the trigger is shown for reference.
+const reactionFeatContext = {
+  actor: {
+    document: {
+      system: {},
+      itemTypes: {
+        action: [],
+        feat: [{
+          id: "nimble-dodge",
+          name: "Nimble Dodge",
+          type: "feat",
+          system: {
+            slug: "nimble-dodge",
+            actionType: { value: "reaction" },
+            actions: { value: null },
+            description: {
+              value: "<p><strong>Trigger</strong> A creature targets you with an attack and you can see the attacker.</p><p>You gain a +2 circumstance bonus to AC against the triggering attack.</p>",
+            },
+          },
+        }],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+  triggerEvents: [],
+  events: [],
+};
+const reactionOnOwnTurn = readActionSources(reactionFeatContext).find((action) => action.slug === "nimble-dodge");
+assert.ok(reactionOnOwnTurn, "reactions should be listed even with no active trigger");
+assert.equal(reactionOnOwnTurn.available, true, "a reaction should be available on the actor's own turn without an active trigger");
+assert.ok(reactionOnOwnTurn.trigger, "the reaction should still carry its trigger text for reference");
+
+// Draw (1 action) per sheathed weapon, Drop/Release (free) per held weapon, and Drop Prone.
+const weaponActionsContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [
+          { id: "w-sheathed", name: "Longsword", type: "weapon", uuid: "Actor.x.Item.w-sheathed", system: { category: "martial", equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 1 }, traits: { value: [] } } },
+          { id: "w-held", name: "Dagger", type: "weapon", uuid: "Actor.x.Item.w-held", system: { category: "simple", equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 }, traits: { value: [] } } },
+        ],
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+    profile: {},
+  },
+  profile: {},
+  targets: [],
+};
+const weaponSources = readActionSources(weaponActionsContext);
+const drawLongsword = weaponSources.find((action) => action.slug === "draw-longsword");
+assert.ok(drawLongsword, "a sheathed weapon should get a Draw action");
+assert.equal(drawLongsword.actionCost, 1);
+assert.equal(drawLongsword.executable, "draw-weapon");
+assert.equal(drawLongsword.item.id, "w-sheathed");
+const releaseDagger = weaponSources.find((action) => action.slug === "release-dagger");
+assert.ok(releaseDagger, "a held weapon should get a Release (free) action");
+assert.equal(releaseDagger.actionCost, 0);
+assert.equal(releaseDagger.executable, "drop-weapon");
+assert.equal(releaseDagger.name, "Release Dagger");
+assert.ok(!weaponSources.some((action) => action.slug === "release-longsword"), "a sheathed weapon should not get a Release");
+assert.ok(!weaponSources.some((action) => action.slug === "draw-dagger"), "a held weapon should not get a Draw");
+const ownTurnDropProne = weaponSources.find((action) => action.slug === "drop-prone");
+assert.ok(ownTurnDropProne, "Drop Prone should be offered when the actor lacks its own");
+assert.equal(ownTurnDropProne.actionCost, 1);
+assert.equal(ownTurnDropProne.available, true);
+
+// Drop Prone is hidden when the actor already carries its own, and disabled when already prone.
+const hasOwnDropProne = readActionSources({
+  ...weaponActionsContext,
+  actor: {
+    ...weaponActionsContext.actor,
+    document: {
+      ...weaponActionsContext.actor.document,
+      itemTypes: { ...weaponActionsContext.actor.document.itemTypes, action: [{ name: "Drop Prone", type: "action", system: { slug: "drop-prone" } }] },
+    },
+  },
+}).filter((action) => action.slug === "drop-prone" && action.source === "system-inferred");
+assert.equal(hasOwnDropProne.length, 0, "the generic Drop Prone should not duplicate the actor's own");
+const proneDropProne = readActionSources({
+  ...weaponActionsContext,
+  actor: { ...weaponActionsContext.actor, profile: { conditions: [{ slug: "prone" }] } },
+  profile: { conditions: [{ slug: "prone" }] },
+}).find((action) => action.slug === "drop-prone");
+assert.equal(proneDropProne?.available, false, "Drop Prone should be unavailable when already prone");
+
+// Reload (cost = the weapon's reload value) for a held firearm/crossbow.
+const reloadContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [{ id: "w-gun", name: "Pistol", type: "weapon", uuid: "Actor.x.Item.w-gun", system: { category: "martial", equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 }, reload: { value: "1" }, traits: { value: [] } } }],
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+    profile: {},
+  },
+  profile: {},
+  targets: [],
+};
+const reloadPistol = readActionSources(reloadContext).find((action) => action.slug === "reload-pistol");
+assert.ok(reloadPistol, "a held firearm with a reload value should get a Reload action");
+assert.equal(reloadPistol.actionCost, 1);
+assert.equal(reloadPistol.executable, "reload-weapon");
+assert.ok(!readActionSources(weaponActionsContext).some((action) => action.slug && action.slug.startsWith("reload-")), "non-reload weapons should not get a Reload action");
+
 const amiriContext = {
   actor: {
     id: "amiri-1",
@@ -7446,6 +7939,33 @@ const shieldBlockWithShieldSpell = readActionSources({
 }).find((action) => action.name === "Shield Block");
 assert.equal(shieldBlockWithShieldSpell.available, true, shieldBlockWithShieldSpell.unavailableReason);
 
+// The Shield spell effect can carry a rank/variant suffix on its slug — Shield Block must
+// still be granted, but the post-block "Shield Immunity" cooldown must NOT grant it.
+const shieldBlockWithSuffixedSpell = readActionSources({
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [{ slug: "spell-effect-shield-rank-1", name: "Spell Effect: Shield" }],
+    },
+  },
+}).find((action) => action.name === "Shield Block");
+assert.ok(shieldBlockWithSuffixedSpell, "a suffixed Shield spell effect should still grant Shield Block");
+assert.equal(shieldBlockWithSuffixedSpell.available, true, shieldBlockWithSuffixedSpell.unavailableReason);
+
+const shieldBlockWithImmunityOnly = readActionSources({
+  ...shieldBlockTriggerContext,
+  actor: {
+    ...shieldBlockTriggerContext.actor,
+    profile: {
+      ...shieldBlockTriggerContext.actor.profile,
+      effects: [{ slug: "effect-shield-immunity", name: "Effect: Shield Immunity" }],
+    },
+  },
+}).find((action) => action.name === "Shield Block");
+assert.equal(shieldBlockWithImmunityOnly?.available, false, "the Shield Block cooldown alone must not make Shield Block available");
+
 const shieldBlockFeatContext = {
   ...shieldBlockTriggerContext,
   actor: {
@@ -7503,6 +8023,25 @@ const noShieldBlockContext = {
     },
   },
 };
+
+// Caster's own turn after casting Shield: the spell effect is active but no incoming-attack
+// event is in context. Shield Block must still be offered as an available reaction (it should
+// not be gated on the attack trigger firing right now).
+const shieldSpellOwnTurnBlock = readActionSources({
+  ...noShieldBlockContext,
+  triggerEvents: [],
+  events: [],
+  actor: {
+    ...noShieldBlockContext.actor,
+    profile: {
+      ...noShieldBlockContext.actor.profile,
+      effects: [{ slug: "spell-effect-shield", name: "Spell Effect: Shield" }],
+    },
+  },
+}).find((action) => action.slug === "shield-block" && action.source === "spell-inferred");
+assert.ok(shieldSpellOwnTurnBlock, "Shield spell should offer Shield Block with no active attack trigger");
+assert.equal(shieldSpellOwnTurnBlock.available, true, shieldSpellOwnTurnBlock.unavailableReason);
+
 const plannedRaiseWithoutShieldBlock = readActionSources(projectContextForDraftDestination(noShieldBlockContext, {
   steps: [{
     instanceId: "raise-shield-no-feat",
@@ -9611,14 +10150,16 @@ const kineticistBlastBuilder = buildActionBuilderModel({
 const kineticistBlastOneActionRows = kineticistBlastBuilder.tabs.one.all.map((action) => ({
   name: action.name,
   disabled: action.disabled,
+  disabledReason: action.disabledReason,
 }));
 assert.ok(
   kineticistBlastOneActionRows.some((action) => action.name === "Elemental Blast (Fire) (ranged)" && !action.disabled),
   "Action builder should show available ranged Elemental Blast.",
 );
 assert.ok(
-  kineticistBlastOneActionRows.some((action) => action.name === "Elemental Blast (Fire) (melee)" && action.disabled),
-  `Action builder should keep melee Elemental Blast visible as disabled; got ${JSON.stringify(kineticistBlastOneActionRows)}`,
+  kineticistBlastOneActionRows.some((action) =>
+    action.name === "Elemental Blast (Fire) (melee)" && !action.disabled && action.disabledReason),
+  `Action builder should keep melee Elemental Blast visible with a warning; got ${JSON.stringify(kineticistBlastOneActionRows)}`,
 );
 
 const extractElementAction = {

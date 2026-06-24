@@ -62,22 +62,22 @@ function userId() {
   return globalThis.game?.user?.id ?? "anonymous";
 }
 
+// Drafts are keyed per combatant (NOT per round) so an execution plan survives turn and
+// round changes. It is cleared explicitly when that combatant's turn ends.
 export function draftPlanKey(context) {
   const combatId = context?.combat?.id ?? "no-combat";
-  const round = context?.combat?.round ?? "no-round";
   const combatantId = context?.combatant?.id ?? "no-combatant";
-  return `${userId()}|${combatId}|${round}|${combatantId}`;
+  return `${userId()}|${combatId}|${combatantId}`;
 }
 
 export function sharedDraftPlanKey(contextOrPayload) {
   const combatId = contextOrPayload?.combat?.id ?? contextOrPayload?.combatId ?? "no-combat";
-  const round = contextOrPayload?.combat?.round ?? contextOrPayload?.round ?? "no-round";
   const combatantId = contextOrPayload?.combatant?.id ?? contextOrPayload?.combatantId ?? "no-combatant";
-  return `${combatId}|${round}|${combatantId}`;
+  return `${combatId}|${combatantId}`;
 }
 
 export function emptyDraftPlan() {
-  return { steps: [], updatedAt: Date.now() };
+  return { steps: [], unconditional: [], updatedAt: Date.now() };
 }
 
 export function readDraftPlan(context) {
@@ -87,6 +87,7 @@ export function readDraftPlan(context) {
   return {
     ...draft,
     steps: [...draft.steps],
+    unconditional: Array.isArray(draft.unconditional) ? [...draft.unconditional] : [],
     updatedAt: Number.isFinite(Number(draft.updatedAt)) ? Number(draft.updatedAt) : Date.now(),
   };
 }
@@ -96,6 +97,7 @@ export function writeDraftPlan(context, draft) {
   drafts[draftPlanKey(context)] = {
     ...draft,
     steps: Array.isArray(draft?.steps) ? [...draft.steps] : [],
+    unconditional: Array.isArray(draft?.unconditional) ? [...draft.unconditional] : [],
     updatedAt: Date.now(),
   };
   writeStoredDrafts(drafts);
@@ -105,6 +107,7 @@ function normalizeSharedDraft(draft) {
   return {
     ...draft,
     steps: Array.isArray(draft?.steps) ? [...draft.steps] : [],
+    unconditional: Array.isArray(draft?.unconditional) ? [...draft.unconditional] : [],
     updatedAt: Number.isFinite(Number(draft?.updatedAt)) ? Number(draft.updatedAt) : Date.now(),
     userId: draft?.userId ?? null,
     userName: draft?.userName ?? "",
@@ -163,8 +166,16 @@ function hasSteps(draft) {
   return Array.isArray(draft?.steps) && draft.steps.length > 0;
 }
 
+function hasUnconditional(draft) {
+  return Array.isArray(draft?.unconditional) && draft.unconditional.length > 0;
+}
+
+function hasAnyEntries(draft) {
+  return hasSteps(draft) || hasUnconditional(draft);
+}
+
 export function hasSharedDraftPlan(draft) {
-  return hasSteps(draft)
+  return hasAnyEntries(draft)
     || Boolean(draft?.userId)
     || Boolean(String(draft?.userName ?? "").trim())
     || draft?.type === "shareDraft";
@@ -172,7 +183,7 @@ export function hasSharedDraftPlan(draft) {
 
 export function shouldDisplaySharedDraft(localDraft, sharedDraft) {
   if (!hasSharedDraftPlan(sharedDraft)) return false;
-  if (!hasSteps(localDraft)) return true;
+  if (!hasAnyEntries(localDraft)) return true;
   if (localDraft?.source === "shared") return true;
 
   const localUpdatedAt = Number(localDraft?.updatedAt);
@@ -187,33 +198,77 @@ function draftStepId() {
     ?? `draft-step-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function upsertDraftStep(context, step) {
+export function upsertDraftStep(context, step, listKey = "steps") {
   const draft = readDraftPlan(context);
   const normalizedStep = {
     ...step,
     instanceId: step?.instanceId ?? draftStepId(),
   };
-  const stepIndex = draft.steps.findIndex((entry) => entry.instanceId === normalizedStep.instanceId);
-  const nextSteps = [...draft.steps];
+  const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+  const stepIndex = list.findIndex((entry) => entry.instanceId === normalizedStep.instanceId);
+  const nextList = [...list];
   if (stepIndex >= 0) {
-    nextSteps[stepIndex] = normalizedStep;
+    nextList[stepIndex] = normalizedStep;
   } else {
-    nextSteps.push(normalizedStep);
+    nextList.push(normalizedStep);
   }
-  writeDraftPlan(context, { ...draft, steps: nextSteps });
+  writeDraftPlan(context, { ...draft, [listKey]: nextList });
   return normalizedStep;
 }
 
-export function removeDraftStep(context, instanceId) {
+export function removeDraftStep(context, instanceId, listKey = "steps") {
   const draft = readDraftPlan(context);
+  const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
   writeDraftPlan(context, {
     ...draft,
-    steps: draft.steps.filter((step) => step.instanceId !== instanceId),
+    [listKey]: list.filter((step) => step.instanceId !== instanceId),
   });
+}
+
+export function moveDraftStep(context, instanceId, direction, listKey = "steps") {
+  const draft = readDraftPlan(context);
+  const steps = Array.isArray(draft[listKey]) ? [...draft[listKey]] : [];
+  const index = steps.findIndex((step) => step.instanceId === instanceId);
+  const offset = Math.sign(Number(direction) || 0);
+  const nextIndex = index + offset;
+  if (index < 0 || offset === 0 || nextIndex < 0 || nextIndex >= steps.length) return false;
+
+  [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
+  writeDraftPlan(context, { ...draft, [listKey]: steps });
+  return true;
+}
+
+// Which draft list owns this instanceId. Plan steps are the default for unknown ids so a
+// brand-new plan step still routes correctly.
+export function draftListForInstance(draft, instanceId) {
+  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
+  return unconditional.some((step) => step?.instanceId === instanceId) ? "unconditional" : "steps";
 }
 
 export function clearDraftPlan(context) {
   const drafts = readStoredDrafts();
   delete drafts[draftPlanKey(context)];
   writeStoredDrafts(drafts);
+}
+
+// Clear a shared (player→GM) plan from both stores so an ended turn's plan does not linger.
+export async function clearSharedDraftPlan(context) {
+  const key = sharedDraftPlanKey(context);
+  const drafts = readStoredSharedDrafts();
+  if (key in drafts) {
+    delete drafts[key];
+    writeStoredSharedDrafts(drafts);
+  }
+
+  const actor = actorDocument(context);
+  const actorDrafts = readActorSharedDrafts(context);
+  if (typeof actor?.setFlag === "function" && key in actorDrafts) {
+    const next = { ...actorDrafts };
+    delete next[key];
+    try {
+      await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, next);
+    } catch (_error) {
+      // Flag write may be denied for non-owners; the local store is already cleared.
+    }
+  }
 }
