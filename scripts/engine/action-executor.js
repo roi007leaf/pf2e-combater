@@ -1,5 +1,6 @@
 import { requiresDestinationForAction } from "./action-builder.js";
 import { movementPreviewForStep } from "../ui/movement-preview.js";
+import { buildAreaTimerEffectData, buildAreaTimerFlag, parseSpellDuration } from "./area-duration.js";
 
 const AREA_SHAPES = new Set(["burst", "cone", "cube", "cylinder", "emanation", "line", "ring", "square"]);
 const AREA_REGION_TYPES = new Set(["circle", "cone", "emanation", "line", "rectangle", "ring"]);
@@ -194,10 +195,15 @@ export function requiresTargetForAction(action) {
   const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;
   if (selfOnly) return false;
 
+  // A self-directed suggested target (Raise a Shield, Take Cover, self-buffs, etc.) is the
+  // acting actor — it never requires the user to pick a target on the canvas.
+  const suggested = action?.preferredTarget ?? action?.suggestedTarget ?? null;
+  const hasExternalTarget = Boolean(suggested) && suggested?.type !== "self";
+
   return action?.executable === "strike"
     || action?.source === "strike"
     || action?.attackTrait === true
-    || Boolean(action?.preferredTarget ?? action?.suggestedTarget)
+    || hasExternalTarget
     || targeting?.enemy === true
     || targeting?.ally === true
     || targeting?.reach === true
@@ -225,12 +231,14 @@ export function nextPendingExecutionStep(draft) {
 }
 
 export function resetDraftExecution(draft) {
+  const resetList = (list) => (Array.isArray(list) ? list : []).map((step) => ({
+    ...step,
+    execution: { status: "pending" },
+  }));
   return {
     ...(draft ?? {}),
-    steps: (Array.isArray(draft?.steps) ? draft.steps : []).map((step) => ({
-      ...step,
-      execution: { status: "pending" },
-    })),
+    steps: resetList(draft?.steps),
+    ...(Array.isArray(draft?.unconditional) ? { unconditional: resetList(draft.unconditional) } : {}),
   };
 }
 
@@ -661,6 +669,23 @@ function customMovementWaypoints(destination, movementPlan) {
   return waypoints;
 }
 
+// Forward path of top-left token positions (origin first, destination last). Captured so revert
+// can retrace the waypoints in reverse rather than cutting a straight line back to the origin.
+function movementPathPoints({ origin, destination, movementPlan, token, context, action }) {
+  if (!origin) return null;
+  const waypointCenters = Array.isArray(movementPlan?.waypoints)
+    ? movementPlan.waypoints.map((waypoint) => point(waypoint)).filter(Boolean)
+    : [];
+  const centers = [...waypointCenters];
+  if (destination && !samePoint(centers.at(-1), destination)) centers.push(destination);
+  if (!centers.length) return [origin];
+  const tail = centers.map((center) => {
+    const waypoint = tokenWaypointForDestination(center, token, context, action);
+    return { x: waypoint.x, y: waypoint.y };
+  });
+  return [origin, ...tail];
+}
+
 async function startPlannedMovement(document, movementPlan) {
   if (!movementPlan?.id || typeof document?.startMovement !== "function") return false;
   if (document?.movement?.state !== "planned") return false;
@@ -688,8 +713,9 @@ async function executeMovement({ context, step, action, choices }) {
   const document = token?.document ?? context?.combatant?.token ?? context?.token?.document;
   const origin = movementOrigin(token, document, context);
   const moveTokenId = targetTokenId(token) ?? tokenId(context);
+  const path = movementPathPoints({ origin, destination, movementPlan, token, context, action });
   const movementRevert = origin && moveTokenId
-    ? revertEnvelope([{ kind: "movement", tokenId: moveTokenId, origin }])
+    ? revertEnvelope([{ kind: "movement", tokenId: moveTokenId, origin, ...(path && path.length > 1 ? { path } : {}) }])
     : null;
   if (!canMoveOnCurrentTurn(context, token)) {
     return {
@@ -768,7 +794,7 @@ async function executeMovement({ context, step, action, choices }) {
   };
 }
 
-async function decreaseCondition(actor, slug, options = {}) {
+export async function decreaseCondition(actor, slug, options = {}) {
   if (typeof actor?.decreaseCondition === "function") {
     await actor.decreaseCondition(slug, options);
     return true;
@@ -835,15 +861,79 @@ async function executeRetch({ actor, context, action, event, choices }) {
     : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not reduce sickened." }), error: "Could not reduce sickened." };
 }
 
+async function executeDropProne(actor) {
+  const added = await increaseCondition(actor, "prone");
+  return added
+    ? { status: "done", patch: executionPatch({}, "done", { result: "Dropped prone.", revert: revertEnvelope([{ kind: "condition", slug: "prone", remove: true }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not drop prone." }), error: "Could not drop prone." };
+}
+
+function weaponCarryState(item) {
+  const equipped = item?.system?.equipped ?? {};
+  return { carryType: equipped.carryType ?? "worn", handsHeld: Number(equipped.handsHeld) || 0 };
+}
+
+async function changeWeaponCarry(actor, item, target) {
+  if (typeof actor?.changeCarryType === "function") {
+    await actor.changeCarryType(item, target);
+    return true;
+  }
+  if (typeof item?.update === "function") {
+    await item.update({
+      "system.equipped.carryType": target.carryType,
+      "system.equipped.handsHeld": target.handsHeld ?? 0,
+    });
+    return true;
+  }
+  return false;
+}
+
+async function executeDrawWeapon({ actor, action }) {
+  const item = action?.item;
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to draw." }), error: "No weapon to draw." };
+  const prior = weaponCarryState(item);
+  const hands = Number(item?.system?.usage?.hands) || 1;
+  const changed = await changeWeaponCarry(actor, item, { carryType: "held", handsHeld: hands });
+  return changed
+    ? { status: "done", patch: executionPatch({}, "done", { result: `Drew ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not draw the weapon." }), error: "Could not draw the weapon." };
+}
+
+async function executeDropWeapon({ actor, action }) {
+  const item = action?.item;
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to drop." }), error: "No weapon to drop." };
+  const prior = weaponCarryState(item);
+  const changed = await changeWeaponCarry(actor, item, { carryType: "dropped", handsHeld: 0 });
+  return changed
+    ? { status: "done", patch: executionPatch({}, "done", { result: `Dropped ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not drop the weapon." }), error: "Could not drop the weapon." };
+}
+
+// PF2e has no scriptable reload action (ammo selection happens in the weapon UI), so post a
+// reminder to reload rather than guessing at the ammunition state.
+async function executeReloadWeapon({ actor, action }) {
+  await createGuidance({ ...action, reason: `Reload ${action?.item?.name ?? "your weapon"} before firing again.` }, actor);
+  return { status: "done", patch: executionPatch({}, "done", { result: "Posted reload reminder." }) };
+}
+
 function pf2eActionsCollection() {
   return globalThis.game?.pf2e?.actions ?? null;
 }
 
+function slugToCamel(slug) {
+  return String(slug ?? "")
+    .toLowerCase()
+    .replace(/-([a-z0-9])/g, (_match, char) => char.toUpperCase());
+}
+
+// PF2e exposes most actions as Action instances retrievable by slug (collection.get), but a
+// few (e.g. Raise a Shield, Take Cover) are still legacy functions keyed by camelCase name
+// (game.pf2e.actions.raiseAShield) and are NOT in the slug collection.
 function pf2eActionBySlug(slug) {
   const collection = pf2eActionsCollection();
   if (!collection) return null;
-  if (typeof collection.get === "function") return collection.get(slug) ?? null;
-  return collection[slug] ?? null;
+  const fromGet = typeof collection.get === "function" ? collection.get(slug) : null;
+  return fromGet ?? collection[slug] ?? collection[slugToCamel(slug)] ?? null;
 }
 
 function systemActionVariantList(systemAction) {
@@ -877,9 +967,7 @@ function resolveActionVariant(systemAction, action) {
 
 async function usePf2eAction({ actor, context, action, event, targetToken = null }) {
   const systemAction = pf2eActionBySlug(actionSlug(action));
-  if (typeof systemAction?.use !== "function") return null;
-  const variant = resolveActionVariant(systemAction, action);
-  return systemAction.use({
+  const options = {
     actors: actor ? [actor] : [],
     actor,
     event,
@@ -887,8 +975,24 @@ async function usePf2eAction({ actor, context, action, event, targetToken = null
     statistic: action?.skill ?? action?.statistic,
     difficultyClass: action?.difficultyClass ?? action?.dc ?? null,
     traits: action?.traits,
-    ...(variant ? { variant } : {}),
-  });
+  };
+
+  // New-style Action instance.
+  if (typeof systemAction?.use === "function") {
+    const variant = resolveActionVariant(systemAction, action);
+    const result = await systemAction.use({ ...options, ...(variant ? { variant } : {}) });
+    // Many actions resolve without returning a value; report success so callers don't treat
+    // a void result as a missing API.
+    return result ?? { executed: true };
+  }
+
+  // Legacy function form (e.g. raiseAShield) — these read options.actors and return nothing.
+  if (typeof systemAction === "function") {
+    const result = await systemAction(options);
+    return result ?? { executed: true };
+  }
+
+  return null;
 }
 
 async function executePf2eAction({ actor, context, step, action, event, choices }) {
@@ -1002,6 +1106,53 @@ async function createGuidance(action, actor) {
   return true;
 }
 
+function normalizeSpellKey(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// Resolve the spell being sustained: prefer the stored UUID, fall back to matching the actor's
+// own spells by slug (the sustained-spell entry is keyed by the spell's normalized slug).
+async function resolveSustainedSpell(actor, sustained) {
+  const uuid = sustained?.spellUuid;
+  if (uuid && typeof globalThis.fromUuid === "function") {
+    try {
+      const document = await globalThis.fromUuid(uuid);
+      if (document) return document;
+    } catch (_error) {
+      // Fall through to a slug match on the actor.
+    }
+  }
+  const target = normalizeSpellKey(sustained?.id ?? sustained?.spellSlug ?? sustained?.name);
+  if (!target) return null;
+  return collectionValues(actor?.itemTypes?.spell).find(
+    (spell) => normalizeSpellKey(spell?.slug ?? spell?.system?.slug ?? spell?.name) === target,
+  ) ?? null;
+}
+
+// Sustaining re-posts the spell's chat card so the player can re-use its data (re-apply effects,
+// re-roll damage, click its buttons) for the extended round. The posted card is captured as a
+// chat revert op so undoing the Sustain step also removes the re-posted message.
+async function executeSustainSpell({ actor, step, action }) {
+  const sustained = step?.sustainedSpell ?? {};
+  const spell = await resolveSustainedSpell(actor, sustained);
+  let messageId = null;
+  if (typeof spell?.toMessage === "function") {
+    const message = await spell.toMessage(undefined, {
+      rollMode: globalThis.game?.settings?.get?.("core", "rollMode"),
+    });
+    messageId = chatMessageIdFromResult({ message }) ?? message?.id ?? message?._id ?? null;
+  } else {
+    await createGuidance({ ...action, reason: sustained?.name ? `Sustain ${sustained.name}.` : action?.reason }, actor);
+  }
+  return {
+    status: "done",
+    patch: executionPatch({}, "done", {
+      result: spell ? `Re-posted ${spell.name ?? sustained?.name ?? "spell"}.` : "Posted sustain reminder.",
+      revert: revertEnvelope(messageId ? [{ kind: "chat", messageId }] : []),
+    }),
+  };
+}
+
 function areaType(action, marker) {
   return String(
     marker?.shape
@@ -1099,6 +1250,57 @@ async function createAreaRegion({ context, action, marker }) {
     return { data, regionId: regionIdFromCreated(placed), sceneId };
   }
   throw new Error("Region creation API is not available.");
+}
+
+function spellDurationInfo(action) {
+  const raw = action?.activityProfile?.duration ?? action?.item?.system?.duration?.value ?? "";
+  const sustained = action?.activityProfile?.sustained === true
+    || action?.item?.system?.duration?.sustained === true;
+  return parseSpellDuration(raw, { sustained });
+}
+
+// Link a placed area region to a duration: create a PF2e timer effect on the caster (the
+// visible countdown badge) and stamp the region with a plain expiry the GM sweep can act on.
+// The region flag is the removal backbone, so this still works if effect creation fails.
+async function createAreaTimer({ context, action, region }) {
+  const duration = spellDurationInfo(action);
+  if (!duration || !region?.regionId) return null;
+
+  const worldTime = numeric(globalThis.game?.time?.worldTime);
+  const combat = globalThis.game?.combat ?? null;
+  const round = numeric(combat?.round);
+  const initiative = numeric(combat?.combatant?.initiative);
+  const actor = actorDocument(context);
+
+  let effectUuid = null;
+  if (typeof actor?.createEmbeddedDocuments === "function") {
+    try {
+      const data = buildAreaTimerEffectData({
+        action,
+        regionId: region.regionId,
+        sceneId: region.sceneId,
+        duration,
+        worldTime,
+        initiative,
+      });
+      const created = await actor.createEmbeddedDocuments("Item", [data]);
+      const effect = Array.isArray(created) ? created[0] : created;
+      effectUuid = effect?.uuid ?? null;
+    } catch (_error) {
+      // The effect is only the visible badge; removal still works from the region flag.
+    }
+  }
+
+  const flag = buildAreaTimerFlag({ duration, worldTime, round, effectUuid, casterActorUuid: actor?.uuid ?? null });
+  const scene = (region.sceneId && globalThis.game?.scenes?.get?.(region.sceneId)) ?? globalThis.canvas?.scene ?? null;
+  if (flag && typeof scene?.updateEmbeddedDocuments === "function") {
+    try {
+      await scene.updateEmbeddedDocuments("Region", [{ _id: region.regionId, "flags.pf2e-combater.areaTimer": flag }]);
+    } catch (_error) {
+      // Non-fatal: the region simply will not auto-expire.
+    }
+  }
+  return { effectUuid };
 }
 
 // Point-in-shape test against the same pixel-space shape descriptor used to draw the region,
@@ -1293,6 +1495,14 @@ function damageRollCount(action) {
   return Math.max(1, Math.min(3, cost || 1));
 }
 
+// Yield a macrotask so any chat message the action just posted (e.g. a spell/strike card)
+// is committed before we post damage, keeping the damage message after it in the log.
+async function flushPendingChat() {
+  const schedule = globalThis.setTimeout;
+  if (typeof schedule !== "function") return;
+  await new Promise((resolve) => { schedule(resolve, 0); });
+}
+
 async function rollActionDamageMessages({ actor, action, target = null }) {
   const count = damageRollCount(action);
   const messageIds = [];
@@ -1361,7 +1571,15 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     // Only leave a persistent region for lingering areas; instantaneous bursts/cones just target.
     if (areaTemplatePersists(resolvedAction)) {
       const region = await createAreaRegion({ context, action: resolvedAction, marker: areaMarker });
-      if (region?.regionId) regionOp = { kind: "region", regionId: region.regionId, sceneId: region.sceneId ?? null };
+      if (region?.regionId) {
+        const timer = await createAreaTimer({ context, action: resolvedAction, region });
+        regionOp = {
+          kind: "region",
+          regionId: region.regionId,
+          sceneId: region.sceneId ?? null,
+          ...(timer?.effectUuid ? { effectUuid: timer.effectUuid } : {}),
+        };
+      }
     }
     const insideTokens = tokensInAreaMarker({ context, action: resolvedAction, marker: areaMarker });
     if (insideTokens.length) {
@@ -1375,8 +1593,18 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     result = await executeMovement({ context, step, action: resolvedAction, choices });
   } else if (slug === "stand") {
     result = await executeStand(actor);
+  } else if (slug === "drop-prone") {
+    result = await executeDropProne(actor);
+  } else if (slug === "sustain-a-spell") {
+    result = await executeSustainSpell({ actor, step, action: resolvedAction });
   } else if (slug === "retch") {
     result = await executeRetch({ actor, context, action: resolvedAction, event, choices });
+  } else if (resolvedAction?.executable === "draw-weapon") {
+    result = await executeDrawWeapon({ actor, action: resolvedAction });
+  } else if (resolvedAction?.executable === "drop-weapon") {
+    result = await executeDropWeapon({ actor, action: resolvedAction });
+  } else if (resolvedAction?.executable === "reload-weapon") {
+    result = await executeReloadWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {
     result = await executeStrike({ step, action: resolvedAction, event, choices });
   } else if (resolvedAction?.executable === "pf2e-action") {
@@ -1384,6 +1612,9 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   } else {
     const slotOp = spellSlotRevertOp(actor, resolvedAction);
     const nativeResult = await executeOpenItem({ actor, action: resolvedAction, event });
+    // Let the action's own chat card commit before rolling damage, so the damage message
+    // always lands after the spell/strike card instead of racing ahead of it.
+    await flushPendingChat();
     const damageMessageIds = await rollActionDamageMessages({ actor, action: resolvedAction, target });
     result = {
       status: "done",

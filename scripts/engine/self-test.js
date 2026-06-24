@@ -1919,6 +1919,32 @@ try {
   globalThis.fromUuid = previousExecutionFromUuid;
 }
 
+// --- Unconditional actions: unified reset/revert (Task 2) ---
+{
+  const reverted = [];
+  const ctx = {};
+  const unifiedDraft = {
+    steps: [
+      { instanceId: "p1", execution: { status: "done", completedAt: 100, revert: { ops: [{ kind: "marker", id: "p1" }] } } },
+    ],
+    unconditional: [
+      { instanceId: "u1", execution: { status: "done", completedAt: 300, revert: { ops: [{ kind: "marker", id: "u1" }] } } },
+      { instanceId: "u2", execution: { status: "done", completedAt: 200, revert: { ops: [{ kind: "marker", id: "u2" }] } } },
+    ],
+  };
+  const reset = resetDraftExecution(unifiedDraft);
+  assert.ok(reset.steps.every((s) => s.execution.status === "pending"), "reset should clear plan step status");
+  assert.ok(reset.unconditional.every((s) => s.execution.status === "pending"), "reset should clear unconditional status");
+
+  const unifiedResult = await revertDraftExecution({
+    context: ctx,
+    draft: unifiedDraft,
+    contextForStep: (step) => { reverted.push(step.instanceId); return ctx; },
+  });
+  assert.deepEqual(reverted, ["u1", "u2", "p1"], "revert order should be newest completedAt first across both lists");
+  assert.ok(unifiedResult.draft.unconditional.every((s) => s.execution.status === "pending"), "returned draft should reset unconditional");
+}
+
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
 

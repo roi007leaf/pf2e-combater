@@ -1,25 +1,21 @@
 import {
   actorDocument,
   canvasTokenById,
+  decreaseCondition,
   findSpellcastingEntry,
   increaseCondition,
   resetDraftExecution,
   tokenId,
 } from "./action-executor.js";
 
-// Move a token back to the top-left it occupied before the executed move. A plain update
-// is used (not the gated movement API) because revert is an undo, not a fresh move.
-async function revertMovement(op, { context }) {
-  const token = canvasTokenById(op?.tokenId) ?? canvasTokenById(tokenId(context));
-  const document = token?.document ?? token ?? null;
-  if (!op?.origin || !document) throw new Error("token is unavailable");
+async function moveTokenTo(document, point) {
   if (typeof document.update === "function") {
-    await document.update({ x: op.origin.x, y: op.origin.y });
+    await document.update({ x: point.x, y: point.y });
     return;
   }
   if (typeof document.move === "function") {
     await document.move(
-      { x: op.origin.x, y: op.origin.y, action: "walk", explicit: true, checkpoint: true, snapped: true },
+      { x: point.x, y: point.y, action: "walk", explicit: true, checkpoint: true, snapped: true },
       { method: "api" },
     );
     return;
@@ -27,16 +23,87 @@ async function revertMovement(op, { context }) {
   throw new Error("token movement API is unavailable");
 }
 
+// Retrace the executed move backward: step through the captured path in reverse (skipping the
+// token's current spot, ending at the origin) so a multi-waypoint Stride unwinds per waypoint
+// rather than sliding straight back. Falls back to a single hop to the origin.
+async function revertMovement(op, { context }) {
+  const token = canvasTokenById(op?.tokenId) ?? canvasTokenById(tokenId(context));
+  const document = token?.document ?? token ?? null;
+  if (!document) throw new Error("token is unavailable");
+
+  const steps = Array.isArray(op?.path) && op.path.length > 1
+    ? op.path.slice(0, -1).reverse()
+    : (op?.origin ? [op.origin] : []);
+  if (!steps.length) throw new Error("token is unavailable");
+
+  for (const step of steps) {
+    await moveTokenTo(document, step);
+  }
+}
+
 async function revertCondition(op, { actor }) {
+  // `remove: true` ops undo a condition the action APPLIED (e.g. Drop Prone) by clearing it;
+  // otherwise the action REMOVED the condition (e.g. Stand) and revert restores it.
+  if (op?.remove === true) {
+    const cleared = await decreaseCondition(actor, op?.slug, { forceRemove: true });
+    if (!cleared) throw new Error(`could not clear ${op?.slug ?? "condition"}`);
+    return;
+  }
   const restored = await increaseCondition(actor, op?.slug, op?.options ?? {});
   if (!restored) throw new Error(`could not restore ${op?.slug ?? "condition"}`);
 }
 
+// Restore a weapon's carry state (undo a Draw or a Release/Drop).
+async function revertCarryType(op) {
+  if (!op?.itemUuid || typeof globalThis.fromUuid !== "function") return;
+  try {
+    const item = await globalThis.fromUuid(op.itemUuid);
+    const actor = item?.actor ?? item?.parent ?? null;
+    const target = { carryType: op.carryType ?? "worn", handsHeld: op.handsHeld ?? 0 };
+    if (typeof actor?.changeCarryType === "function") {
+      await actor.changeCarryType(item, target);
+      return;
+    }
+    if (typeof item?.update === "function") {
+      await item.update({
+        "system.equipped.carryType": target.carryType,
+        "system.equipped.handsHeld": target.handsHeld,
+      });
+    }
+  } catch (_error) {
+    // Best-effort: the weapon may have moved or been removed since execution.
+  }
+}
+
+// True only when we can positively confirm an embedded document is already gone from its
+// collection. Returns false when we cannot check, so a real deletion is still attempted.
+function confirmedRemoved(collection, id) {
+  return Boolean(collection?.get) && id != null && !collection.get(id);
+}
+
+async function deleteLinkedAreaEffect(effectUuid) {
+  if (!effectUuid || typeof globalThis.fromUuid !== "function") return;
+  try {
+    const effect = await globalThis.fromUuid(effectUuid);
+    if (typeof effect?.delete !== "function") return;
+    // Skip only if another path (the deleteItem cascade, unsustained cleanup) already removed it.
+    if (confirmedRemoved(effect.parent?.items, effect.id)) return;
+    await effect.delete();
+  } catch (_error) {
+    // Best-effort: the timer effect may already be gone.
+  }
+}
+
 async function revertRegion(op) {
+  // Remove the linked countdown effect too, so reverting a placed area also clears its timer.
+  await deleteLinkedAreaEffect(op?.effectUuid);
+
   const scene = (op?.sceneId && globalThis.game?.scenes?.get?.(op.sceneId))
     ?? globalThis.canvas?.scene
     ?? null;
-  if (!op?.regionId || !scene) throw new Error("placed area could not be located");
+  if (!op?.regionId || !scene) return;
+  // Idempotent: skip only if the region is confirmed gone (e.g. removed by the effect cascade).
+  if (confirmedRemoved(scene.regions, op.regionId)) return;
   if (typeof scene.deleteEmbeddedDocuments === "function") {
     await scene.deleteEmbeddedDocuments("Region", [op.regionId]);
     return;
@@ -288,6 +355,8 @@ async function applyRevertOp(op, scope) {
       return revertCondition(op, scope);
     case "region":
       return revertRegion(op);
+    case "carry-type":
+      return revertCarryType(op);
     case "chat":
       return revertChat(op);
     case "slot":
@@ -319,14 +388,19 @@ export async function revertDraftStep({ context, step } = {}) {
   return { status: "reverted", patch: resetPatch, warnings };
 }
 
-// Revert every completed step in reverse execution order, then return the status-reset
-// draft. `contextForStep` lets callers resolve a per-step context (multi-combatant drafts).
+// Revert every completed step across the plan and unconditional lists in reverse execution
+// order, then return the status-reset draft. Ordering is by execution.completedAt (newest
+// first); ties fall back to reverse list position so plan-only drafts behave exactly as before.
+// `contextForStep` lets callers resolve a per-step context (multi-combatant drafts).
 export async function revertDraftExecution({ context, draft, contextForStep } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
+  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
   const warnings = [];
-  for (let index = steps.length - 1; index >= 0; index -= 1) {
-    const step = steps[index];
-    if (step?.execution?.status !== "done") continue;
+  const executed = [...steps, ...unconditional]
+    .map((step, index) => ({ step, index, at: Number(step?.execution?.completedAt) || 0 }))
+    .filter((entry) => entry.step?.execution?.status === "done")
+    .sort((left, right) => (right.at - left.at) || (right.index - left.index));
+  for (const { step } of executed) {
     const stepContext = contextForStep?.(step) ?? context;
     const result = await revertDraftStep({ context: stepContext, step });
     warnings.push(...(result.warnings ?? []));
