@@ -1220,31 +1220,12 @@
   margin-left: auto;
 }
 
-.pf2e-combater .combater-add-target {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px 0;
+/* The second add button (lightning) drops an action into the off-plan unconditional list. */
+.pf2e-combater .combater-add-unconditional {
+  color: var(--combater-free);
 }
 
-.pf2e-combater .combater-add-target-label {
-  font-size: 11px;
-  color: var(--combater-muted);
-}
-
-.pf2e-combater .combater-add-target-btn {
-  border: 1px solid var(--combater-line);
-  border-radius: 6px;
-  padding: 3px 10px;
-  background: var(--combater-surface);
-  color: var(--combater-muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.pf2e-combater .combater-add-target-btn.active {
-  border-color: var(--combater-focus);
+.pf2e-combater .combater-add-unconditional:hover {
   color: var(--combater-ink);
   background: var(--combater-surface-raised);
 }

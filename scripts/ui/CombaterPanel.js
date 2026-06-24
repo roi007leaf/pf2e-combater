@@ -594,7 +594,7 @@ function sustainedSpellDraftFields(entry) {
   };
 }
 
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], addTarget = "plan" } = {}) {
+function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [] } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
   const isPlayerPlan = builder.draft?.shared === true;
@@ -630,7 +630,6 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
     ...step,
     isCurrentExecution: step.instanceId === currentUnconditionalStep?.instanceId,
   }));
-  const canManageUnconditional = draftReadonly !== true || gmCanRunPlayerPlan;
   const allExecutable = [...draftSteps, ...unconditionalEntries];
   const executedCount = allExecutable.filter((step) => step.executionStatus === "done").length;
   const canResetExecution = allExecutable.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
@@ -658,12 +657,6 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       hasEntries: unconditionalEntries.length > 0,
       entries: unconditionalEntries,
     },
-    addTarget: addTarget === "unconditional" ? "unconditional" : "plan",
-    addTargets: [
-      { id: "plan", label: "Plan", active: addTarget !== "unconditional" },
-      { id: "unconditional", label: "Unconditional", active: addTarget === "unconditional" },
-    ],
-    canManageUnconditional,
     execution: {
       hasSteps: allExecutable.length > 0,
       canReset: (draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution,
@@ -805,7 +798,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._plan = null;
     this._builder = null;
     this._gmExecuteMode = false;
-    this._addTarget = "plan";
     this._destinationPicker = null;
     this._areaPicker = null;
     this._pinnedPlanId = null;
@@ -901,10 +893,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       favorites,
     });
     const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, {
-      sustainedSpells,
-      addTarget: this._addTarget,
-    });
+    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells });
     this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
 
     return this._viewContext(context);
@@ -964,8 +953,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => this._setActiveTab(button.dataset.tab));
     }
 
-    for (const button of element.querySelectorAll("[data-add-target]")) {
-      button.addEventListener("click", () => this._setAddTarget(button.dataset.addTarget));
+    for (const button of element.querySelectorAll("[data-add-unconditional]")) {
+      button.addEventListener("click", () => this._addUnconditionalAction(button.dataset.addUnconditional));
     }
 
     for (const input of element.querySelectorAll("[data-search-actions]")) {
@@ -1181,11 +1170,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ?? null;
   }
 
-  async _setAddTarget(target) {
-    this._addTarget = target === "unconditional" ? "unconditional" : "plan";
-    await this.render({ force: true });
-  }
-
   _draftHasManualSteps() {
     return (this._builder?.draft?.steps?.length ?? 0) > 0;
   }
@@ -1239,7 +1223,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _addAction(actionKey) {
-    if (this._addTarget === "unconditional") return this._addUnconditionalAction(actionKey);
     if (!this._canEditDraft()) return;
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;

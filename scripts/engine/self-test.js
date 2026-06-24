@@ -249,25 +249,20 @@ assert.equal(panelSource.includes("Execute next"), false, "panel should not expo
 assert.ok(panelSource.includes("_executeDraftStep(instanceId"), "panel should execute an explicit draft step by id");
 assert.ok(panelTemplateSource.includes("Reset execution"), "panel should expose execution reset");
 // --- Unconditional actions: template (Task 5) ---
-assert.ok(panelTemplateSource.includes("data-add-target"), "template should render the add-target toggle");
 assert.ok(panelTemplateSource.includes("builder.unconditional.hasEntries"), "template should gate the unconditional card");
 assert.ok(panelTemplateSource.includes("combater-unconditional"), "template should render an unconditional card");
 assert.ok(panelTemplateSource.includes("Unconditional actions"), "unconditional card should carry its title");
-assert.ok(/data-add-target="\{\{id\}\}"/.test(panelTemplateSource), "toggle should iterate the add-target options");
+assert.ok(/data-add-unconditional="\{\{key\}\}"/.test(panelTemplateSource), "each action row should have a second add button for the unconditional list");
 assert.ok(panelSource.includes("executeDraftStep"), "panel should use action executor instead of advisory-only execution");
 assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
 assert.ok(panelSource.includes("revertDraftExecution"), "panel reset should revert executed steps, not only clear status");
 assert.ok(panelSource.includes("revertDraftStep"), "panel should revert an individual executed step");
-// --- Unconditional actions: panel decoration + add-target (Task 4) ---
+// --- Unconditional actions: panel decoration (Task 4) ---
 assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expose a builder.unconditional view-model");
-assert.ok(panelSource.includes("addTargets"), "decorateBuilder should expose add-target options");
-assert.ok(panelSource.includes("canManageUnconditional"), "decorateBuilder should expose canManageUnconditional");
 // --- Unconditional actions: panel handlers (Task 6) ---
 assert.ok(panelSource.includes("draftListForInstance"), "panel should resolve a step's list before persisting");
 assert.ok(panelSource.includes("_addUnconditionalAction"), "panel should have an unconditional add handler");
-assert.ok(panelSource.includes("data-add-target"), "panel should wire the add-target toggle");
-assert.ok(panelSource.includes("_setAddTarget"), "panel should have an add-target setter");
-assert.ok(panelSource.includes("this._addTarget"), "panel should track the active add target");
+assert.ok(panelSource.includes("data-add-unconditional"), "panel should wire the second (unconditional) add button");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
 assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");

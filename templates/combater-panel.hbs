@@ -282,15 +282,6 @@
         </section>
       {{/if}}
 
-      {{#if builder.canManageUnconditional}}
-        <div class="combater-add-target" role="group" aria-label="Add actions to">
-          <span class="combater-add-target-label">Add to</span>
-          {{#each builder.addTargets}}
-            <button type="button" class="combater-add-target-btn {{#if active}}active{{/if}}" data-add-target="{{id}}">{{label}}</button>
-          {{/each}}
-        </div>
-      {{/if}}
-
       <nav class="combater-tabs" aria-label="PF2e Combater action costs">
         {{#each builder.tabsList}}
           <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">{{label}}</button>
@@ -343,8 +334,11 @@
                           <p>{{reason}}</p>
                         </div>
                         {{#unless readonly}}
-                        <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{disabledTitle}}" aria-label="Add {{name}}">
+                        <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{disabledTitle}}" aria-label="Add {{name}} to plan">
                           <i class="fa-solid fa-plus"></i>
+                        </button>
+                        <button type="button" class="combater-run combater-add-unconditional" data-add-unconditional="{{key}}" data-tooltip="Add to unconditional actions" aria-label="Add {{name}} to unconditional actions">
+                          <i class="fa-solid fa-bolt"></i>
                         </button>
                         {{/unless}}
                       </div>
