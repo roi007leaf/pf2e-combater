@@ -1,0 +1,1402 @@
+import { requiresDestinationForAction } from "./action-builder.js";
+import { movementPreviewForStep } from "../ui/movement-preview.js";
+
+const AREA_SHAPES = new Set(["burst", "cone", "cube", "cylinder", "emanation", "line", "ring", "square"]);
+const AREA_REGION_TYPES = new Set(["circle", "cone", "emanation", "line", "rectangle", "ring"]);
+const SUCCESS_DEGREES = new Set(["success", "criticalSuccess", "critical-success", "critical success", 2, 3]);
+
+function numeric(value, fallback = null) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function systemValue(value) {
+  if (value && typeof value === "object" && "value" in value) return value.value;
+  return value;
+}
+
+function point(value) {
+  const x = numeric(value?.x);
+  const y = numeric(value?.y);
+  return x === null || y === null ? null : { x, y };
+}
+
+function collectionValues(collection) {
+  if (!collection) return [];
+  if (Array.isArray(collection)) return collection;
+  if (Array.isArray(collection.contents)) return collection.contents;
+  if (typeof collection.values === "function") return Array.from(collection.values());
+  if (typeof collection[Symbol.iterator] === "function") return Array.from(collection);
+  return Object.values(collection);
+}
+
+export function actorDocument(context) {
+  return context?.actor?.document ?? context?.combatant?.actor ?? context?.actor ?? null;
+}
+
+export function tokenId(context) {
+  return context?.token?.id
+    ?? context?.token?.uuid
+    ?? context?.combatant?.tokenId
+    ?? context?.combatant?.token?.id
+    ?? context?.combatant?.token?.uuid
+    ?? null;
+}
+
+export function canvasTokenById(id) {
+  if (!id) return null;
+  return (globalThis.canvas?.tokens?.placeables ?? []).find((token) => {
+    const document = token?.document ?? token;
+    return token?.id === id
+      || token?.uuid === id
+      || document?.id === id
+      || document?.uuid === id;
+  }) ?? null;
+}
+
+function actionSlug(action) {
+  return String(action?.slug ?? action?.action?.slug ?? action?.actionKey ?? "").toLowerCase();
+}
+
+function slugFromName(name) {
+  return String(name ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function actionContextSlug(action) {
+  return slugFromName(actionSlug(action))
+    || slugFromName(action?.item?.slug)
+    || slugFromName(action?.item?.name)
+    || slugFromName(action?.name);
+}
+
+function movementActionForAction(action) {
+  const requested = String(action?.movementAction ?? action?.action?.movementAction ?? "").toLowerCase();
+  if (requested === "step") return "walk";
+  if (requested) return requested;
+
+  const slug = actionSlug(action);
+  if (slug === "crawl") return "crawl";
+  return "walk";
+}
+
+function actionTargeting(action) {
+  return action?.targetingProfile ?? action?.action?.targetingProfile ?? {};
+}
+
+function actionIncludes(action, value) {
+  return Array.isArray(action?.activityProfile?.includes)
+    && action.activityProfile.includes.map((entry) => String(entry).toLowerCase()).includes(value);
+}
+
+export function targetTokenId(token) {
+  const document = token?.document ?? token;
+  return token?.id ?? token?.uuid ?? document?.id ?? document?.uuid ?? null;
+}
+
+function targetTokenName(token) {
+  return token?.name ?? token?.document?.name ?? token?.actor?.name ?? token?.document?.actor?.name ?? "";
+}
+
+export function currentTargetSelection() {
+  const targets = collectionValues(globalThis.game?.user?.targets).filter(Boolean);
+  const targetTokenIds = targets.map((target) => targetTokenId(target)).filter(Boolean);
+  const targetNames = targets.map((target) => targetTokenName(target)).filter(Boolean);
+  return {
+    targets,
+    targetTokenIds,
+    targetLabel: targetNames.length ? `Target: ${targetNames.join(", ")}` : "",
+  };
+}
+
+export function plannedTargetSelection(action) {
+  const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target ?? null;
+  const ids = Array.from(new Set([
+    action?.targetingProfile?.preferredTargetId,
+    target?.id,
+    target?.uuid,
+    target?.token?.id,
+    target?.token?.uuid,
+  ].filter(Boolean)));
+  const name = target?.name ?? target?.label ?? target?.token?.name ?? "";
+  return {
+    targets: target ? [target] : [],
+    targetTokenIds: ids,
+    targetLabel: name ? `Target: ${name}` : "",
+  };
+}
+
+function normalizedIds(ids) {
+  return Array.isArray(ids) ? ids.filter(Boolean) : [ids].filter(Boolean);
+}
+
+function storedTargetSelection(step, action) {
+  const source = { targetTokenIds: normalizedIds(step?.targetTokenIds), targetLabel: step?.targetLabel ?? "" };
+  if (!source.targetTokenIds.length) return null;
+  if (step?.targetSelection === "manual") return source;
+
+  const recommendedIds = new Set(plannedTargetSelection(action).targetTokenIds);
+  const matchesRecommendation = recommendedIds.size > 0
+    && source.targetTokenIds.every((id) => recommendedIds.has(id));
+  return matchesRecommendation ? null : source;
+}
+
+function targetSelectionSources(step, action, choices = {}) {
+  if (Object.prototype.hasOwnProperty.call(choices, "targetTokenIds")) {
+    return [{ targetTokenIds: normalizedIds(choices.targetTokenIds), targetLabel: choices.targetLabel ?? "" }];
+  }
+
+  const stored = storedTargetSelection(step, action);
+  return [stored].filter((source) => source?.targetTokenIds?.length);
+}
+
+function areaMarkerFromStep(step, choices = {}) {
+  return choices.areaMarker ?? step?.areaMarker ?? null;
+}
+
+function destinationFromStep(step, choices = {}) {
+  return point(choices.destination) ?? point(step?.destination);
+}
+
+function movementPlanFromStep(step, choices = {}) {
+  return choices.movementPlan ?? step?.movementPlan ?? null;
+}
+
+function executionAction(step, action) {
+  const merged = { ...(action ?? {}) };
+  for (const key of ["actionKey", "key", "slug", "movementAction"]) {
+    if ((merged[key] === undefined || merged[key] === null || merged[key] === "") && step?.[key]) {
+      merged[key] = step[key];
+    }
+  }
+  if (step?.requiresDestination === true) merged.requiresDestination = true;
+  return merged;
+}
+
+export function requiresAreaMarkerForAction(action) {
+  const targeting = actionTargeting(action);
+  const type = String(targeting?.type ?? targeting?.shape ?? action?.area?.type ?? "").toLowerCase();
+  return targeting?.area === true
+    || AREA_SHAPES.has(type)
+    || AREA_REGION_TYPES.has(type)
+    || actionIncludes(action, "area")
+    || String(action?.role ?? "").toLowerCase().includes("area");
+}
+
+export function requiresTargetForAction(action) {
+  if (!action || requiresAreaMarkerForAction(action)) return false;
+  const slug = actionSlug(action);
+  if (["stand", "retch", "stride", "step", "crawl"].includes(slug)) return false;
+
+  const targeting = actionTargeting(action);
+  const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;
+  if (selfOnly) return false;
+
+  return action?.executable === "strike"
+    || action?.source === "strike"
+    || action?.attackTrait === true
+    || Boolean(action?.preferredTarget ?? action?.suggestedTarget)
+    || targeting?.enemy === true
+    || targeting?.ally === true
+    || targeting?.reach === true
+    || targeting?.maxTargets !== undefined
+    || targeting?.maxRange !== undefined
+    || action?.requiresEnemyInReach === true;
+}
+
+export function executionReadinessForStep(step, action = step?.action ?? step) {
+  const resolvedAction = executionAction(step, action);
+  const choices = [];
+  if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");
+  if (requiresTargetForAction(resolvedAction) && !resolveTarget(step, resolvedAction)) choices.push("target");
+  if (requiresAreaMarkerForAction(resolvedAction) && !areaMarkerFromStep(step)) choices.push("area");
+  return {
+    status: choices.length ? "needs-choice" : "ready",
+    choices,
+    warning: choices.length ? `Choose ${choices.join(", ")} at execution.` : "",
+  };
+}
+
+export function nextPendingExecutionStep(draft) {
+  return (Array.isArray(draft?.steps) ? draft.steps : [])
+    .find((step) => step?.execution?.status !== "done") ?? null;
+}
+
+export function resetDraftExecution(draft) {
+  return {
+    ...(draft ?? {}),
+    steps: (Array.isArray(draft?.steps) ? draft.steps : []).map((step) => ({
+      ...step,
+      execution: { status: "pending" },
+    })),
+  };
+}
+
+function executionPatch(basePatch, status, extra = {}) {
+  return {
+    ...basePatch,
+    execution: {
+      status,
+      ...(status === "done" ? { completedAt: Date.now() } : {}),
+      ...(extra.result ? { result: extra.result } : {}),
+      ...(extra.error ? { error: extra.error } : {}),
+      ...(extra.revert ? { revert: extra.revert } : {}),
+    },
+  };
+}
+
+// Plain-data descriptor of how to undo an executed step. Stored on the synced draft, so
+// it must stay JSON-serializable: ids, coordinates, slugs, numbers, strings only.
+function revertEnvelope(ops = [], manualWarnings = []) {
+  const cleanOps = (Array.isArray(ops) ? ops : []).filter(Boolean);
+  if (!cleanOps.length && !manualWarnings.length) return null;
+  return { ops: cleanOps, manualWarnings };
+}
+
+// Prepend a revert op (e.g. delete a placed area region) onto a branch result that may
+// already carry its own revert payload. Only attaches when the step actually completed.
+function attachRevertOp(result, op) {
+  if (!op || result?.status !== "done" || !result?.patch?.execution) return result;
+  const existing = result.patch.execution.revert ?? { ops: [], manualWarnings: [] };
+  const ops = [op, ...(Array.isArray(existing.ops) ? existing.ops : [])];
+  return {
+    ...result,
+    patch: {
+      ...result.patch,
+      execution: {
+        ...result.patch.execution,
+        revert: { ops, manualWarnings: existing.manualWarnings ?? [] },
+      },
+    },
+  };
+}
+
+function chatMessageIdFromResult(nativeResult) {
+  if (!nativeResult || typeof nativeResult !== "object") return null;
+  const candidates = [
+    nativeResult,
+    nativeResult.message,
+    Array.isArray(nativeResult) ? nativeResult[0] : null,
+    Array.isArray(nativeResult.messages) ? nativeResult.messages[0] : null,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const isMessage = candidate.documentName === "ChatMessage"
+      || candidate.constructor?.name === "ChatMessage"
+      || candidate === nativeResult.message;
+    const id = candidate.id ?? candidate._id;
+    if (isMessage && id) return id;
+  }
+  return null;
+}
+
+function slotKeyForRank(rank) {
+  const value = numeric(rank, null);
+  return value === null || value < 0 ? null : `slot${value}`;
+}
+
+function identityValues(...sources) {
+  return sources
+    .flatMap((source) => [
+      source?.id,
+      source?._id,
+      source?.uuid,
+      source?.sourceId,
+      source?.slug,
+      source?.system?.slug?.value,
+      source?.system?.slug,
+      source?.itemId,
+      source?.spellId,
+      source?.spell?.id,
+      source?.spell?._id,
+      source?.spell?.uuid,
+      source?.spell?.sourceId,
+      source?.spell?.slug,
+      source?.spell?.system?.slug?.value,
+      source?.spell?.system?.slug,
+    ])
+    .filter(Boolean)
+    .map((value) => String(value));
+}
+
+function slotEntries(entry) {
+  const slots = entry?.system?.slots ?? {};
+  return Object.entries(slots).filter(([, slot]) => slot && typeof slot === "object");
+}
+
+function findPreparedSpellSlot(entry, action) {
+  const spellIds = new Set(identityValues(action, action?.item));
+  if (!spellIds.size) return null;
+
+  for (const [slotKey, slot] of slotEntries(entry)) {
+    const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
+    const preparedIndex = prepared.findIndex((preparedSpell) =>
+      identityValues(preparedSpell).some((id) => spellIds.has(id)),
+    );
+    if (preparedIndex >= 0) {
+      return { slotKey, preparedIndex, preparedSpell: prepared[preparedIndex] };
+    }
+  }
+  return null;
+}
+
+function slotSnapshot(slot) {
+  if (!slot || typeof slot !== "object") return {};
+  const value = numeric(systemValue(slot.value), null);
+  const remaining = numeric(systemValue(slot.remaining), null);
+  return {
+    ...(value !== null ? { valueBefore: value } : {}),
+    ...(remaining !== null ? { remainingBefore: remaining } : {}),
+  };
+}
+
+function spellSlotRevertOp(actor, action) {
+  if (!action?.item) return null;
+  const entry = findSpellcastingEntry(actor, action);
+  if (!entry) return null;
+
+  const rank = numeric(action.castRank ?? action.rank, null);
+  const rankSlotKey = slotKeyForRank(rank);
+  const preparedMatch = findPreparedSpellSlot(entry, action);
+  const slotKey = preparedMatch?.slotKey ?? rankSlotKey;
+  const slot = slotKey ? entry?.system?.slots?.[slotKey] : null;
+  const slotIdExplicit = action.slotId !== undefined && action.slotId !== null;
+  const op = {
+    kind: "slot",
+    entryId: action.spellcastingEntryId ?? entry?.id ?? entry?._id ?? null,
+    entryUuid: action.spellcastingEntryUuid ?? entry?.uuid ?? null,
+    entryType: action.spellcastingEntryType ?? systemValue(entry?.system?.prepared) ?? null,
+    rank,
+    slotId: action.slotId ?? action.location ?? null,
+    slotIdExplicit,
+    slotKey,
+    spellId: action.item?.id ?? action.item?._id ?? action.id ?? null,
+    spellUuid: action.item?.uuid ?? action.uuid ?? null,
+    spellSlug: action.item?.slug ?? action.slug ?? null,
+    ...slotSnapshot(slot),
+  };
+
+  if (preparedMatch) {
+    op.preparedIndex = preparedMatch.preparedIndex;
+    op.preparedId = preparedMatch.preparedSpell?.id ?? preparedMatch.preparedSpell?._id ?? null;
+    op.preparedUuid = preparedMatch.preparedSpell?.uuid ?? preparedMatch.preparedSpell?.spell?.uuid ?? null;
+    op.preparedExpendedBefore = preparedMatch.preparedSpell?.expended === true;
+  }
+
+  return op;
+}
+
+// Best-effort revert for chat-producing actions (strikes, opened PF2e actions, casts):
+// delete the produced chat message when traceable, restore a consumed spell slot when the
+// API allows it, and warn for effects we cannot reliably undo (conditions on a target).
+function chatActionRevert(nativeResult, action, { target = null, slotOp = null } = {}) {
+  const ops = [];
+  const manualWarnings = [];
+  const messageId = chatMessageIdFromResult(nativeResult);
+  if (messageId) ops.push({ kind: "chat", messageId });
+
+  if (slotOp) {
+    ops.push(slotOp);
+  } else if (action?.item && (action?.slotId ?? action?.location) != null) {
+    ops.push({
+      kind: "slot",
+      entryId: action.spellcastingEntryId ?? null,
+      entryUuid: action.spellcastingEntryUuid ?? null,
+      rank: action.castRank ?? action.rank ?? null,
+      slotId: action.slotId ?? action.location ?? null,
+      slotIdExplicit: action.slotId !== undefined && action.slotId !== null,
+    });
+  }
+
+  const targetName = String(target?.label ?? "").replace(/^Target:\s*/i, "").trim();
+  if (targetName) {
+    manualWarnings.push(`${action?.name ?? "This action"} may have applied effects to ${targetName} — undo them manually.`);
+  }
+  if (!messageId) {
+    manualWarnings.push(`Undo ${action?.name ?? "this action"} manually; its chat output could not be tracked.`);
+  }
+  return revertEnvelope(ops, manualWarnings);
+}
+
+function targetTokenById(id) {
+  const token = canvasTokenById(id);
+  if (token) return token;
+  return collectionValues(globalThis.game?.user?.targets).find((target) => targetTokenId(target) === id) ?? null;
+}
+
+function targetActor(token) {
+  return token?.actor ?? token?.document?.actor ?? token?.object?.actor ?? null;
+}
+
+function targetTokenUuid(token) {
+  const document = token?.document ?? token;
+  return document?.uuid ?? token?.uuid ?? null;
+}
+
+function targetLabelFor(token) {
+  const name = targetTokenName(token);
+  return name ? `Target: ${name}` : "";
+}
+
+function clearTokenTargets() {
+  try {
+    globalThis.canvas?.tokens?.setTargets?.([]);
+  } catch (_error) {
+    // Optional in Foundry test harnesses and older canvas mocks.
+  }
+}
+
+function applyTokenTarget(token) {
+  if (typeof token?.setTarget === "function") {
+    token.setTarget(true, { releaseOthers: false });
+    return true;
+  }
+  if (typeof token?.object?.setTarget === "function") {
+    token.object.setTarget(true, { releaseOthers: false });
+    return true;
+  }
+  if (typeof token?.document?.object?.setTarget === "function") {
+    token.document.object.setTarget(true, { releaseOthers: false });
+    return true;
+  }
+  return false;
+}
+
+function setTarget(token) {
+  clearTokenTargets();
+  return applyTokenTarget(token);
+}
+
+// Replace the user's targets with the given tokens (used to target everyone in an area).
+export function setTokenTargets(tokens) {
+  clearTokenTargets();
+  let count = 0;
+  for (const token of Array.isArray(tokens) ? tokens : []) {
+    if (applyTokenTarget(token)) count += 1;
+  }
+  return count;
+}
+
+function resolveTarget(step, action, choices) {
+  for (const source of targetSelectionSources(step, action, choices)) {
+    const token = source.targetTokenIds.map((id) => targetTokenById(id)).find(Boolean) ?? null;
+    if (token) return { token, id: targetTokenId(token), label: targetLabelFor(token) || source.targetLabel };
+  }
+  return null;
+}
+
+function gridSize() {
+  return numeric(globalThis.canvas?.grid?.size ?? globalThis.canvas?.scene?.grid?.size, 1) || 1;
+}
+
+function gridDistance() {
+  return numeric(
+    globalThis.canvas?.dimensions?.distance
+    ?? globalThis.canvas?.scene?.grid?.distance
+    ?? globalThis.canvas?.grid?.distance,
+    5,
+  ) || 5;
+}
+
+function distancePixels(distance) {
+  const pixelsPerUnit = numeric(globalThis.canvas?.dimensions?.distancePixels);
+  if (pixelsPerUnit && pixelsPerUnit > 0) return distance * pixelsPerUnit;
+  return (distance / gridDistance()) * gridSize();
+}
+
+function pixelsPerDistanceUnit() {
+  const pixelsPerUnit = numeric(globalThis.canvas?.dimensions?.distancePixels);
+  if (pixelsPerUnit && pixelsPerUnit > 0) return pixelsPerUnit;
+
+  const distance = gridDistance();
+  return distance > 0 ? gridSize() / distance : 1;
+}
+
+function toScenePoint(value, scale) {
+  const center = point(value);
+  if (!center) return null;
+  const divisor = scale > 0 ? scale : 1;
+  return {
+    x: center.x / divisor,
+    y: center.y / divisor,
+  };
+}
+
+function sceneToken(token, scale) {
+  if (!token) return token;
+  return {
+    ...token,
+    ...(token.center ? { center: toScenePoint(token.center, scale) } : {}),
+    ...(token.plannedCenter ? { plannedCenter: toScenePoint(token.plannedCenter, scale) } : {}),
+    ...(token.token ? { token: sceneToken(token.token, scale) } : {}),
+  };
+}
+
+function sceneTargets(targets, scale) {
+  return Array.isArray(targets)
+    ? targets.map((target) => sceneToken(target, scale))
+    : targets;
+}
+
+function sceneMovementPlan(movementPlan, scale) {
+  if (!movementPlan) return null;
+  return {
+    ...movementPlan,
+    ...(Array.isArray(movementPlan.waypoints)
+      ? { waypoints: movementPlan.waypoints.map((waypoint) => toScenePoint(waypoint, scale)).filter(Boolean) }
+      : {}),
+    ...(movementPlan.origin ? { origin: toScenePoint(movementPlan.origin, scale) } : {}),
+    ...(movementPlan.destination ? { destination: toScenePoint(movementPlan.destination, scale) } : {}),
+  };
+}
+
+function movementValidationPreview(context, action, destination, movementPlan = null) {
+  const scale = pixelsPerDistanceUnit();
+  return movementPreviewForStep({
+    ...(context ?? {}),
+    token: sceneToken(context?.token, scale),
+    battlefield: {
+      ...(context?.battlefield ?? {}),
+      targets: sceneTargets(context?.battlefield?.targets, scale),
+      enemies: sceneTargets(context?.battlefield?.enemies, scale),
+      allies: sceneTargets(context?.battlefield?.allies, scale),
+    },
+  }, {
+    ...(action ?? {}),
+    destination: toScenePoint(destination, scale) ?? destination,
+    ...(movementPlan ? { movementPlan: sceneMovementPlan(movementPlan, scale) } : {}),
+    requiresDestination: true,
+  }, {
+    gridSize: gridDistance(),
+    collisionScale: scale,
+  });
+}
+
+function tokenFootprint(token, context) {
+  const document = token?.document ?? {};
+  return {
+    width: Math.max(1, numeric(document.width ?? token?.width ?? context?.token?.width, 1) || 1),
+    height: Math.max(1, numeric(document.height ?? token?.height ?? context?.token?.height, 1) || 1),
+  };
+}
+
+function activeCombatant(combat) {
+  return combat?.combatant ?? (Array.isArray(combat?.turns) ? combat.turns[combat.turn] : null) ?? null;
+}
+
+function tokenIdentityValues(token, context) {
+  const document = token?.document ?? token ?? {};
+  return [
+    token?.id,
+    token?.uuid,
+    document?.id,
+    document?.uuid,
+    tokenId(context),
+    context?.combatant?.tokenId,
+    context?.combatant?.token?.id,
+    context?.combatant?.token?.uuid,
+  ].filter(Boolean).map(String);
+}
+
+function combatantTokenIdentityValues(combatant) {
+  return [
+    combatant?.tokenId,
+    combatant?.token?.id,
+    combatant?.token?.uuid,
+    combatant?.token?.document?.id,
+    combatant?.token?.document?.uuid,
+  ].filter(Boolean).map(String);
+}
+
+function canMoveOnCurrentTurn(context, token) {
+  const combat = context?.combat ?? context?.combatant?.combat ?? globalThis.game?.combat ?? null;
+  if (!combat) return true;
+
+  const active = activeCombatant(combat);
+  const activeIds = combatantTokenIdentityValues(active);
+  if (!activeIds.length) return true;
+
+  const tokenIds = tokenIdentityValues(token, context);
+  return activeIds.some((id) => tokenIds.includes(id));
+}
+
+function tokenWaypointForDestination(destination, token, context, action) {
+  const size = gridSize();
+  const footprint = tokenFootprint(token, context);
+  return {
+    x: destination.x - (footprint.width * size) / 2,
+    y: destination.y - (footprint.height * size) / 2,
+    action: movementActionForAction(action),
+    explicit: true,
+    checkpoint: true,
+    snapped: true,
+  };
+}
+
+// Current top-left of the token, captured before a move so revert can reposition it.
+function movementOrigin(token, document, context) {
+  const docX = numeric(document?.x);
+  const docY = numeric(document?.y);
+  if (docX !== null && docY !== null) return { x: docX, y: docY };
+  const center = point(token?.center) ?? point(context?.token?.center);
+  if (!center) return null;
+  const size = gridSize();
+  const footprint = tokenFootprint(token, context);
+  return {
+    x: center.x - (footprint.width * size) / 2,
+    y: center.y - (footprint.height * size) / 2,
+  };
+}
+
+function samePoint(left, right) {
+  return !!left && !!right && left.x === right.x && left.y === right.y;
+}
+
+function customMovementWaypoints(destination, movementPlan) {
+  if (movementPlan?.native !== false || !Array.isArray(movementPlan.waypoints)) return [];
+  const waypoints = movementPlan.waypoints.map((waypoint) => point(waypoint)).filter(Boolean);
+  if (destination && !samePoint(waypoints.at(-1), destination)) waypoints.push(destination);
+  return waypoints;
+}
+
+async function startPlannedMovement(document, movementPlan) {
+  if (!movementPlan?.id || typeof document?.startMovement !== "function") return false;
+  if (document?.movement?.state !== "planned") return false;
+  if (document?.movement?.id && document.movement.id !== movementPlan.id) return false;
+  return document.startMovement(movementPlan.id);
+}
+
+async function executeMovement({ context, step, action, choices }) {
+  const destination = destinationFromStep(step, choices);
+  const movementPlan = movementPlanFromStep(step, choices);
+  if (!destination) {
+    return { status: "needs-choice", choices: ["destination"], patch: {} };
+  }
+
+  const token = canvasTokenById(tokenId(context));
+  const preview = movementValidationPreview(context, action, destination, movementPlan);
+  if (preview.enabled && preview.explicitDestination && preview.destinationAvailable === false) {
+    return {
+      status: "failed",
+      patch: executionPatch({ destination }, "failed", { error: preview.destinationIllegalReason || "Destination is unavailable." }),
+      error: preview.destinationIllegalReason || "Destination is unavailable.",
+    };
+  }
+
+  const document = token?.document ?? context?.combatant?.token ?? context?.token?.document;
+  const origin = movementOrigin(token, document, context);
+  const moveTokenId = targetTokenId(token) ?? tokenId(context);
+  const movementRevert = origin && moveTokenId
+    ? revertEnvelope([{ kind: "movement", tokenId: moveTokenId, origin }])
+    : null;
+  if (!canMoveOnCurrentTurn(context, token)) {
+    return {
+      status: "failed",
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: "Token can only move on its turn." }),
+      error: "Token can only move on its turn.",
+    };
+  }
+
+  const plannedStarted = await startPlannedMovement(document, movementPlan);
+  if (plannedStarted) {
+    return {
+      status: "done",
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: "Started planned movement.", revert: movementRevert }),
+    };
+  }
+
+  if (movementPlan?.id && document?.movement?.state === "planned") {
+    return {
+      status: "failed",
+      patch: executionPatch({ destination, movementPlan }, "failed", { error: "Planned movement is stale. Choose destination again." }),
+      error: "Planned movement is stale. Choose destination again.",
+    };
+  }
+
+  const customWaypoints = customMovementWaypoints(destination, movementPlan);
+  if (customWaypoints.length && typeof document?.move === "function") {
+    for (const waypointDestination of customWaypoints) {
+      const waypoint = tokenWaypointForDestination(waypointDestination, token, context, action);
+      const moved = await document.move(waypoint, { method: "api", showRuler: true });
+      if (!moved) {
+        return {
+          status: "failed",
+          patch: executionPatch({ destination, movementPlan }, "failed", { error: "Movement was prevented." }),
+          error: "Movement was prevented.",
+        };
+      }
+    }
+    return {
+      status: "done",
+      patch: executionPatch({ destination, movementPlan }, "done", { result: "Moved token.", revert: movementRevert }),
+    };
+  }
+
+  const waypoint = tokenWaypointForDestination(destination, token, context, action);
+  if (typeof document?.move === "function") {
+    const moved = await document.move(waypoint, { method: "api", showRuler: true });
+    if (!moved) {
+      return {
+        status: "failed",
+        patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: "Movement was prevented." }),
+        error: "Movement was prevented.",
+      };
+    }
+    return {
+      status: "done",
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: "Moved token.", revert: movementRevert }),
+    };
+  }
+
+  if (typeof document?.update !== "function") {
+    return {
+      status: "failed",
+      patch: executionPatch({ destination }, "failed", { error: "Token document is not available." }),
+      error: "Token document is not available.",
+    };
+  }
+
+  await document.update({
+    x: waypoint.x,
+    y: waypoint.y,
+  });
+  return {
+    status: "done",
+    patch: executionPatch({ destination }, "done", { result: "Moved token.", revert: movementRevert }),
+  };
+}
+
+async function decreaseCondition(actor, slug, options = {}) {
+  if (typeof actor?.decreaseCondition === "function") {
+    await actor.decreaseCondition(slug, options);
+    return true;
+  }
+  if (typeof actor?.toggleCondition === "function" && slug === "prone") {
+    await actor.toggleCondition(slug, { active: false });
+    return true;
+  }
+  return false;
+}
+
+export async function increaseCondition(actor, slug, options = {}) {
+  if (typeof actor?.increaseCondition === "function") {
+    await actor.increaseCondition(slug, options);
+    return true;
+  }
+  if (typeof actor?.toggleCondition === "function" && slug === "prone") {
+    await actor.toggleCondition(slug, { active: true });
+    return true;
+  }
+  return false;
+}
+
+async function executeStand(actor) {
+  const removed = await decreaseCondition(actor, "prone", { forceRemove: true });
+  return removed
+    ? { status: "done", patch: executionPatch({}, "done", { result: "Removed prone.", revert: revertEnvelope([{ kind: "condition", slug: "prone" }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not remove prone." }), error: "Could not remove prone." };
+}
+
+function resultDegree(result) {
+  const values = [
+    result?.degreeOfSuccess,
+    result?.outcome,
+    result?.result?.degreeOfSuccess,
+    result?.roll?.degreeOfSuccess,
+  ];
+  return values.find((value) => value !== undefined && value !== null) ?? null;
+}
+
+function degreeSucceeded(degree) {
+  if (degree === null || degree === undefined) return null;
+  if (SUCCESS_DEGREES.has(degree)) return true;
+  return String(degree).toLowerCase().includes("success");
+}
+
+async function executeRetch({ actor, context, action, event, choices }) {
+  let succeeded = choices.retchSucceeded;
+  let nativeResult = null;
+  if (succeeded === undefined) {
+    nativeResult = await usePf2eAction({ actor, context, action: { ...(action ?? {}), slug: "retch" }, event });
+    succeeded = degreeSucceeded(resultDegree(nativeResult));
+  }
+  if (succeeded === null || succeeded === undefined) {
+    return { status: "needs-choice", choices: ["retch-result"], patch: {} };
+  }
+  if (succeeded !== true) {
+    return { status: "done", patch: executionPatch({}, "done", { result: "Retch failed." }) };
+  }
+
+  const reduced = await decreaseCondition(actor, "sickened");
+  return reduced
+    ? { status: "done", patch: executionPatch({}, "done", { result: "Reduced sickened.", revert: revertEnvelope([{ kind: "condition", slug: "sickened" }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not reduce sickened." }), error: "Could not reduce sickened." };
+}
+
+function pf2eActionsCollection() {
+  return globalThis.game?.pf2e?.actions ?? null;
+}
+
+function pf2eActionBySlug(slug) {
+  const collection = pf2eActionsCollection();
+  if (!collection) return null;
+  if (typeof collection.get === "function") return collection.get(slug) ?? null;
+  return collection[slug] ?? null;
+}
+
+function systemActionVariantList(systemAction) {
+  const variants = systemAction?.variants;
+  if (!variants) return [];
+  if (Array.isArray(variants)) return variants;
+  if (Array.isArray(variants.contents)) return variants.contents;
+  if (typeof variants[Symbol.iterator] === "function") return Array.from(variants);
+  return [];
+}
+
+function variantKey(variant) {
+  return variant?.slug ?? variant?.id ?? null;
+}
+
+// PF2e's SingleCheckAction.use() throws when an action has multiple variants (e.g. Create a
+// Diversion -> Distracting Words/Gesture/Trick, Perform -> Acting/Comedy/...) and none is
+// requested. Resolve one: honour an explicit action.variant when valid, otherwise default to
+// the action's first variant. Returns null when the action has 0-1 variants (let PF2e decide).
+function resolveActionVariant(systemAction, action) {
+  const variants = systemActionVariantList(systemAction);
+  if (variants.length <= 1) return null;
+
+  const requested = String(action?.variant ?? action?.variantSlug ?? "").trim();
+  if (requested) {
+    const match = variants.find((variant) => variantKey(variant) === requested);
+    if (match) return variantKey(match);
+  }
+  return variantKey(variants[0]);
+}
+
+async function usePf2eAction({ actor, context, action, event, targetToken = null }) {
+  const systemAction = pf2eActionBySlug(actionSlug(action));
+  if (typeof systemAction?.use !== "function") return null;
+  const variant = resolveActionVariant(systemAction, action);
+  return systemAction.use({
+    actors: actor ? [actor] : [],
+    actor,
+    event,
+    target: targetActor(targetToken) ?? targetToken ?? null,
+    statistic: action?.skill ?? action?.statistic,
+    difficultyClass: action?.difficultyClass ?? action?.dc ?? null,
+    traits: action?.traits,
+    ...(variant ? { variant } : {}),
+  });
+}
+
+async function executePf2eAction({ actor, context, step, action, event, choices }) {
+  const target = requiresTargetForAction(action) ? resolveTarget(step, action, choices) : null;
+  if (requiresTargetForAction(action) && !target) {
+    return { status: "needs-choice", choices: ["target"], patch: {} };
+  }
+  if (target) setTarget(target.token);
+  const result = await usePf2eAction({ actor, context, action, event, targetToken: target?.token ?? null });
+  if (!result) {
+    return {
+      status: "failed",
+      patch: executionPatch(target ? { targetTokenIds: [target.id], targetLabel: target.label } : {}, "failed", {
+        error: "PF2e action API is not available.",
+      }),
+      error: "PF2e action API is not available.",
+    };
+  }
+  return {
+    status: "done",
+    patch: executionPatch(target ? { targetTokenIds: [target.id], targetLabel: target.label } : {}, "done", {
+      result: "PF2e action opened.",
+      revert: chatActionRevert(result, action, { target }),
+    }),
+    nativeResult: result,
+  };
+}
+
+function strikeVariant(action, choices) {
+  const variants = Array.isArray(action?.variants) ? action.variants : [];
+  const index = Math.max(0, numeric(choices.variantIndex, 0) || 0);
+  return variants[index] ?? null;
+}
+
+async function executeStrike({ step, action, event, choices }) {
+  const target = resolveTarget(step, action, choices);
+  if (!target) return { status: "needs-choice", choices: ["target"], patch: {} };
+  setTarget(target.token);
+
+  const variant = strikeVariant(action, choices);
+  const roller = variant?.roll ?? action?.strike?.roll ?? action?.attack ?? action?.roll;
+  if (typeof roller !== "function") {
+    return {
+      status: "failed",
+      patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "failed", { error: "Strike roll API is not available." }),
+      error: "Strike roll API is not available.",
+    };
+  }
+  // PF2e resolves the strike's target from game.user.targets (set above), the same way the
+  // system does when you click a strike with a token targeted. Passing a custom target param
+  // (an actor) suppressed the AC comparison, so the roll posted with no target / degree.
+  const result = await roller.call(variant ?? action?.strike ?? action, { event });
+  return {
+    status: "done",
+    patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "done", {
+      result: "Strike roll opened.",
+      revert: chatActionRevert(result, action, { target }),
+    }),
+    nativeResult: result,
+  };
+}
+
+export function findSpellcastingEntry(actor, action) {
+  const id = action?.spellcastingEntryId;
+  const uuid = action?.spellcastingEntryUuid;
+  return collectionValues(actor?.itemTypes?.spellcastingEntry).find((entry) =>
+    entry?.id === id
+    || entry?._id === id
+    || entry?.uuid === uuid,
+  ) ?? null;
+}
+
+async function executeNativeItem({ actor, action, event }) {
+  const item = action?.item;
+  const entry = findSpellcastingEntry(actor, action);
+  if (typeof entry?.cast === "function") {
+    return entry.cast(item, {
+      event,
+      rank: action?.castRank ?? action?.rank,
+      slotId: action?.slotId ?? action?.location,
+    });
+  }
+  if (typeof action?.generatedAction?.use === "function") return action.generatedAction.use({ event });
+  if (typeof item?.use === "function") return item.use({ event });
+  if (typeof item?.cast === "function") return item.cast({ event, rank: action?.castRank ?? action?.rank });
+  if (typeof item?.toMessage === "function") return item.toMessage({}, { rollMode: globalThis.game?.settings?.get?.("core", "rollMode") });
+  if (typeof item?.sheet?.render === "function") {
+    await item.sheet.render(true);
+    return { openedSheet: true };
+  }
+  return null;
+}
+
+function escapeHtml(value) {
+  return globalThis.foundry?.utils?.escapeHTML
+    ? globalThis.foundry.utils.escapeHTML(String(value ?? ""))
+    : String(value ?? "");
+}
+
+async function createGuidance(action, actor) {
+  const content = `<strong>${escapeHtml(action?.name ?? "Action")}</strong><br>${escapeHtml(action?.reason ?? "Review this action before resolving it.")}`;
+  if (globalThis.ChatMessage?.create) {
+    await globalThis.ChatMessage.create({
+      speaker: globalThis.ChatMessage.getSpeaker?.({ actor }) ?? {},
+      content,
+      whisper: globalThis.game?.user?.id ? [globalThis.game.user.id] : undefined,
+    });
+    return true;
+  }
+  globalThis.ui?.notifications?.info?.(`${action?.name ?? "Action"}: ${action?.reason ?? "Review this action."}`);
+  return true;
+}
+
+function areaType(action, marker) {
+  return String(
+    marker?.shape
+    ?? marker?.type
+    ?? action?.targetingProfile?.type
+    ?? action?.targetingProfile?.shape
+    ?? action?.area?.type
+    ?? "burst",
+  ).toLowerCase();
+}
+
+function areaDistance(action, marker) {
+  return numeric(marker?.distance ?? marker?.radius ?? action?.targetingProfile?.distance ?? action?.targetingProfile?.radius, 5) || 5;
+}
+
+function areaWidth(action, marker) {
+  return numeric(marker?.width ?? action?.targetingProfile?.width, globalThis.canvas?.grid?.size ?? areaDistance(action, marker)) || areaDistance(action, marker);
+}
+
+function tokenBase(context) {
+  const token = canvasTokenById(tokenId(context));
+  const size = gridSize();
+  const center = point(token?.center) ?? point(context?.token?.center) ?? { x: 0, y: 0 };
+  const footprint = tokenFootprint(token, context);
+  return {
+    type: "token",
+    x: center.x - (footprint.width * size) / 2,
+    y: center.y - (footprint.height * size) / 2,
+    width: footprint.width * size,
+    height: footprint.height * size,
+  };
+}
+
+export function createAreaRegionData({ context, action, marker }) {
+  const center = point(marker?.center) ?? point(marker) ?? point(context?.token?.center) ?? { x: 0, y: 0 };
+  const type = areaType(action, marker);
+  const distance = areaDistance(action, marker);
+  const width = areaWidth(action, marker);
+  const distancePx = distancePixels(distance);
+  const widthPx = distancePixels(width);
+  const rotation = numeric(marker?.rotation, 0) || 0;
+  const baseShape = { x: center.x, y: center.y };
+  let shape;
+
+  if (type === "cone") {
+    shape = { ...baseShape, type: "cone", radius: distancePx, angle: numeric(marker?.angle, 90) || 90, rotation };
+  } else if (type === "line") {
+    shape = { ...baseShape, type: "line", length: distancePx, width: widthPx, rotation };
+  } else if (type === "cube" || type === "square") {
+    shape = { ...baseShape, type: "rectangle", width: distancePx, height: distancePx, rotation };
+  } else if (type === "emanation") {
+    shape = { ...baseShape, type: "emanation", radius: distancePx, base: tokenBase(context) };
+  } else if (type === "ring") {
+    shape = {
+      ...baseShape,
+      type: "ring",
+      radius: distancePx,
+      innerWidth: distancePixels(numeric(marker?.innerWidth ?? action?.targetingProfile?.innerWidth, Math.max(0, distance - width)) || 0),
+      outerWidth: widthPx,
+    };
+  } else {
+    shape = { ...baseShape, type: "circle", radius: distancePx };
+  }
+
+  const originUuid = action?.item?.uuid ?? action?.uuid ?? null;
+  const flags = { pf2e: { areaShape: type } };
+  if (originUuid) flags["pf2e-combater"] = { originUuid };
+
+  return {
+    name: marker?.label ?? action?.name ?? "Planned area",
+    shapes: [shape],
+    color: marker?.color ?? "#f0b34a",
+    highlightMode: "coverage",
+    displayMeasurements: true,
+    visibility: globalThis.CONST?.REGION_VISIBILITY?.ALWAYS ?? 1,
+    flags,
+  };
+}
+
+function regionIdFromCreated(created) {
+  const doc = Array.isArray(created) ? created[0] : created;
+  return doc?.id ?? doc?._id ?? null;
+}
+
+async function createAreaRegion({ context, action, marker }) {
+  const data = createAreaRegionData({ context, action, marker });
+  const scene = globalThis.canvas?.scene;
+  const sceneId = scene?.id ?? scene?._id ?? null;
+  if (typeof scene?.createEmbeddedDocuments === "function") {
+    const created = await scene.createEmbeddedDocuments("Region", [data]);
+    return { data, regionId: regionIdFromCreated(created), sceneId };
+  }
+  if (typeof globalThis.canvas?.regions?.placeRegion === "function") {
+    const placed = await globalThis.canvas.regions.placeRegion(data);
+    return { data, regionId: regionIdFromCreated(placed), sceneId };
+  }
+  throw new Error("Region creation API is not available.");
+}
+
+// Point-in-shape test against the same pixel-space shape descriptor used to draw the region,
+// so the tokens we target match exactly what the placed template covers.
+function pointInAreaShape(value, shape) {
+  const dx = value.x - shape.x;
+  const dy = value.y - shape.y;
+  switch (shape.type) {
+    case "circle":
+    case "emanation":
+      return dx * dx + dy * dy <= shape.radius * shape.radius;
+    case "ring": {
+      const distance = Math.hypot(dx, dy);
+      const inner = Math.max(0, numeric(shape.radius, 0) - numeric(shape.outerWidth, 0));
+      return distance <= shape.radius && distance >= inner;
+    }
+    case "cone": {
+      const distance = Math.hypot(dx, dy);
+      if (distance > shape.radius) return false;
+      if (distance === 0) return true;
+      const pointAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      const half = (numeric(shape.angle, 90) || 90) / 2;
+      const delta = ((((pointAngle - numeric(shape.rotation, 0)) % 360) + 540) % 360) - 180;
+      return Math.abs(delta) <= half;
+    }
+    case "line": {
+      const radians = (numeric(shape.rotation, 0) * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const along = dx * cos + dy * sin;
+      const perpendicular = -dx * sin + dy * cos;
+      return along >= 0 && along <= shape.length && Math.abs(perpendicular) <= shape.width / 2;
+    }
+    case "rectangle": {
+      const radians = (numeric(shape.rotation, 0) * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const localX = dx * cos + dy * sin;
+      const localY = -dx * sin + dy * cos;
+      return localX >= 0 && localX <= shape.width && localY >= 0 && localY <= shape.height;
+    }
+    default:
+      return false;
+  }
+}
+
+// Canvas tokens whose center falls inside the placed area template.
+export function tokensInAreaMarker({ context, action, marker }) {
+  const shape = createAreaRegionData({ context, action, marker })?.shapes?.[0];
+  if (!shape) return [];
+  return (globalThis.canvas?.tokens?.placeables ?? []).filter((token) => {
+    const center = point(token?.center);
+    return center && pointInAreaShape(center, shape);
+  });
+}
+
+function pf2eDamageRollClass() {
+  return globalThis.game?.pf2e?.DamageRoll
+    ?? globalThis.CONFIG?.Dice?.rolls?.find?.((cls) => cls?.name === "DamageRoll")
+    ?? null;
+}
+
+function htmlEscape(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
+
+function actionDisplayName(action) {
+  return action?.item?.name ?? action?.name ?? "Damage";
+}
+
+function damageContextOptions(action) {
+  const slug = actionContextSlug(action);
+  const options = [];
+  if (slug) {
+    options.push(`item:slug:${slug}`, `self:action:slug:${slug}`);
+  }
+  const cost = numeric(action?.actionCost ?? action?.cost);
+  if (cost) options.push(`self:action:cost:${cost}`);
+  return options;
+}
+
+function damageTargetFlag(target) {
+  const token = target?.token ?? target;
+  const actor = targetActor(token);
+  const tokenUuid = targetTokenUuid(token);
+  return actor?.uuid && tokenUuid ? { actor: actor.uuid, token: tokenUuid } : null;
+}
+
+function damageOriginFlag(action) {
+  if (typeof action?.item?.getOriginData === "function") return action.item.getOriginData();
+  const uuid = action?.item?.uuid ?? action?.uuid ?? action?.sourceId ?? null;
+  if (!uuid) return null;
+  return { uuid };
+}
+
+function damageMessageFlags({ actor, action, target }) {
+  const slug = actionContextSlug(action);
+  const targetFlag = damageTargetFlag(target);
+  const origin = damageOriginFlag(action);
+  const traits = Array.isArray(action?.traits)
+    ? action.traits
+    : Array.isArray(action?.item?.system?.traits?.value)
+      ? action.item.system.traits.value
+      : [];
+  return {
+    pf2e: {
+      context: {
+        type: "damage-roll",
+        sourceType: action?.attackTrait ? "attack" : "save",
+        actor: actor?.id ?? null,
+        token: actor?.token?.id ?? null,
+        target: targetFlag,
+        domains: slug ? [`${slug}-damage`, "damage-roll"] : ["damage-roll"],
+        options: damageContextOptions(action),
+        contextualOptions: {},
+        traits,
+        notes: [],
+        secret: false,
+        outcome: null,
+        unadjustedOutcome: null,
+      },
+      target: targetFlag,
+      ...(origin ? { origin } : {}),
+      modifiers: [],
+      dice: [],
+    },
+  };
+}
+
+function damageFlavor(action) {
+  return `<h4 class="action">${htmlEscape(actionDisplayName(action))}</h4>`;
+}
+
+// The @Damage formula to roll: prefer the classifier's parsed profile, but fall back to
+// parsing @Damage[...] straight from the action/item description (the profile's shape varies
+// by source and often carries only an average, not a formula).
+function actionDamageFormula(action) {
+  const profileFormula = action?.damageProfile?.formula;
+  if (profileFormula) {
+    return { formula: String(profileFormula).trim(), type: action.damageProfile.type ?? null };
+  }
+  const raw = [
+    action?.description?.value ?? action?.description,
+    action?.system?.description?.value ?? action?.system?.description,
+    action?.item?.system?.description?.value ?? action?.item?.system?.description,
+    action?.item?.description?.value ?? action?.item?.description,
+  ].filter((value) => typeof value === "string").join(" ");
+  const match = raw.match(/@Damage\[([^\][]+)(?:\[([^\]]+)\])?/i);
+  if (!match) return null;
+  return { formula: String(match[1]).trim(), type: match[2] ? String(match[2]).trim() : null };
+}
+
+// Best-effort: roll an action's @Damage[...] to chat. Strikes and PF2e actions roll their own
+// damage, so this only runs for the open-item / custom path. Returns the produced chat message
+// id (so revert can delete it) or null.
+async function rollActionDamage({ actor, action, target = null }) {
+  const parsed = actionDamageFormula(action);
+  if (!parsed?.formula) return null;
+  const DamageRoll = pf2eDamageRollClass();
+  if (typeof DamageRoll !== "function") return null;
+
+  const { formula } = parsed;
+  const type = parsed.type ? String(parsed.type).toLowerCase() : null;
+  const typed = !type || /\[[^\]]+\]/.test(formula) ? formula : `(${formula})[${type}]`;
+  try {
+    const rollData = typeof actor?.getRollData === "function" ? actor.getRollData() : {};
+    const showBreakdown = globalThis.game?.pf2e?.settings?.metagame?.breakdowns || Boolean(actor?.hasPlayerOwner);
+    const roll = new DamageRoll(typed, rollData, { showBreakdown });
+    if (typeof roll.evaluate === "function") await roll.evaluate();
+    if (typeof roll.toMessage !== "function") return null;
+    const message = await roll.toMessage({
+      speaker: globalThis.ChatMessage?.getSpeaker?.({ actor }) ?? {},
+      flavor: damageFlavor(action),
+      flags: damageMessageFlags({ actor, action, target }),
+    });
+    return message?.id ?? message?._id ?? null;
+  } catch (error) {
+    globalThis.console?.warn?.("pf2e-combater | Auto damage roll failed", error);
+    return null;
+  }
+}
+
+function damageRollCount(action) {
+  if (action?.activityProfile?.damageScalesWithActions !== true) return 1;
+  const cost = numeric(action?.actionCost ?? action?.cost, 1);
+  return Math.max(1, Math.min(3, cost || 1));
+}
+
+async function rollActionDamageMessages({ actor, action, target = null }) {
+  const count = damageRollCount(action);
+  const messageIds = [];
+  for (let index = 0; index < count; index += 1) {
+    const messageId = await rollActionDamage({ actor, action, target });
+    if (messageId) messageIds.push(messageId);
+  }
+  return messageIds;
+}
+
+async function executeOpenItem({ actor, action, event }) {
+  const result = await executeNativeItem({ actor, action, event });
+  if (result) return result;
+  // Open the compendium entry (e.g. pf2e.actionspf2e) rather than posting a chat reminder.
+  const uuid = action?.uuid ?? action?.sourceId;
+  if (uuid && typeof globalThis.fromUuid === "function") {
+    try {
+      const document = await globalThis.fromUuid(uuid);
+      if (typeof document?.sheet?.render === "function") {
+        await document.sheet.render(true);
+        return { openedSheet: true };
+      }
+    } catch (_error) {
+      // Fall through to guidance if the entry can't be resolved.
+    }
+  }
+  if (action?.item || uuid) return { opened: true };
+  await createGuidance(action, actor);
+  return { guidance: true };
+}
+
+// A placed area template should remain on the canvas only for spells whose effect lingers
+// (sustained, or a lasting duration like a wall/cloud). An instantaneous burst/cone is just a
+// targeting aid, so its template is not left behind after execution. Non-spell area actions keep
+// their region (the system has no duration data to judge them by).
+function areaTemplatePersists(action) {
+  const profile = action?.activityProfile ?? {};
+  const isSpell = profile.spell === true
+    || /spell/.test(String(action?.source ?? "").toLowerCase());
+  if (!isSpell) return true;
+  return profile.sustained === true || profile.lastingDuration === true;
+}
+
+export async function executeDraftStep({ context, step, action = step?.action ?? step, event = null, choices = {} } = {}) {
+  if (!step || !action) return { status: "failed", patch: executionPatch({}, "failed", { error: "No action selected." }), error: "No action selected." };
+
+  const resolvedAction = executionAction(step, action);
+  const actor = actorDocument(context);
+  const slug = actionSlug(resolvedAction);
+  const patch = {};
+  const destination = destinationFromStep(step, choices);
+  if (destination) patch.destination = destination;
+
+  const target = requiresTargetForAction(resolvedAction) ? resolveTarget(step, resolvedAction, choices) : null;
+  if (requiresTargetForAction(resolvedAction)) {
+    if (!target) return { status: "needs-choice", choices: ["target"], patch };
+    patch.targetTokenIds = [target.id];
+    patch.targetLabel = target.label;
+  }
+
+  const areaMarker = areaMarkerFromStep(step, choices);
+  let regionOp = null;
+  if (requiresAreaMarkerForAction(resolvedAction)) {
+    if (!areaMarker) return { status: "needs-choice", choices: ["area"], patch };
+    patch.areaMarker = areaMarker;
+    // Only leave a persistent region for lingering areas; instantaneous bursts/cones just target.
+    if (areaTemplatePersists(resolvedAction)) {
+      const region = await createAreaRegion({ context, action: resolvedAction, marker: areaMarker });
+      if (region?.regionId) regionOp = { kind: "region", regionId: region.regionId, sceneId: region.sceneId ?? null };
+    }
+    const insideTokens = tokensInAreaMarker({ context, action: resolvedAction, marker: areaMarker });
+    if (insideTokens.length) {
+      setTokenTargets(insideTokens);
+      patch.targetTokenIds = insideTokens.map((token) => targetTokenId(token)).filter(Boolean);
+    }
+  }
+
+  let result;
+  if (requiresDestinationForAction(resolvedAction)) {
+    result = await executeMovement({ context, step, action: resolvedAction, choices });
+  } else if (slug === "stand") {
+    result = await executeStand(actor);
+  } else if (slug === "retch") {
+    result = await executeRetch({ actor, context, action: resolvedAction, event, choices });
+  } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {
+    result = await executeStrike({ step, action: resolvedAction, event, choices });
+  } else if (resolvedAction?.executable === "pf2e-action") {
+    result = await executePf2eAction({ actor, context, step, action: resolvedAction, event, choices });
+  } else {
+    const slotOp = spellSlotRevertOp(actor, resolvedAction);
+    const nativeResult = await executeOpenItem({ actor, action: resolvedAction, event });
+    const damageMessageIds = await rollActionDamageMessages({ actor, action: resolvedAction, target });
+    result = {
+      status: "done",
+      patch: executionPatch(patch, "done", {
+        result: nativeResult?.opened ? "Opened action." : "Executed action.",
+        revert: chatActionRevert(nativeResult, resolvedAction, { target, slotOp }),
+      }),
+      nativeResult,
+    };
+    for (const damageMessageId of [...damageMessageIds].reverse()) {
+      result = attachRevertOp(result, { kind: "chat", messageId: damageMessageId });
+    }
+  }
+
+  return attachRevertOp(result, regionOp);
+}

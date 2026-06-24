@@ -1,10 +1,16 @@
 import { readCombatState } from "../rules/combat-state.js";
+import { KNOWN_SUBCLASS_SLUGS, SUBCLASS_TAGS } from "../rules/class-tactics-data/index.js";
 
 const ABILITY_SLUGS = ["str", "dex", "con", "int", "wis", "cha"];
 
 function numericValue(value, fallback = null) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function rankValue(value, fallback = 0) {
+  if (value === null) return null;
+  return numericValue(value, fallback);
 }
 
 function collectionValues(collection) {
@@ -19,16 +25,30 @@ function systemValue(value) {
   return value;
 }
 
+function readSkillStat(skill, { fallbackRank = 0 } = {}) {
+  return {
+    rank: rankValue(skill?.rank, fallbackRank),
+    mod: numericValue(skill?.mod ?? skill?.totalModifier ?? skill?.value, 0),
+  };
+}
+
 function readSkills(actor) {
-  return Object.fromEntries(
+  const skills = Object.fromEntries(
     Object.entries(actor?.system?.skills ?? {}).map(([slug, skill]) => [
       slug,
-      {
-        rank: numericValue(skill?.rank, 0),
-        mod: numericValue(skill?.mod ?? skill?.totalModifier, 0),
-      },
+      readSkillStat(skill),
     ]),
   );
+
+  for (const [slug, skill] of Object.entries(actor?.skills ?? {})) {
+    skills[slug] = readSkillStat(skill, { fallbackRank: skills[slug]?.rank ?? 0 });
+  }
+
+  const perception = actor?.perception ?? actor?.system?.perception;
+  if (perception) {
+    skills.perception = readSkillStat(perception, { fallbackRank: skills.perception?.rank ?? 0 });
+  }
+  return skills;
 }
 
 function readAbilities(actor) {
@@ -205,6 +225,54 @@ function readClassSlugs(actor) {
   return [...new Set([...itemSlugs, ...detailSlugs].filter(Boolean))];
 }
 
+function readFeatureItems(actor) {
+  const typedFeatures = [
+    ...collectionValues(actor?.itemTypes?.feat),
+    ...collectionValues(actor?.itemTypes?.classFeature),
+    ...collectionValues(actor?.itemTypes?.classfeature),
+  ];
+  const typedIds = new Set(typedFeatures.map((item) => item?.id ?? item?._id).filter(Boolean));
+  const fallbackFeatures = collectionValues(actor?.items)
+    .filter((item) => ["feat", "feature", "classFeature", "classfeature"].includes(item?.type))
+    .filter((item) => !typedIds.has(item?.id ?? item?._id));
+  return [...typedFeatures, ...fallbackFeatures];
+}
+
+function traitOtherTags(item) {
+  const tags = item?.system?.traits?.otherTags;
+  if (Array.isArray(tags)) return tags.map(normalizeSlug).filter(Boolean);
+  if (tags instanceof Set) return Array.from(tags).map(normalizeSlug).filter(Boolean);
+  return [];
+}
+
+function isClassFeatureItem(item) {
+  const category = normalizeSlug(item?.system?.category ?? item?.category);
+  return category === "classfeature"
+    || category === "class-feature"
+    || item?.type === "classFeature"
+    || item?.type === "classfeature";
+}
+
+function readSubclassEntries(actor) {
+  return readFeatureItems(actor)
+    .map((item) => {
+      const slug = classSlug(item);
+      const tags = traitOtherTags(item);
+      const subclassTags = tags.filter((tag) => SUBCLASS_TAGS.has(tag));
+      const knownSubclass = isClassFeatureItem(item) && KNOWN_SUBCLASS_SLUGS.has(slug);
+      if (!subclassTags.length && !knownSubclass) return null;
+
+      return {
+        id: item?.id ?? item?._id ?? null,
+        uuid: item?.uuid ?? null,
+        name: item?.name ?? slug,
+        slug,
+        tags: subclassTags,
+      };
+    })
+    .filter(Boolean);
+}
+
 function conditionValue(condition) {
   return numericValue(
     condition?.system?.value?.value
@@ -243,7 +311,15 @@ function effectSummary(effect) {
   };
 }
 
-export function readEffects(actor) {
+function visibleEffect(effect) {
+  return effect?.hidden !== true
+    && effect?.visible !== false
+    && effect?.isVisible !== false
+    && effect?.system?.hidden !== true
+    && effect?.system?.visible !== false;
+}
+
+export function readEffects(actor, { includeHidden = true } = {}) {
   const typedEffects = collectionValues(actor?.itemTypes?.effect);
   const typedIds = new Set(typedEffects.map((effect) => effect?.id ?? effect?._id).filter(Boolean));
   const fallbackEffects = collectionValues(actor?.items)
@@ -251,6 +327,7 @@ export function readEffects(actor) {
     .filter((item) => !typedIds.has(item?.id ?? item?._id));
 
   return [...typedEffects, ...fallbackEffects]
+    .filter((effect) => includeHidden || visibleEffect(effect))
     .map(effectSummary)
     .filter(Boolean);
 }
@@ -260,6 +337,7 @@ export function readActorProfile(actor) {
 
   const reach = readReach(actor);
   const classSlugs = readClassSlugs(actor);
+  const subclassEntries = readSubclassEntries(actor);
 
   return {
     id: actor.id,
@@ -270,6 +348,9 @@ export function readActorProfile(actor) {
     level: numericValue(actor.level ?? actor.system?.details?.level?.value, 0),
     classSlug: classSlugs[0] ?? null,
     classSlugs,
+    subclassSlug: subclassEntries[0]?.slug ?? null,
+    subclassSlugs: [...new Set(subclassEntries.map((entry) => entry.slug).filter(Boolean))],
+    subclasses: subclassEntries,
     skills: readSkills(actor),
     abilities: readAbilities(actor),
     conditions: readConditions(actor),

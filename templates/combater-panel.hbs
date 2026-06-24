@@ -1,72 +1,210 @@
 <div class="combater-shell {{#if expanded}}is-expanded{{else}}is-compact{{/if}}">
   <header class="combater-compact">
     {{#if actor}}
-      <img class="combater-portrait" src="{{actor.img}}" alt="{{actor.name}}">
-      <div class="combater-headline">
-        <div class="combater-name-row">
-          <h2>{{actor.name}}</h2>
-          <span class="combater-confidence confidence-{{plan.confidenceClass}}">{{headerMode}}</span>
+      <div class="combater-identity">
+        <img class="combater-portrait" src="{{actor.img}}" alt="{{actor.name}}">
+        <div class="combater-headline">
+          <div class="combater-name-row">
+            <h2>{{actor.name}}</h2>
+          </div>
+          <div class="combater-meta-row">
+            <div class="combater-header-badges">
+              {{#if builder}}
+                <span class="combater-action-count" data-tooltip="{{builder.totalSummary}}. {{builder.reactionSummary}}.">{{builder.poolSummary}}</span>
+                {{#if builder.isPlayerPlan}}
+                  <span class="combater-player-plan-badge" data-tooltip="{{builder.playerPlanTooltip}}">
+                    <i class="fa-solid fa-user-group"></i>
+                    <span>{{builder.playerPlanLabel}}</span>
+                  </span>
+                {{/if}}
+              {{/if}}
+              <span class="combater-confidence confidence-{{headerConfidenceClass}}">{{headerMode}}</span>
+            </div>
+          </div>
         </div>
+      </div>
+      <div class="combater-plan-strip">
         <div class="combater-sequence" aria-label="{{headerMode}} action sequence">
           {{#each headerSteps}}
             {{#if instanceId}}
-              <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-preview-draft-step="{{instanceId}}" title="{{name}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
-                <span class="combater-chip-cost" aria-label="{{costLabel}}">
-                  {{#each diamonds}}<span>{{this}}</span>{{/each}}
+              <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
+                <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
+                  <span class="combater-chip-cost" aria-label="{{costLabel}}">
+                    {{#each diamonds}}<span>{{this}}</span>{{/each}}
+                  </span>
+                  <span class="combater-step-main">
+                    <span class="combater-step-headline">
+                      <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" data-tooltip="{{rangeLabel}}"></i>{{/if}}</span>
+                      {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> Done</span>{{/if}}
+                      {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> Failed</span>{{/if}}
+                    </span>
+                    {{#if hasStepDetails}}
+                    <span class="combater-step-details">
+                      {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
+                      {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
+                      {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
+                    </span>
+                    {{/if}}
+                  </span>
+                </button>
+                <span class="combater-step-tools">
+                  {{#if isExecutionDone}}
+                    {{#if canRevertStep}}
+                    <button type="button" class="combater-chip-tool combater-step-run is-revert" data-revert-step="{{instanceId}}" data-tooltip="Revert this step" aria-label="Revert this step">
+                      <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                    {{/if}}
+                  {{else}}
+                    {{#if canShowExecuteStep}}
+                    <button type="button" class="combater-chip-tool combater-step-run is-execute {{#if executionBlocked}}is-disabled{{/if}}" data-execute-draft-step="{{instanceId}}" data-tooltip="{{executeTooltip}}" aria-label="{{executeTooltip}}" {{#if executionBlocked}}disabled{{/if}}>
+                      <i class="fa-solid fa-play"></i>
+                    </button>
+                    {{/if}}
+                    {{#if requiresDestination}}
+                      {{#unless readonly}}
+                      <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="Set destination" aria-label="Set destination">
+                        <i class="fa-solid fa-location-crosshairs"></i>
+                      </button>
+                      {{/unless}}
+                    {{/if}}
+                    {{#if requiresTarget}}
+                      {{#unless readonly}}
+                      <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="Use current target" aria-label="Use current target">
+                        <i class="fa-solid fa-crosshairs"></i>
+                      </button>
+                      {{/unless}}
+                    {{/if}}
+                    {{#if requiresArea}}
+                      {{#unless readonly}}
+                      <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="Set template" aria-label="Set template">
+                        <i class="fa-solid fa-draw-polygon"></i>
+                      </button>
+                      {{/unless}}
+                    {{/if}}
+                  {{/if}}
+                  {{!-- Remove template stays available after execution so a placed region can be cleared. --}}
+                  {{#if hasAreaMarker}}
+                    {{#unless readonly}}
+                    <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="Remove template" aria-label="Remove template">
+                      <i class="fa-solid fa-eraser"></i>
+                    </button>
+                    {{/unless}}
+                  {{/if}}
+                  {{#unless readonly}}
+                  <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="Remove" aria-label="Remove">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                  {{/unless}}
                 </span>
-                <span class="combater-chip-text">
-                  <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" title="{{rangeLabel}}"></i>{{/if}}</span>
-                  {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
-                  {{#if warning}}<span class="combater-chip-target">{{warning}}</span>{{/if}}
-                </span>
-              </button>
+              </span>
             {{else}}
-              <button type="button" class="combater-chip {{costClass}}" data-execute-step="{{index}}" data-preview-plan="auto" data-preview-step="{{index}}" title="{{name}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if mapLabel}} - {{mapLabel}}{{/if}}: {{reason}}">
+              <button type="button" class="combater-chip {{costClass}}" data-execute-step="{{index}}" data-preview-plan="auto" data-preview-step="{{index}}" data-tooltip="{{name}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if mapLabel}} - {{mapLabel}}{{/if}}: {{reason}}">
                 <span class="combater-chip-cost" aria-label="{{costLabel}}">
                   {{#each diamonds}}<span>{{this}}</span>{{/each}}
                 </span>
                 <span class="combater-chip-text">
-                  <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" title="{{rangeLabel}}"></i>{{/if}}</span>
+                  <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" data-tooltip="{{rangeLabel}}"></i>{{/if}}</span>
                   {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
                   {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
                 </span>
               </button>
             {{/if}}
           {{else}}
-            <span class="combater-empty-chip">No usable action</span>
+            <span class="combater-empty-chip">No selected actions</span>
           {{/each}}
         </div>
+        {{#if headerSummary}}
         <p class="combater-reason">{{headerSummary}}</p>
+        {{/if}}
       </div>
     {{else}}
-      <div class="combater-portrait placeholder" aria-hidden="true"></div>
-      <div class="combater-headline">
-        <div class="combater-name-row">
-          <h2>No active combatant</h2>
-          <span class="combater-confidence confidence-low">Low</span>
+      <div class="combater-identity">
+        <div class="combater-portrait placeholder" aria-hidden="true"></div>
+        <div class="combater-headline">
+          <div class="combater-name-row">
+            <h2>No active combatant</h2>
+          </div>
+          <div class="combater-meta-row">
+            <div class="combater-header-badges">
+              <span class="combater-confidence confidence-low">Low</span>
+            </div>
+          </div>
+          <p class="combater-reason">Start combat or select readable active actor.</p>
         </div>
-        <p class="combater-reason">Start combat or select readable active actor.</p>
       </div>
     {{/if}}
 
     <div class="combater-actions">
       {{#if builder}}
-        <button type="button" class="combater-header-autofill" data-auto-fill title="Fill draft from recommended plan" aria-label="Auto-fill draft">
-          <i class="fa-solid fa-wand-magic-sparkles"></i>
-          <span>Auto-fill</span>
-        </button>
+        {{#if builder.execution.hasStatus}}
+          <div class="combater-execution-controls">
+            {{#if builder.execution.canReset}}
+              <button type="button" class="combater-chip-tool combater-header-reset" data-reset-execution data-tooltip="Revert every executed step" aria-label="Reset execution">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span>Reset</span>
+              </button>
+            {{/if}}
+            {{#if builder.execution.progressLabel}}
+              <span class="combater-exec-progress" data-tooltip="Executed steps">{{builder.execution.progressLabel}}</span>
+            {{/if}}
+          </div>
+        {{/if}}
       {{/if}}
-      <button type="button" class="icon-button" data-action="refresh" title="Refresh" aria-label="Refresh">
-        <i class="fa-solid fa-rotate-right"></i>
-      </button>
-      <button type="button" class="icon-button" data-action="toggle-expanded" title="{{#if expanded}}Collapse{{else}}Expand{{/if}}" aria-label="{{#if expanded}}Collapse{{else}}Expand{{/if}}">
-        <i class="fa-solid {{#if expanded}}fa-chevron-up{{else}}fa-chevron-down{{/if}}"></i>
-      </button>
+      <div class="combater-actions-row">
+        {{#if builder}}
+          {{#unless builder.readonly}}
+            <button type="button" class="combater-header-autofill" data-auto-fill data-tooltip="Fill draft from recommended plan" aria-label="Auto-fill draft">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Auto-fill</span>
+            </button>
+          {{/unless}}
+        {{/if}}
+        <button type="button" class="icon-button" data-action="refresh" data-tooltip="Refresh" aria-label="Refresh">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+        <button type="button" class="icon-button" data-action="toggle-expanded" data-tooltip="{{#if expanded}}Collapse{{else}}Expand{{/if}}" aria-label="{{#if expanded}}Collapse{{else}}Expand{{/if}}">
+          <i class="fa-solid {{#if expanded}}fa-chevron-up{{else}}fa-chevron-down{{/if}}"></i>
+        </button>
+      </div>
     </div>
   </header>
 
   {{#if expanded}}
     {{#if builder}}
+      {{#if builder.sustainedSpells.hasEntries}}
+        <section class="combater-sustained-panel">
+          <article class="combater-alt combater-builder-card combater-sustained-spells">
+            <div class="combater-alt-head">
+              <span class="combater-alt-title">
+                <strong>Sustained spells</strong>
+              </span>
+            </div>
+            <div class="combater-alt-details">
+              {{#each builder.sustainedSpells.entries}}
+                <div class="combater-alt-step combater-sustained-row {{statusClass}}">
+                  <span class="combater-step-cost cost-1" data-tooltip="1 action">
+                    <span>◆</span>
+                  </span>
+                  <div class="combater-alt-step-body">
+                    <h4>
+                      <span class="combater-sustained-name">{{name}}</span>
+                    </h4>
+                    <span class="combater-target" data-tooltip="{{statusLabel}}{{#if detailLabel}} - {{detailLabel}}{{/if}}">
+                      {{statusLabel}}{{#if detailLabel}} - {{detailLabel}}{{/if}}
+                    </span>
+                  </div>
+                  {{#if canAdd}}
+                    <button type="button" class="combater-run combater-add-action" data-add-sustain-spell="{{id}}" data-tooltip="Add Sustain a Spell" aria-label="Sustain {{name}}">
+                      <i class="fa-solid fa-plus"></i>
+                    </button>
+                  {{/if}}
+                </div>
+              {{/each}}
+            </div>
+          </article>
+        </section>
+      {{/if}}
+
       <nav class="combater-tabs" aria-label="PF2e Combater action costs">
         {{#each builder.tabsList}}
           <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">{{label}}</button>
@@ -75,89 +213,53 @@
 
       <section class="combater-body">
         <div class="combater-plan-list">
-          <article class="combater-alt combater-builder-card combater-action-pool">
-            <div class="combater-alt-head">
-              <span class="combater-alt-title">
-                <strong>Action pool</strong>
-              </span>
-              <span class="combater-confidence confidence-medium">{{builder.poolSummary}}</span>
-            </div>
-            <p>{{builder.totalSummary}}. {{builder.reactionSummary}}.</p>
-          </article>
-
-          <article class="combater-alt combater-builder-card combater-draft">
-            <div class="combater-alt-head">
-              <span class="combater-alt-title">
-                <strong>Draft</strong>
-              </span>
-              <span class="combater-confidence confidence-{{builder.draft.confidenceClass}}">{{builder.draft.countLabel}}</span>
-            </div>
-            <div class="combater-alt-details">
-              {{#each builder.draft.steps}}
-                <div class="combater-alt-step combater-draft-step {{#if warning}}has-warning{{/if}} {{#if stale}}is-disabled{{/if}}" data-preview-draft-step="{{instanceId}}">
-                  <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
-                    {{#each diamonds}}<span>{{this}}</span>{{/each}}
-                  </span>
-                  <div class="combater-alt-step-body">
-                    <h4>
-                      <button type="button" class="combater-alt-promote" data-open-draft-step="{{instanceId}}" title="Open action details">
-                        <span>{{position}}. {{name}}</span>
-                      </button>
-                    </h4>
-                    {{#if targetLabel}}<span class="combater-target">{{targetLabel}}</span>{{/if}}
-                    {{#if destinationLabel}}<span class="combater-target">{{destinationLabel}}</span>{{/if}}
-                    {{#if warning}}<span class="combater-target">{{warning}}</span>{{/if}}
-                    <p>{{reason}}</p>
-                  </div>
-                  {{#if requiresDestination}}
-                    <button type="button" class="combater-run" data-choose-destination="{{instanceId}}" title="Choose destination" aria-label="Choose destination">
-                      <i class="fa-solid fa-location-crosshairs"></i>
-                    </button>
-                  {{/if}}
-                  <button type="button" class="combater-run" data-remove-draft-step="{{instanceId}}" title="Remove" aria-label="Remove">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
-                </div>
-              {{else}}
-                <p class="combater-empty">Select actions below to build a draft turn.</p>
-              {{/each}}
-            </div>
-            {{#if builder.draft.warnings.length}}
-              <p>{{#each builder.draft.warnings}}{{this}}{{#unless @last}} {{/unless}}{{/each}}</p>
-            {{/if}}
-          </article>
-
           {{#each builder.tabsList}}
             {{#if active}}
+              <div class="combater-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" data-search-actions value="{{searchQuery}}" placeholder="Search {{label}}" aria-label="Search {{label}} actions" autocomplete="off">
+              </div>
               {{#each sections}}
                 <article class="combater-alt combater-builder-card combater-action-section">
                   <div class="combater-alt-head">
                     <span class="combater-alt-title">
                       <strong>{{label}}</strong>
+                      {{#if countLabel}}<span class="combater-section-count">{{countLabel}}</span>{{/if}}
                     </span>
                   </div>
                   <div class="combater-alt-details">
                     {{#each actions}}
                       <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}}">
-                        <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" title="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
+                        {{#unless readonly}}
+                        <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" data-tooltip="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
                           <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
                         </button>
-                        <span class="combater-step-cost {{costClass}}" title="{{costLabel}}">
+                        {{/unless}}
+                        <span class="combater-step-cost {{costClass}}" data-tooltip="{{costLabel}}">
                           {{#each diamonds}}<span>{{this}}</span>{{/each}}
                         </span>
                         <div class="combater-alt-step-body">
                           <h4>
-                            <button type="button" class="combater-alt-promote" data-open-action="{{key}}" title="Open action details">
+                            <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="Open action details">
                               <span>{{name}}</span>
                             </button>
                           </h4>
-                          {{#if targetLabel}}<span class="combater-target">{{targetLabel}}</span>{{/if}}
-                          {{#if disabledReason}}<span class="combater-target">{{disabledReason}}</span>{{/if}}
+                          {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
+                          {{#if disabledReason}}<span class="combater-target" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
+                          {{#if hasDetailChips}}
+                            <div class="combater-detail-chips" aria-label="Action details">
+                              {{#each detailChips}}
+                                <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                              {{/each}}
+                            </div>
+                          {{/if}}
                           <p>{{reason}}</p>
                         </div>
-                        <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" title="{{disabledTitle}}" aria-label="Add {{name}}" {{#if disabled}}disabled{{/if}}>
+                        {{#unless readonly}}
+                        <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{disabledTitle}}" aria-label="Add {{name}}" {{#if disabled}}disabled{{/if}}>
                           <i class="fa-solid fa-plus"></i>
                         </button>
+                        {{/unless}}
                       </div>
                     {{else}}
                       <p class="combater-empty">No actions in this section.</p>
@@ -175,7 +277,7 @@
                 {{#each debug.candidates}}
                   <div class="debug-row">
                     <span>{{name}}</span>
-                    <code title="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                    <code data-tooltip="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
                     <span>{{costLabel}}</span>
                     <span>{{#if skillCheckLabel}}{{skillCheckLabel}}{{else}}{{#if targetLabel}}{{targetLabel}}{{else}}{{score}}{{/if}}{{/if}}</span>
                   </div>
@@ -186,7 +288,7 @@
                 {{#each debug.rejected}}
                   <div class="debug-row">
                     <span>{{action.name}}</span>
-                    <code>{{action.source}}</code>
+                    <code data-tooltip="{{action.source}}">{{action.source}}</code>
                     <span>{{reason}}</span>
                   </div>
                 {{/each}}
@@ -196,7 +298,7 @@
                 {{#each debug.detected}}
                   <div class="debug-row">
                     <span>{{name}}</span>
-                    <code title="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                    <code data-tooltip="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
                     <span>{{costLabel}}</span>
                     <span>{{#if available}}available{{else}}blocked{{/if}}</span>
                   </div>

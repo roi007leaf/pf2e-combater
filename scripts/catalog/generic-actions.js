@@ -1,4 +1,40 @@
-export const GENERIC_ACTIONS = [
+// pf2e.actionspf2e compendium item ids, so opening a generic action shows its system entry
+// instead of a chat-guidance message. (stabilize/retch have no standalone entry.)
+const ACTION_COMPENDIUM_IDS = {
+  seek: "BlAOM2X92SI6HMtJ",
+  "sense-motive": "1xRFPTFtWtGJ9ELw",
+  demoralize: "2u915NdUyQan6uKF",
+  "create-a-diversion": "GkmbTGfg8KcgynOA",
+  feint: "QNAVeNKtHA0EUw4X",
+  "tumble-through": "21WIfSu7Xd7uKqV8",
+  balance: "M76ycLAqHoAgbcej",
+  climb: "pprgrYQ1QnIDGZiy",
+  swim: "c8TGiZ48ygoSPofx",
+  "high-jump": "2HJ4yuEFY1Cast4h",
+  "long-jump": "JUvAvruz7yRQXfz2",
+  "force-open": "SjmKHgI7a5Z9JzBx",
+  disarm: "Dt6B1slsBy8ipJu9",
+  trip: "ge56Lu1xXVFYUnLP",
+  grapple: "PMbdMWc2QroouFGD",
+  reposition: "lOE4yjUnETTdaf2T",
+  shove: "7blmbDrQFNfdT731",
+  "raise-a-shield": "xjGwis0uaC2305pm",
+  "take-cover": "ust1jJSCZQUhBZIz",
+  escape: "SkZAQRkLLkmBQNB9",
+  "recall-knowledge": "1OagaWtBpVXExToo",
+  "administer-first-aid": "MHLuKy4nQO2Z4Am1",
+  "command-an-animal": "q9nbyIF0PEBqMtYe",
+  hide: "XMcnh4cSI32tljXa",
+  sneak: "VMozDqMMuK5kpoX4",
+  steal: "RDXXE7wMrSPCLv5k",
+  "palm-an-object": "ijZ0DDFpMkWqaShd",
+  stand: "OdIUybJ3ddfL7wzj",
+  crawl: "Tj055UcNm6UEgtCg",
+  step: "UHpkTuCtyaPqiCAB",
+  stride: "Bcxarzksqt9ezrs6",
+};
+
+const GENERIC_ACTION_DEFS = [
   {
     id: "seek",
     name: "Seek",
@@ -309,6 +345,27 @@ export const GENERIC_ACTIONS = [
     executable: "pf2e-action",
   },
   {
+    id: "crawl",
+    name: "Crawl",
+    slug: "crawl",
+    actionCost: 1,
+    role: "mobility",
+    traits: ["move"],
+    activityProfile: { includes: ["move", "crawl"], crawlDistance: 5 },
+    requiresProne: true,
+    executable: "pf2e-action",
+  },
+  {
+    id: "retch",
+    name: "Retch",
+    slug: "retch",
+    actionCost: 1,
+    role: "recovery",
+    activityProfile: { reducesCondition: "sickened" },
+    requiresSickened: true,
+    executable: "pf2e-action",
+  },
+  {
     id: "step",
     name: "Step",
     slug: "step",
@@ -323,3 +380,11 @@ export const GENERIC_ACTIONS = [
     executable: "chat-guidance",
   },
 ];
+
+// Point each generic action at its pf2e.actionspf2e compendium entry so opening it shows the
+// system details instead of a chat-guidance message.
+export const GENERIC_ACTIONS = GENERIC_ACTION_DEFS.map((action) => {
+  if (action.uuid) return action;
+  const id = ACTION_COMPENDIUM_IDS[action.slug];
+  return id ? { ...action, uuid: `Compendium.pf2e.actionspf2e.Item.${id}` } : action;
+});

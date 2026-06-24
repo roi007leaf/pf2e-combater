@@ -1,444 +1,22 @@
+import { CLASS_TACTICS, SUBCLASS_TACTICS } from "./class-tactics-data/index.js";
+import { hasExploitVulnerabilityMark } from "./exploit-vulnerability.js";
+import { readTargetCombatState, targetHasMarkState } from "./combat-state.js";
+
 const MAX_CLASS_TACTIC_DELTA = 44;
 
-const CASTER_ROLES = {
-  damage: 6,
-  "save-damage": 8,
-  "area-damage": 8,
-  control: 10,
-  debuff: 8,
-  buff: 6,
-  defense: 4,
-  healing: 6,
-  summon: 4,
-  "resource-recovery": 6,
-};
-
-const MARTIAL_ROLES = {
-  "mobility-attack": 10,
-  multiattack: 10,
-  setup: 6,
-  control: 4,
-  defense: 4,
-};
-
-const CLASS_TACTICS = {
-  alchemist: {
-    label: "Alchemist",
-    classAction: 8,
-    consumable: 10,
-    rangedStrike: 8,
-    meleeStrike: -6,
-    roles: { damage: 8, debuff: 8, control: 8, healing: 8, setup: 6, buff: 6 },
-    signatureActions: {
-      "quick-alchemy": 26,
-      "quick-bomber": 22,
-      "mutagenic-flashback": 18,
-      "revivifying-mutagen": 18,
-    },
-  },
-  animist: {
-    label: "Animist",
-    classAction: 6,
-    spell: 10,
-    meleeStrike: -10,
-    roles: { ...CASTER_ROLES, healing: 10, buff: 8, summon: 8 },
-    signatureActions: {
-      "apparitions-enhancement": 18,
-      "apparitions-quickening": 20,
-      "apparitions-reflection": 18,
-      "circle-of-spirits": 18,
-      "grudge-strike": 18,
-    },
-  },
-  barbarian: {
-    label: "Barbarian",
-    classAction: 8,
-    meleeStrike: 10,
-    rangedStrike: -4,
-    roles: { ...MARTIAL_ROLES, transformation: 8, damage: 6 },
-    signatureActions: {
-      rage: 30,
-      "mighty-rage": 24,
-      "quick-tempered": 18,
-      "sudden-charge": 20,
-      "furious-grab": 18,
-      "renewed-vigor": 16,
-    },
-  },
-  bard: {
-    label: "Bard",
-    classAction: 8,
-    spell: 10,
-    meleeStrike: -8,
-    roles: { ...CASTER_ROLES, buff: 12, debuff: 10, control: 10, setup: 8 },
-    signatureActions: {
-      "courageous-advance": 22,
-      "courageous-assault": 22,
-      "courageous-onslaught": 22,
-      harmonize: 18,
-      "vigorous-anthem": 20,
-      "counter-performance": 18,
-      "lingering-composition": 18,
-    },
-  },
-  champion: {
-    label: "Champion",
-    classAction: 8,
-    meleeStrike: 6,
-    roles: { defense: 14, healing: 8, control: 6, buff: 6, setup: 4 },
-    signatureActions: {
-      smite: 22,
-      "lay-on-hands": 22,
-      "retributive-strike": 18,
-      "glimpse-of-redemption": 18,
-      "liberating-step": 18,
-      "iron-command": 18,
-      "raise-a-shield": 8,
-      "take-cover": 4,
-    },
-  },
-  cleric: {
-    label: "Cleric",
-    classAction: 6,
-    spell: 10,
-    meleeStrike: -8,
-    roles: { ...CASTER_ROLES, healing: 14, buff: 10, "save-damage": 10 },
-    signatureActions: {
-      "channel-smite": 22,
-      "raise-symbol": 16,
-      "divine-infusion": 18,
-      "cast-down": 18,
-      "restorative-strike": 18,
-    },
-  },
-  commander: {
-    label: "Commander",
-    classAction: 10,
-    meleeStrike: 2,
-    rangedStrike: 2,
-    roles: { buff: 14, setup: 12, control: 8, mobility: 6, defense: 6 },
-    signatureActions: {
-      "strike-hard": 26,
-      "pincer-attack": 24,
-      "ready-aim-fire": 24,
-      reload: 22,
-      "shields-up": 22,
-      "gather-to-me": 20,
-      "coordinating-maneuvers": 20,
-      "take-the-high-ground": 20,
-      "for-talamandor-for-freedom": 20,
-      "seek-and-destroy": 20,
-    },
-  },
-  druid: {
-    label: "Druid",
-    classAction: 6,
-    spell: 10,
-    meleeStrike: -8,
-    roles: { ...CASTER_ROLES, "area-damage": 10, control: 10, healing: 8, summon: 8, transformation: 6 },
-    signatureActions: {
-      "wild-shape": 22,
-      "storm-lord": 16,
-      "floral-restoration": 18,
-      "form-control": 18,
-      "overwhelming-energy": 16,
-    },
-  },
-  exemplar: {
-    label: "Exemplar",
-    classAction: 10,
-    meleeStrike: 8,
-    rangedStrike: 6,
-    roles: { ...MARTIAL_ROLES, damage: 8, mobility: 6 },
-    signatureActions: {
-      "shift-immanence": 24,
-      "spark-transcendence": 24,
-      "victors-wreath": 18,
-    },
-  },
-  fighter: {
-    label: "Fighter",
-    classAction: 8,
-    meleeStrike: 8,
-    rangedStrike: 8,
-    includesStrike: 8,
-    roles: { ...MARTIAL_ROLES, setup: 8 },
-    signatureActions: {
-      "reactive-strike": 16,
-      "power-attack": 22,
-      "vicious-swing": 22,
-      "double-slice": 22,
-      "intimidating-strike": 20,
-      "knockdown": 20,
-      "snagging-strike": 20,
-    },
-  },
-  guardian: {
-    label: "Guardian",
-    classAction: 10,
-    meleeStrike: 4,
-    roles: { defense: 16, control: 10, setup: 6, buff: 4 },
-    signatureActions: {
-      taunt: 30,
-      "intercept-attack": 22,
-      "raise-a-shield": 10,
-      "take-cover": 6,
-    },
-  },
-  gunslinger: {
-    label: "Gunslinger",
-    classAction: 8,
-    rangedStrike: 14,
-    meleeStrike: -10,
-    reloadBeforeStrike: 8,
-    roles: { setup: 8, mobility: 8, damage: 6, "mobility-attack": 8 },
-    signatureActions: {
-      "covered-reload": 28,
-      "raconteurs-reload": 28,
-      "reloading-strike": 28,
-      "thoughtful-reload": 26,
-      "finish-the-job": 22,
-      "ghost-shot": 20,
-      "vital-shot": 20,
-      "running-reload": 22,
-    },
-  },
-  inventor: {
-    label: "Inventor",
-    classAction: 8,
-    meleeStrike: 6,
-    rangedStrike: 6,
-    roles: { damage: 8, setup: 8, transformation: 10, control: 6, defense: 4 },
-    signatureActions: {
-      overdrive: 30,
-      explode: 24,
-      "unstable-function": 18,
-      "searing-restoration": 18,
-    },
-  },
-  investigator: {
-    label: "Investigator",
-    classAction: 8,
-    meleeStrike: 4,
-    rangedStrike: 6,
-    roles: { setup: 14, damage: 6, control: 6, debuff: 6 },
-    signatureActions: {
-      "devise-a-stratagem": 30,
-      "clue-in": 18,
-      "quick-tincture": 20,
-      "pointed-question": 18,
-      "recall-knowledge": 8,
-    },
-  },
-  kineticist: {
-    label: "Kineticist",
-    classAction: 12,
-    impulseAction: 18,
-    meleeStrike: -8,
-    roles: { damage: 10, "area-damage": 10, control: 10, defense: 8, buff: 6, mobility: 6 },
-    signatureActions: {
-      "channel-elements": 30,
-      "elemental-blast": 28,
-      "extract-element": 24,
-      "base-kinesis": 14,
-      "weapon-infusion": 20,
-      "two-element-infusion": 18,
-    },
-  },
-  magus: {
-    label: "Magus",
-    classAction: 8,
-    spell: 4,
-    meleeStrike: 14,
-    rangedStrike: 10,
-    includesStrike: 14,
-    roles: { damage: 8, "mobility-attack": 10, setup: 8, "resource-recovery": 14 },
-    signatureActions: {
-      spellstrike: 34,
-      "arcane-cascade": 26,
-      "recharge-spellstrike": 22,
-      "dimensional-assault": 20,
-    },
-  },
-  monk: {
-    label: "Monk",
-    classAction: 8,
-    meleeStrike: 8,
-    rangedStrike: 2,
-    roles: { ...MARTIAL_ROLES, mobility: 10, setup: 10, defense: 6 },
-    signatureActions: {
-      "flurry-of-blows": 30,
-      "stunning-fist": 20,
-      "ki-strike": 20,
-      "flying-kick": 20,
-      "mixed-maneuver": 18,
-    },
-  },
-  oracle: {
-    label: "Oracle",
-    classAction: 6,
-    spell: 10,
-    meleeStrike: -10,
-    roles: { ...CASTER_ROLES, healing: 10, debuff: 10, control: 8 },
-    signatureActions: {
-      "foretell-harm": 20,
-      "nudge-the-scales": 20,
-      "whispers-of-weakness": 22,
-      "debilitating-dichotomy": 20,
-      "glean-lore": 16,
-    },
-  },
-  psychic: {
-    label: "Psychic",
-    classAction: 8,
-    spell: 12,
-    meleeStrike: -12,
-    roles: { ...CASTER_ROLES, damage: 12, "save-damage": 10, control: 10 },
-    signatureActions: {
-      "unleash-psyche": 30,
-      "psi-burst": 24,
-      "restore-the-mind": 20,
-      "calculate-threats": 18,
-      "recall-the-teachings": 16,
-    },
-  },
-  ranger: {
-    label: "Ranger",
-    classAction: 8,
-    meleeStrike: 6,
-    rangedStrike: 8,
-    includesStrike: 6,
-    roles: { ...MARTIAL_ROLES, setup: 10, mobility: 6 },
-    signatureActions: {
-      "hunt-prey": 30,
-      "hunted-shot": 24,
-      "twin-takedown": 24,
-      "skirmish-strike": 20,
-      "hunters-aim": 20,
-    },
-  },
-  rogue: {
-    label: "Rogue",
-    classAction: 8,
-    meleeStrike: 6,
-    rangedStrike: 4,
-    roles: { setup: 14, mobility: 8, damage: 6, debuff: 6, control: 6 },
-    signatureActions: {
-      "debilitating-strike": 24,
-      "sneak-attack": 20,
-      "twin-feint": 22,
-      "poison-weapon": 20,
-      "analyze-weakness": 20,
-      feint: 8,
-      "create-a-diversion": 8,
-    },
-  },
-  runesmith: {
-    label: "Runesmith",
-    classAction: 10,
-    meleeStrike: 4,
-    rangedStrike: 4,
-    roles: { setup: 10, buff: 10, damage: 8, control: 6, defense: 6 },
-    signatureActions: {
-      "trace-rune": 30,
-      "invoke-rune": 26,
-      "etched-rune": 20,
-    },
-  },
-  sorcerer: {
-    label: "Sorcerer",
-    classAction: 6,
-    spell: 12,
-    meleeStrike: -12,
-    roles: { ...CASTER_ROLES, damage: 10, "area-damage": 10, "save-damage": 10 },
-    signatureActions: {
-      "bloodline-conduit": 22,
-      "energy-fusion": 20,
-      "dangerous-sorcery": 18,
-      "counterspell-spontaneous": 16,
-    },
-  },
-  summoner: {
-    label: "Summoner",
-    classAction: 8,
-    spell: 8,
-    meleeStrike: -8,
-    roles: { ...CASTER_ROLES, summon: 12, buff: 10, control: 8 },
-    signatureActions: {
-      "act-together": 34,
-      "manifest-eidolon": 26,
-      "tandem-movement": 24,
-      "tandem-strike": 24,
-      transpose: 20,
-      "defend-summoner": 18,
-    },
-  },
-  swashbuckler: {
-    label: "Swashbuckler",
-    classAction: 8,
-    meleeStrike: 8,
-    rangedStrike: 2,
-    roles: { setup: 14, mobility: 10, damage: 8, defense: 4, control: 4 },
-    signatureActions: {
-      "gain-panache": 30,
-      "confident-finisher": 28,
-      "opportune-riposte": 16,
-      "one-for-all": 20,
-      "vexing-tumble": 22,
-      feint: 8,
-      "tumble-through": 10,
-    },
-  },
-  thaumaturge: {
-    label: "Thaumaturge",
-    classAction: 10,
-    meleeStrike: 6,
-    rangedStrike: 6,
-    roles: { setup: 14, damage: 6, debuff: 8, control: 6 },
-    signatureActions: {
-      "exploit-vulnerability": 34,
-      "intensify-vulnerability": 28,
-      "drink-from-the-chalice": 24,
-      "fling-magic": 22,
-      "twin-weakness": 24,
-      "recall-knowledge": 8,
-    },
-  },
-  witch: {
-    label: "Witch",
-    classAction: 8,
-    spell: 12,
-    meleeStrike: -12,
-    roles: { ...CASTER_ROLES, debuff: 12, control: 10, buff: 8 },
-    signatureActions: {
-      "cast-hex": 24,
-      "split-hex": 22,
-      "sympathetic-strike": 18,
-      "familiar-of-flowing-script": 16,
-    },
-  },
-  wizard: {
-    label: "Wizard",
-    classAction: 6,
-    spell: 12,
-    meleeStrike: -12,
-    roles: { ...CASTER_ROLES, damage: 10, "area-damage": 10, control: 12, "resource-recovery": 10 },
-    signatureActions: {
-      "drain-bonded-item": 28,
-      "bond-conservation": 22,
-      "spell-protection-array": 18,
-      "convincing-illusion": 16,
-    },
-  },
-};
+export function coveredClassSlugs() {
+  return Object.keys(CLASS_TACTICS).sort();
+}
 
 const ROLE_LABELS = {
   "area-damage": "area spells",
   buff: "support",
+  "combat-utility": "combat utility",
   control: "control",
   damage: "damage",
   debuff: "debuffs",
   defense: "defense",
+  "exploration-utility": "exploration utility",
   healing: "healing",
   "mobility-attack": "move-and-attack plays",
   mobility: "mobility",
@@ -446,7 +24,9 @@ const ROLE_LABELS = {
   "resource-recovery": "resource recovery",
   "save-damage": "save spells",
   setup: "setup",
+  "stealth-defense": "stealth defense",
   summon: "summons",
+  "sustain-control": "sustain control",
   transformation: "transformation",
 };
 
@@ -471,6 +51,16 @@ function classSlugs(profile) {
     ...values(profile?.classSlugs),
     profile?.classSlug,
     profile?.class,
+  ].map(normalize).filter(Boolean))];
+}
+
+function subclassSlugs(profile) {
+  return [...new Set([
+    ...values(profile?.subclassSlugs),
+    profile?.subclassSlug,
+    ...values(profile?.subclasses).map((entry) => entry?.slug ?? entry?.name ?? entry),
+    ...values(profile?.specializationSlugs),
+    profile?.specializationSlug,
   ].map(normalize).filter(Boolean))];
 }
 
@@ -548,7 +138,18 @@ function isDamageSignal(signals) {
 }
 
 function isSpellSignal(signals) {
-  return signals.isSpell || ["damage", "save-damage", "area-damage", "control", "buff", "healing", "summon"].includes(signals.role);
+  return signals.isSpell || [
+    "damage",
+    "save-damage",
+    "area-damage",
+    "control",
+    "buff",
+    "stealth-defense",
+    "combat-utility",
+    "sustain-control",
+    "healing",
+    "summon",
+  ].includes(signals.role);
 }
 
 function profileHasState(profile, patterns) {
@@ -576,7 +177,61 @@ function targetIsOffGuard(target) {
 }
 
 function targetMarked(target, patterns) {
-  return targetHasMark(target, patterns);
+  return targetHasMarkState(target, patterns[0]) || targetHasMark(target, patterns);
+}
+
+function activityIncludes(action) {
+  return new Set(values(action?.activityProfile?.includes).map(normalize));
+}
+
+function addSubclassDeltas(currentClassSlug, actorClasses, parts, profile, action, signals, actionSlug) {
+  const actorClassSet = new Set(actorClasses);
+  const actionTraits = new Set(values(signals.traits).map(normalize));
+  const actionIncludes = activityIncludes(action);
+
+  for (const subclassSlug of subclassSlugs(profile)) {
+    const tactic = SUBCLASS_TACTICS[subclassSlug];
+    if (!tactic) continue;
+
+    const requiredClasses = [
+      ...values(tactic.classSlug),
+      ...values(tactic.classSlugs),
+    ].map(normalize).filter(Boolean);
+    if (requiredClasses.length && !requiredClasses.some((slug) => actorClassSet.has(slug))) continue;
+    if (requiredClasses.length && !requiredClasses.includes(currentClassSlug)) continue;
+
+    const entries = [];
+    const add = (delta, label) => {
+      const number = Number(delta);
+      if (!Number.isFinite(number) || number === 0) return;
+      entries.push({ delta: number, label });
+    };
+
+    add(tactic.actions?.[actionSlug], `${tactic.label} action`);
+    add(tactic.roles?.[signals.role], ROLE_LABELS[signals.role] ?? signals.role);
+
+    for (const [trait, delta] of Object.entries(tactic.traits ?? {})) {
+      if (actionTraits.has(normalize(trait))) add(delta, `${trait} trait`);
+    }
+    for (const [include, delta] of Object.entries(tactic.activity ?? {})) {
+      if (actionIncludes.has(normalize(include))) add(delta, `${include} action`);
+    }
+
+    if (signals.isSpell) add(tactic.spell, "spells");
+    if (signals.isImpulse) add(tactic.impulseAction, "impulses");
+    if (signals.isMeleeStrike) add(tactic.meleeStrike, "melee Strikes");
+    if (signals.isRangedStrike) add(tactic.rangedStrike, "ranged Strikes");
+    if (signals.includesStrike) add(tactic.includesStrike, "Strike activities");
+    if (signals.reloadBeforeStrike) add(tactic.reloadBeforeStrike, "reload attacks");
+    if (signals.consumable) add(tactic.consumable, "consumables");
+
+    const delta = entries.reduce((sum, entry) => sum + entry.delta, 0);
+    if (!delta) continue;
+
+    const label = tactic.reason
+      ?? `${tactic.label} favors ${[...new Set(entries.map((entry) => entry.label))].slice(0, 2).join(" and ")}.`;
+    addPlaybookDelta(parts, Math.max(-36, Math.min(36, delta)), label);
+  }
 }
 
 function alchemistPlaybook(parts, profile, action, signals, actionSlug) {
@@ -936,6 +591,8 @@ function kineticistPlaybook(parts, profile, action, signals, actionSlug) {
   const state = profile?.combatState ?? {};
   const auraActive = state.kineticistAuraActive === true || state.channelElementsActive === true;
   const isImpulse = signals.isImpulse || actionSlug === "elemental-blast";
+  const traitSet = new Set(values(signals.traits).map(normalize));
+  const overflow = action?.activityProfile?.overflow === true || traitSet.has("overflow");
 
   if (actionSlug === "channel-elements") {
     if (auraActive) {
@@ -948,6 +605,7 @@ function kineticistPlaybook(parts, profile, action, signals, actionSlug) {
   if (isImpulse && actionSlug !== "channel-elements") {
     if (auraActive) {
       addPlaybookDelta(parts, 12, "Kinetic aura active; impulses are online.");
+      if (overflow) addPlaybookDelta(parts, 18, "Overflow impulse spends the aura for a strong payoff.");
     } else if (state.kineticistAuraActive === false || state.channelElementsActive === false) {
       addPlaybookDelta(parts, -44, "Impulse wants Channel Elements active first.");
     }
@@ -1001,8 +659,8 @@ function magusPlaybook(parts, profile, action, signals, actionSlug) {
 function thaumaturgePlaybook(parts, profile, action, signals, actionSlug) {
   const target = signals.target;
   const state = profile?.combatState ?? {};
-  const exploited = state.exploitVulnerabilityActive === true
-    || targetHasMark(target, ["exploited-vulnerability", "exploit-vulnerability", "personal-antithesis", "mortal-weakness"]);
+  const targetState = readTargetCombatState(target);
+  const exploited = targetState.exploited || hasExploitVulnerabilityMark(target);
 
   if (actionSlug === "exploit-vulnerability") {
     if (exploited) {
@@ -1023,6 +681,8 @@ function thaumaturgePlaybook(parts, profile, action, signals, actionSlug) {
   if (signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike || signals.role === "damage") {
     if (exploited) {
       addPlaybookDelta(parts, 24, "Exploited target makes Thaumaturge damage better.");
+    } else if (state.exploitVulnerabilityActive === true) {
+      addPlaybookDelta(parts, -4, "This target is not the exploited target.");
     } else {
       addPlaybookDelta(parts, -8, "Thaumaturge damage wants Exploit Vulnerability first.");
     }
@@ -1032,8 +692,8 @@ function thaumaturgePlaybook(parts, profile, action, signals, actionSlug) {
 function rangerPlaybook(parts, profile, action, signals, actionSlug) {
   const target = signals.target;
   const state = profile?.combatState ?? {};
-  const hunted = state.huntedPreyActive === true
-    || targetHasMark(target, ["hunted-prey", "hunt-prey"]);
+  const targetState = readTargetCombatState(target);
+  const hunted = targetState.huntedPrey;
 
   if (actionSlug === "hunt-prey") {
     if (hunted) {
@@ -1053,6 +713,8 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
   ) {
     if (hunted) {
       addPlaybookDelta(parts, 24, "Hunted prey makes Ranger attacks better.");
+    } else if (state.huntedPreyActive === true) {
+      addPlaybookDelta(parts, -6, "This target is not the hunted prey.");
     } else {
       addPlaybookDelta(parts, -10, "Ranger attacks want Hunt Prey first.");
     }
@@ -1062,8 +724,8 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
 function investigatorPlaybook(parts, profile, action, signals, actionSlug) {
   const target = signals.target;
   const state = profile?.combatState ?? {};
-  const devised = state.deviseStratagemActive === true
-    || targetHasMark(target, ["devise-a-stratagem", "devised-stratagem"]);
+  const targetState = readTargetCombatState(target);
+  const devised = targetState.devisedStratagem;
 
   if (actionSlug === "devise-a-stratagem") {
     if (devised) {
@@ -1076,6 +738,8 @@ function investigatorPlaybook(parts, profile, action, signals, actionSlug) {
   if (signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike || signals.role === "damage") {
     if (devised) {
       addPlaybookDelta(parts, 26, "Devised Stratagem supports this attack.");
+    } else if (state.deviseStratagemActive === true) {
+      addPlaybookDelta(parts, -8, "This target is not the devised target.");
     } else {
       addPlaybookDelta(parts, -12, "Investigator attacks want Devise a Stratagem first.");
     }
@@ -1183,19 +847,20 @@ export function classTacticAdjustment(profile, action, signals = {}) {
     const roleDelta = tactic.roles?.[signals.role];
     addDelta(parts, roleDelta, ROLE_LABELS[signals.role] ?? signals.role);
     classPlaybookAdjustment(slug, parts, profile, action, signals, actionSlug);
+    addSubclassDeltas(slug, actorClasses, parts, profile, action, signals, actionSlug);
 
     const delta = parts.reduce((sum, part) => sum + part.delta, 0);
     if (!delta) continue;
 
     total += delta;
-    const playbookReason = parts.find((part) => part.reason)?.reason;
-    if (playbookReason) reasons.push(playbookReason);
+    const playbookReasons = [...new Set(parts.filter((part) => part.reason).map((part) => part.reason))];
+    reasons.push(...playbookReasons.slice(0, 2));
     const reason = summarize(tactic.label, parts);
     if (reason) reasons.push(reason);
   }
 
   return {
     scoreDelta: clampDelta(total),
-    reasons: reasons.slice(0, 2),
+    reasons: reasons.slice(0, 3),
   };
 }

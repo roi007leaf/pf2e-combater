@@ -1,4 +1,7 @@
-const MOVEMENT_SLUGS = new Set(["stride", "step", "stand-stride"]);
+import { previewLayer } from "./preview-layer.js";
+import { pf2eMovementActionForStep, pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+
+const MOVEMENT_SLUGS = new Set(["crawl", "stride", "step", "stand-stride"]);
 const MAX_REACHABLE_MARKERS = 48;
 let previewGraphics = null;
 
@@ -12,6 +15,13 @@ function point(value) {
   if (!center) return null;
   const x = numeric(center.x, NaN);
   const y = numeric(center.y, NaN);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function directPoint(value) {
+  const x = numeric(value?.x, NaN);
+  const y = numeric(value?.y, NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { x, y };
 }
@@ -86,7 +96,7 @@ function profileSpeed(context) {
 }
 
 function movementDistanceFeet(context, step) {
-  if (step?.slug === "step") return 5;
+  if (step?.slug === "crawl" || step?.slug === "step") return 5;
   if (step?.slug === "stride" || step?.slug === "stand-stride") return profileSpeed(context);
   return 0;
 }
@@ -283,8 +293,8 @@ function pointVisible(point, options = {}) {
 function reachableMovementCenters(origin, distanceFeet, gridSize, options = {}) {
   const candidates = reachableCenters(origin, distanceFeet, gridSize);
   const maxOffset = candidates[0]?.maxOffset ?? 0;
-  const bestCosts = new Map([[`${origin.x},${origin.y}`, 0]]);
-  const queue = [{ center: origin, cost: 0, route: [] }];
+  const bestCosts = new Map([[`${origin.x},${origin.y},0`, 0]]);
+  const queue = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
   const centers = [];
 
   for (let index = 0; index < queue.length; index += 1) {
@@ -300,18 +310,18 @@ function reachableMovementCenters(origin, distanceFeet, gridSize, options = {}) 
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
 
-        const stepCost = Math.max(Math.abs(dx), Math.abs(dy)) * gridSize;
-        const cost = current.cost + stepCost;
+        const movement = movementSegmentCost(current.center, center, gridSize, current.diagonalCount, options);
+        const cost = current.cost + movement.cost;
         if (cost > distanceFeet) continue;
 
-        const key = `${center.x},${center.y}`;
+        const key = `${center.x},${center.y},${movement.diagonalCount % 2}`;
         if ((bestCosts.get(key) ?? Infinity) <= cost) continue;
         bestCosts.set(key, cost);
         const routeCenter = { ...center, cost };
         const route = [...current.route, routeCenter];
         const reachableCenter = { ...routeCenter, route };
         centers.push(reachableCenter);
-        queue.push({ center: routeCenter, cost, route });
+        queue.push({ center: routeCenter, cost, route, diagonalCount: movement.diagonalCount });
       }
     }
   }
@@ -323,16 +333,25 @@ function pointKey(point) {
   return `${point.x},${point.y}`;
 }
 
-function movementStepCost(from, to) {
-  return Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+function movementSegmentCost(from, to, gridSize, startingDiagonalCount = 0, options = {}) {
+  return pf2eMovementSegmentCost(from, to, {
+    ...options,
+    gridSize,
+    gridDistance: gridSize,
+    startingDiagonalCount,
+  });
 }
 
-function movementHeuristic(from, to) {
-  return Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+function movementStepCost(from, to, gridSize = 5, startingDiagonalCount = 0, options = {}) {
+  return movementSegmentCost(from, to, gridSize, startingDiagonalCount, options).cost;
 }
 
-function routePriority(node, destination) {
-  const heuristic = movementHeuristic(node.center, destination);
+function movementHeuristic(from, to, gridSize = 5) {
+  return movementSegmentCost(from, to, gridSize).cost;
+}
+
+function routePriority(node, destination, gridSize) {
+  const heuristic = movementHeuristic(node.center, destination, gridSize);
   const euclidean = Math.hypot(destination.x - node.center.x, destination.y - node.center.y);
   return node.cost + heuristic + euclidean * 0.001;
 }
@@ -341,11 +360,11 @@ function directRouteToCenter(origin, destination, distanceFeet, gridSize, option
   const cells = Math.floor(distanceFeet / gridSize);
   const maxOffset = cells * gridSize;
   const destinationKey = pointKey(destination);
-  const bestCosts = new Map([[pointKey(origin), 0]]);
-  const open = [{ center: origin, cost: 0, route: [] }];
+  const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
+  const open = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
 
   while (open.length) {
-    open.sort((left, right) => routePriority(left, destination) - routePriority(right, destination));
+    open.sort((left, right) => routePriority(left, destination, gridSize) - routePriority(right, destination, gridSize));
     const current = open.shift();
     if (pointKey(current.center) === destinationKey) return current.route;
 
@@ -360,10 +379,11 @@ function directRouteToCenter(origin, destination, distanceFeet, gridSize, option
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
 
-        const cost = current.cost + movementStepCost(current.center, center);
+        const movement = movementSegmentCost(current.center, center, gridSize, current.diagonalCount, options);
+        const cost = current.cost + movement.cost;
         if (cost > distanceFeet) continue;
 
-        const key = pointKey(center);
+        const key = `${pointKey(center)},${movement.diagonalCount % 2}`;
         if ((bestCosts.get(key) ?? Infinity) <= cost) continue;
         bestCosts.set(key, cost);
         const routeCenter = { ...center, cost };
@@ -371,6 +391,7 @@ function directRouteToCenter(origin, destination, distanceFeet, gridSize, option
           center: routeCenter,
           cost,
           route: [...current.route, routeCenter],
+          diagonalCount: movement.diagonalCount,
         });
       }
     }
@@ -386,9 +407,11 @@ function explicitDestination(step) {
   return { x, y };
 }
 
-function explicitDestinationReason(origin, destination, distanceFeet, options = {}) {
+function explicitDestinationReason(origin, destination, distanceFeet, gridSize, options = {}) {
   if (!pointVisible(destination, options)) return "Destination is not visible.";
-  if (movementHeuristic(origin, destination) > distanceFeet) return "Destination is beyond movement range.";
+  if (movementSegmentCost(origin, destination, gridSize, 0, options).cost > distanceFeet) {
+    return "Destination is beyond movement range.";
+  }
   return "No collision-free movement path to destination.";
 }
 
@@ -417,6 +440,70 @@ function xMarkerForPlacement(placement) {
       end: { x: placement.x, y: placement.y + placement.height },
     }],
   };
+}
+
+function samePoint(left, right) {
+  return !!left && !!right && left.x === right.x && left.y === right.y;
+}
+
+function explicitWaypointCenters(step, destinationCenter) {
+  const waypoints = Array.isArray(step?.movementPlan?.waypoints)
+    ? step.movementPlan.waypoints.map((waypoint) => directPoint(waypoint)).filter(Boolean)
+    : [];
+  if (!waypoints.length) return null;
+  if (destinationCenter && !samePoint(waypoints.at(-1), destinationCenter)) waypoints.push(destinationCenter);
+  return waypoints;
+}
+
+function validateWaypointPath(origin, waypoints, distanceFeet, gridSize, options = {}) {
+  let from = origin;
+  let cost = 0;
+  let diagonalCount = 0;
+  for (const waypoint of waypoints) {
+    if (!pointVisible(waypoint, options)) {
+      return { available: false, reason: "Destination is not visible.", cost };
+    }
+    if (pathBlocked(from, waypoint, options)) {
+      return { available: false, reason: "No collision-free movement path to destination.", cost };
+    }
+
+    const movement = movementSegmentCost(from, waypoint, gridSize, diagonalCount, options);
+    cost += movement.cost;
+    diagonalCount = movement.diagonalCount;
+    if (cost > distanceFeet) {
+      return { available: false, reason: "Waypoint path is beyond movement range.", cost };
+    }
+    from = waypoint;
+  }
+  return { available: true, reason: "", cost };
+}
+
+function distanceLabelText(distance) {
+  const rounded = Math.round(distance * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} ft`;
+}
+
+function waypointSegmentLabels(origin, waypoints, gridSize, options = {}) {
+  const labels = [];
+  let from = origin;
+  let total = 0;
+  let diagonalCount = 0;
+  for (const to of waypoints) {
+    const movement = movementSegmentCost(from, to, gridSize, diagonalCount, options);
+    total += movement.cost;
+    diagonalCount = movement.diagonalCount;
+    labels.push({
+      text: distanceLabelText(total),
+      from,
+      to,
+      center: {
+        x: (from.x + to.x) / 2,
+        y: (from.y + to.y) / 2,
+      },
+    });
+    from = to;
+  }
+  return labels;
 }
 
 function reachableMarkers(origin, centers, recommendation, gridSize) {
@@ -535,9 +622,30 @@ function strikeReachableCenters(context, step, reachable, footprint, gridSize, o
   });
 }
 
-// Distinct colour per Stride in a move-and-strike composite, so each leg of the
-// path reads as its own move when hovering.
 const STRIDE_COLORS = [0x5aa0e0, 0xe0b35a, 0x9b6dd6];
+
+function colorNumber(value) {
+  if (Number.isFinite(Number(value))) {
+    const numericColor = Number(value);
+    return numericColor >= 0 && numericColor <= 0xffffff ? numericColor : null;
+  }
+
+  const text = String(value ?? "").trim();
+  const match = text.match(/^#?([a-f\d]{3}|[a-f\d]{6})$/i);
+  if (!match) return null;
+  const hex = match[1].length === 3
+    ? match[1].split("").map((part) => `${part}${part}`).join("")
+    : match[1];
+  return Number.parseInt(hex, 16);
+}
+
+function movementColor(fallback = STRIDE_COLORS[0]) {
+  return colorNumber(globalThis.game?.user?.color) ?? fallback;
+}
+
+function strideMovementColor(index) {
+  return movementColor(STRIDE_COLORS[index % STRIDE_COLORS.length]);
+}
 
 function isStrideStrikeStep(step) {
   return step?.activityProfile?.includesStrike === true
@@ -593,14 +701,14 @@ function retreatStrideStrikePath(context, step, gridSize, options = {}) {
     trail: outboundRoute,
     placement: attackPlacement,
     marker: xMarkerForPlacement(attackPlacement),
-    color: STRIDE_COLORS[0],
+    color: strideMovementColor(0),
   }, {
     index: 2,
     center: origin,
     trail: inboundRoute,
     placement: originPlacement,
     marker: xMarkerForPlacement(originPlacement),
-    color: STRIDE_COLORS[1],
+    color: strideMovementColor(1),
   }];
 
   return {
@@ -650,7 +758,7 @@ function strideStrikePath(context, step, gridSize, options = {}) {
       trail,
       placement,
       marker: xMarkerForPlacement(placement),
-      color: STRIDE_COLORS[(index - 1) % STRIDE_COLORS.length],
+      color: strideMovementColor(index - 1),
     });
   }
 
@@ -661,9 +769,62 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   const destinationCenter = explicitDestination(step);
   if (!destinationCenter) return null;
 
+  const color = movementColor();
   const destinationVisible = pointVisible(destinationCenter, options);
   const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
   const destinationMarker = xMarkerForPlacement(destinationPlacement);
+  const waypointCenters = explicitWaypointCenters(step, destinationCenter);
+  if (waypointCenters?.length) {
+    const waypointValidation = destinationVisible
+      ? validateWaypointPath(origin, waypointCenters, distanceFeet, gridSize, options)
+      : { available: false, reason: "Destination is not visible." };
+    const destinationAvailable = destinationVisible && waypointValidation.available === true;
+    const remainingDistanceFeet = destinationAvailable
+      ? Math.max(0, distanceFeet - waypointValidation.cost)
+      : 0;
+    const waypointOrigin = waypointCenters.at(-1) ?? destinationCenter;
+    const remainingCenters = destinationAvailable && remainingDistanceFeet > 0
+      ? reachableMovementCenters(waypointOrigin, remainingDistanceFeet, gridSize, options)
+      : [];
+    const remainingPlacements = remainingCenters.map((center) => placementForCenter(center, footprint, gridSize));
+    const remainingMarkers = reachableMarkers(waypointOrigin, remainingCenters, null, gridSize);
+    const segmentLabels = waypointSegmentLabels(origin, waypointCenters, gridSize, options);
+    return {
+      enabled: true,
+      slug: step.slug,
+      explicitDestination: true,
+      origin,
+      distanceFeet,
+      footprint,
+      destinationCenter,
+      destinationPlacement,
+      destinationMarker,
+      destinationAvailable,
+      destinationIllegalReason: destinationAvailable ? "" : waypointValidation.reason,
+      stridePath: destinationAvailable
+        ? [{
+          index: 1,
+          center: destinationCenter,
+          trail: waypointCenters,
+          placement: destinationPlacement,
+          marker: destinationMarker,
+          waypoints: waypointCenters,
+          segmentLabels,
+          color,
+        }]
+        : [],
+      reachableCenters: remainingCenters,
+      reachablePlacements: remainingPlacements,
+      reachableMarkers: remainingMarkers,
+      reachableMarkerColor: color,
+      recommendedCenter: destinationAvailable ? destinationCenter : null,
+      recommendedPlacement: destinationAvailable ? destinationPlacement : null,
+      recommendedMarker: destinationAvailable ? destinationMarker : null,
+      movementColor: color,
+      segmentLabels,
+    };
+  }
+
   const route = destinationVisible
     ? directRouteToCenter(origin, destinationCenter, distanceFeet, gridSize, options)
     : null;
@@ -677,7 +838,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       trail: route,
       placement: destinationPlacement,
       marker: destinationMarker,
-      color: STRIDE_COLORS[0],
+      color,
     }]
     : [];
 
@@ -695,15 +856,17 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
     destinationIllegalReason: destinationAvailable
       ? ""
       : (destinationVisible
-        ? explicitDestinationReason(origin, destinationCenter, distanceFeet, options)
+        ? explicitDestinationReason(origin, destinationCenter, distanceFeet, gridSize, options)
         : "Destination is not visible."),
     stridePath,
     reachableCenters: [],
     reachablePlacements: [],
     reachableMarkers: [],
+    reachableMarkerColor: color,
     recommendedCenter: destinationAvailable ? destinationCenter : null,
     recommendedPlacement: destinationAvailable ? destinationPlacement : null,
     recommendedMarker: destinationAvailable ? destinationMarker : null,
+    movementColor: color,
   };
 }
 
@@ -711,6 +874,8 @@ export function movementPreviewForStep(context, step, options = {}) {
   const gridSize = numeric(options.gridSize, 5) || 5;
   const movementOptions = {
     ...options,
+    actor: options.actor ?? context?.actor ?? context?.token?.actor,
+    movementAction: options.movementAction ?? pf2eMovementActionForStep(step),
     collisionToken: options.collisionToken ?? canvasTokenById(context?.token?.id ?? context?.token?.uuid),
   };
 
@@ -731,6 +896,7 @@ export function movementPreviewForStep(context, step, options = {}) {
   const explicitPreview = explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, movementOptions);
   if (explicitPreview) return explicitPreview;
 
+  const color = movementColor();
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
   const placements = centers.map((center) => placementForCenter(center, footprint, gridSize));
   const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize);
@@ -745,9 +911,11 @@ export function movementPreviewForStep(context, step, options = {}) {
     reachableCenters: centers,
     reachablePlacements: placements,
     reachableMarkers: markers,
+    reachableMarkerColor: color,
     recommendedCenter: recommendation?.center ?? null,
     recommendedPlacement: recommendation,
     recommendedMarker,
+    movementColor: color,
   };
 }
 
@@ -774,12 +942,15 @@ function canvasContext(context, step) {
   const activeToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   const target = previewTarget(context, step);
   const targetToken = canvasTokenById(target?.token?.id ?? target?.token?.uuid ?? target?.id);
+  const plannedCenter = directPoint(context?.token?.plannedCenter);
+  const contextCenter = directPoint(context?.token?.center);
+  const targetContextCenter = directPoint(target?.token?.center);
 
   return {
     ...context,
     token: {
       ...(context?.token ?? {}),
-      center: tokenCenter(activeToken) ?? context?.token?.center,
+      center: plannedCenter ?? contextCenter ?? tokenCenter(activeToken) ?? context?.token?.center,
       width: numeric(activeToken?.document?.width ?? activeToken?.width ?? context?.token?.width, 1) || 1,
       height: numeric(activeToken?.document?.height ?? activeToken?.height ?? context?.token?.height, 1) || 1,
     },
@@ -790,7 +961,7 @@ function canvasContext(context, step) {
           ...target,
           token: {
             ...(target.token ?? {}),
-            center: tokenCenter(targetToken) ?? target?.token?.center,
+            center: targetContextCenter ?? tokenCenter(targetToken) ?? target?.token?.center,
             width: numeric(targetToken?.document?.width ?? targetToken?.width ?? target?.token?.width, 1) || 1,
             height: numeric(targetToken?.document?.height ?? targetToken?.height ?? target?.token?.height, 1) || 1,
           },
@@ -800,26 +971,32 @@ function canvasContext(context, step) {
   };
 }
 
-function previewLayer() {
-  return globalThis.canvas?.interface ?? globalThis.canvas?.controls ?? globalThis.canvas?.stage ?? null;
-}
-
 function previewGridSize() {
   const sceneDistance = numeric(globalThis.canvas?.scene?.grid?.distance, 5) || 5;
   const pixelSize = numeric(globalThis.canvas?.grid?.size, sceneDistance) || sceneDistance;
   return { sceneDistance, pixelSize };
 }
 
-function drawPlacement(graphics, placement, scale, fill, alpha, line, lineAlpha) {
-  graphics.lineStyle(1, line, lineAlpha);
+function drawPlacement(graphics, placement, scale, fill, alpha, line, lineAlpha, lineWidth = 2) {
+  const x = placement.x * scale;
+  const y = placement.y * scale;
+  const width = placement.width * scale;
+  const height = placement.height * scale;
+
+  graphics.lineStyle(0, line, 0);
   graphics.beginFill(fill, alpha);
   graphics.drawRect(
-    placement.x * scale,
-    placement.y * scale,
-    placement.width * scale,
-    placement.height * scale,
+    x,
+    y,
+    width,
+    height,
   );
   graphics.endFill();
+
+  graphics.lineStyle(lineWidth + 2, 0x101418, Math.min(0.9, lineAlpha + 0.2));
+  graphics.drawRect(x, y, width, height);
+  graphics.lineStyle(lineWidth, line, lineAlpha);
+  graphics.drawRect(x, y, width, height);
 }
 
 function drawXMarker(graphics, marker, scale, color = 0xf0eee8) {
@@ -838,6 +1015,59 @@ function drawXMarker(graphics, marker, scale, color = 0xf0eee8) {
   }
 }
 
+function drawWaypointIndicators(graphics, waypoints, scale, color) {
+  if (typeof graphics.drawCircle !== "function" || !Array.isArray(waypoints)) return;
+  let index = 0;
+  for (const waypoint of waypoints) {
+    index += 1;
+    const radius = index === waypoints.length ? 10 : 8;
+    graphics.lineStyle(radius + 4, 0x101418, 0.86);
+    graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
+    graphics.lineStyle(radius, color, 0.96);
+    graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
+  }
+}
+
+function createTextLabel(text, style) {
+  const Text = globalThis.PIXI?.Text;
+  if (!Text) return null;
+  try {
+    return new Text(text, style);
+  } catch (_error) {
+    return new Text({ text, style });
+  }
+}
+
+function setLabelPosition(label, x, y) {
+  label.anchor?.set?.(0.5, 0.5);
+  label.alpha = 0.92;
+  label.roundPixels = true;
+  if (typeof label.position?.set === "function") label.position.set(x, y);
+  else {
+    label.x = x;
+    label.y = y;
+  }
+}
+
+function drawSegmentLabels(graphics, labels, scale) {
+  if (typeof graphics.addChild !== "function" || !Array.isArray(labels)) return;
+  const fontSize = Math.round(Math.max(16, Math.min(28, scale * 0.9)));
+  const style = {
+    fontFamily: "Signika, sans-serif",
+    fontSize,
+    fontWeight: "700",
+    fill: "#f0eee8",
+    stroke: "#101418",
+    strokeThickness: Math.max(3, Math.round(fontSize * 0.24)),
+  };
+  for (const label of labels) {
+    const text = createTextLabel(label.text, style);
+    if (!text) continue;
+    setLabelPosition(text, label.center.x * scale, label.center.y * scale - 10);
+    graphics.addChild(text);
+  }
+}
+
 function drawStridePath(graphics, origin, stridePath, scale) {
   let from = origin;
   for (const waypoint of stridePath) {
@@ -848,16 +1078,19 @@ function drawStridePath(graphics, origin, stridePath, scale) {
       graphics.lineTo(point.x * scale, point.y * scale);
       from = point;
     }
-    drawPlacement(graphics, waypoint.placement, scale, waypoint.color, 0.16, waypoint.color, 0.6);
+    drawPlacement(graphics, waypoint.placement, scale, waypoint.color, 0.05, waypoint.color, 0.96, 3);
     drawXMarker(graphics, waypoint.marker, scale, waypoint.color);
+    drawWaypointIndicators(graphics, waypoint.waypoints, scale, waypoint.color);
+    drawSegmentLabels(graphics, waypoint.segmentLabels, scale);
   }
 }
 
 export function clearMovementPreview() {
   if (!previewGraphics) return;
-  previewGraphics.destroy?.({ children: true });
-  previewGraphics.parent?.removeChild?.(previewGraphics);
+  const graphics = previewGraphics;
   previewGraphics = null;
+  graphics.parent?.removeChild?.(graphics);
+  graphics.destroy?.({ children: true });
 }
 
 export function showMovementPreview(context, step) {
@@ -881,10 +1114,21 @@ export function showMovementPreview(context, step) {
   const toSceneToken = (token) => token
     ? ({ ...token, center: toScene(token.center) })
     : token;
+  const toSceneMovementPlan = (movementPlan) => movementPlan
+    ? {
+      ...movementPlan,
+      ...(Array.isArray(movementPlan.waypoints)
+        ? { waypoints: movementPlan.waypoints.map((waypoint) => toScene(waypoint)).filter(Boolean) }
+        : {}),
+      ...(movementPlan.origin ? { origin: toScene(movementPlan.origin) } : {}),
+      ...(movementPlan.destination ? { destination: toScene(movementPlan.destination) } : {}),
+    }
+    : movementPlan;
   const sceneStep = step
     ? {
       ...step,
       ...(step.destination ? { destination: toScene(step.destination) } : {}),
+      ...(step.movementPlan ? { movementPlan: toSceneMovementPlan(step.movementPlan) } : {}),
       preferredTarget: step.preferredTarget
         ? { ...step.preferredTarget, token: toSceneToken(step.preferredTarget.token) }
         : step.preferredTarget,
@@ -924,17 +1168,20 @@ export function showMovementPreview(context, step) {
   const graphics = new PIXI.Graphics();
   if (preview.stridePath?.length) {
     drawStridePath(graphics, preview.origin, preview.stridePath, scale);
+    const markerColor = preview.reachableMarkerColor ?? preview.movementColor ?? 0x66c78f;
+    for (const marker of preview.reachableMarkers ?? []) {
+      drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
+    }
   } else if (preview.explicitDestination && preview.destinationPlacement) {
-    const color = preview.destinationAvailable ? 0xe0b35a : 0xc94f4f;
-    drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.26, color, 0.8);
+    const color = preview.destinationAvailable ? (preview.movementColor ?? 0xe0b35a) : 0xc94f4f;
+    drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.06, color, 1, 3);
     drawXMarker(graphics, preview.destinationMarker, scale, color);
   } else {
+    // Show only the reachable squares — no recommended-destination X. The X read as a
+    // selection even though the player hadn't chosen a destination yet.
+    const markerColor = preview.reachableMarkerColor ?? preview.movementColor ?? 0x66c78f;
     for (const marker of preview.reachableMarkers ?? []) {
-      drawPlacement(graphics, marker, scale, 0x66c78f, 0.12, 0x66c78f, 0.32);
-    }
-    if (preview.recommendedPlacement) {
-      drawPlacement(graphics, preview.recommendedPlacement, scale, 0xe0b35a, 0.34, 0xf0eee8, 0.9);
-      drawXMarker(graphics, preview.recommendedMarker, scale);
+      drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
     }
   }
 

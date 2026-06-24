@@ -64,6 +64,27 @@ function structuralHints(item) {
   };
 }
 
+function auditExample(entry) {
+  return {
+    name: entry.name,
+    type: entry.type,
+    source: entry.source ?? null,
+    role: entry.role ?? null,
+    confidence: entry.confidence ?? null,
+    classTrait: entry.classTrait,
+    traits: entry.traits,
+    save: entry.save,
+    hasDamage: entry.hasDamage,
+    area: entry.area,
+    range: entry.range,
+    desc: entry.desc,
+  };
+}
+
+function auditExamples(entries, limit = 200) {
+  return entries.slice(0, limit).map(auditExample);
+}
+
 export function classifyItemForCoverage(item) {
   const type = item?.type;
   const traits = traitList(item);
@@ -88,8 +109,9 @@ export function classifyItemForCoverage(item) {
       role: tactic?.role ?? null,
       confidence: tactic?.confidence ?? null,
       classified: Boolean(tactic),
+      eventOnly: tactic?.gatingProfile?.eventTriggerOnly === true,
       likelyBuff: !tactic && looksLikeBuff(item, traits),
-      likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "defense", "healing", "setup"].includes(tactic.role),
+      likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "stealth-defense", "defense", "healing", "setup"].includes(tactic.role),
     };
   }
 
@@ -113,8 +135,9 @@ export function classifyItemForCoverage(item) {
     role: tactic?.role ?? null,
     confidence: tactic?.confidence ?? null,
     classified: Boolean(tactic),
+    eventOnly: tactic?.gatingProfile?.eventTriggerOnly === true,
     likelyBuff: !tactic && looksLikeBuff(item, traits),
-    likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "defense", "healing", "setup"].includes(tactic.role),
+    likelyBuffClassified: Boolean(tactic) && looksLikeBuff(item, traits) && !["buff", "stealth-defense", "defense", "healing", "setup"].includes(tactic.role),
   };
 }
 
@@ -124,8 +147,19 @@ export function coverageForItems(items) {
   const classified = active.filter((entry) => entry.classified);
   const unknown = active.filter((entry) => !entry.classified);
   const lowConfidence = classified.filter((entry) => entry.confidence === "low");
-  const utilityFallbacks = classified.filter((entry) => ["utility", "generic"].includes(entry.role));
+  const utilityFallbacks = classified.filter((entry) =>
+    ["utility", "exploration-utility", "generic"].includes(entry.role),
+  );
   const likelyMisclassifiedBuffs = classified.filter((entry) => entry.likelyBuffClassified);
+  const eventOnly = classified.filter((entry) => entry.eventOnly);
+  const likelyWrong = likelyMisclassifiedBuffs;
+  const weakCoverageSet = new Set([
+    ...lowConfidence,
+    ...utilityFallbacks,
+    ...likelyMisclassifiedBuffs,
+  ]);
+  const weakCoverage = classified.filter((entry) => weakCoverageSet.has(entry));
+  const strongCoverage = classified.filter((entry) => !weakCoverageSet.has(entry));
 
   const byRole = {};
   for (const entry of classified) {
@@ -143,15 +177,32 @@ export function coverageForItems(items) {
     classifiedCount: classified.length,
     unknownCount: unknown.length,
     coveragePct: active.length ? Math.round((classified.length / active.length) * 100) : 0,
+    effectiveCoveragePct: active.length ? Math.round((strongCoverage.length / active.length) * 100) : 0,
     byRole,
     quality: {
       lowConfidenceCount: lowConfidence.length,
       utilityFallbackCount: utilityFallbacks.length,
       likelyMisclassifiedBuffCount: likelyMisclassifiedBuffs.length,
+      likelyWrongCount: likelyWrong.length,
+      eventOnlyCount: eventOnly.length,
+      weakCoverageCount: weakCoverage.length,
+      strongCoverageCount: strongCoverage.length,
     },
+    auditBuckets: {
+      unknown: auditExamples(unknown),
+      lowConfidence: auditExamples(lowConfidence),
+      utilityFallback: auditExamples(utilityFallbacks),
+      likelyBuffMisclassified: auditExamples(likelyMisclassifiedBuffs),
+      likelyWrong: auditExamples(likelyWrong),
+      eventOnly: auditExamples(eventOnly),
+    },
+    weakCoverage,
+    strongCoverage,
     lowConfidence,
     utilityFallbacks,
     likelyMisclassifiedBuffs,
+    likelyWrong,
+    eventOnly,
     unknownByClass,
     likelyBuffGaps: unknown.filter((entry) => entry.likelyBuff).map((entry) => entry.name),
     unknown,
@@ -191,7 +242,8 @@ export async function runCompendiumCoverage({ limit = Infinity } = {}) {
 function logReport(label, report) {
   const log = globalThis.console;
   log.log(`=== PF2e Combater coverage — ${label} ===`);
-  log.log(`Active actions: ${report.activeCount} | classified: ${report.classifiedCount} (${report.coveragePct}%) | unknown: ${report.unknownCount}`);
+  log.log(`Active actions: ${report.activeCount} | classified: ${report.classifiedCount} (${report.coveragePct}%) | effective: ${report.effectiveCoveragePct}% | unknown: ${report.unknownCount}`);
+  log.log(`Strong: ${report.quality.strongCoverageCount} | weak: ${report.quality.weakCoverageCount} | likely wrong: ${report.quality.likelyWrongCount} | event-only: ${report.quality.eventOnlyCount}`);
   log.table?.(report.byRole);
   log.log("Unknown by class trait:");
   log.table?.(
