@@ -8,6 +8,7 @@ import {
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
   requiresDestinationForAction,
+  SUSTAIN_A_SPELL_ACTION,
 } from "../engine/action-builder.js";
 import {
   currentTargetSelection,
@@ -36,6 +37,7 @@ import {
   writeSharedDraftPlan,
   upsertDraftStep,
   removeDraftStep,
+  moveDraftStep,
   writeSharedDraftPlanActorFlag,
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
@@ -148,10 +150,37 @@ function actionCostLabel(cost) {
   return `${numeric} action${numeric === 1 ? "" : "s"}`;
 }
 
-function actionDiamonds(cost) {
-  if (cost === "reaction") return ["R"];
-  if (cost === 0) return ["F"];
-  return Array.from({ length: Math.max(1, Math.min(3, Number(cost) || 1)) }, () => "◆");
+// PF2e action-cost key: 0/free → "F", 1/2/3 → "1"/"2"/"3", reaction → "R".
+function actionGlyph(cost) {
+  if (cost === "reaction") return "R";
+  if (cost === 0 || cost === "free") return "F";
+  return String(Math.max(1, Math.min(3, Number(cost) || 1)));
+}
+
+// PF2e's own action-cost icon images, used in place of the action-glyph webfont (which
+// Foundry registers for itself but does not reliably expose to module markup).
+const ACTION_GLYPH_ICONS = {
+  1: "systems/pf2e/icons/actions/OneAction.webp",
+  2: "systems/pf2e/icons/actions/TwoActions.webp",
+  3: "systems/pf2e/icons/actions/ThreeActions.webp",
+  R: "systems/pf2e/icons/actions/Reaction.webp",
+  F: "systems/pf2e/icons/actions/FreeAction.webp",
+};
+
+function actionGlyphIcon(cost) {
+  return ACTION_GLYPH_ICONS[actionGlyph(cost)] ?? ACTION_GLYPH_ICONS[1];
+}
+
+// Generic PF2e action icon shown for actions without an item image (Stride, Step, etc.).
+const GENERIC_ACTION_IMG = "systems/pf2e/icons/actions/Passive.webp";
+
+function actionImage(source) {
+  return source?.img
+    ?? source?.item?.img
+    ?? source?.item?.texture?.src
+    ?? source?.strike?.imageUrl
+    ?? source?.action?.img
+    ?? GENERIC_ACTION_IMG;
 }
 
 function stepTraitSlugs(step) {
@@ -253,6 +282,80 @@ function isSustainAction(action) {
   ].some((value) => normalizedSlug(value) === "sustain-a-spell");
 }
 
+function stripDuplicateKeySuffix(value) {
+  return String(value ?? "").replace(/#\d+$/u, "");
+}
+
+function draftStepLookupKeys(step) {
+  return new Set([
+    step?.actionKey,
+    step?.key,
+    actionBuilderKey(step),
+    stripDuplicateKeySuffix(step?.actionKey),
+    step?.slug,
+    step?.id,
+    step?.action?.slug,
+    step?.action?.id,
+    step?.action?.item?.uuid,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean));
+}
+
+function actionLookupValues(action) {
+  return [
+    action?.key,
+    action?.baseKey,
+    actionBuilderKey(action),
+    stripDuplicateKeySuffix(actionBuilderKey(action)),
+    action?.id,
+    action?.uuid,
+    action?.item?.uuid,
+    action?.slug,
+    action?.name,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean);
+}
+
+function draftStepActionRows(candidateBuild) {
+  const candidates = Array.isArray(candidateBuild?.candidates) ? candidateBuild.candidates : [];
+  const rejected = Array.isArray(candidateBuild?.rejected) ? candidateBuild.rejected : [];
+  return [
+    ...candidates,
+    ...rejected.map((entry) => {
+      const action = entry?.action ?? entry;
+      if (!action) return null;
+      const reason = action.disabledReason ?? action.unavailableReason ?? entry?.reason ?? "Action is not available in current context.";
+      return {
+        ...action,
+        available: false,
+        disabled: true,
+        unavailableReason: reason,
+        disabledReason: reason,
+      };
+    }),
+  ].filter(Boolean).map(withBuilderActionFields);
+}
+
+function findProjectedDraftAction(context, draft, step) {
+  if (isSustainAction(step)) {
+    return { ...SUSTAIN_A_SPELL_ACTION, key: "sustain-a-spell", baseKey: "sustain-a-spell" };
+  }
+  const stepContext = projectContextForDraftStepOrigin(context, draft, step?.instanceId);
+  const keys = draftStepLookupKeys(step);
+  return draftStepActionRows(buildCandidates(stepContext)).find((action) =>
+    actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
+  ) ?? null;
+}
+
+function projectedDraftStepActions(context, draft) {
+  if (!context) return {};
+  const actions = {};
+  for (const step of Array.isArray(draft?.steps) ? draft.steps : []) {
+    if (!step?.instanceId) continue;
+    const action = findProjectedDraftAction(context, draft, step);
+    if (action) actions[step.instanceId] = action;
+  }
+  return actions;
+}
+
 function areaLabel(areaMarker) {
   const label = String(areaMarker?.label ?? "").trim();
   if (label) return `Area: ${label}`;
@@ -289,7 +392,8 @@ function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
     displayIndex,
     costClass: actionCostClass(cost),
     costLabel: actionCostLabel(cost),
-    diamonds: actionDiamonds(cost),
+    actionGlyphIcon: actionGlyphIcon(cost),
+    img: actionImage(step),
     reason: step?.reason ?? step?.reasons?.[0] ?? "",
     targetLabel: targetName ? `Target: ${targetName}` : "",
     mapLabel: step?.mapPenalty > 0 ? `MAP -${step.mapPenalty}` : "",
@@ -331,7 +435,7 @@ function decorateAction(action, options = {}) {
   };
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false } = {}) {
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false } = {}) {
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
   const displaySource = action
@@ -357,6 +461,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false } 
   const warning = isExecutionDone ? "" : (readiness.warning || rawWarning);
   const canShowExecuteStep = canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
+  const canEditStepOrder = readonly !== true && reorderLocked !== true;
   return {
     ...display,
     ...step,
@@ -382,6 +487,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false } 
     canExecuteStep: canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true && readiness.status === "ready",
     executionBlocked,
     executeTooltip: executionBlocked ? (readiness.warning || "Resolve required choices before executing.") : "Execute this step",
+    canMoveStepUp: canEditStepOrder && index > 0,
+    canMoveStepDown: canEditStepOrder && index < total - 1,
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
     canRevertStep: isExecutionDone && canRunStep,
     warning,
@@ -480,29 +587,52 @@ function sustainedSpellDraftFields(entry) {
   return {
     id: entry?.id,
     name: entry?.name ?? "Sustained spell",
+    spellUuid: entry?.spellUuid ?? null,
     effectIds: Array.isArray(entry?.effectIds) ? [...entry.effectIds] : [],
     templateRefs: Array.isArray(entry?.templateRefs) ? [...entry.templateRefs] : [],
   };
 }
 
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [] } = {}) {
+function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], addTarget = "plan" } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
   const isPlayerPlan = builder.draft?.shared === true;
   // The GM may execute a player's shared plan on their behalf even though it's read-only to edit.
   const gmCanRunPlayerPlan = globalThis.game?.user?.isGM === true && isPlayerPlan;
   const sharedDraftUserName = String(builder.draft?.userName ?? "").trim();
-  const rawDraftSteps = (builder.draft?.steps ?? [])
-    .map((step, index) => decorateDraftStep(step, index, { readonly: draftReadonly, gmExecute: gmCanRunPlayerPlan }));
+  const rawSteps = builder.draft?.steps ?? [];
+  const reorderLocked = rawSteps.some((step) => executionStatus(step) !== "pending");
+  const rawDraftSteps = rawSteps
+    .map((step, index) => decorateDraftStep(step, index, {
+      readonly: draftReadonly,
+      gmExecute: gmCanRunPlayerPlan,
+      total: rawSteps.length,
+      reorderLocked,
+    }));
   const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
   const draftSteps = rawDraftSteps.map((step) => ({
     ...step,
     isCurrentExecution: step.instanceId === currentExecutionStep?.instanceId,
   }));
-  const executedCount = draftSteps.filter((step) => step.executionStatus === "done").length;
-  const canResetExecution = draftSteps.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
   const active = TABS.has(activeTab) ? activeTab : DEFAULT_TAB;
   const sustainedEntries = decoratedSustainedSpells(sustainedSpells, { readonly: draftReadonly });
+  const rawUnconditional = builder.draft?.unconditional ?? [];
+  const unconditionalReorderLocked = rawUnconditional.some((step) => executionStatus(step) !== "pending");
+  const rawUnconditionalSteps = rawUnconditional.map((step, index) => decorateDraftStep(step, index, {
+    readonly: draftReadonly,
+    gmExecute: gmCanRunPlayerPlan,
+    total: rawUnconditional.length,
+    reorderLocked: unconditionalReorderLocked,
+  }));
+  const currentUnconditionalStep = nextPendingExecutionStep({ steps: rawUnconditionalSteps });
+  const unconditionalEntries = rawUnconditionalSteps.map((step) => ({
+    ...step,
+    isCurrentExecution: step.instanceId === currentUnconditionalStep?.instanceId,
+  }));
+  const canManageUnconditional = draftReadonly !== true || gmCanRunPlayerPlan;
+  const allExecutable = [...draftSteps, ...unconditionalEntries];
+  const executedCount = allExecutable.filter((step) => step.executionStatus === "done").length;
+  const canResetExecution = allExecutable.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
   return {
     ...builder,
     readonly: draftReadonly,
@@ -523,10 +653,20 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       hasEntries: sustainedEntries.length > 0,
       entries: sustainedEntries,
     },
+    unconditional: {
+      hasEntries: unconditionalEntries.length > 0,
+      entries: unconditionalEntries,
+    },
+    addTarget: addTarget === "unconditional" ? "unconditional" : "plan",
+    addTargets: [
+      { id: "plan", label: "Plan", active: addTarget !== "unconditional" },
+      { id: "unconditional", label: "Unconditional", active: addTarget === "unconditional" },
+    ],
+    canManageUnconditional,
     execution: {
-      hasSteps: draftSteps.length > 0,
+      hasSteps: allExecutable.length > 0,
       canReset: (draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution,
-      progressLabel: executedCount > 0 ? `${executedCount}/${draftSteps.length} done` : "",
+      progressLabel: executedCount > 0 ? `${executedCount}/${allExecutable.length} done` : "",
       hasStatus: ((draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution) || executedCount > 0,
       current: currentExecutionStep ?? null,
       currentInstanceId: currentExecutionStep?.instanceId ?? "",
@@ -738,6 +878,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...entry,
       action: withBuilderActionFields(entry?.action),
     }));
+    const draftStepActions = projectedDraftStepActions(context, activeDraft);
     const plans = buildTurnPlans(planningContext, builderCandidates);
     const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
     const favorites = readActionFavorites(context);
@@ -754,10 +895,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       rejected: builderRejected,
       plans: plan ? [plan] : plans,
       draft: activeDraft,
+      draftStepActions,
       favorites,
     });
     const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells });
+    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, {
+      sustainedSpells,
+      addTarget: this._addTarget,
+    });
     this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
 
     return this._viewContext(context);
@@ -832,6 +977,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const button of element.querySelectorAll("[data-remove-draft-step]")) {
       button.addEventListener("click", () => this._removeDraftStep(button.dataset.removeDraftStep));
+    }
+
+    for (const button of element.querySelectorAll("[data-move-draft-step]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._moveDraftStep(button.dataset.moveDraftStep, button.dataset.moveDirection);
+      });
     }
 
     for (const button of element.querySelectorAll("[data-favorite-action]")) {
@@ -999,7 +1151,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       const action = tab.all.find((entry) => isSustainAction(entry));
       if (action) return action;
     }
-    return null;
+    // The action is no longer offered in the tabs; the sustained-spells section uses this
+    // self-contained template to build a Sustain step.
+    return { ...SUSTAIN_A_SPELL_ACTION, key: "sustain-a-spell", baseKey: "sustain-a-spell" };
   }
 
   _findSustainedSpell(spellId) {
@@ -1065,10 +1219,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _addAction(actionKey) {
     if (!this._canEditDraft()) return;
     const action = this._findBuilderAction(actionKey);
-    if (!this._context || !action || action.disabled) {
-      if (action?.disabledReason) globalThis.ui?.notifications?.warn?.(action.disabledReason);
-      return;
-    }
+    if (!this._context || !action) return;
 
     upsertDraftStep(this._context, {
       actionKey: action.key,
@@ -1111,6 +1262,20 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
     removeDraftStep(this._context, instanceId);
+    await this._syncDraftToGM();
+    clearActionPreview();
+    await this.render({ force: true });
+  }
+
+  async _moveDraftStep(instanceId, direction) {
+    if (!this._canEditDraft()) return;
+    if (!this._context || !instanceId) return;
+    const draft = readDraftPlan(this._context);
+    if ((draft.steps ?? []).some((step) => executionStatus(step) !== "pending")) {
+      globalThis.ui?.notifications?.warn?.("Revert executed steps before reordering the plan.");
+      return;
+    }
+    if (!moveDraftStep(this._context, instanceId, direction)) return;
     await this._syncDraftToGM();
     clearActionPreview();
     await this.render({ force: true });
@@ -1335,8 +1500,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       const regionOp = (current.execution.revert?.ops ?? []).find((op) => op.kind === "region" && op.regionId);
       if (regionOp) {
         try {
+          // Remove the linked countdown effect first so it does not linger after the template.
+          if (regionOp.effectUuid && typeof globalThis.fromUuid === "function") {
+            const effect = await globalThis.fromUuid(regionOp.effectUuid);
+            if (effect?.id && effect?.parent?.items?.get?.(effect.id) && typeof effect.delete === "function") {
+              await effect.delete();
+            }
+          }
           const scene = globalThis.game?.scenes?.get?.(regionOp.sceneId) ?? globalThis.canvas?.scene;
-          if (typeof scene?.deleteEmbeddedDocuments === "function") {
+          // Idempotent: only delete the region if it still exists (cascades may have removed it).
+          if (scene?.regions?.get?.(regionOp.regionId) && typeof scene.deleteEmbeddedDocuments === "function") {
             await scene.deleteEmbeddedDocuments("Region", [regionOp.regionId]);
           }
         } catch (_error) {

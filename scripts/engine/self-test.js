@@ -252,6 +252,10 @@ assert.ok(panelSource.includes("executeDraftStep"), "panel should use action exe
 assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
 assert.ok(panelSource.includes("revertDraftExecution"), "panel reset should revert executed steps, not only clear status");
 assert.ok(panelSource.includes("revertDraftStep"), "panel should revert an individual executed step");
+// --- Unconditional actions: panel decoration + add-target (Task 4) ---
+assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expose a builder.unconditional view-model");
+assert.ok(panelSource.includes("addTargets"), "decorateBuilder should expose add-target options");
+assert.ok(panelSource.includes("canManageUnconditional"), "decorateBuilder should expose canManageUnconditional");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
 assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");
 assert.ok(
