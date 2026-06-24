@@ -262,6 +262,13 @@ assert.ok(panelSource.includes("revertDraftStep"), "panel should revert an indiv
 assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expose a builder.unconditional view-model");
 assert.ok(panelSource.includes("addTargets"), "decorateBuilder should expose add-target options");
 assert.ok(panelSource.includes("canManageUnconditional"), "decorateBuilder should expose canManageUnconditional");
+// --- Unconditional actions: panel handlers (Task 6) ---
+assert.ok(panelSource.includes("draftListForInstance"), "panel should resolve a step's list before persisting");
+assert.ok(panelSource.includes("_addUnconditionalAction"), "panel should have an unconditional add handler");
+assert.ok(panelSource.includes("data-add-target"), "panel should wire the add-target toggle");
+assert.ok(panelSource.includes("_setAddTarget"), "panel should have an add-target setter");
+assert.ok(panelSource.includes("this._addTarget"), "panel should track the active add target");
+assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
 assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");
 assert.ok(
@@ -456,7 +463,7 @@ assert.ok(
   "choosing a movement destination should persist the updated plan",
 );
 assert.ok(
-  /_persistActiveDraftStep\(step\)[\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  /_persistActiveDraftStep\(step, listKey\)[\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
   "persisting a draft step (local mode) should sync the player plan to GM",
 );
 // GM-executes-player-plan: the GM can run a shared plan on an AFK player's behalf, writing execution
@@ -466,7 +473,7 @@ assert.ok(
   "panel should support GM execution of a player's shared plan",
 );
 assert.ok(
-  /_persistActiveDraftStep\(step\)[\s\S]*writeSharedDraftPlanActorFlag/.test(panelSource),
+  /_persistActiveDraftStep\(step, listKey\)[\s\S]*writeSharedDraftPlanActorFlag/.test(panelSource),
   "GM execution should write the shared draft back to the owned actor flag",
 );
 assert.ok(

@@ -38,6 +38,7 @@ import {
   upsertDraftStep,
   removeDraftStep,
   moveDraftStep,
+  draftListForInstance,
   writeSharedDraftPlanActorFlag,
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
@@ -804,6 +805,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._plan = null;
     this._builder = null;
     this._gmExecuteMode = false;
+    this._addTarget = "plan";
     this._destinationPicker = null;
     this._areaPicker = null;
     this._pinnedPlanId = null;
@@ -960,6 +962,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const button of element.querySelectorAll("[data-tab]")) {
       button.addEventListener("click", () => this._setActiveTab(button.dataset.tab));
+    }
+
+    for (const button of element.querySelectorAll("[data-add-target]")) {
+      button.addEventListener("click", () => this._setAddTarget(button.dataset.addTarget));
     }
 
     for (const input of element.querySelectorAll("[data-search-actions]")) {
@@ -1162,7 +1168,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _findDraftStep(instanceId) {
-    return this._builder?.draft?.steps?.find((step) => step.instanceId === instanceId) ?? null;
+    return this._builder?.draft?.steps?.find((step) => step.instanceId === instanceId)
+      ?? this._builder?.unconditional?.entries?.find((step) => step.instanceId === instanceId)
+      ?? null;
+  }
+
+  // Resolve a step from whichever stored list owns it (plan or unconditional).
+  _findActiveStep(instanceId) {
+    const draft = this._readActiveDraftPlan();
+    return (draft.steps ?? []).find((entry) => entry.instanceId === instanceId)
+      ?? (draft.unconditional ?? []).find((entry) => entry.instanceId === instanceId)
+      ?? null;
+  }
+
+  async _setAddTarget(target) {
+    this._addTarget = target === "unconditional" ? "unconditional" : "plan";
+    await this.render({ force: true });
   }
 
   _draftHasManualSteps() {
@@ -1187,17 +1208,18 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       : readDraftPlan(this._context);
   }
 
-  async _persistActiveDraftStep(step) {
+  async _persistActiveDraftStep(step, listKey) {
+    const targetList = listKey ?? draftListForInstance(this._readActiveDraftPlan(), step.instanceId);
     if (this._gmExecuteMode === true) {
       const draft = readSharedDraftPlan(this._context);
-      const steps = [...(draft.steps ?? [])];
-      const index = steps.findIndex((entry) => entry.instanceId === step.instanceId);
-      if (index >= 0) steps[index] = step;
-      else steps.push(step);
-      await this._writeActiveSharedDraft({ ...draft, steps });
+      const list = [...(draft[targetList] ?? [])];
+      const index = list.findIndex((entry) => entry.instanceId === step.instanceId);
+      if (index >= 0) list[index] = step;
+      else list.push(step);
+      await this._writeActiveSharedDraft({ ...draft, [targetList]: list });
       return;
     }
-    upsertDraftStep(this._context, step);
+    upsertDraftStep(this._context, step, targetList);
     await this._syncDraftToGM();
   }
 
@@ -1217,6 +1239,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _addAction(actionKey) {
+    if (this._addTarget === "unconditional") return this._addUnconditionalAction(actionKey);
     if (!this._canEditDraft()) return;
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
@@ -1227,6 +1250,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       requiresDestination: requiresDestinationForAction(action),
     });
     await this._syncDraftToGM();
+    clearActionPreview();
+    await this.render({ force: true });
+  }
+
+  // Unconditional adds run alongside the plan but off-budget. Allowed for the plan owner and
+  // for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
+  async _addUnconditionalAction(actionKey) {
+    if (!this._canExecuteDraft()) return;
+    const action = this._findBuilderAction(actionKey);
+    if (!this._context || !action) return;
+    await this._persistActiveDraftStep({
+      instanceId: draftStepId(),
+      actionKey: action.key,
+      actionCost: action.actionCost ?? action.cost,
+      requiresDestination: requiresDestinationForAction(action),
+    }, "unconditional");
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1261,7 +1300,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _removeDraftStep(instanceId) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
-    removeDraftStep(this._context, instanceId);
+    removeDraftStep(this._context, instanceId, draftListForInstance(readDraftPlan(this._context), instanceId));
     await this._syncDraftToGM();
     clearActionPreview();
     await this.render({ force: true });
@@ -1271,11 +1310,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
     const draft = readDraftPlan(this._context);
-    if ((draft.steps ?? []).some((step) => executionStatus(step) !== "pending")) {
-      globalThis.ui?.notifications?.warn?.("Revert executed steps before reordering the plan.");
+    const listKey = draftListForInstance(draft, instanceId);
+    if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
+      globalThis.ui?.notifications?.warn?.("Revert executed steps before reordering.");
       return;
     }
-    if (!moveDraftStep(this._context, instanceId, direction)) return;
+    if (!moveDraftStep(this._context, instanceId, direction, listKey)) return;
     await this._syncDraftToGM();
     clearActionPreview();
     await this.render({ force: true });
@@ -1317,7 +1357,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       requiresDestination: requiresDestinationForAction(step),
       ...(step?.destination ? { destination: step.destination } : {}),
     }));
-    writeDraftPlan(this._context, { steps });
+    writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
     await this._syncDraftToGM();
     clearActionPreview();
     await this.render({ force: true });
@@ -1448,7 +1488,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         clearActionPreview();
       },
       onChoose: async (destination, metadata = {}) => {
-        const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === instanceId) ?? step;
+        const current = this._findActiveStep(instanceId) ?? step;
         await this._persistActiveDraftStep(this._stepWithRetryReset(current, {
           destination,
           ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}),
@@ -1478,7 +1518,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       globalThis.ui?.notifications?.warn?.("Target a token in Foundry first.");
       return;
     }
-    const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === instanceId) ?? step;
+    const current = this._findActiveStep(instanceId) ?? step;
     await this._persistActiveDraftStep(this._stepWithRetryReset(current, {
       targetTokenIds: selection.targetTokenIds,
       targetLabel: selection.targetLabel,
@@ -1489,7 +1529,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _removeAreaTemplate(instanceId) {
     if (!this._canExecuteDraft() || !this._context) return;
-    const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === instanceId);
+    const current = this._findActiveStep(instanceId);
     if (!current?.areaMarker) return;
     this._cancelDestinationPicker();
 
@@ -1590,7 +1630,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         this._areaPicker = null;
       },
       onChoose: async (areaMarker) => {
-        const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === instanceId) ?? step;
+        const current = this._findActiveStep(instanceId) ?? step;
         const inside = tokensInAreaMarker({
           context: this._contextForDraftStep(instanceId),
           action: placementAction,
@@ -1774,7 +1814,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       if (!selected) return null;
     }
 
-    const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === step.instanceId) ?? step;
+    const current = this._findActiveStep(step.instanceId) ?? step;
     const nextStep = this._stepWithRetryReset(current, { sustainedSpell: sustainedSpellDraftFields(selected) });
     await this._persistActiveDraftStep(nextStep);
     return {
@@ -1862,7 +1902,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!result || result.status === "cancelled") return;
     if (!this._context || !step?.instanceId) return;
 
-    const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === step.instanceId) ?? step;
+    const current = this._findActiveStep(step.instanceId) ?? step;
     await this._persistActiveDraftStep({ ...current, ...(result.patch ?? {}) });
     clearActionPreview();
     if (result.status === "failed" && result.error) globalThis.ui?.notifications?.warn?.(result.error);
@@ -1871,7 +1911,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _revertDraftStep(instanceId) {
     if (!this._canExecuteDraft() || !this._context) return;
-    const current = this._readActiveDraftPlan().steps.find((entry) => entry.instanceId === instanceId);
+    const current = this._findActiveStep(instanceId);
     if (!current || current?.execution?.status !== "done") return;
     const result = await revertDraftStep({
       context: this._contextForDraftStep(instanceId) ?? this._context,
