@@ -44,7 +44,7 @@ import {
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
 import { CombaterBrowser } from "./CombaterBrowser.js";
-import { showMovementPreview } from "./movement-preview.js";
+import { showMovementPreview, recommendedMovementForStep } from "./movement-preview.js";
 import { displayStepEntries } from "./display-steps.js";
 import { selectDisplayPlan } from "./plan-selection.js";
 import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
@@ -1371,11 +1371,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._context || !autoFill?.steps?.length) return;
     if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
 
-    // For the GM running an NPC, the recommendation already chose targets via the aggro
-    // system; pre-fill them so the GM doesn't re-pick each one. (Players still target by hand.)
+    // For the GM running an NPC, the recommendation already chose targets (aggro) and a stride
+    // destination; pre-fill both so the GM doesn't re-pick each one. (Players target/move by
+    // hand.) The projected origin advances so a chained stride starts where the prior one lands.
     const useAggroTargets = canUseFullAggro(this._context);
+    let movementContext = this._context;
     const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => {
-      const draftStep = {
+      let draftStep = {
         instanceId: draftStepId(),
         actionKey: this._actionKeyForStep(step),
         actionCost: step?.actionCost ?? step?.cost,
@@ -1383,14 +1385,33 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         ...(step?.destination ? { destination: step.destination } : {}),
       };
       if (!useAggroTargets) return draftStep;
+
       const target = plannedTargetSelection(step);
-      if (!target.targetTokenIds.length) return draftStep;
-      return {
-        ...draftStep,
-        targetTokenIds: target.targetTokenIds,
-        targetLabel: target.targetLabel,
-        targetSelection: "manual",
-      };
+      if (target.targetTokenIds.length) {
+        draftStep = {
+          ...draftStep,
+          targetTokenIds: target.targetTokenIds,
+          targetLabel: target.targetLabel,
+          targetSelection: "manual",
+        };
+      }
+
+      if (draftStep.requiresDestination && !draftStep.destination) {
+        const movement = recommendedMovementForStep(movementContext, step);
+        if (movement?.destination) {
+          draftStep = {
+            ...draftStep,
+            destination: movement.destination,
+            ...(movement.waypoints?.length ? { movementPlan: { native: false, waypoints: movement.waypoints } } : {}),
+          };
+          movementContext = {
+            ...movementContext,
+            token: { ...(movementContext.token ?? {}), plannedCenter: movement.destination },
+          };
+        }
+      }
+
+      return draftStep;
     });
     writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
     await this._syncDraftToGM();

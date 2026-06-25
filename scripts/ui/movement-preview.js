@@ -1101,13 +1101,7 @@ export function clearMovementPreview() {
   graphics.destroy?.({ children: true });
 }
 
-export function showMovementPreview(context, step) {
-  clearMovementPreview();
-
-  const PIXI = globalThis.PIXI;
-  const layer = previewLayer();
-  if (!PIXI?.Graphics || !layer?.addChild) return null;
-
+function computeMovementPreview(context, step) {
   const { sceneDistance, pixelSize } = previewGridSize();
   const scale = pixelSize / sceneDistance;
   const rawContext = canvasContext(context, step);
@@ -1171,6 +1165,49 @@ export function showMovementPreview(context, step) {
     },
   };
   const preview = movementPreviewForStep(sceneContext, sceneStep, { gridSize: sceneDistance, collisionScale: scale });
+  return { preview, scale };
+}
+
+// Corner points of a stepwise route (origin-exclusive, destination-inclusive) given in scene
+// coords, returned in pixel coords. Only points where the step direction changes are kept, so
+// a straight route yields none and only genuinely bent routes need waypoints.
+export function routeCornerWaypoints(origin, route, scale = 1) {
+  if (!origin || !Array.isArray(route) || route.length < 2) return [];
+  const points = [origin, ...route];
+  const corners = [];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const prev = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    if (Math.sign(current.x - prev.x) !== Math.sign(next.x - current.x)
+      || Math.sign(current.y - prev.y) !== Math.sign(next.y - current.y)) {
+      corners.push({ x: current.x * scale, y: current.y * scale });
+    }
+  }
+  return corners;
+}
+
+// Recommended landing (and corner waypoints, when the route bends) for a movement step, in
+// canvas pixel coords. Reuses the hover-preview computation so coordinate handling lives in
+// one place. Returns null when there is no recommendation.
+export function recommendedMovementForStep(context, step) {
+  const { preview, scale } = computeMovementPreview(context, step);
+  if (!preview?.enabled) return null;
+  const recommended = preview.recommendedCenter ?? preview.destinationCenter ?? null;
+  if (!recommended) return null;
+  const destination = { x: recommended.x * scale, y: recommended.y * scale };
+  const waypoints = routeCornerWaypoints(preview.origin, recommended.route, scale);
+  return { destination, ...(waypoints.length ? { waypoints } : {}) };
+}
+
+export function showMovementPreview(context, step) {
+  clearMovementPreview();
+
+  const PIXI = globalThis.PIXI;
+  const layer = previewLayer();
+  if (!PIXI?.Graphics || !layer?.addChild) return null;
+
+  const { preview, scale } = computeMovementPreview(context, step);
   if (!preview.enabled) return null;
 
   const graphics = new PIXI.Graphics();

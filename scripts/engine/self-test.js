@@ -82,7 +82,7 @@ import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
-import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
+import { clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showMovementPreview } from "../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
 import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
@@ -3403,6 +3403,9 @@ assert.ok(panelSource.includes("canUseFullAggro") && panelSource.includes("plann
   "auto-fill should consult aggro + planned target selection");
 assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
   "auto-fill should store the aggro target as a manual selection for GM NPCs");
+assert.ok(panelSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
+assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelSource),
+  "auto-fill should store the recommended destination and waypoints for GM NPCs");
 
 const npcAggroControl = scoreCandidate(npcAggroContext, {
   id: "slow",
@@ -4293,6 +4296,28 @@ assert.equal(stridePreview.enabled, true);
 assert.equal(stridePreview.distanceFeet, 25);
 assert.equal(stridePreview.recommendedCenter.x, 25);
 assert.equal(stridePreview.recommendedCenter.y, 0);
+
+// routeCornerWaypoints keeps only the bends, so a straight route needs no waypoints.
+assert.deepEqual(
+  routeCornerWaypoints({ x: 0, y: 0 }, [{ x: 5, y: 0 }, { x: 10, y: 0 }, { x: 15, y: 0 }]),
+  [],
+  "a straight route has no corner waypoints",
+);
+assert.deepEqual(
+  routeCornerWaypoints({ x: 0, y: 0 }, [{ x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 10, y: 10 }]),
+  [{ x: 10, y: 0 }],
+  "a bent route keeps the corner as a waypoint",
+);
+
+// recommendedMovementForStep returns a destination toward the target (pixel coords).
+const autoMovement = recommendedMovementForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Ogre", token: { center: { x: 100, y: 0 } }, distance: 100 }] },
+}, { slug: "stride" });
+assert.ok(autoMovement && autoMovement.destination.x > 0, "auto-fill recommends a stride destination toward the target");
+assert.equal(autoMovement.destination.y, 0, "the recommended stride stays on the line to the target");
+assert.equal(autoMovement.waypoints, undefined, "a straight recommended route needs no waypoints");
 
 const standStridePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
