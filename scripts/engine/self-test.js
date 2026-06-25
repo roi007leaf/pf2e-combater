@@ -3194,6 +3194,15 @@ const crawlCandidate = buildCandidates(proneGenericContext).candidates.find((act
 assert.ok(crawlCandidate, "Crawl should be a 1-action movement option while prone");
 assert.equal(crawlCandidate.actionCost, 1);
 assert.equal(requiresDestinationForAction(crawlCandidate), true);
+// Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
+// target and delegate manual movement to unconditional Strides, so they must NOT prompt
+// for a destination — even though they include strides.
+assert.equal(requiresDestinationForAction({
+  slug: "sudden-charge",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike activities should not require a manual destination");
+// A pure movement action still requires one.
+assert.equal(requiresDestinationForAction({ slug: "stride" }), true);
 const projectedAfterStandGeneric = projectContextForDraftDestination(proneGenericContext, {
   steps: [{ instanceId: "stand-1", actionKey: "stand", actionCost: 1 }],
 });

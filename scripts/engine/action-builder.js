@@ -448,12 +448,18 @@ export function requiresDestinationForAction(action) {
   const slug = String(action?.slug ?? "").toLowerCase();
   const source = String(action?.source ?? "").toLowerCase();
   const role = String(action?.role ?? "").toLowerCase();
-  return DESTINATION_ACTION_SLUGS.has(slug)
-    || actionIncludes(action, "stride")
+
+  // Pure movement actions always need a destination.
+  if (DESTINATION_ACTION_SLUGS.has(slug) || source === "movement" || role === "movement") return true;
+
+  // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
+  // target and delegate any manual movement to separately-added unconditional Strides, so
+  // the activity itself must not prompt for a destination even though it contains strides.
+  if (action?.activityProfile?.includesStrike === true || actionIncludes(action, "strike")) return false;
+
+  return actionIncludes(action, "stride")
     || actionIncludes(action, "step")
-    || Number(action?.activityProfile?.strideCount) > 0
-    || source === "movement"
-    || role === "movement";
+    || Number(action?.activityProfile?.strideCount) > 0;
 }
 
 function numericPoint(value) {
