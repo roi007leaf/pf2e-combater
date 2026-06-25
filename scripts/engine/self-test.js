@@ -18,6 +18,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   nextPendingExecutionStep,
+  plannedTargetSelection,
   requiresAreaMarkerForAction,
   requiresTargetForAction,
   resetDraftExecution,
@@ -87,7 +88,7 @@ import { cancelDestinationPicker, chooseDestination } from "../ui/destination-pi
 import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
 import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
-import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
+import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
 import {
   readSustainedSpellEntries,
   removeSustainedSpellEntries,
@@ -3391,6 +3392,17 @@ const npcAggroShot = scoreCandidate(npcAggroContext, {
   range: { max: 60 },
 });
 assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
+
+// Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
+assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "npc" } }), true, "GM + NPC enables aggro target picking");
+assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "character" } }), false, "GM + PC does not pick aggro targets");
+assert.equal(canUseFullAggro({ isGM: false, profile: { actorType: "npc" } }), false, "players do not pick aggro targets");
+const prefillTarget = plannedTargetSelection({ suggestedTarget: { id: "t1", name: "Healer", token: { id: "t1" } } });
+assert.deepEqual(prefillTarget.targetTokenIds, ["t1"], "planned target selection exposes the suggested target token id");
+assert.ok(panelSource.includes("canUseFullAggro") && panelSource.includes("plannedTargetSelection"),
+  "auto-fill should consult aggro + planned target selection");
+assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
+  "auto-fill should store the aggro target as a manual selection for GM NPCs");
 
 const npcAggroControl = scoreCandidate(npcAggroContext, {
   id: "slow",

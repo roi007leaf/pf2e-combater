@@ -33,7 +33,7 @@ function activeActorType(context) {
   return actorType(context?.actor?.document ?? context?.combatant?.actor ?? context?.actor);
 }
 
-function canUseFullAggro(context) {
+export function canUseFullAggro(context) {
   const isGM = context?.isGM === true || globalThis.game?.user?.isGM === true;
   return isGM && activeActorType(context) === "npc";
 }

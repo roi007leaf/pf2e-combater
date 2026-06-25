@@ -15,6 +15,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   nextPendingExecutionStep,
+  plannedTargetSelection,
   requiresAreaMarkerForAction,
   requiresTargetForAction,
   setTokenTargets,
@@ -51,6 +52,7 @@ import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
+import { canUseFullAggro } from "../rules/aggro.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -1369,13 +1371,27 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._context || !autoFill?.steps?.length) return;
     if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
 
-    const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => ({
-      instanceId: draftStepId(),
-      actionKey: this._actionKeyForStep(step),
-      actionCost: step?.actionCost ?? step?.cost,
-      requiresDestination: requiresDestinationForAction(step),
-      ...(step?.destination ? { destination: step.destination } : {}),
-    }));
+    // For the GM running an NPC, the recommendation already chose targets via the aggro
+    // system; pre-fill them so the GM doesn't re-pick each one. (Players still target by hand.)
+    const useAggroTargets = canUseFullAggro(this._context);
+    const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => {
+      const draftStep = {
+        instanceId: draftStepId(),
+        actionKey: this._actionKeyForStep(step),
+        actionCost: step?.actionCost ?? step?.cost,
+        requiresDestination: requiresDestinationForAction(step),
+        ...(step?.destination ? { destination: step.destination } : {}),
+      };
+      if (!useAggroTargets) return draftStep;
+      const target = plannedTargetSelection(step);
+      if (!target.targetTokenIds.length) return draftStep;
+      return {
+        ...draftStep,
+        targetTokenIds: target.targetTokenIds,
+        targetLabel: target.targetLabel,
+        targetSelection: "manual",
+      };
+    });
     writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
     await this._syncDraftToGM();
     clearActionPreview();
