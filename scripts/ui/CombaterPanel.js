@@ -49,6 +49,7 @@ import { displayStepEntries } from "./display-steps.js";
 import { selectDisplayPlan } from "./plan-selection.js";
 import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
 import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
+import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
@@ -1193,6 +1194,21 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ?? null;
   }
 
+  // Reach Spell (and other range-extending spellshapes) modify the spell cast right
+  // after them, so the spell's effective range — and its range ring — grows by 30 ft
+  // when the immediately-preceding step is a rangeBuff setup. Returns the feet to add.
+  _spellRangeBonus(steps, index) {
+    if (!Array.isArray(steps) || index <= 0) return 0;
+    const previous = steps[index - 1];
+    const profile = previous?.action?.activityProfile ?? previous?.activityProfile ?? {};
+    return profile?.rangeBuff === true ? 30 : 0;
+  }
+
+  _draftRangeBonus(instanceId) {
+    const steps = this._builder?.draft?.steps ?? [];
+    return this._spellRangeBonus(steps, steps.findIndex((step) => step.instanceId === instanceId));
+  }
+
   // Resolve a step from whichever stored list owns it (plan or unconditional).
   _findActiveStep(instanceId) {
     const draft = this._readActiveDraftPlan();
@@ -1466,6 +1482,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._areaPicker = null;
     cancelDestinationPicker();
     cancelAreaPicker();
+    clearRangeOverlay();
   }
 
   _clearActionPreviewUnlessPicking(event) {
@@ -1675,15 +1692,26 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       };
     }
 
+    // A preceding Reach Spell (rangeBuff) step extends this spell's range; reflect it
+    // in the range ring.
+    const reachBonus = this._draftRangeBonus(instanceId);
+    if (reachBonus > 0) placementAction = { ...placementAction, rangeBonusFeet: reachBonus };
+
     this._cancelDestinationPicker();
     this._areaPicker = { instanceId };
     globalThis.ui?.notifications?.info?.("Place the area template on the canvas.");
 
+    // Show the caster's spell-range ring while the template is being placed. Cleared
+    // when placement resolves/cancels, and by _cancelDestinationPicker on teardown.
+    showRangeOverlay(this._contextForDraftStep(instanceId), placementAction);
+
     const picker = chooseAreaMarker({
       context: this._contextForDraftStep(instanceId),
       action: placementAction,
+      onMove: (marker) => updateRangePlacement(marker?.center),
       onCancel: () => {
         this._areaPicker = null;
+        clearRangeOverlay();
       },
       onChoose: async (areaMarker) => {
         const current = this._findActiveStep(instanceId) ?? step;
@@ -1698,11 +1726,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           this._stepWithRetryReset(current, { areaMarker, ...(targetTokenIds.length ? { targetTokenIds } : {}) }),
         );
         this._areaPicker = null;
+        clearRangeOverlay();
         await this.render({ force: true });
       },
     });
     if (!picker) {
       this._areaPicker = null;
+      clearRangeOverlay();
       globalThis.ui?.notifications?.warn?.("Canvas area picker is not available.");
     }
   }
@@ -1723,16 +1753,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _showActionPreview(element) {
-    if (this._destinationPicker) return;
+    if (this._destinationPicker || this._areaPicker) return;
     const plan = this._planForPreview(element);
-    const step = plan?.steps?.[Number(element.dataset.previewStep)];
-    showActionPreview(this._planningContext ?? this._context, step);
+    const index = Number(element.dataset.previewStep);
+    const step = plan?.steps?.[index];
+    const reachBonus = this._spellRangeBonus(plan?.steps, index);
+    showActionPreview(
+      this._planningContext ?? this._context,
+      reachBonus > 0 && step ? { ...step, rangeBonusFeet: reachBonus } : step,
+    );
   }
 
   _showDraftActionPreview(element) {
-    if (this._destinationPicker) return;
+    if (this._destinationPicker || this._areaPicker) return;
     const step = this._findDraftStep(element.dataset.previewDraftStep);
     if (!step?.action) return;
+    const reachBonus = this._draftRangeBonus(step.instanceId);
     showActionPreview(this._contextForDraftStep(step.instanceId), {
       ...step.action,
       destination: step.destination,
@@ -1740,6 +1776,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       areaMarker: step.areaMarker,
       ...explicitTargetFields(step, step.action),
       requiresDestination: requiresDestinationForAction(step.action),
+      ...(reachBonus > 0 ? { rangeBonusFeet: reachBonus } : {}),
     });
   }
 

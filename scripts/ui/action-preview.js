@@ -1,5 +1,6 @@
 import { clearMovementPreview, showMovementPreview } from "./movement-preview.js";
 import { previewLayer } from "./preview-layer.js";
+import { clearRangeOverlay, showRangeOverlay, spellRangeFeet } from "./range-overlay.js";
 
 let actionPreviewGraphics = null;
 
@@ -270,6 +271,7 @@ function mountGraphics(graphics) {
 
 export function clearActionPreview() {
   clearMovementPreview();
+  clearRangeOverlay();
   if (!actionPreviewGraphics) return;
   const graphics = actionPreviewGraphics;
   actionPreviewGraphics = null;
@@ -287,16 +289,29 @@ export function showActionPreview(context, step) {
   if (!PIXI?.Graphics) return null;
   const graphics = new PIXI.Graphics();
 
+  // A settled area template shows no range ring — the ring only guides placement, which
+  // the area-placement loop handles. Clear any ring left over from that loop.
   if (drawAreaPreview(graphics, step)) {
+    clearRangeOverlay();
     return mountGraphics(graphics) ? { type: "area", marker: areaMarker(step) } : null;
   }
+
+  // Single-target spells: show the caster's range ring as targeting guidance.
+  const isRangedSpell = spellRangeFeet(step) != null;
 
   const tokens = plannedTargetTokens(context, step);
   if (tokens.length) {
     drawTargetPreview(graphics, context, tokens);
+    if (isRangedSpell) showRangeOverlay(context, step);
+    else clearRangeOverlay();
     return mountGraphics(graphics) ? { type: "target", tokens } : null;
   }
 
+  // A ranged spell with no template or target chosen yet still shows its range ring.
   graphics.destroy?.({ children: true });
+  if (isRangedSpell) {
+    const ring = showRangeOverlay(context, step);
+    return ring ? { type: "range", ring } : null;
+  }
   return null;
 }

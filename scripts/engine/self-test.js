@@ -84,6 +84,7 @@ import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-select
 import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
 import { clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showMovementPreview } from "../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
+import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
 import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
 import { actionDetailChips } from "../ui/action-details.js";
@@ -370,7 +371,7 @@ assert.ok(panelSource.includes("headerSteps: draftSteps"), "panel header should 
 assert.ok(panelSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
 assert.ok(panelSource.includes("this._planningContext = planningContext"), "action-list previews should remember projected draft destination context");
 assert.ok(
-  panelSource.includes("showActionPreview(this._planningContext ?? this._context, step)"),
+  /showActionPreview\(\s*this\._planningContext \?\? this\._context\b/.test(panelSource),
   "action-list hover preview should start from projected draft context",
 );
 assert.ok(
@@ -13820,5 +13821,84 @@ const gmUnsafeReasonScore = scoreCandidate({
   reasons: ["Goblin has fire weakness 5."],
 });
 assert.ok(gmUnsafeReasonScore.reasons.includes("Goblin has fire weakness 5."));
+
+// Spell range guidance (range-overlay) — pure compute path. Drawing needs PIXI and is
+// not exercised here.
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { enemy: true, maxRange: 60 } }),
+  60,
+  "spell targetingProfile.maxRange resolves to the range in feet",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-curated", range: { max: 30 } }),
+  30,
+  "spell range.max resolves when no maxRange is present",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { self: true } }),
+  null,
+  "self / emanation spells (no maxRange) draw no ring",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { enemy: true } }),
+  null,
+  "an unlimited-range spell (no maxRange) draws no ring",
+);
+assert.equal(
+  spellRangeFeet({ source: "strike", range: { max: 60 } }),
+  null,
+  "ranged strikes are not spells and draw no ring",
+);
+assert.equal(
+  spellRangeFeet({ activityProfile: { spell: true }, action: { targetingProfile: { maxRange: 120 } } }),
+  120,
+  "spell range resolves from a nested step.action profile",
+);
+
+const rangeRing = computeRangeRing(
+  { token: { center: { x: 100, y: 200 } } },
+  { source: "spell-inferred", targetingProfile: { maxRange: 60 } },
+  { scale: 2 },
+);
+assert.deepEqual(rangeRing.origin, { x: 100, y: 200 }, "ring origin is the caster token center");
+assert.equal(rangeRing.radiusPx, 120, "ring radius is range feet × scale (60 × 2)");
+assert.equal(
+  computeRangeRing({ token: { center: { x: 0, y: 0 } } }, { source: "spell-inferred", targetingProfile: { self: true } }, { scale: 2 }),
+  null,
+  "no ring is computed for a spell with no max range",
+);
+assert.equal(
+  computeRangeRing({ token: {} }, { source: "spell-inferred", targetingProfile: { maxRange: 60 } }, { scale: 2 }),
+  null,
+  "no ring is computed when the caster origin is unavailable",
+);
+assert.equal(rangeLabelText(60), "Range 60 ft", "range label rounds and labels the spell range");
+assert.equal(rangeLabelText(12.4), "Range 12 ft", "range label rounds fractional feet");
+
+// Reach Spell (rangeBonusFeet) extends the effective range used by the ring.
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { maxRange: 60 }, rangeBonusFeet: 30 }),
+  90,
+  "a +30 range bonus extends a 60 ft spell to 90 ft",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { maxRange: 5 }, rangeBonusFeet: 30 }),
+  30,
+  "Reach Spell turns a touch (5 ft) spell into a 30 ft range",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { self: true }, rangeBonusFeet: 30 }),
+  null,
+  "a range bonus does not give a self/no-range spell a ring",
+);
+assert.equal(
+  computeRangeRing(
+    { token: { center: { x: 0, y: 0 } } },
+    { source: "spell-inferred", targetingProfile: { maxRange: 60 }, rangeBonusFeet: 30 },
+    { scale: 2 },
+  ).radiusPx,
+  180,
+  "the ring radius reflects the Reach Spell-extended range (90 ft × 2)",
+);
 
 console.log("PF2e Combater self-test passed");

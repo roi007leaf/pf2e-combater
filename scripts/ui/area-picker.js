@@ -234,6 +234,38 @@ function markerFromRegionShape({ context, action, shape, fallback }) {
   };
 }
 
+function shapeSize(shape) {
+  return numeric(shape?.radius ?? shape?.length ?? shape?.width);
+}
+
+// The spell's template is a fixed size, but Foundry's native region placement lets the
+// user resize the shape (right-click / scroll). Re-clamp the live preview back to the
+// spell's size on each change, keeping the center/rotation the user picked, so the
+// template can be moved and rotated but not resized. A size-drift guard means pure
+// moves pass through untouched and the rewrite does not loop.
+function lockPlacementShapeSize({ document, shape, context, action }) {
+  const live = normalizeShape(shape) ?? firstRegionShape(document);
+  const center = point(live);
+  if (!center) return;
+
+  const marker = { center, rotation: numeric(live?.rotation) ?? undefined };
+  const corrected = createAreaRegionData({ context, action, marker })?.shapes?.[0];
+  if (!corrected) return;
+
+  const liveSize = shapeSize(live);
+  const wantSize = shapeSize(corrected);
+  if (liveSize === null || wantSize === null || Math.abs(liveSize - wantSize) < 0.5) return;
+
+  try {
+    document?.updateSource?.({ shapes: [corrected] });
+    const object = document?.object;
+    if (object?.renderFlags?.set) object.renderFlags.set({ refresh: true });
+    else if (typeof object?.draw === "function") object.draw();
+  } catch (error) {
+    globalThis.console?.warn?.("pf2e-combater | Failed to lock area template size", error);
+  }
+}
+
 function placementRegionData({ context, action, marker }) {
   const data = createAreaRegionData({ context, action, marker });
   data.color = userColor();
@@ -325,7 +357,7 @@ function restoreTokenControls() {
   void activateSceneControls("tokens", "select");
 }
 
-function chooseNativeAreaMarker({ context, action, onChoose, onCancel }) {
+function chooseNativeAreaMarker({ context, action, onChoose, onCancel, onMove }) {
   if (typeof globalThis.canvas?.regions?.placeRegion !== "function") return null;
 
   const initialMarker = initialAreaMarker({ context, action });
@@ -349,12 +381,20 @@ function chooseNativeAreaMarker({ context, action, onChoose, onCancel }) {
       const placementPromise = globalThis.canvas.regions.placeRegion(data, {
         create: false,
         onChange: ({ document, shape }) => {
+          lockPlacementShapeSize({ document, shape, context, action });
           latestMarker = markerFromRegionShape({
             context,
             action,
             shape: shape ?? firstRegionShape(document),
             fallback: latestMarker,
           });
+          if (typeof onMove === "function") {
+            try {
+              onMove(latestMarker);
+            } catch (_error) {
+              // A move-callback failure must not break placement.
+            }
+          }
         },
         preConfirm: ({ document, shape }) => {
           placementConfirmed = true;
@@ -402,13 +442,13 @@ function chooseNativeAreaMarker({ context, action, onChoose, onCancel }) {
   return { cancel: cancelAreaPicker };
 }
 
-export function chooseAreaMarker({ context, action, onChoose, onCancel } = {}) {
+export function chooseAreaMarker({ context, action, onChoose, onCancel, onMove } = {}) {
   cancelAreaPicker();
 
   if (typeof onChoose !== "function") return null;
 
   if (typeof globalThis.canvas?.regions?.placeRegion === "function") {
-    return chooseNativeAreaMarker({ context, action, onChoose, onCancel });
+    return chooseNativeAreaMarker({ context, action, onChoose, onCancel, onMove });
   }
 
   let handled = false;
