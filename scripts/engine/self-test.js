@@ -2363,6 +2363,10 @@ assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
 assert.equal(builderModel.tabs.two.all[0].key, "fireball");
 assert.equal(builderModel.tabs.two.all[0].disabled, false);
 assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
+// Over-budget normal actions are flagged so the plan "+" can refuse them while the
+// off-budget unconditional "+" stays unlimited.
+assert.equal(builderModel.tabs.two.all[0].overBudget, true, "over-budget normal action is flagged overBudget");
+assert.equal(builderModel.tabs.free.all[0].overBudget, false, "a free action is never over budget");
 assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");

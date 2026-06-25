@@ -1227,6 +1227,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
 
+    // The normal plan respects the turn's action economy; only unconditional actions
+    // run off-budget. Refuse a plan add that would exceed the budget.
+    if (action.overBudget) {
+      globalThis.ui?.notifications?.warn?.(action.disabledReason || "Not enough actions remaining.");
+      return;
+    }
+
     upsertDraftStep(this._context, {
       actionKey: action.key,
       actionCost: action.actionCost ?? action.cost,

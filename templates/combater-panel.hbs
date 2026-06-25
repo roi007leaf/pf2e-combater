@@ -344,7 +344,7 @@
                               <p>{{reason}}</p>
                             </div>
                             {{#unless readonly}}
-                            <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{disabledTitle}}" aria-label="Add {{name}} to plan">
+                            <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="Add {{name}} to plan" {{#if overBudget}}disabled{{/if}}>
                               <i class="fa-solid fa-plus"></i>
                             </button>
                             <button type="button" class="combater-run combater-add-unconditional" data-add-unconditional="{{key}}" data-tooltip="Add to unconditional actions" aria-label="Add {{name}} to unconditional actions">

@@ -679,11 +679,16 @@ function actionUnavailableReason(action) {
     || "Action is no longer available.";
 }
 
+// `overBudget` marks actions that do not fit the turn's action economy (no actions
+// left, or a reaction already planned). The normal-plan "+" refuses these; the
+// off-budget unconditional "+" ignores it. `disabled` stays false either way so
+// the row remains visible and interactive (e.g. hover preview, unconditional add).
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
   if (action?.available === false || action?.disabled === true) {
     return {
       disabled: false,
       disabledReason: actionUnavailableReason(action),
+      overBudget: false,
     };
   }
 
@@ -691,6 +696,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     return {
       disabled: false,
       disabledReason: "Reaction already planned.",
+      overBudget: true,
     };
   }
 
@@ -701,10 +707,11 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     return {
       disabled: false,
       disabledReason: "Not enough actions remaining.",
+      overBudget: true,
     };
   }
 
-  return { disabled: false, disabledReason: "" };
+  return { disabled: false, disabledReason: "", overBudget: false };
 }
 
 function favoriteApplies(favorites, key, baseKey, baseKeyCounts) {
