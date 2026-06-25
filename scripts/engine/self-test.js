@@ -2583,6 +2583,19 @@ try {
   assert.equal(afterAllStrides.token.center.x, 15);
   assert.equal(afterAllStrides.token.plannedCenter.x, 15);
   assert.equal(afterAllStrides.battlefield.targets[0].distance, 5);
+  // Unconditional strides chain off the prior unconditional stride too, not the plan steps.
+  const unconditionalChainedDraft = {
+    steps: [],
+    unconditional: [
+      { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } },
+      { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 15, y: 0 } },
+    ],
+  };
+  const firstUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-1");
+  assert.equal(firstUnconditionalOrigin.token.center.x, 0, "first unconditional stride starts from the token's real origin");
+  const secondUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-2");
+  assert.equal(secondUnconditionalOrigin.token.center.x, 5, "second unconditional stride chains off the first unconditional stride");
+  assert.equal(secondUnconditionalOrigin.token.plannedCenter.x, 5);
 } finally {
   if (previousProjectedDraftCanvas === undefined) {
     delete globalThis.canvas;

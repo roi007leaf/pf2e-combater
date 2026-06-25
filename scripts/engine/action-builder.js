@@ -611,8 +611,14 @@ function draftStepLooksLikeDestinationStep(step) {
 
 function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
+  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
+  // Unconditional steps run as their own sequence, so an unconditional stride chains off
+  // the previous unconditional destination rather than the plan's steps.
+  const inUnconditional = beforeInstanceId != null
+    && unconditional.some((step) => step?.instanceId === beforeInstanceId);
+  const list = inUnconditional ? unconditional : steps;
   let destination = null;
-  for (const step of steps) {
+  for (const step of list) {
     if (beforeInstanceId && step?.instanceId === beforeInstanceId) break;
     if (!draftStepLooksLikeDestinationStep(step)) continue;
     const stepDestination = numericPoint(step?.destination);
