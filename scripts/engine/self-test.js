@@ -18,6 +18,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   nextPendingExecutionStep,
+  plannedTargetSelection,
   requiresAreaMarkerForAction,
   requiresTargetForAction,
   resetDraftExecution,
@@ -81,13 +82,14 @@ import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
-import { clearMovementPreview, movementPreviewForStep, showMovementPreview } from "../ui/movement-preview.js";
+import { clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showMovementPreview } from "../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
+import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
 import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
 import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
-import { aggroProfile, aggroTargetValue } from "../rules/aggro.js";
+import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
 import {
   readSustainedSpellEntries,
   removeSustainedSpellEntries,
@@ -96,8 +98,15 @@ import {
 import { registerSettings, SETTINGS } from "../settings.js";
 import { STORAGE_KEYS } from "../constants.js";
 
-const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
+// The rendered UI spans two templates now: the plan-only panel and the detached browser
+// window. Concatenate both so "the UI exposes X" assertions cover either window (the panel
+// part comes first, so order-sensitive checks like "sustained renders before tabs" hold).
+const panelTemplateSource = [
+  readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8"),
+  readFileSync(new URL("../../templates/combater-browser.hbs", import.meta.url), "utf8"),
+].join("\n");
 const panelSource = readFileSync(new URL("../ui/CombaterPanel.js", import.meta.url), "utf8");
+const browserSource = readFileSync(new URL("../ui/CombaterBrowser.js", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../main.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("./action-executor.js", import.meta.url), "utf8");
 const panelStyleSource = readFileSync(new URL("../../styles/combater.css", import.meta.url), "utf8");
@@ -262,7 +271,17 @@ assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expo
 // --- Unconditional actions: panel handlers (Task 6) ---
 assert.ok(panelSource.includes("draftListForInstance"), "panel should resolve a step's list before persisting");
 assert.ok(panelSource.includes("_addUnconditionalAction"), "panel should have an unconditional add handler");
-assert.ok(panelSource.includes("data-add-unconditional"), "panel should wire the second (unconditional) add button");
+assert.ok(browserSource.includes("data-add-unconditional"), "browser should wire the second (unconditional) add button");
+// The action browser is a separate window that routes every mutation back through the panel.
+assert.ok(browserSource.includes("combater-browser.hbs"), "browser window should render the browser template");
+assert.ok(browserSource.includes("panel._addAction") && browserSource.includes("panel._addUnconditionalAction"),
+  "browser add buttons should route through the panel");
+assert.ok(browserSource.includes("panel._setActiveTab") && browserSource.includes("panel._setSearchQuery"),
+  "browser tab/search should drive the panel view state");
+assert.ok(panelSource.includes("browserViewContext"), "panel should expose its builder model to the browser");
+assert.ok(panelSource.includes("_toggleBrowser") && panelSource.includes("_onBrowserClosed"),
+  "panel should own the browser open/close lifecycle");
+assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
 assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");
@@ -352,7 +371,7 @@ assert.ok(panelSource.includes("headerSteps: draftSteps"), "panel header should 
 assert.ok(panelSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
 assert.ok(panelSource.includes("this._planningContext = planningContext"), "action-list previews should remember projected draft destination context");
 assert.ok(
-  panelSource.includes("showActionPreview(this._planningContext ?? this._context, step)"),
+  /showActionPreview\(\s*this\._planningContext \?\? this\._context\b/.test(panelSource),
   "action-list hover preview should start from projected draft context",
 );
 assert.ok(
@@ -611,7 +630,6 @@ assert.equal(
   "panel template should not render draft plan as a repeated tab body card",
 );
 for (const selectorHook of [
-  "data-open-action",
   "data-open-draft-step",
   "data-preview-step",
   "data-preview-draft-step",
@@ -619,6 +637,9 @@ for (const selectorHook of [
   assert.ok(panelTemplateSource.includes(selectorHook), `panel template should expose ${selectorHook}`);
   assert.ok(panelSource.includes(selectorHook), `panel source should bind ${selectorHook}`);
 }
+// Opening action details is wired in the browser window now.
+assert.ok(panelTemplateSource.includes("data-open-action"), "browser template should expose data-open-action");
+assert.ok(browserSource.includes("data-open-action"), "browser source should bind data-open-action");
 assert.ok(panelTemplateSource.includes("combater-debug"), "panel template should keep GM debug foldout");
 
 const executionTargetAction = {
@@ -2363,6 +2384,10 @@ assert.equal(builderModel.tabs.one.favorites[0].key, "shield");
 assert.equal(builderModel.tabs.two.all[0].key, "fireball");
 assert.equal(builderModel.tabs.two.all[0].disabled, false);
 assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
+// Over-budget normal actions are flagged so the plan "+" can refuse them while the
+// off-budget unconditional "+" stays unlimited.
+assert.equal(builderModel.tabs.two.all[0].overBudget, true, "over-budget normal action is flagged overBudget");
+assert.equal(builderModel.tabs.free.all[0].overBudget, false, "a free action is never over budget");
 assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
@@ -2579,6 +2604,33 @@ try {
   assert.equal(afterAllStrides.token.center.x, 15);
   assert.equal(afterAllStrides.token.plannedCenter.x, 15);
   assert.equal(afterAllStrides.battlefield.targets[0].distance, 5);
+  // With no plan steps, the first unconditional stride starts from the token's real origin
+  // and later unconditional strides chain off the prior one.
+  const unconditionalChainedDraft = {
+    steps: [],
+    unconditional: [
+      { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } },
+      { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 15, y: 0 } },
+    ],
+  };
+  const firstUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-1");
+  assert.equal(firstUnconditionalOrigin.token.center.x, 0, "first unconditional stride starts from the token's real origin when the plan has no movement");
+  const secondUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-2");
+  assert.equal(secondUnconditionalOrigin.token.center.x, 5, "second unconditional stride chains off the first unconditional stride");
+  assert.equal(secondUnconditionalOrigin.token.plannedCenter.x, 5);
+  // The unconditional sequence continues from the plan's last stride: the first unconditional
+  // stride starts where the plan's movement ended, then chains within the unconditional list.
+  const planThenUnconditionalDraft = {
+    steps: [{ instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 20, y: 0 } }],
+    unconditional: [
+      { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 30, y: 0 } },
+      { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 40, y: 0 } },
+    ],
+  };
+  const firstUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-1");
+  assert.equal(firstUcAfterPlan.token.center.x, 20, "first unconditional stride starts from the plan's last stride destination");
+  const secondUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-2");
+  assert.equal(secondUcAfterPlan.token.center.x, 30, "second unconditional stride still chains off the first unconditional stride");
 } finally {
   if (previousProjectedDraftCanvas === undefined) {
     delete globalThis.canvas;
@@ -3177,6 +3229,36 @@ const crawlCandidate = buildCandidates(proneGenericContext).candidates.find((act
 assert.ok(crawlCandidate, "Crawl should be a 1-action movement option while prone");
 assert.equal(crawlCandidate.actionCost, 1);
 assert.equal(requiresDestinationForAction(crawlCandidate), true);
+// Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
+// target and delegate manual movement to unconditional Strides, so they must NOT prompt
+// for a destination — even though they include strides.
+assert.equal(requiresDestinationForAction({
+  slug: "sudden-charge",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike activities should not require a manual destination");
+// A stale requiresDestination flag baked into an older draft step must be overridden for
+// move-and-strike activities.
+assert.equal(requiresDestinationForAction({
+  slug: "sudden-charge",
+  requiresDestination: true,
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike overrides a stale requiresDestination flag");
+// A pure movement action still requires one.
+assert.equal(requiresDestinationForAction({ slug: "stride" }), true);
+// Move-and-strike activities resolve their target automatically (the recommendation already
+// chose it), so — like their destination — they should not prompt for a manual target.
+assert.equal(requiresTargetForAction({
+  slug: "sudden-charge",
+  targetingProfile: { enemy: true, reachAfterMove: true },
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike activities should not require a manual target");
+// A plain strike (strike with no movement) still needs a target.
+assert.equal(requiresTargetForAction({
+  slug: "longsword",
+  source: "strike",
+  targetingProfile: { enemy: true },
+  activityProfile: { includes: ["strike"], includesStrike: true },
+}), true, "a plain strike still requires a target");
 const projectedAfterStandGeneric = projectContextForDraftDestination(proneGenericContext, {
   steps: [{ instanceId: "stand-1", actionKey: "stand", actionCost: 1 }],
 });
@@ -3311,6 +3393,20 @@ const npcAggroShot = scoreCandidate(npcAggroContext, {
   range: { max: 60 },
 });
 assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
+
+// Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
+assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "npc" } }), true, "GM + NPC enables aggro target picking");
+assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "character" } }), false, "GM + PC does not pick aggro targets");
+assert.equal(canUseFullAggro({ isGM: false, profile: { actorType: "npc" } }), false, "players do not pick aggro targets");
+const prefillTarget = plannedTargetSelection({ suggestedTarget: { id: "t1", name: "Healer", token: { id: "t1" } } });
+assert.deepEqual(prefillTarget.targetTokenIds, ["t1"], "planned target selection exposes the suggested target token id");
+assert.ok(panelSource.includes("canUseFullAggro") && panelSource.includes("plannedTargetSelection"),
+  "auto-fill should consult aggro + planned target selection");
+assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
+  "auto-fill should store the aggro target as a manual selection for GM NPCs");
+assert.ok(panelSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
+assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelSource),
+  "auto-fill should store the recommended destination and waypoints for GM NPCs");
 
 const npcAggroControl = scoreCandidate(npcAggroContext, {
   id: "slow",
@@ -4201,6 +4297,28 @@ assert.equal(stridePreview.enabled, true);
 assert.equal(stridePreview.distanceFeet, 25);
 assert.equal(stridePreview.recommendedCenter.x, 25);
 assert.equal(stridePreview.recommendedCenter.y, 0);
+
+// routeCornerWaypoints keeps only the bends, so a straight route needs no waypoints.
+assert.deepEqual(
+  routeCornerWaypoints({ x: 0, y: 0 }, [{ x: 5, y: 0 }, { x: 10, y: 0 }, { x: 15, y: 0 }]),
+  [],
+  "a straight route has no corner waypoints",
+);
+assert.deepEqual(
+  routeCornerWaypoints({ x: 0, y: 0 }, [{ x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 10, y: 10 }]),
+  [{ x: 10, y: 0 }],
+  "a bent route keeps the corner as a waypoint",
+);
+
+// recommendedMovementForStep returns a destination toward the target (pixel coords).
+const autoMovement = recommendedMovementForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: { targets: [{ name: "Ogre", token: { center: { x: 100, y: 0 } }, distance: 100 }] },
+}, { slug: "stride" });
+assert.ok(autoMovement && autoMovement.destination.x > 0, "auto-fill recommends a stride destination toward the target");
+assert.equal(autoMovement.destination.y, 0, "the recommended stride stays on the line to the target");
+assert.equal(autoMovement.waypoints, undefined, "a straight recommended route needs no waypoints");
 
 const standStridePreview = movementPreviewForStep({
   token: { center: { x: 0, y: 0 } },
@@ -13703,5 +13821,84 @@ const gmUnsafeReasonScore = scoreCandidate({
   reasons: ["Goblin has fire weakness 5."],
 });
 assert.ok(gmUnsafeReasonScore.reasons.includes("Goblin has fire weakness 5."));
+
+// Spell range guidance (range-overlay) — pure compute path. Drawing needs PIXI and is
+// not exercised here.
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { enemy: true, maxRange: 60 } }),
+  60,
+  "spell targetingProfile.maxRange resolves to the range in feet",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-curated", range: { max: 30 } }),
+  30,
+  "spell range.max resolves when no maxRange is present",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { self: true } }),
+  null,
+  "self / emanation spells (no maxRange) draw no ring",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { enemy: true } }),
+  null,
+  "an unlimited-range spell (no maxRange) draws no ring",
+);
+assert.equal(
+  spellRangeFeet({ source: "strike", range: { max: 60 } }),
+  null,
+  "ranged strikes are not spells and draw no ring",
+);
+assert.equal(
+  spellRangeFeet({ activityProfile: { spell: true }, action: { targetingProfile: { maxRange: 120 } } }),
+  120,
+  "spell range resolves from a nested step.action profile",
+);
+
+const rangeRing = computeRangeRing(
+  { token: { center: { x: 100, y: 200 } } },
+  { source: "spell-inferred", targetingProfile: { maxRange: 60 } },
+  { scale: 2 },
+);
+assert.deepEqual(rangeRing.origin, { x: 100, y: 200 }, "ring origin is the caster token center");
+assert.equal(rangeRing.radiusPx, 120, "ring radius is range feet × scale (60 × 2)");
+assert.equal(
+  computeRangeRing({ token: { center: { x: 0, y: 0 } } }, { source: "spell-inferred", targetingProfile: { self: true } }, { scale: 2 }),
+  null,
+  "no ring is computed for a spell with no max range",
+);
+assert.equal(
+  computeRangeRing({ token: {} }, { source: "spell-inferred", targetingProfile: { maxRange: 60 } }, { scale: 2 }),
+  null,
+  "no ring is computed when the caster origin is unavailable",
+);
+assert.equal(rangeLabelText(60), "Range 60 ft", "range label rounds and labels the spell range");
+assert.equal(rangeLabelText(12.4), "Range 12 ft", "range label rounds fractional feet");
+
+// Reach Spell (rangeBonusFeet) extends the effective range used by the ring.
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { maxRange: 60 }, rangeBonusFeet: 30 }),
+  90,
+  "a +30 range bonus extends a 60 ft spell to 90 ft",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { maxRange: 5 }, rangeBonusFeet: 30 }),
+  30,
+  "Reach Spell turns a touch (5 ft) spell into a 30 ft range",
+);
+assert.equal(
+  spellRangeFeet({ source: "spell-inferred", targetingProfile: { self: true }, rangeBonusFeet: 30 }),
+  null,
+  "a range bonus does not give a self/no-range spell a ring",
+);
+assert.equal(
+  computeRangeRing(
+    { token: { center: { x: 0, y: 0 } } },
+    { source: "spell-inferred", targetingProfile: { maxRange: 60 }, rangeBonusFeet: 30 },
+    { scale: 2 },
+  ).radiusPx,
+  180,
+  "the ring radius reflects the Reach Spell-extended range (90 ft × 2)",
+);
 
 console.log("PF2e Combater self-test passed");

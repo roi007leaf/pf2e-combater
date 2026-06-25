@@ -13,7 +13,7 @@
   color: var(--combater-ink);
   filter: drop-shadow(0 12px 30px rgb(0 0 0 / 48%));
   min-width: 360px;
-  max-width: min(520px, calc(100vw - 24px));
+  max-width: min(560px, calc(100vw - 24px));
 }
 
 .pf2e-combater .window-header {
@@ -32,6 +32,47 @@
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
+}
+
+/* Plan column: the panel below the header is just the plan (draft + sustained +
+   unconditional), stacked and auto-height — no browser, so no dead space. */
+.pf2e-combater .combater-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+  min-width: 0;
+}
+
+/* The plan/unconditional sections were full-width bands when stacked with the
+   browser; standing alone in the plan column the inner card carries the styling. */
+.pf2e-combater .combater-plan > section {
+  border-top: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* The action browser is its own window; its shell fills the window and the
+   action list scrolls under the pinned cost tabs. */
+.pf2e-combater.combater-browser .combater-browser-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-bg);
+}
+
+.pf2e-combater.combater-browser .combater-tabs {
+  flex: 0 0 auto;
+}
+
+.pf2e-combater.combater-browser .combater-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .pf2e-combater .combater-compact {
@@ -207,6 +248,8 @@
   gap: 4px;
 }
 
+/* The step row is the bordered container so the border wraps the chip AND its tool buttons
+   as one unit; the inner chip is borderless and transparent. */
 .pf2e-combater .combater-plan-strip .combater-header-step {
   display: grid;
   flex: 0 0 auto;
@@ -214,6 +257,14 @@
   gap: 4px;
   align-items: center;
   width: 100%;
+  border: 1px solid #303640;
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: #1b1f24;
+}
+
+.pf2e-combater .combater-plan-strip .combater-header-step:hover {
+  border-color: #4a5363;
 }
 
 .pf2e-combater .combater-plan-strip > .combater-sequence > .combater-chip {
@@ -226,9 +277,9 @@
   align-items: stretch;
   min-height: 32px;
   height: auto;
-  border-color: #303640;
-  padding: 4px 8px 4px 10px;
-  background: #1b1f24;
+  border: 0;
+  padding: 2px 2px 2px 4px;
+  background: transparent;
   text-align: left;
 }
 
@@ -281,23 +332,22 @@
 }
 
 /* Step state reads as a colored left spine rather than a full boxy outline. */
-.pf2e-combater .combater-header-step.has-warning .combater-chip {
+/* The whole step row is the bordered container (see .combater-plan-strip below), so the
+   state spine paints on the row itself — not the inner chip — and reaches the tool buttons. */
+.pf2e-combater .combater-header-step.has-warning {
   box-shadow: inset 3px 0 0 var(--combater-two);
 }
 
-.pf2e-combater .combater-header-step.status-done .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.status-done {
   box-shadow: inset 3px 0 0 #3d7d57;
 }
 
-.pf2e-combater .combater-header-step.status-failed .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.status-failed {
   box-shadow: inset 3px 0 0 var(--combater-three);
 }
 
 /* Current step wins over a readiness warning on the same row. */
-.pf2e-combater .combater-header-step.is-current .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.is-current {
   box-shadow: inset 3px 0 0 var(--combater-focus);
 }
 
@@ -662,6 +712,52 @@
   border-color: var(--combater-two);
   color: var(--combater-ink);
   outline: none;
+}
+
+/* Browse toggle: a blue accent pill (distinct from the gold Auto-fill); fills solid
+   while the browser window is open so its open/closed state reads at a glance. */
+.pf2e-combater .combater-header-browse {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: none;
+  min-height: 28px;
+  border: 1px solid #47677e;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: #1d2b34;
+  color: var(--combater-focus);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-browse span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-header-browse:hover,
+.pf2e-combater .combater-header-browse:focus-visible {
+  border-color: var(--combater-focus);
+  color: var(--combater-ink);
+  outline: none;
+}
+
+.pf2e-combater .combater-header-browse.is-active {
+  border-color: var(--combater-focus);
+  background: var(--combater-focus);
+  color: #11141a;
+}
+
+.pf2e-combater .combater-header-browse.is-active:hover,
+.pf2e-combater .combater-header-browse.is-active:focus-visible {
+  background: #8cbcef;
+  border-color: #8cbcef;
+  color: #11141a;
 }
 
 .pf2e-combater .combater-actions .icon-button,
@@ -1167,15 +1263,15 @@
   color: #d4ccbd;
 }
 
+/* Tiny viewport: let the floating panel fill the screen width. */
 @media (max-width: 430px) {
   .pf2e-combater.combater-panel {
     min-width: calc(100vw - 24px);
   }
+}
 
-  .pf2e-combater .combater-compact {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
+/* Narrow viewport: tighten identity, tabs and rows. */
+@media (max-width: 480px) {
   .pf2e-combater .combater-identity {
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 8px;

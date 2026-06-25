@@ -443,17 +443,26 @@ function valuesArray(value) {
 
 export function requiresDestinationForAction(action) {
   if (!action) return false;
+
+  // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
+  // target and delegate any manual movement to separately-added unconditional Strides, so
+  // the activity itself must not prompt for a destination even though it contains strides.
+  // Checked first so a stale requiresDestination flag baked into an older draft step (added
+  // before this rule) is overridden.
+  if (action?.activityProfile?.includesStrike === true || actionIncludes(action, "strike")) return false;
+
   if (action.requiresDestination === true) return true;
 
   const slug = String(action?.slug ?? "").toLowerCase();
   const source = String(action?.source ?? "").toLowerCase();
   const role = String(action?.role ?? "").toLowerCase();
-  return DESTINATION_ACTION_SLUGS.has(slug)
-    || actionIncludes(action, "stride")
+
+  // Pure movement actions always need a destination.
+  if (DESTINATION_ACTION_SLUGS.has(slug) || source === "movement" || role === "movement") return true;
+
+  return actionIncludes(action, "stride")
     || actionIncludes(action, "step")
-    || Number(action?.activityProfile?.strideCount) > 0
-    || source === "movement"
-    || role === "movement";
+    || Number(action?.activityProfile?.strideCount) > 0;
 }
 
 function numericPoint(value) {
@@ -611,12 +620,28 @@ function draftStepLooksLikeDestinationStep(step) {
 
 function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
+  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
+  const inUnconditional = beforeInstanceId != null
+    && unconditional.some((step) => step?.instanceId === beforeInstanceId);
+
   let destination = null;
-  for (const step of steps) {
-    if (beforeInstanceId && step?.instanceId === beforeInstanceId) break;
-    if (!draftStepLooksLikeDestinationStep(step)) continue;
-    const stepDestination = numericPoint(step?.destination);
-    if (stepDestination) destination = stepDestination;
+  const scan = (list, stopAtBefore) => {
+    for (const step of list) {
+      if (stopAtBefore && beforeInstanceId && step?.instanceId === beforeInstanceId) break;
+      if (!draftStepLooksLikeDestinationStep(step)) continue;
+      const stepDestination = numericPoint(step?.destination);
+      if (stepDestination) destination = stepDestination;
+    }
+  };
+
+  // Unconditional steps run after the plan, so an unconditional stride starts where the
+  // plan's movement ended (scan all plan steps) and then chains off any earlier
+  // unconditional stride. Plan steps only chain within the plan.
+  if (inUnconditional) {
+    scan(steps, false);
+    scan(unconditional, true);
+  } else {
+    scan(steps, true);
   }
   return destination;
 }
@@ -679,11 +704,16 @@ function actionUnavailableReason(action) {
     || "Action is no longer available.";
 }
 
+// `overBudget` marks actions that do not fit the turn's action economy (no actions
+// left, or a reaction already planned). The normal-plan "+" refuses these; the
+// off-budget unconditional "+" ignores it. `disabled` stays false either way so
+// the row remains visible and interactive (e.g. hover preview, unconditional add).
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
   if (action?.available === false || action?.disabled === true) {
     return {
       disabled: false,
       disabledReason: actionUnavailableReason(action),
+      overBudget: false,
     };
   }
 
@@ -691,6 +721,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     return {
       disabled: false,
       disabledReason: "Reaction already planned.",
+      overBudget: true,
     };
   }
 
@@ -701,10 +732,11 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     return {
       disabled: false,
       disabledReason: "Not enough actions remaining.",
+      overBudget: true,
     };
   }
 
-  return { disabled: false, disabledReason: "" };
+  return { disabled: false, disabledReason: "", overBudget: false };
 }
 
 function favoriteApplies(favorites, key, baseKey, baseKeyCounts) {

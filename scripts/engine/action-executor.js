@@ -195,6 +195,15 @@ export function requiresTargetForAction(action) {
   const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;
   if (selfOnly) return false;
 
+  // Move-and-strike activities (e.g. Sudden Charge) auto-plot movement to their target and
+  // resolve the strike against the suggested/current target at execution, so — like their
+  // destination — they do not prompt for a manual target. A plain strike (a strike with no
+  // movement component) still requires one.
+  const profile = action?.activityProfile ?? {};
+  const movesToStrike = (profile.includesStrike === true || actionIncludes(action, "strike"))
+    && (Number(profile.strideCount) > 0 || actionIncludes(action, "stride") || actionIncludes(action, "step"));
+  if (movesToStrike) return false;
+
   // A self-directed suggested target (Raise a Shield, Take Cover, self-buffs, etc.) is the
   // acting actor — it never requires the user to pick a target on the canvas.
   const suggested = action?.preferredTarget ?? action?.suggestedTarget ?? null;

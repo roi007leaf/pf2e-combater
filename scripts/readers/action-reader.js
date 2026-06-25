@@ -2358,17 +2358,14 @@ function readItemAvailability(item) {
   return { available: true, reason: "" };
 }
 
+// Only the item's own system.predicate gates whether the action can be taken. A
+// rule-element predicate merely gates when that rule's effect applies (e.g. a
+// spellshape roll option on Reach Spell), not the action's usability — treating those
+// as unavailable produced false "unevaluated predicate" warnings on normal feats.
 function hasUnevaluatedPredicate(item) {
   const predicate = item.system?.predicate;
-  if (Array.isArray(predicate) && predicate.length > 0) return true;
-  if (predicate && typeof predicate === "object" && Object.keys(predicate).length > 0) return true;
-
-  const rules = Array.isArray(item.system?.rules) ? item.system.rules : [];
-  return rules.some((rule) => {
-    const rulePredicate = rule?.predicate;
-    if (Array.isArray(rulePredicate)) return rulePredicate.length > 0;
-    return Boolean(rulePredicate && typeof rulePredicate === "object" && Object.keys(rulePredicate).length > 0);
-  });
+  if (Array.isArray(predicate)) return predicate.length > 0;
+  return Boolean(predicate && typeof predicate === "object" && Object.keys(predicate).length > 0);
 }
 
 function parseActionCost(type, value) {

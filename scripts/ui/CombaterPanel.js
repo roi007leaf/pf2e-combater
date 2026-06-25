@@ -15,6 +15,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   nextPendingExecutionStep,
+  plannedTargetSelection,
   requiresAreaMarkerForAction,
   requiresTargetForAction,
   setTokenTargets,
@@ -42,14 +43,17 @@ import {
   writeSharedDraftPlanActorFlag,
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
-import { showMovementPreview } from "./movement-preview.js";
+import { CombaterBrowser } from "./CombaterBrowser.js";
+import { showMovementPreview, recommendedMovementForStep } from "./movement-preview.js";
 import { displayStepEntries } from "./display-steps.js";
 import { selectDisplayPlan } from "./plan-selection.js";
 import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
 import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
+import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
+import { canUseFullAggro } from "../rules/aggro.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -764,7 +768,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       resizable: true,
     },
     position: {
-      width: 420,
+      width: 720,
       height: "auto",
     },
   };
@@ -804,6 +808,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._selectedCombatant = options.combatant ?? null;
     this._onClose = typeof options.onClose === "function" ? options.onClose : null;
     this._restoredPosition = false;
+    this._browser = null;
+    this._closing = false;
     this._scrollPerformanceTimer = null;
     this._searchRenderTimer = null;
     this._searchFocusState = null;
@@ -916,6 +922,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       builder: this._builder,
       expanded: this.expanded,
       activeTab: this.activeTab,
+      browserOpen: Boolean(this._browser),
       showDebug,
       hasContext: Boolean(context),
       refreshSource: this.refreshSource,
@@ -944,28 +951,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._activateDrag(element);
     this._activateActionListScrollPerformance(element);
 
-    element.querySelector("[data-action='toggle-expanded']")
-      ?.addEventListener("click", () => this._setExpanded(!this.expanded));
+    element.querySelector("[data-action='toggle-browser']")
+      ?.addEventListener("click", () => this._toggleBrowser());
     element.querySelector("[data-action='refresh']")
       ?.addEventListener("click", () => this.refresh("button"));
 
-    for (const button of element.querySelectorAll("[data-tab]")) {
-      button.addEventListener("click", () => this._setActiveTab(button.dataset.tab));
-    }
-
-    for (const button of element.querySelectorAll("[data-add-unconditional]")) {
-      button.addEventListener("click", () => this._addUnconditionalAction(button.dataset.addUnconditional));
-    }
-
-    for (const input of element.querySelectorAll("[data-search-actions]")) {
-      input.addEventListener("input", () => this._setSearchQuery(input.value, input));
-    }
-    this._restoreSearchFocus(element);
-
-    for (const button of element.querySelectorAll("[data-add-action]")) {
-      button.addEventListener("click", () => this._addAction(button.dataset.addAction));
-    }
-
+    // Cost tabs, search, and the action add/favorite/open controls live in the detached
+    // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
     for (const button of element.querySelectorAll("[data-add-sustain-spell]")) {
       button.addEventListener("click", () => this._addSustainSpell(button.dataset.addSustainSpell));
     }
@@ -978,13 +970,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
         this._moveDraftStep(button.dataset.moveDraftStep, button.dataset.moveDirection);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-favorite-action]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._toggleFavorite(button.dataset.favoriteAction);
       });
     }
 
@@ -1026,10 +1011,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => this._removeAreaTemplate(button.dataset.removeArea));
     }
 
-    for (const button of element.querySelectorAll("[data-open-action]")) {
-      button.addEventListener("click", () => this._openBuilderAction(button.dataset.openAction));
-    }
-
     for (const button of element.querySelectorAll("[data-open-draft-step]")) {
       button.addEventListener("click", () => this._openDraftStep(button.dataset.openDraftStep));
     }
@@ -1055,9 +1036,60 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     this._restoreDestinationPickerPreview();
+
+    // Keep the detached browser window in sync: every panel render (mutation, refresh, or
+    // combat hook) recomputes _builder, so re-render the browser from it. No-op when closed.
+    this._browser?.render({ force: true });
+  }
+
+  _onFirstRender(context, options) {
+    super._onFirstRender?.(context, options);
+    // Reopen the browser window if it was open when the panel last closed.
+    if (!this._browser && readPanelState().browserOpen) this._toggleBrowser();
+  }
+
+  // Context for the browser window: it renders the panel's already-computed builder model.
+  browserViewContext() {
+    const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
+    return {
+      builder: this._builder,
+      readonly: this._builder?.readonly === true,
+      showDebug,
+      actor: this._context?.actor ?? null,
+      debug: {
+        candidates: this._candidates.map(debugAction),
+        rejected: this._rejected.map((entry, index) => ({
+          index,
+          action: debugAction(entry?.action, index),
+          reason: entry?.reason ?? "",
+        })),
+        detected: this._detected.map(debugAction),
+      },
+    };
+  }
+
+  _toggleBrowser() {
+    if (this._browser) {
+      this._browser.close();
+      return;
+    }
+    this._browser = new CombaterBrowser(this);
+    writePanelState({ browserOpen: true });
+    // Panel re-render updates the toggle's active state and cascades to show/render the browser.
+    this.render({ force: true });
+  }
+
+  _onBrowserClosed(browser) {
+    if (browser && this._browser && this._browser !== browser) return;
+    this._browser = null;
+    if (this._closing) return;
+    writePanelState({ browserOpen: false });
+    this.render({ force: true });
   }
 
   async close(options) {
+    this._closing = true;
+    this._browser?.close();
     this._cancelDestinationPicker();
     this._clearActionListScrollPerformance();
     this._clearSearchRenderTimer();
@@ -1162,6 +1194,21 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ?? null;
   }
 
+  // Reach Spell (and other range-extending spellshapes) modify the spell cast right
+  // after them, so the spell's effective range — and its range ring — grows by 30 ft
+  // when the immediately-preceding step is a rangeBuff setup. Returns the feet to add.
+  _spellRangeBonus(steps, index) {
+    if (!Array.isArray(steps) || index <= 0) return 0;
+    const previous = steps[index - 1];
+    const profile = previous?.action?.activityProfile ?? previous?.activityProfile ?? {};
+    return profile?.rangeBuff === true ? 30 : 0;
+  }
+
+  _draftRangeBonus(instanceId) {
+    const steps = this._builder?.draft?.steps ?? [];
+    return this._spellRangeBonus(steps, steps.findIndex((step) => step.instanceId === instanceId));
+  }
+
   // Resolve a step from whichever stored list owns it (plan or unconditional).
   _findActiveStep(instanceId) {
     const draft = this._readActiveDraftPlan();
@@ -1226,6 +1273,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft()) return;
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
+
+    // The normal plan respects the turn's action economy; only unconditional actions
+    // run off-budget. Refuse a plan add that would exceed the budget.
+    if (action.overBudget) {
+      globalThis.ui?.notifications?.warn?.(action.disabledReason || "Not enough actions remaining.");
+      return;
+    }
 
     upsertDraftStep(this._context, {
       actionKey: action.key,
@@ -1333,13 +1387,48 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._context || !autoFill?.steps?.length) return;
     if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
 
-    const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => ({
-      instanceId: draftStepId(),
-      actionKey: this._actionKeyForStep(step),
-      actionCost: step?.actionCost ?? step?.cost,
-      requiresDestination: requiresDestinationForAction(step),
-      ...(step?.destination ? { destination: step.destination } : {}),
-    }));
+    // For the GM running an NPC, the recommendation already chose targets (aggro) and a stride
+    // destination; pre-fill both so the GM doesn't re-pick each one. (Players target/move by
+    // hand.) The projected origin advances so a chained stride starts where the prior one lands.
+    const useAggroTargets = canUseFullAggro(this._context);
+    let movementContext = this._context;
+    const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => {
+      let draftStep = {
+        instanceId: draftStepId(),
+        actionKey: this._actionKeyForStep(step),
+        actionCost: step?.actionCost ?? step?.cost,
+        requiresDestination: requiresDestinationForAction(step),
+        ...(step?.destination ? { destination: step.destination } : {}),
+      };
+      if (!useAggroTargets) return draftStep;
+
+      const target = plannedTargetSelection(step);
+      if (target.targetTokenIds.length) {
+        draftStep = {
+          ...draftStep,
+          targetTokenIds: target.targetTokenIds,
+          targetLabel: target.targetLabel,
+          targetSelection: "manual",
+        };
+      }
+
+      if (draftStep.requiresDestination && !draftStep.destination) {
+        const movement = recommendedMovementForStep(movementContext, step);
+        if (movement?.destination) {
+          draftStep = {
+            ...draftStep,
+            destination: movement.destination,
+            ...(movement.waypoints?.length ? { movementPlan: { native: false, waypoints: movement.waypoints } } : {}),
+          };
+          movementContext = {
+            ...movementContext,
+            token: { ...(movementContext.token ?? {}), plannedCenter: movement.destination },
+          };
+        }
+      }
+
+      return draftStep;
+    });
     writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
     await this._syncDraftToGM();
     clearActionPreview();
@@ -1393,6 +1482,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._areaPicker = null;
     cancelDestinationPicker();
     cancelAreaPicker();
+    clearRangeOverlay();
   }
 
   _clearActionPreviewUnlessPicking(event) {
@@ -1602,15 +1692,26 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       };
     }
 
+    // A preceding Reach Spell (rangeBuff) step extends this spell's range; reflect it
+    // in the range ring.
+    const reachBonus = this._draftRangeBonus(instanceId);
+    if (reachBonus > 0) placementAction = { ...placementAction, rangeBonusFeet: reachBonus };
+
     this._cancelDestinationPicker();
     this._areaPicker = { instanceId };
     globalThis.ui?.notifications?.info?.("Place the area template on the canvas.");
 
+    // Show the caster's spell-range ring while the template is being placed. Cleared
+    // when placement resolves/cancels, and by _cancelDestinationPicker on teardown.
+    showRangeOverlay(this._contextForDraftStep(instanceId), placementAction);
+
     const picker = chooseAreaMarker({
       context: this._contextForDraftStep(instanceId),
       action: placementAction,
+      onMove: (marker) => updateRangePlacement(marker?.center),
       onCancel: () => {
         this._areaPicker = null;
+        clearRangeOverlay();
       },
       onChoose: async (areaMarker) => {
         const current = this._findActiveStep(instanceId) ?? step;
@@ -1625,11 +1726,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           this._stepWithRetryReset(current, { areaMarker, ...(targetTokenIds.length ? { targetTokenIds } : {}) }),
         );
         this._areaPicker = null;
+        clearRangeOverlay();
         await this.render({ force: true });
       },
     });
     if (!picker) {
       this._areaPicker = null;
+      clearRangeOverlay();
       globalThis.ui?.notifications?.warn?.("Canvas area picker is not available.");
     }
   }
@@ -1650,16 +1753,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _showActionPreview(element) {
-    if (this._destinationPicker) return;
+    if (this._destinationPicker || this._areaPicker) return;
     const plan = this._planForPreview(element);
-    const step = plan?.steps?.[Number(element.dataset.previewStep)];
-    showActionPreview(this._planningContext ?? this._context, step);
+    const index = Number(element.dataset.previewStep);
+    const step = plan?.steps?.[index];
+    const reachBonus = this._spellRangeBonus(plan?.steps, index);
+    showActionPreview(
+      this._planningContext ?? this._context,
+      reachBonus > 0 && step ? { ...step, rangeBonusFeet: reachBonus } : step,
+    );
   }
 
   _showDraftActionPreview(element) {
-    if (this._destinationPicker) return;
+    if (this._destinationPicker || this._areaPicker) return;
     const step = this._findDraftStep(element.dataset.previewDraftStep);
     if (!step?.action) return;
+    const reachBonus = this._draftRangeBonus(step.instanceId);
     showActionPreview(this._contextForDraftStep(step.instanceId), {
       ...step.action,
       destination: step.destination,
@@ -1667,6 +1776,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       areaMarker: step.areaMarker,
       ...explicitTargetFields(step, step.action),
       requiresDestination: requiresDestinationForAction(step.action),
+      ...(reachBonus > 0 ? { rangeBonusFeet: reachBonus } : {}),
     });
   }
 
