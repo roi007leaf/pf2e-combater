@@ -157,6 +157,10 @@ export function readActionSources(context) {
     ...generatedStrikes,
     ...readElementalBlastActions(actor, context),
     ...readDrawStrikeActivities(actor, context, generatedStrikes),
+    ...readDrawWeaponActions(actor),
+    ...readReleaseWeaponActions(actor),
+    ...readReloadWeaponActions(actor),
+    ...readDropProneAction(actor, context),
     ...readStrideStrikeActivities(context, generatedStrikes),
     ...readRangedRetreatStrikeActivities(context, generatedStrikes),
     ...readSkirmishStrikeActivities(context, generatedStrikes),
@@ -1129,6 +1133,138 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
     });
 }
 
+function isHeldWeapon(weapon) {
+  if (!weapon || weapon.type !== "weapon") return false;
+  if (systemValue(weapon.system?.category) === "unarmed") return false;
+  return weapon.isHeld === true || weaponCarryType(weapon) === "held" || weaponHandsHeld(weapon) > 0;
+}
+
+// Stand-alone Draw (Interact, 1 action) for each sheathed/stowed weapon — distinct from the
+// Draw -> Strike combo, which also requires a reachable target.
+function readDrawWeaponActions(actor) {
+  return readWeaponItems(actor).filter(isDrawableWeapon).map((weapon) => {
+    const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+    return {
+      id: `draw-weapon-${weapon.id ?? slug}`,
+      name: `Draw ${weapon.name}`,
+      slug: `draw-${slug}`,
+      actionCost: 1,
+      actionType: "action",
+      source: "system-inferred",
+      confidence: "medium",
+      executable: "draw-weapon",
+      detected: true,
+      available: true,
+      item: weapon,
+      role: "setup",
+      activityProfile: { includes: ["draw", "interact"], drawsWeapon: true, weaponName: weapon.name },
+      targetingProfile: { self: true },
+      reasons: [`Draw ${weapon.name} to ready it.`],
+      traits: [],
+      attackTrait: false,
+    };
+  });
+}
+
+// Release (free action) for each held weapon — drops it to the ground.
+function readReleaseWeaponActions(actor) {
+  return readWeaponItems(actor).filter(isHeldWeapon).map((weapon) => {
+    const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+    return {
+      id: `release-weapon-${weapon.id ?? slug}`,
+      name: `Release ${weapon.name}`,
+      slug: `release-${slug}`,
+      actionCost: 0,
+      actionType: "free",
+      source: "system-inferred",
+      confidence: "low",
+      executable: "drop-weapon",
+      detected: true,
+      available: true,
+      item: weapon,
+      role: "utility",
+      activityProfile: { includes: ["release"], dropsWeapon: true, free: true, weaponName: weapon.name },
+      targetingProfile: { self: true },
+      reasons: [`Release ${weapon.name}, dropping it to the ground.`],
+      traits: [],
+      attackTrait: false,
+    };
+  });
+}
+
+function weaponReloadCost(weapon) {
+  return parseReloadCost(weapon?.reload)
+    ?? parseReloadCost(weapon?.system?.reload)
+    ?? parseReloadCost(weapon?.system?.reload?.value)
+    ?? 0;
+}
+
+function readReloadWeaponActions(actor) {
+  return readWeaponItems(actor)
+    .filter(isHeldWeapon)
+    .map((weapon) => ({ weapon, reload: weaponReloadCost(weapon) }))
+    .filter(({ reload }) => Number.isFinite(reload) && reload > 0)
+    .map(({ weapon, reload }) => {
+      const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+      return {
+        id: `reload-weapon-${weapon.id ?? slug}`,
+        name: `Reload ${weapon.name}`,
+        slug: `reload-${slug}`,
+        actionCost: Math.max(1, Math.min(3, reload)),
+        actionType: "action",
+        source: "system-inferred",
+        confidence: "medium",
+        executable: "reload-weapon",
+        detected: true,
+        available: true,
+        item: weapon,
+        role: "setup",
+        activityProfile: { includes: ["reload"], reload: true, weaponName: weapon.name },
+        targetingProfile: { self: true },
+        setupFor: ["strike", "damage"],
+        reasons: [`Reload ${weapon.name}.`],
+        traits: [],
+        attackTrait: false,
+      };
+    });
+}
+
+function actorHasDropProneAction(actor) {
+  const items = [
+    ...collectionValues(actor?.itemTypes?.action),
+    ...collectionValues(actor?.itemTypes?.feat),
+    ...collectionValues(actor?.itemTypes?.feature),
+    ...collectionValues(actor?.items),
+  ];
+  return items.some((item) => slugify(item?.slug ?? item?.system?.slug ?? item?.name) === "drop-prone");
+}
+
+// Drop Prone (1 action) for actors that do not already carry their own — gated off when prone.
+function readDropProneAction(actor, context) {
+  if (actorHasDropProneAction(actor)) return [];
+  const prone = hasCondition(contextProfile(context), "prone");
+  return [{
+    id: "generic-drop-prone",
+    name: "Drop Prone",
+    slug: "drop-prone",
+    actionCost: 1,
+    actionType: "action",
+    source: "system-inferred",
+    confidence: "low",
+    executable: "drop-prone",
+    detected: true,
+    available: !prone,
+    unavailableReason: prone ? "Already prone." : "",
+    item: null,
+    role: "defense",
+    activityProfile: { appliesConditions: ["prone"] },
+    targetingProfile: { self: true },
+    reasons: ["Drop Prone for cover against ranged attackers."],
+    traits: [],
+    attackTrait: false,
+  }];
+}
+
 function strikeMeleeReach(strike) {
   const reach = Number(strike?.range?.max);
   return Number.isFinite(reach) && reach > 0 ? reach : 5;
@@ -1457,10 +1593,14 @@ function readActorItemActions(actor, context) {
     const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = genericActionAvailability(slug, context);
     const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
+    // Reactions are standing options the player should see on their own turn — the trigger
+    // fires later, so it describes WHEN to use the reaction rather than gating availability.
+    // Triggered free actions stay gated (their trigger marks a fleeting moment to act).
+    const isReaction = parsedCost.type === "reaction" || actionCost === "reaction";
     const available = actionCost !== null
       && actionCost !== Infinity
       && itemAvailability.available
-      && triggerAvailability.available
+      && (isReaction || triggerAvailability.available)
       && shieldBlockAvailability.available
       && movementAvailability.available
       && genericAvailability.available;
@@ -1482,7 +1622,7 @@ function readActorItemActions(actor, context) {
       detected: true,
       available,
       unavailableReason: itemAvailability.reason
-        || triggerAvailability.reason
+        || (isReaction ? "" : triggerAvailability.reason)
         || shieldBlockAvailability.reason
         || movementAvailability.reason
         || genericAvailability.reason,
@@ -1567,15 +1707,28 @@ function effectSlugKeys(effect) {
   ].map(slugify).filter(Boolean);
 }
 
+// Matches the Shield spell's effect ("Spell Effect: Shield", slug spell-effect-shield) while
+// tolerating rank/variant suffixes (e.g. spell-effect-shield-rank-1). Deliberately does NOT
+// match "effect-shield-immunity" (the post-Shield-Block cooldown, which BLOCKS using it).
+function isShieldSpellEffectKey(key) {
+  if (typeof key !== "string") return false;
+  if (key === "effect-shield") return true;
+  if (key.startsWith("effect-shield-immunity")) return false;
+  return key.startsWith("spell-effect-shield");
+}
+
+function isRaisedShieldEffectKey(key) {
+  return key === "effect-raise-a-shield"
+    || key === "raise-a-shield"
+    || key === "raised-shield";
+}
+
 function shieldSpellDefenseActive(context) {
   const profile = contextProfile(context);
   if (profile?.combatState?.shieldSpellActive === true) return true;
 
   return shieldEffectEntries(context).some((effect) =>
-    effectSlugKeys(effect).some((key) =>
-      key === "spell-effect-shield"
-      || key === "effect-shield",
-    ),
+    effectSlugKeys(effect).some(isShieldSpellEffectKey),
   );
 }
 
@@ -1586,13 +1739,7 @@ function shieldBlockDefenseActive(context) {
   }
 
   return shieldEffectEntries(context).some((effect) =>
-    effectSlugKeys(effect).some((key) =>
-      key === "effect-raise-a-shield"
-      || key === "raise-a-shield"
-      || key === "raised-shield"
-      || key === "spell-effect-shield"
-      || key === "effect-shield",
-    ),
+    effectSlugKeys(effect).some((key) => isRaisedShieldEffectKey(key) || isShieldSpellEffectKey(key)),
   );
 }
 
@@ -1601,9 +1748,10 @@ function readShieldSpellBlockActions(actor, context) {
   if (actorHasShieldBlockAction(actor)) return [];
 
   const trigger = "You would take damage from an attack while your Shield spell is active.";
-  const triggerAvailability = readTriggerAvailability(trigger, context);
+  // This is a standing reaction the Shield spell makes available: it should appear whenever the
+  // shield is active, not only when an incoming-attack event is already in context (which never
+  // happens on the caster's own turn). The trigger is shown for reference, not as a gate.
   const shieldBlockAvailability = readShieldBlockAvailability("shield-block", { name: "Shield Block" }, context);
-  const available = triggerAvailability.available && shieldBlockAvailability.available;
   return [{
     id: "spell-shield-block",
     name: "Shield Block",
@@ -1615,8 +1763,8 @@ function readShieldSpellBlockActions(actor, context) {
     confidence: "high",
     executable: "chat-guidance",
     detected: true,
-    available,
-    unavailableReason: triggerAvailability.reason || shieldBlockAvailability.reason,
+    available: shieldBlockAvailability.available,
+    unavailableReason: shieldBlockAvailability.reason,
     item: null,
     trigger,
     role: "defense",

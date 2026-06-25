@@ -8,10 +8,11 @@ import {
   markMovementActionSpent,
   tokenUpdateAffectsCombatGeometry,
 } from "./state/token-refresh.js";
-import { writeSharedDraftPlanPayload } from "./state/draft-plans.js";
+import { clearDraftPlan, clearSharedDraftPlan, writeSharedDraftPlanPayload } from "./state/draft-plans.js";
 import { clearMovementPreview } from "./ui/movement-preview.js";
 import { cancelDestinationPicker } from "./ui/destination-picker.js";
 import { promptUnsustainedSpellCleanup } from "./rules/sustained-spells.js";
+import { expiredAreaRegionsForScene } from "./engine/area-duration.js";
 
 let activePanel = null;
 let refreshTimer = null;
@@ -281,9 +282,75 @@ Hooks.once("ready", async () => {
       ui?.notifications?.info?.(`PF2e Combater: ${payload.userName ?? "Player"} shared ${payload.actorName ?? "a"} plan.`);
     }
   });
+  await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;
   await openCurrent("ready");
+});
+
+// --- Auto-expiring area templates (GM authority) ---------------------------------------
+
+// True only when an embedded document is positively confirmed gone from its collection.
+// Returns false when we cannot check, so a real deletion is still attempted.
+function confirmedRemoved(collection, id) {
+  return Boolean(collection?.get) && id != null && !collection.get(id);
+}
+
+async function deleteAreaRegions(entries) {
+  for (const entry of entries ?? []) {
+    if (entry?.effectUuid && typeof fromUuid === "function") {
+      try {
+        const effect = await fromUuid(entry.effectUuid);
+        if (typeof effect?.delete === "function" && !confirmedRemoved(effect.parent?.items, effect.id)) {
+          await effect.delete();
+        }
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Area effect removal failed`, error);
+      }
+    }
+    try {
+      const scene = (entry?.sceneId && game.scenes?.get?.(entry.sceneId)) ?? canvas?.scene ?? null;
+      if (typeof scene?.deleteEmbeddedDocuments === "function" && !confirmedRemoved(scene.regions, entry?.regionId)) {
+        await scene.deleteEmbeddedDocuments("Region", [entry.regionId]);
+      }
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Area region removal failed`, error);
+    }
+  }
+}
+
+// Remove placed area templates whose duration has elapsed. Runs on the GM client, which is
+// the single authority allowed to delete scene-embedded documents.
+async function sweepExpiredAreaTemplates() {
+  if (game.user?.isGM !== true) return;
+  const scene = canvas?.scene ?? null;
+  if (!scene) return;
+  const worldTime = Number(game.time?.worldTime);
+  const round = Number(game.combat?.round);
+  const expired = expiredAreaRegionsForScene(scene, {
+    worldTime: Number.isFinite(worldTime) ? worldTime : null,
+    round: Number.isFinite(round) ? round : null,
+  });
+  if (expired.length) await deleteAreaRegions(expired);
+}
+
+// When a player dismisses a linked timer effect early, the deletion broadcasts to every
+// client; the GM reads the effect's areaRegion flag and clears the matching template.
+function removeRegionForDeletedAreaEffect(item) {
+  if (game.user?.isGM !== true) return;
+  const link = item?.flags?.["pf2e-combater"]?.areaRegion
+    ?? item?.getFlag?.("pf2e-combater", "areaRegion");
+  if (!link?.regionId) return;
+  deleteAreaRegions([{ regionId: link.regionId, sceneId: link.sceneId ?? null, effectUuid: null }])
+    .catch((error) => console.warn(`${MODULE_ID} | Area region removal failed`, error));
+}
+
+Hooks.on("updateWorldTime", () => {
+  sweepExpiredAreaTemplates().catch((error) => console.warn(`${MODULE_ID} | Area sweep failed`, error));
+});
+
+Hooks.on("canvasReady", () => {
+  sweepExpiredAreaTemplates().catch((error) => console.warn(`${MODULE_ID} | Area sweep failed`, error));
 });
 
 Hooks.on("deleteCombat", (combat) => {
@@ -302,15 +369,34 @@ Hooks.on("deleteCombat", (combat) => {
   }
 });
 
+// When a combatant's turn ends, clear its execution plan (local + shared) so the plan
+// persists through the whole turn and resets only afterward — not at the start of each round.
+function clearEndedTurnDraft(combat) {
+  const ended = previousTurnCombatant(combat);
+  if (!ended) return;
+  const context = { combat, combatant: ended };
+  clearDraftPlan(context);
+  clearSharedDraftPlan(context).catch((error) => console.warn(`${MODULE_ID} | Shared draft cleanup failed`, error));
+}
+
 Hooks.on("updateCombat", async (combat, changed) => {
   if (combat !== game.combat) return;
   if (!combat.started) return;
   if (!("turn" in changed) && !("round" in changed)) return;
+  await sweepExpiredAreaTemplates();
+  // Read the ended turn's plan for sustained cleanup BEFORE clearing it.
   await promptPreviousTurnSustainedCleanup(combat);
+  clearEndedTurnDraft(combat);
   resetMovementPreview();
   if (!setting(SETTINGS.autoOpen) && !activePanel) return;
   if (autoOpenSuppressed && !activePanel) return;
-  await openCurrent("combat-turn");
+  // The GM window follows the selected token, so a turn change just refreshes it rather
+  // than jumping to the new active combatant. Players still advance to their next combatant.
+  if (game.user?.isGM === true && activePanel) {
+    await activePanel.refresh("combat-turn");
+  } else {
+    await openCurrent("combat-turn");
+  }
 });
 
 Hooks.on("preUpdateToken", (token, changed) => {
@@ -333,6 +419,15 @@ Hooks.on("targetToken", (user) => {
   scheduleRefresh("target-change");
 });
 
+// GM only: the Combater window follows the selected token instead of tracking the active
+// combatant. Selecting a combatant token switches the open panel to it.
+Hooks.on("controlToken", (token, controlled) => {
+  if (!controlled || game.user?.isGM !== true || !activePanel) return;
+  const combatant = collectionValues(game.combat?.combatants)
+    .find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
+  if (combatant) activePanel.setCombatant?.(combatant, "token-control");
+});
+
 Hooks.on("updateActor", (actor) => {
   scheduleDocumentRefresh(actor, "actor-update");
 });
@@ -346,6 +441,7 @@ Hooks.on("updateItem", (item) => {
 });
 
 Hooks.on("deleteItem", (item) => {
+  removeRegionForDeletedAreaEffect(item);
   scheduleDocumentRefresh(item, "item-delete");
 });
 

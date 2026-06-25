@@ -212,6 +212,20 @@ function sustainStateForDraft(draft) {
   return { planned, sustained };
 }
 
+// Keys of sustained spells that were cast during the draft being read. A spell cast this turn
+// cannot be sustained until the caster's NEXT turn, so it must be excluded from end-of-turn
+// cleanup — otherwise we'd nag the caster to drop a spell the same turn they cast it.
+function castThisTurnSpellKeys(draft) {
+  const keys = new Set();
+  for (const step of Array.isArray(draft?.steps) ? draft.steps : []) {
+    const action = step?.action ?? {};
+    if (!isSustainedSpellAction(action)) continue;
+    const key = spellKey(action);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
 export function readSustainedSpellEntries(context, actions = readSpellActions(context), draft = readDraftPlan(context)) {
   const actor = actorDocument(context);
   if (!actor) return [];
@@ -229,6 +243,7 @@ export function readSustainedSpellEntries(context, actions = readSpellActions(co
       id,
       name: spellName(action),
       spellSlug: id,
+      spellUuid: action?.item?.uuid ?? action?.uuid ?? null,
       effectIds: matchingEffects.map((effect) => effect.id),
       effects: matchingEffects,
       templateRefs,
@@ -241,7 +256,16 @@ export function readSustainedSpellEntries(context, actions = readSpellActions(co
 }
 
 export function unsustainedSpellCleanupEntries(context, actions = readSpellActions(context), draft = readDraftPlan(context)) {
-  return readSustainedSpellEntries(context, actions, draft).filter((entry) => !entry.sustained);
+  const castThisTurn = castThisTurnSpellKeys(draft);
+  return readSustainedSpellEntries(context, actions, draft)
+    .filter((entry) => !entry.sustained)
+    .filter((entry) => !castThisTurn.has(entry.id));
+}
+
+// True only when an embedded document is positively confirmed gone from its collection.
+// Returns false when we cannot check, so a real deletion is still attempted.
+function confirmedRemoved(collection, id) {
+  return Boolean(collection?.get) && id != null && !collection.get(id);
 }
 
 async function deleteActorEffects(actor, entry, warnings) {
@@ -255,8 +279,12 @@ async function deleteActorEffects(actor, entry, warnings) {
   }
 
   for (const [type, ids] of grouped) {
+    // Skip ids confirmed gone (another cleanup path may have removed them already).
+    const collection = type === "ActiveEffect" ? actor.effects : actor.items;
+    const existing = collection?.get ? ids.filter((id) => collection.get(id)) : ids;
+    if (!existing.length) continue;
     try {
-      await actor.deleteEmbeddedDocuments(type, ids);
+      await actor.deleteEmbeddedDocuments(type, existing);
     } catch (_error) {
       warnings.push(`Could not remove ${entry.name} effect.`);
     }
@@ -267,9 +295,12 @@ async function deleteTemplates(entry, warnings) {
   for (const ref of entry.templateRefs ?? []) {
     try {
       const scene = globalThis.game?.scenes?.get?.(ref.sceneId) ?? globalThis.canvas?.scene;
-      if (ref.kind === "region" && ref.regionId && typeof scene?.deleteEmbeddedDocuments === "function") {
+      if (typeof scene?.deleteEmbeddedDocuments !== "function") continue;
+      // Idempotent: delete unless the target is confirmed already gone.
+      if (ref.kind === "region" && ref.regionId && !confirmedRemoved(scene.regions, ref.regionId)) {
         await scene.deleteEmbeddedDocuments("Region", [ref.regionId]);
-      } else if (ref.kind === "template" && ref.templateId && typeof scene?.deleteEmbeddedDocuments === "function") {
+      } else if (ref.kind === "template" && ref.templateId
+        && !confirmedRemoved(scene.templates ?? scene.measuredTemplates, ref.templateId)) {
         await scene.deleteEmbeddedDocuments("MeasuredTemplate", [ref.templateId]);
       }
     } catch (_error) {

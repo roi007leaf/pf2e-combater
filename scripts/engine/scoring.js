@@ -17,6 +17,7 @@ const ELEMENT_DAMAGE_FALLBACKS = {
   water: ["cold"],
   wood: ["vitality"],
 };
+const QUICKENING_SLUGS = new Set(["haste"]);
 
 function firstTarget(context) {
   return context?.targets?.[0] ?? context?.battlefield?.targets?.[0] ?? null;
@@ -881,6 +882,18 @@ function activeBuffKeys(action) {
     ...(profile.hidden ? ["hidden", "undetected"] : []),
     ...(profile.concealed ? ["concealed"] : []),
   ].map(slugText).filter(Boolean);
+}
+
+function actionGrantsQuickened(action) {
+  const profile = action?.activityProfile ?? {};
+  if (profile.extraAction === true) return true;
+  const slugs = activeBuffKeys(action);
+  if (slugs.some((slug) => QUICKENING_SLUGS.has(slug) || slug === "quickened")) return true;
+  return [
+    profile.appliesCondition,
+    ...(Array.isArray(profile.appliesConditions) ? profile.appliesConditions : []),
+    ...(Array.isArray(action?.appliesConditions) ? action.appliesConditions : []),
+  ].map(slugText).includes("quickened");
 }
 
 function targetAlreadyHasBuff(entity, action) {
@@ -2071,12 +2084,13 @@ export function scoreCandidate(context, action) {
   if (isCurated(action) && role === "buff") {
     const recipient = bestBuffRecipient(context, action);
     const allyTarget = recipient?.type === "ally";
+    const grantsQuickened = actionGrantsQuickened(action);
     let buffValue = Math.max(0, Number(recipient?.value) || 0);
     if (action.activityProfile?.attackBuff || action.activityProfile?.damageBuff) {
       const attackerCount = [profile, ...allies(context)].filter((entity) => hpPercent(entity) > 0).length;
       buffValue += Math.min(24, 6 + attackerCount * 4);
     }
-    if (action.activityProfile?.extraAction) buffValue += 24;
+    if (grantsQuickened) buffValue += 24;
     if (action.activityProfile?.acBuff || action.activityProfile?.saveBuff || action.activityProfile?.resistance) {
       buffValue += enemies(context).length ? 10 : 4;
     }
@@ -2091,7 +2105,7 @@ export function scoreCandidate(context, action) {
       reasons.push(`${recipient.entity.name ?? "Target"} already has ${action.name}.`);
     }
     score += buffValue;
-    reasons.unshift(action.activityProfile?.extraAction
+    reasons.unshift(grantsQuickened
       ? `${action.name} grants quickened.`
       : allyTarget
         ? `${action.name} can boost ${recipient.entity?.name ?? "an ally"}.`

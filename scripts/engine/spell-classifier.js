@@ -302,7 +302,7 @@ function readBuffProfile(spell) {
   const resistance = /\bresistance\b|\breduce[sd]? .* damage\b/.test(text);
   const removesCondition = /\b(?:remove|reduce|suppress)[sd]? .* (?:condition|penalt)|\bbreak free\b|\bescape\b|\bholds? .* in place\b|\bimmobilized\b|\bgrabbed\b|\brestrained\b/.test(text);
   const protective = /\bprotect|\bward\b|\bbolster|\bbless|\bheroism|\bhaste\b|\benhance|\bshield\b|\bsanctuary\b/.test(text);
-  const extraAction = /\b(?:an? )?(?:extra|additional) action\b|\bact twice\b|\buse several actions\b|\bquickened\b/.test(text);
+  const extraAction = /\bhaste\b|\b(?:an? )?(?:extra|additional) action\b|\bact twice\b|\buse several actions\b|\bquickened\b/.test(text);
 
   if (!(attackBuff || damageBuff || acBuff || saveBuff || grantsBonus || tempHp || resistance || removesCondition || protective || extraAction)) {
     return null;

@@ -274,14 +274,14 @@ function readBuffProfile(text) {
   const resistance = /\bresistance\b|\breduce[sd]? .* damage\b/.test(text);
   const removesCondition = /\b(?:remove|reduce|suppress)[sd]? .* (?:condition|penalt)/.test(text);
   const protective = /\bprotect|\bward\b|\bbolster|\bbless|\bheroism|\bhaste\b|\benhance|\brally\b|\bsanctuary\b/.test(text);
-  const extraAction = /\b(?:an? )?(?:extra|additional) action\b|\bact twice\b/.test(text);
+  const extraAction = /\bhaste\b|\b(?:an? )?(?:extra|additional) action\b|\bact twice\b|\bquickened\b/.test(text);
 
   if (!(attackBuff || grantsBonus || tempHp || resistance || removesCondition || protective || extraAction)) {
     return null;
   }
 
   const ally = /\bally\b|\ballies\b|\bwilling creature\b/.test(text);
-  return { ally, attackBuff, tempHp, removesCondition };
+  return { ally, attackBuff, tempHp, removesCondition, extraAction };
 }
 
 function inferred(role, {
@@ -938,7 +938,7 @@ function classifySystemActionBase(action, parsedCost) {
         ...(traits.includes("aura") ? { aura: true, npcFamily: "aura" } : {}),
       },
       targetingProfile: buffProfile.ally ? { ally: true, self: true } : { self: true },
-      setupFor: buffProfile.attackBuff ? ["strike", "damage"] : [],
+      setupFor: (buffProfile.attackBuff || buffProfile.extraAction) ? ["strike", "damage"] : [],
       gatingProfile,
       confidence: "medium",
       reasons: ["Action grants a beneficial effect to the actor or an ally."],

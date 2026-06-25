@@ -1071,8 +1071,16 @@ function drawSegmentLabels(graphics, labels, scale) {
 function drawStridePath(graphics, origin, stridePath, scale) {
   let from = origin;
   for (const waypoint of stridePath) {
-    graphics.lineStyle(2, waypoint.color, 0.7);
     const trail = waypoint.trail?.length ? waypoint.trail : [waypoint.center];
+    // Dark outline first so the thicker stride line stays legible over busy maps.
+    let outlineFrom = from;
+    graphics.lineStyle(8, 0x101418, 0.7);
+    for (const point of trail) {
+      graphics.moveTo(outlineFrom.x * scale, outlineFrom.y * scale);
+      graphics.lineTo(point.x * scale, point.y * scale);
+      outlineFrom = point;
+    }
+    graphics.lineStyle(5, waypoint.color, 0.9);
     for (const point of trail) {
       graphics.moveTo(from.x * scale, from.y * scale);
       graphics.lineTo(point.x * scale, point.y * scale);

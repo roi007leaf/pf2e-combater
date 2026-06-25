@@ -41,6 +41,7 @@ export default [
         // Additional FoundryVTT globals
         MeasuredTemplate: 'readonly',
         fromUuidSync: 'readonly',
+        fromUuid: 'readonly',
         context: 'readonly',
         $: 'readonly', // jQuery
         // Batch functions
