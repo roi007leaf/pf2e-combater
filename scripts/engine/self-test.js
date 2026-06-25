@@ -2583,7 +2583,8 @@ try {
   assert.equal(afterAllStrides.token.center.x, 15);
   assert.equal(afterAllStrides.token.plannedCenter.x, 15);
   assert.equal(afterAllStrides.battlefield.targets[0].distance, 5);
-  // Unconditional strides chain off the prior unconditional stride too, not the plan steps.
+  // With no plan steps, the first unconditional stride starts from the token's real origin
+  // and later unconditional strides chain off the prior one.
   const unconditionalChainedDraft = {
     steps: [],
     unconditional: [
@@ -2592,10 +2593,23 @@ try {
     ],
   };
   const firstUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-1");
-  assert.equal(firstUnconditionalOrigin.token.center.x, 0, "first unconditional stride starts from the token's real origin");
+  assert.equal(firstUnconditionalOrigin.token.center.x, 0, "first unconditional stride starts from the token's real origin when the plan has no movement");
   const secondUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-2");
   assert.equal(secondUnconditionalOrigin.token.center.x, 5, "second unconditional stride chains off the first unconditional stride");
   assert.equal(secondUnconditionalOrigin.token.plannedCenter.x, 5);
+  // The unconditional sequence continues from the plan's last stride: the first unconditional
+  // stride starts where the plan's movement ended, then chains within the unconditional list.
+  const planThenUnconditionalDraft = {
+    steps: [{ instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 20, y: 0 } }],
+    unconditional: [
+      { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 30, y: 0 } },
+      { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 40, y: 0 } },
+    ],
+  };
+  const firstUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-1");
+  assert.equal(firstUcAfterPlan.token.center.x, 20, "first unconditional stride starts from the plan's last stride destination");
+  const secondUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-2");
+  assert.equal(secondUcAfterPlan.token.center.x, 30, "second unconditional stride still chains off the first unconditional stride");
 } finally {
   if (previousProjectedDraftCanvas === undefined) {
     delete globalThis.canvas;

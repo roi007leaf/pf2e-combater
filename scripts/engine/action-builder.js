@@ -621,17 +621,27 @@ function draftStepLooksLikeDestinationStep(step) {
 function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
   const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
-  // Unconditional steps run as their own sequence, so an unconditional stride chains off
-  // the previous unconditional destination rather than the plan's steps.
   const inUnconditional = beforeInstanceId != null
     && unconditional.some((step) => step?.instanceId === beforeInstanceId);
-  const list = inUnconditional ? unconditional : steps;
+
   let destination = null;
-  for (const step of list) {
-    if (beforeInstanceId && step?.instanceId === beforeInstanceId) break;
-    if (!draftStepLooksLikeDestinationStep(step)) continue;
-    const stepDestination = numericPoint(step?.destination);
-    if (stepDestination) destination = stepDestination;
+  const scan = (list, stopAtBefore) => {
+    for (const step of list) {
+      if (stopAtBefore && beforeInstanceId && step?.instanceId === beforeInstanceId) break;
+      if (!draftStepLooksLikeDestinationStep(step)) continue;
+      const stepDestination = numericPoint(step?.destination);
+      if (stepDestination) destination = stepDestination;
+    }
+  };
+
+  // Unconditional steps run after the plan, so an unconditional stride starts where the
+  // plan's movement ended (scan all plan steps) and then chains off any earlier
+  // unconditional stride. Plan steps only chain within the plan.
+  if (inUnconditional) {
+    scan(steps, false);
+    scan(unconditional, true);
+  } else {
+    scan(steps, true);
   }
   return destination;
 }
