@@ -3243,6 +3243,20 @@ assert.equal(requiresDestinationForAction({
 }), false, "move-and-strike overrides a stale requiresDestination flag");
 // A pure movement action still requires one.
 assert.equal(requiresDestinationForAction({ slug: "stride" }), true);
+// Move-and-strike activities resolve their target automatically (the recommendation already
+// chose it), so — like their destination — they should not prompt for a manual target.
+assert.equal(requiresTargetForAction({
+  slug: "sudden-charge",
+  targetingProfile: { enemy: true, reachAfterMove: true },
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike activities should not require a manual target");
+// A plain strike (strike with no movement) still needs a target.
+assert.equal(requiresTargetForAction({
+  slug: "longsword",
+  source: "strike",
+  targetingProfile: { enemy: true },
+  activityProfile: { includes: ["strike"], includesStrike: true },
+}), true, "a plain strike still requires a target");
 const projectedAfterStandGeneric = projectContextForDraftDestination(proneGenericContext, {
   steps: [{ instanceId: "stand-1", actionKey: "stand", actionCost: 1 }],
 });
