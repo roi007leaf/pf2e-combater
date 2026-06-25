@@ -306,6 +306,8 @@
   gap: 4px;
 }
 
+/* The step row is the bordered container so the border wraps the chip AND its tool buttons
+   as one unit; the inner chip is borderless and transparent. */
 .pf2e-combater .combater-plan-strip .combater-header-step {
   display: grid;
   flex: 0 0 auto;
@@ -313,6 +315,14 @@
   gap: 4px;
   align-items: center;
   width: 100%;
+  border: 1px solid #303640;
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: #1b1f24;
+}
+
+.pf2e-combater .combater-plan-strip .combater-header-step:hover {
+  border-color: #4a5363;
 }
 
 .pf2e-combater .combater-plan-strip > .combater-sequence > .combater-chip {
@@ -325,9 +335,9 @@
   align-items: stretch;
   min-height: 32px;
   height: auto;
-  border-color: #303640;
-  padding: 4px 8px 4px 10px;
-  background: #1b1f24;
+  border: 0;
+  padding: 2px 2px 2px 4px;
+  background: transparent;
   text-align: left;
 }
 
@@ -380,23 +390,22 @@
 }
 
 /* Step state reads as a colored left spine rather than a full boxy outline. */
-.pf2e-combater .combater-header-step.has-warning .combater-chip {
+/* The whole step row is the bordered container (see .combater-plan-strip below), so the
+   state spine paints on the row itself — not the inner chip — and reaches the tool buttons. */
+.pf2e-combater .combater-header-step.has-warning {
   box-shadow: inset 3px 0 0 var(--combater-two);
 }
 
-.pf2e-combater .combater-header-step.status-done .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.status-done {
   box-shadow: inset 3px 0 0 #3d7d57;
 }
 
-.pf2e-combater .combater-header-step.status-failed .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.status-failed {
   box-shadow: inset 3px 0 0 var(--combater-three);
 }
 
 /* Current step wins over a readiness warning on the same row. */
-.pf2e-combater .combater-header-step.is-current .combater-chip {
-  background: #1b1f24;
+.pf2e-combater .combater-header-step.is-current {
   box-shadow: inset 3px 0 0 var(--combater-focus);
 }
 

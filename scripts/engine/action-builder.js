@@ -443,6 +443,14 @@ function valuesArray(value) {
 
 export function requiresDestinationForAction(action) {
   if (!action) return false;
+
+  // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
+  // target and delegate any manual movement to separately-added unconditional Strides, so
+  // the activity itself must not prompt for a destination even though it contains strides.
+  // Checked first so a stale requiresDestination flag baked into an older draft step (added
+  // before this rule) is overridden.
+  if (action?.activityProfile?.includesStrike === true || actionIncludes(action, "strike")) return false;
+
   if (action.requiresDestination === true) return true;
 
   const slug = String(action?.slug ?? "").toLowerCase();
@@ -451,11 +459,6 @@ export function requiresDestinationForAction(action) {
 
   // Pure movement actions always need a destination.
   if (DESTINATION_ACTION_SLUGS.has(slug) || source === "movement" || role === "movement") return true;
-
-  // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
-  // target and delegate any manual movement to separately-added unconditional Strides, so
-  // the activity itself must not prompt for a destination even though it contains strides.
-  if (action?.activityProfile?.includesStrike === true || actionIncludes(action, "strike")) return false;
 
   return actionIncludes(action, "stride")
     || actionIncludes(action, "step")

@@ -3201,6 +3201,13 @@ assert.equal(requiresDestinationForAction({
   slug: "sudden-charge",
   activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
 }), false, "move-and-strike activities should not require a manual destination");
+// A stale requiresDestination flag baked into an older draft step must be overridden for
+// move-and-strike activities.
+assert.equal(requiresDestinationForAction({
+  slug: "sudden-charge",
+  requiresDestination: true,
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 2 },
+}), false, "move-and-strike overrides a stale requiresDestination flag");
 // A pure movement action still requires one.
 assert.equal(requiresDestinationForAction({ slug: "stride" }), true);
 const projectedAfterStandGeneric = projectContextForDraftDestination(proneGenericContext, {
