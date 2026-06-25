@@ -247,7 +247,7 @@ export function resetDraftExecution(draft) {
   return {
     ...(draft ?? {}),
     steps: resetList(draft?.steps),
-    ...(Array.isArray(draft?.unconditional) ? { unconditional: resetList(draft.unconditional) } : {}),
+    ...(Array.isArray(draft?.uncounted) ? { uncounted: resetList(draft.uncounted) } : {}),
   };
 }
 

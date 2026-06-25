@@ -388,15 +388,15 @@ export async function revertDraftStep({ context, step } = {}) {
   return { status: "reverted", patch: resetPatch, warnings };
 }
 
-// Revert every completed step across the plan and unconditional lists in reverse execution
+// Revert every completed step across the plan and uncounted lists in reverse execution
 // order, then return the status-reset draft. Ordering is by execution.completedAt (newest
 // first); ties fall back to reverse list position so plan-only drafts behave exactly as before.
 // `contextForStep` lets callers resolve a per-step context (multi-combatant drafts).
 export async function revertDraftExecution({ context, draft, contextForStep } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
-  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
+  const uncounted = Array.isArray(draft?.uncounted) ? draft.uncounted : [];
   const warnings = [];
-  const executed = [...steps, ...unconditional]
+  const executed = [...steps, ...uncounted]
     .map((step, index) => ({ step, index, at: Number(step?.execution?.completedAt) || 0 }))
     .filter((entry) => entry.step?.execution?.status === "done")
     .sort((left, right) => (right.at - left.at) || (right.index - left.index));

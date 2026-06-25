@@ -257,24 +257,24 @@ assert.equal(
 assert.equal(panelSource.includes("Execute next"), false, "panel should not expose Execute next state");
 assert.ok(panelSource.includes("_executeDraftStep(instanceId"), "panel should execute an explicit draft step by id");
 assert.ok(panelTemplateSource.includes("Reset execution"), "panel should expose execution reset");
-// --- Unconditional actions: template (Task 5) ---
-assert.ok(panelTemplateSource.includes("builder.unconditional.hasEntries"), "template should gate the unconditional card");
-assert.ok(panelTemplateSource.includes("combater-unconditional"), "template should render an unconditional card");
-assert.ok(panelTemplateSource.includes("Unconditional actions"), "unconditional card should carry its title");
-assert.ok(/data-add-unconditional="\{\{key\}\}"/.test(panelTemplateSource), "each action row should have a second add button for the unconditional list");
+// --- Uncounted actions: template (Task 5) ---
+assert.ok(panelTemplateSource.includes("builder.uncounted.hasEntries"), "template should gate the uncounted card");
+assert.ok(panelTemplateSource.includes("combater-uncounted"), "template should render an uncounted card");
+assert.ok(panelTemplateSource.includes("Uncounted actions"), "uncounted card should carry its title");
+assert.ok(/data-add-uncounted="\{\{key\}\}"/.test(panelTemplateSource), "each action row should have a second add button for the uncounted list");
 assert.ok(panelSource.includes("executeDraftStep"), "panel should use action executor instead of advisory-only execution");
 assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
 assert.ok(panelSource.includes("revertDraftExecution"), "panel reset should revert executed steps, not only clear status");
 assert.ok(panelSource.includes("revertDraftStep"), "panel should revert an individual executed step");
-// --- Unconditional actions: panel decoration (Task 4) ---
-assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expose a builder.unconditional view-model");
-// --- Unconditional actions: panel handlers (Task 6) ---
+// --- Uncounted actions: panel decoration (Task 4) ---
+assert.ok(panelSource.includes("uncounted: {"), "decorateBuilder should expose a builder.uncounted view-model");
+// --- Uncounted actions: panel handlers (Task 6) ---
 assert.ok(panelSource.includes("draftListForInstance"), "panel should resolve a step's list before persisting");
-assert.ok(panelSource.includes("_addUnconditionalAction"), "panel should have an unconditional add handler");
-assert.ok(browserSource.includes("data-add-unconditional"), "browser should wire the second (unconditional) add button");
+assert.ok(panelSource.includes("_addUncountedAction"), "panel should have an uncounted add handler");
+assert.ok(browserSource.includes("data-add-uncounted"), "browser should wire the second (uncounted) add button");
 // The action browser is a separate window that routes every mutation back through the panel.
 assert.ok(browserSource.includes("combater-browser.hbs"), "browser window should render the browser template");
-assert.ok(browserSource.includes("panel._addAction") && browserSource.includes("panel._addUnconditionalAction"),
+assert.ok(browserSource.includes("panel._addAction") && browserSource.includes("panel._addUncountedAction"),
   "browser add buttons should route through the panel");
 assert.ok(browserSource.includes("panel._setActiveTab") && browserSource.includes("panel._setSearchQuery"),
   "browser tab/search should drive the panel view state");
@@ -1952,7 +1952,7 @@ try {
   globalThis.fromUuid = previousExecutionFromUuid;
 }
 
-// --- Unconditional actions: unified reset/revert (Task 2) ---
+// --- Uncounted actions: unified reset/revert (Task 2) ---
 {
   const reverted = [];
   const ctx = {};
@@ -1960,14 +1960,14 @@ try {
     steps: [
       { instanceId: "p1", execution: { status: "done", completedAt: 100, revert: { ops: [{ kind: "marker", id: "p1" }] } } },
     ],
-    unconditional: [
+    uncounted: [
       { instanceId: "u1", execution: { status: "done", completedAt: 300, revert: { ops: [{ kind: "marker", id: "u1" }] } } },
       { instanceId: "u2", execution: { status: "done", completedAt: 200, revert: { ops: [{ kind: "marker", id: "u2" }] } } },
     ],
   };
   const reset = resetDraftExecution(unifiedDraft);
   assert.ok(reset.steps.every((s) => s.execution.status === "pending"), "reset should clear plan step status");
-  assert.ok(reset.unconditional.every((s) => s.execution.status === "pending"), "reset should clear unconditional status");
+  assert.ok(reset.uncounted.every((s) => s.execution.status === "pending"), "reset should clear uncounted status");
 
   const unifiedResult = await revertDraftExecution({
     context: ctx,
@@ -1975,7 +1975,7 @@ try {
     contextForStep: (step) => { reverted.push(step.instanceId); return ctx; },
   });
   assert.deepEqual(reverted, ["u1", "u2", "p1"], "revert order should be newest completedAt first across both lists");
-  assert.ok(unifiedResult.draft.unconditional.every((s) => s.execution.status === "pending"), "returned draft should reset unconditional");
+  assert.ok(unifiedResult.draft.uncounted.every((s) => s.execution.status === "pending"), "returned draft should reset uncounted");
 }
 
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
@@ -2171,7 +2171,7 @@ try {
   assert.equal(moveDraftStep(builderContext, generatedStep.instanceId, -1), false);
   assert.equal(moveDraftStep(builderContext, "missing-step", 1), false);
 
-  // --- Unconditional actions: draft storage (Task 1) ---
+  // --- Uncounted actions: draft storage (Task 1) ---
   {
     const previousStorage = globalThis.localStorage;
     const store = new Map();
@@ -2184,31 +2184,31 @@ try {
     globalThis.game = { user: { id: "user-1", name: "Player One" } };
     const ctx = { combat: { id: "combat-uc" }, combatant: { id: "combatant-uc" } };
     try {
-      assert.deepEqual(emptyDraftPlan().unconditional, [], "emptyDraftPlan should include an unconditional list");
+      assert.deepEqual(emptyDraftPlan().uncounted, [], "emptyDraftPlan should include an uncounted list");
 
       upsertDraftStep(ctx, { instanceId: "p1", actionKey: "stride", actionCost: 1 }, "steps");
-      upsertDraftStep(ctx, { instanceId: "u1", actionKey: "stride", actionCost: 1 }, "unconditional");
-      upsertDraftStep(ctx, { instanceId: "u2", actionKey: "strike", actionCost: 1 }, "unconditional");
+      upsertDraftStep(ctx, { instanceId: "u1", actionKey: "stride", actionCost: 1 }, "uncounted");
+      upsertDraftStep(ctx, { instanceId: "u2", actionKey: "strike", actionCost: 1 }, "uncounted");
       let draft = readDraftPlan(ctx);
       assert.deepEqual(draft.steps.map((s) => s.instanceId), ["p1"], "plan list should hold only plan steps");
-      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u1", "u2"], "unconditional list should hold its own steps");
+      assert.deepEqual(draft.uncounted.map((s) => s.instanceId), ["u1", "u2"], "uncounted list should hold its own steps");
 
       assert.equal(draftListForInstance(draft, "p1"), "steps");
-      assert.equal(draftListForInstance(draft, "u2"), "unconditional");
+      assert.equal(draftListForInstance(draft, "u2"), "uncounted");
       assert.equal(draftListForInstance(draft, "missing"), "steps", "unknown ids default to the plan list");
 
-      assert.equal(moveDraftStep(ctx, "u2", -1, "unconditional"), true);
+      assert.equal(moveDraftStep(ctx, "u2", -1, "uncounted"), true);
       draft = readDraftPlan(ctx);
-      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u2", "u1"], "move should reorder within the unconditional list");
-      removeDraftStep(ctx, "u1", "unconditional");
+      assert.deepEqual(draft.uncounted.map((s) => s.instanceId), ["u2", "u1"], "move should reorder within the uncounted list");
+      removeDraftStep(ctx, "u1", "uncounted");
       draft = readDraftPlan(ctx);
-      assert.deepEqual(draft.unconditional.map((s) => s.instanceId), ["u2"], "remove should drop only the targeted unconditional step");
-      assert.deepEqual(draft.steps.map((s) => s.instanceId), ["p1"], "removing an unconditional step must not affect the plan");
+      assert.deepEqual(draft.uncounted.map((s) => s.instanceId), ["u2"], "remove should drop only the targeted uncounted step");
+      assert.deepEqual(draft.steps.map((s) => s.instanceId), ["p1"], "removing an uncounted step must not affect the plan");
 
-      assert.equal(hasSharedDraftPlan({ steps: [], unconditional: [{ instanceId: "u" }] }), true,
-        "an unconditional-only draft should be shareable");
-      assert.equal(shouldDisplaySharedDraft({ steps: [], unconditional: [] }, { steps: [], unconditional: [{ instanceId: "u" }], updatedAt: 5 }), true,
-        "a shared draft with unconditional entries should display over an empty local draft");
+      assert.equal(hasSharedDraftPlan({ steps: [], uncounted: [{ instanceId: "u" }] }), true,
+        "an uncounted-only draft should be shareable");
+      assert.equal(shouldDisplaySharedDraft({ steps: [], uncounted: [] }, { steps: [], uncounted: [{ instanceId: "u" }], updatedAt: 5 }), true,
+        "a shared draft with uncounted entries should display over an empty local draft");
     } finally {
       globalThis.localStorage = previousStorage;
       globalThis.game = previousGame;
@@ -2385,7 +2385,7 @@ assert.equal(builderModel.tabs.two.all[0].key, "fireball");
 assert.equal(builderModel.tabs.two.all[0].disabled, false);
 assert.equal(builderModel.tabs.two.all[0].disabledReason, "Not enough actions remaining.");
 // Over-budget normal actions are flagged so the plan "+" can refuse them while the
-// off-budget unconditional "+" stays unlimited.
+// off-budget uncounted "+" stays unlimited.
 assert.equal(builderModel.tabs.two.all[0].overBudget, true, "over-budget normal action is flagged overBudget");
 assert.equal(builderModel.tabs.free.all[0].overBudget, false, "a free action is never over budget");
 assert.equal(builderModel.draft.steps[0].warning, "");
@@ -2393,7 +2393,7 @@ assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
 
-// --- Unconditional actions: builder model resolves the list (Task 3) ---
+// --- Uncounted actions: builder model resolves the list (Task 3) ---
 {
   const ucModel = buildActionBuilderModel({
     context: { profile: { actions: 3 } },
@@ -2401,19 +2401,19 @@ assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
     plans: [],
     draft: {
       steps: [{ instanceId: "p1", actionKey: "stride", actionCost: 1 }],
-      unconditional: [
+      uncounted: [
         { instanceId: "u1", actionKey: "stride", actionCost: 1 },
         { instanceId: "u2", actionKey: "strike", actionCost: 1 },
       ],
     },
   });
-  assert.deepEqual(ucModel.draft.unconditional.map((s) => s.instanceId), ["u1", "u2"],
-    "builder model should resolve the unconditional list parallel to steps");
+  assert.deepEqual(ucModel.draft.uncounted.map((s) => s.instanceId), ["u1", "u2"],
+    "builder model should resolve the uncounted list parallel to steps");
   // resolveDraftSteps adds resolver-only fields (key/warning) the raw input lacks.
-  assert.equal(ucModel.draft.unconditional[0].key, "stride",
-    "unconditional entries should be data-resolved like plan steps");
-  assert.equal(typeof ucModel.draft.unconditional[1].warning, "string",
-    "resolved unconditional entries should carry a warning field");
+  assert.equal(ucModel.draft.uncounted[0].key, "stride",
+    "uncounted entries should be data-resolved like plan steps");
+  assert.equal(typeof ucModel.draft.uncounted[1].warning, "string",
+    "resolved uncounted entries should carry a warning field");
   assert.equal(ucModel.draft.steps.length, 1, "plan steps should be unchanged");
   const baseModel = buildActionBuilderModel({
     context: { profile: { actions: 3 } },
@@ -2422,7 +2422,7 @@ assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
     draft: { steps: [{ instanceId: "p1", actionKey: "stride", actionCost: 1 }] },
   });
   assert.equal(ucModel.remainingTotalActions, baseModel.remainingTotalActions,
-    "unconditional steps must not consume the action budget");
+    "uncounted steps must not consume the action budget");
 }
 
 const atomicBuilderModel = buildActionBuilderModel({
@@ -2604,33 +2604,33 @@ try {
   assert.equal(afterAllStrides.token.center.x, 15);
   assert.equal(afterAllStrides.token.plannedCenter.x, 15);
   assert.equal(afterAllStrides.battlefield.targets[0].distance, 5);
-  // With no plan steps, the first unconditional stride starts from the token's real origin
-  // and later unconditional strides chain off the prior one.
-  const unconditionalChainedDraft = {
+  // With no plan steps, the first uncounted stride starts from the token's real origin
+  // and later uncounted strides chain off the prior one.
+  const uncountedChainedDraft = {
     steps: [],
-    unconditional: [
+    uncounted: [
       { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } },
       { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 15, y: 0 } },
     ],
   };
-  const firstUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-1");
-  assert.equal(firstUnconditionalOrigin.token.center.x, 0, "first unconditional stride starts from the token's real origin when the plan has no movement");
-  const secondUnconditionalOrigin = projectContextForDraftStepOrigin(projectedDraftContext, unconditionalChainedDraft, "uc-2");
-  assert.equal(secondUnconditionalOrigin.token.center.x, 5, "second unconditional stride chains off the first unconditional stride");
-  assert.equal(secondUnconditionalOrigin.token.plannedCenter.x, 5);
-  // The unconditional sequence continues from the plan's last stride: the first unconditional
-  // stride starts where the plan's movement ended, then chains within the unconditional list.
-  const planThenUnconditionalDraft = {
+  const firstUncountedOrigin = projectContextForDraftStepOrigin(projectedDraftContext, uncountedChainedDraft, "uc-1");
+  assert.equal(firstUncountedOrigin.token.center.x, 0, "first uncounted stride starts from the token's real origin when the plan has no movement");
+  const secondUncountedOrigin = projectContextForDraftStepOrigin(projectedDraftContext, uncountedChainedDraft, "uc-2");
+  assert.equal(secondUncountedOrigin.token.center.x, 5, "second uncounted stride chains off the first uncounted stride");
+  assert.equal(secondUncountedOrigin.token.plannedCenter.x, 5);
+  // The uncounted sequence continues from the plan's last stride: the first uncounted
+  // stride starts where the plan's movement ended, then chains within the uncounted list.
+  const planThenUncountedDraft = {
     steps: [{ instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 20, y: 0 } }],
-    unconditional: [
+    uncounted: [
       { instanceId: "uc-1", actionKey: "stride", requiresDestination: true, destination: { x: 30, y: 0 } },
       { instanceId: "uc-2", actionKey: "stride", requiresDestination: true, destination: { x: 40, y: 0 } },
     ],
   };
-  const firstUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-1");
-  assert.equal(firstUcAfterPlan.token.center.x, 20, "first unconditional stride starts from the plan's last stride destination");
-  const secondUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUnconditionalDraft, "uc-2");
-  assert.equal(secondUcAfterPlan.token.center.x, 30, "second unconditional stride still chains off the first unconditional stride");
+  const firstUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUncountedDraft, "uc-1");
+  assert.equal(firstUcAfterPlan.token.center.x, 20, "first uncounted stride starts from the plan's last stride destination");
+  const secondUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUncountedDraft, "uc-2");
+  assert.equal(secondUcAfterPlan.token.center.x, 30, "second uncounted stride still chains off the first uncounted stride");
 } finally {
   if (previousProjectedDraftCanvas === undefined) {
     delete globalThis.canvas;
@@ -3230,7 +3230,7 @@ assert.ok(crawlCandidate, "Crawl should be a 1-action movement option while pron
 assert.equal(crawlCandidate.actionCost, 1);
 assert.equal(requiresDestinationForAction(crawlCandidate), true);
 // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
-// target and delegate manual movement to unconditional Strides, so they must NOT prompt
+// target and delegate manual movement to uncounted Strides, so they must NOT prompt
 // for a destination — even though they include strides.
 assert.equal(requiresDestinationForAction({
   slug: "sudden-charge",

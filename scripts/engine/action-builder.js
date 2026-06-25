@@ -445,7 +445,7 @@ export function requiresDestinationForAction(action) {
   if (!action) return false;
 
   // Move-and-strike activities (e.g. Sudden Charge) auto-plot their movement toward the
-  // target and delegate any manual movement to separately-added unconditional Strides, so
+  // target and delegate any manual movement to separately-added uncounted Strides, so
   // the activity itself must not prompt for a destination even though it contains strides.
   // Checked first so a stale requiresDestination flag baked into an older draft step (added
   // before this rule) is overridden.
@@ -620,9 +620,9 @@ function draftStepLooksLikeDestinationStep(step) {
 
 function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
-  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
-  const inUnconditional = beforeInstanceId != null
-    && unconditional.some((step) => step?.instanceId === beforeInstanceId);
+  const uncounted = Array.isArray(draft?.uncounted) ? draft.uncounted : [];
+  const inUncounted = beforeInstanceId != null
+    && uncounted.some((step) => step?.instanceId === beforeInstanceId);
 
   let destination = null;
   const scan = (list, stopAtBefore) => {
@@ -634,12 +634,12 @@ function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
     }
   };
 
-  // Unconditional steps run after the plan, so an unconditional stride starts where the
+  // Uncounted steps run after the plan, so an uncounted stride starts where the
   // plan's movement ended (scan all plan steps) and then chains off any earlier
-  // unconditional stride. Plan steps only chain within the plan.
-  if (inUnconditional) {
+  // uncounted stride. Plan steps only chain within the plan.
+  if (inUncounted) {
     scan(steps, false);
-    scan(unconditional, true);
+    scan(uncounted, true);
   } else {
     scan(steps, true);
   }
@@ -706,8 +706,8 @@ function actionUnavailableReason(action) {
 
 // `overBudget` marks actions that do not fit the turn's action economy (no actions
 // left, or a reaction already planned). The normal-plan "+" refuses these; the
-// off-budget unconditional "+" ignores it. `disabled` stays false either way so
-// the row remains visible and interactive (e.g. hover preview, unconditional add).
+// off-budget uncounted "+" ignores it. `disabled` stays false either way so
+// the row remains visible and interactive (e.g. hover preview, uncounted add).
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
   if (action?.available === false || action?.disabled === true) {
     return {
@@ -1052,7 +1052,7 @@ export function buildActionBuilderModel({
     draft: {
       ...(draft ?? {}),
       steps: draftSteps,
-      unconditional: resolveDraftSteps({ steps: draft?.unconditional ?? [] }, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions),
+      uncounted: resolveDraftSteps({ steps: draft?.uncounted ?? [] }, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions),
       warnings: draftSteps.filter((step) => step.warning).map((step) => step.warning),
     },
     autoFill: plans[0] ?? null,

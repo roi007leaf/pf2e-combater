@@ -77,7 +77,14 @@ export function sharedDraftPlanKey(contextOrPayload) {
 }
 
 export function emptyDraftPlan() {
-  return { steps: [], unconditional: [], updatedAt: Date.now() };
+  return { steps: [], uncounted: [], updatedAt: Date.now() };
+}
+
+// Off-plan entries, accepting the pre-rename `unconditional` key so drafts saved before
+// the uncounted rename keep their entries.
+function uncountedEntries(draft) {
+  const entries = draft?.uncounted ?? draft?.unconditional;
+  return Array.isArray(entries) ? entries : [];
 }
 
 export function readDraftPlan(context) {
@@ -87,7 +94,7 @@ export function readDraftPlan(context) {
   return {
     ...draft,
     steps: [...draft.steps],
-    unconditional: Array.isArray(draft.unconditional) ? [...draft.unconditional] : [],
+    uncounted: [...uncountedEntries(draft)],
     updatedAt: Number.isFinite(Number(draft.updatedAt)) ? Number(draft.updatedAt) : Date.now(),
   };
 }
@@ -97,7 +104,7 @@ export function writeDraftPlan(context, draft) {
   drafts[draftPlanKey(context)] = {
     ...draft,
     steps: Array.isArray(draft?.steps) ? [...draft.steps] : [],
-    unconditional: Array.isArray(draft?.unconditional) ? [...draft.unconditional] : [],
+    uncounted: [...uncountedEntries(draft)],
     updatedAt: Date.now(),
   };
   writeStoredDrafts(drafts);
@@ -107,7 +114,7 @@ function normalizeSharedDraft(draft) {
   return {
     ...draft,
     steps: Array.isArray(draft?.steps) ? [...draft.steps] : [],
-    unconditional: Array.isArray(draft?.unconditional) ? [...draft.unconditional] : [],
+    uncounted: [...uncountedEntries(draft)],
     updatedAt: Number.isFinite(Number(draft?.updatedAt)) ? Number(draft.updatedAt) : Date.now(),
     userId: draft?.userId ?? null,
     userName: draft?.userName ?? "",
@@ -166,12 +173,12 @@ function hasSteps(draft) {
   return Array.isArray(draft?.steps) && draft.steps.length > 0;
 }
 
-function hasUnconditional(draft) {
-  return Array.isArray(draft?.unconditional) && draft.unconditional.length > 0;
+function hasUncounted(draft) {
+  return uncountedEntries(draft).length > 0;
 }
 
 function hasAnyEntries(draft) {
-  return hasSteps(draft) || hasUnconditional(draft);
+  return hasSteps(draft) || hasUncounted(draft);
 }
 
 export function hasSharedDraftPlan(draft) {
@@ -241,8 +248,8 @@ export function moveDraftStep(context, instanceId, direction, listKey = "steps")
 // Which draft list owns this instanceId. Plan steps are the default for unknown ids so a
 // brand-new plan step still routes correctly.
 export function draftListForInstance(draft, instanceId) {
-  const unconditional = Array.isArray(draft?.unconditional) ? draft.unconditional : [];
-  return unconditional.some((step) => step?.instanceId === instanceId) ? "unconditional" : "steps";
+  const uncounted = uncountedEntries(draft);
+  return uncounted.some((step) => step?.instanceId === instanceId) ? "uncounted" : "steps";
 }
 
 export function clearDraftPlan(context) {

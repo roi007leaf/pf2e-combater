@@ -35,7 +35,7 @@
 }
 
 /* Plan column: the panel below the header is just the plan (draft + sustained +
-   unconditional), stacked and auto-height — no browser, so no dead space. */
+   uncounted), stacked and auto-height — no browser, so no dead space. */
 .pf2e-combater .combater-plan {
   display: flex;
   flex-direction: column;
@@ -44,7 +44,7 @@
   min-width: 0;
 }
 
-/* The plan/unconditional sections were full-width bands when stacked with the
+/* The plan/uncounted sections were full-width bands when stacked with the
    browser; standing alone in the plan column the inner card carries the styling. */
 .pf2e-combater .combater-plan > section {
   border-top: 0;
@@ -1301,7 +1301,7 @@
   }
 }
 
-.pf2e-combater .combater-unconditional-panel {
+.pf2e-combater .combater-uncounted-panel {
   display: grid;
   gap: 8px;
   padding: 10px 10px 8px;
@@ -1309,19 +1309,19 @@
   background: #1d2025;
 }
 
-.pf2e-combater .combater-unconditional-tools {
+.pf2e-combater .combater-uncounted-tools {
   display: flex;
   align-items: center;
   gap: 3px;
   margin-left: auto;
 }
 
-/* The second add button (lightning) drops an action into the off-plan unconditional list. */
-.pf2e-combater .combater-add-unconditional {
+/* The second add button (lightning) drops an action into the off-plan uncounted list. */
+.pf2e-combater .combater-add-uncounted {
   color: var(--combater-free);
 }
 
-.pf2e-combater .combater-add-unconditional:hover {
+.pf2e-combater .combater-add-uncounted:hover {
   color: var(--combater-ink);
   background: var(--combater-surface-raised);
 }

@@ -621,20 +621,20 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   }));
   const active = TABS.has(activeTab) ? activeTab : DEFAULT_TAB;
   const sustainedEntries = decoratedSustainedSpells(sustainedSpells, { readonly: draftReadonly });
-  const rawUnconditional = builder.draft?.unconditional ?? [];
-  const unconditionalReorderLocked = rawUnconditional.some((step) => executionStatus(step) !== "pending");
-  const rawUnconditionalSteps = rawUnconditional.map((step, index) => decorateDraftStep(step, index, {
+  const rawUncounted = builder.draft?.uncounted ?? [];
+  const uncountedReorderLocked = rawUncounted.some((step) => executionStatus(step) !== "pending");
+  const rawUncountedSteps = rawUncounted.map((step, index) => decorateDraftStep(step, index, {
     readonly: draftReadonly,
     gmExecute: gmCanRunPlayerPlan,
-    total: rawUnconditional.length,
-    reorderLocked: unconditionalReorderLocked,
+    total: rawUncounted.length,
+    reorderLocked: uncountedReorderLocked,
   }));
-  const currentUnconditionalStep = nextPendingExecutionStep({ steps: rawUnconditionalSteps });
-  const unconditionalEntries = rawUnconditionalSteps.map((step) => ({
+  const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
+  const uncountedEntries = rawUncountedSteps.map((step) => ({
     ...step,
-    isCurrentExecution: step.instanceId === currentUnconditionalStep?.instanceId,
+    isCurrentExecution: step.instanceId === currentUncountedStep?.instanceId,
   }));
-  const allExecutable = [...draftSteps, ...unconditionalEntries];
+  const allExecutable = [...draftSteps, ...uncountedEntries];
   const executedCount = allExecutable.filter((step) => step.executionStatus === "done").length;
   const canResetExecution = allExecutable.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
   return {
@@ -657,9 +657,9 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       hasEntries: sustainedEntries.length > 0,
       entries: sustainedEntries,
     },
-    unconditional: {
-      hasEntries: unconditionalEntries.length > 0,
-      entries: unconditionalEntries,
+    uncounted: {
+      hasEntries: uncountedEntries.length > 0,
+      entries: uncountedEntries,
     },
     execution: {
       hasSteps: allExecutable.length > 0,
@@ -1190,7 +1190,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _findDraftStep(instanceId) {
     return this._builder?.draft?.steps?.find((step) => step.instanceId === instanceId)
-      ?? this._builder?.unconditional?.entries?.find((step) => step.instanceId === instanceId)
+      ?? this._builder?.uncounted?.entries?.find((step) => step.instanceId === instanceId)
       ?? null;
   }
 
@@ -1209,11 +1209,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return this._spellRangeBonus(steps, steps.findIndex((step) => step.instanceId === instanceId));
   }
 
-  // Resolve a step from whichever stored list owns it (plan or unconditional).
+  // Resolve a step from whichever stored list owns it (plan or uncounted).
   _findActiveStep(instanceId) {
     const draft = this._readActiveDraftPlan();
     return (draft.steps ?? []).find((entry) => entry.instanceId === instanceId)
-      ?? (draft.unconditional ?? []).find((entry) => entry.instanceId === instanceId)
+      ?? (draft.uncounted ?? []).find((entry) => entry.instanceId === instanceId)
       ?? null;
   }
 
@@ -1274,7 +1274,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
 
-    // The normal plan respects the turn's action economy; only unconditional actions
+    // The normal plan respects the turn's action economy; only uncounted actions
     // run off-budget. Refuse a plan add that would exceed the budget.
     if (action.overBudget) {
       globalThis.ui?.notifications?.warn?.(action.disabledReason || "Not enough actions remaining.");
@@ -1291,9 +1291,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render({ force: true });
   }
 
-  // Unconditional adds run alongside the plan but off-budget. Allowed for the plan owner and
+  // Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
   // for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
-  async _addUnconditionalAction(actionKey) {
+  async _addUncountedAction(actionKey) {
     if (!this._canExecuteDraft()) return;
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
@@ -1302,7 +1302,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       actionKey: action.key,
       actionCost: action.actionCost ?? action.cost,
       requiresDestination: requiresDestinationForAction(action),
-    }, "unconditional");
+    }, "uncounted");
     clearActionPreview();
     await this.render({ force: true });
   }

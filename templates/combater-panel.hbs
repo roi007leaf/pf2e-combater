@@ -225,15 +225,15 @@
         </section>
       {{/if}}
 
-      {{#if builder.unconditional.hasEntries}}
-        <section class="combater-unconditional-panel">
-          <article class="combater-alt combater-builder-card combater-unconditional">
+      {{#if builder.uncounted.hasEntries}}
+        <section class="combater-uncounted-panel">
+          <article class="combater-alt combater-builder-card combater-uncounted">
             <div class="combater-alt-head">
-              <span class="combater-alt-title"><strong>Unconditional actions</strong></span>
+              <span class="combater-alt-title"><strong>Uncounted actions</strong></span>
             </div>
             <div class="combater-alt-details">
-              {{#each builder.unconditional.entries}}
-                <div class="combater-alt-step combater-unconditional-row status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
+              {{#each builder.uncounted.entries}}
+                <div class="combater-alt-step combater-uncounted-row status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
                   <span class="combater-step-cost {{costClass}}" data-tooltip="{{costLabel}}">
                     <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
                   </span>
@@ -252,7 +252,7 @@
                       </span>
                     {{/if}}
                   </div>
-                  <div class="combater-unconditional-tools">
+                  <div class="combater-uncounted-tools">
                     {{#if requiresTarget}}
                       <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="Choose target" aria-label="Choose target for {{name}}"><i class="fa-solid fa-crosshairs"></i></button>
                     {{/if}}

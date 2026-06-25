@@ -106,8 +106,8 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => panel._addAction(button.dataset.addAction));
     }
 
-    for (const button of element.querySelectorAll("[data-add-unconditional]")) {
-      button.addEventListener("click", () => panel._addUnconditionalAction(button.dataset.addUnconditional));
+    for (const button of element.querySelectorAll("[data-add-uncounted]")) {
+      button.addEventListener("click", () => panel._addUncountedAction(button.dataset.addUncounted));
     }
 
     for (const button of element.querySelectorAll("[data-favorite-action]")) {
