@@ -13,7 +13,7 @@
   color: var(--combater-ink);
   filter: drop-shadow(0 12px 30px rgb(0 0 0 / 48%));
   min-width: 360px;
-  max-width: min(520px, calc(100vw - 24px));
+  max-width: min(980px, calc(100vw - 24px));
 }
 
 .pf2e-combater .window-header {
@@ -32,6 +32,81 @@
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
+  /* Establish a query container so the expanded workspace can switch between one
+     and two columns based on the panel's own width (not the viewport). */
+  container-type: inline-size;
+}
+
+/* Expanded body splits into a persistent plan column (draft + sustained +
+   unconditional) and a transient action-browser column. Single column by
+   default; the container query below promotes it to two columns once the panel
+   is wide enough, and narrowing the window collapses it back. */
+.pf2e-combater .combater-workspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 0;
+}
+
+/* Each column is a flex stack. In a single column they sit one above the other
+   (plan then browser) exactly like today's vertical order; the container query
+   below promotes them to two side-by-side scrolling columns. */
+.pf2e-combater .combater-col-plan,
+.pf2e-combater .combater-col-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+@container (min-width: 640px) {
+  .pf2e-combater .combater-workspace {
+    grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 1.1fr);
+    gap: 10px;
+    padding: 0 10px 10px;
+    align-items: start;
+  }
+
+  .pf2e-combater .combater-col-plan,
+  .pf2e-combater .combater-col-browse {
+    gap: 10px;
+    max-height: min(72vh, calc(100vh - 160px));
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  /* The column is the scroll container, so its children keep their natural
+     height and the column scrolls — without this, flex-shrink crushes the cost
+     tabs (and other short rows) to a sliver. */
+  .pf2e-combater .combater-col-plan > *,
+  .pf2e-combater .combater-col-browse > * {
+    flex-shrink: 0;
+  }
+
+  /* The plan/unconditional sections were full-width bands; inside a column the
+     inner card carries the styling, so drop the band wrapper's separators. */
+  .pf2e-combater .combater-col-plan > section {
+    border-top: 0;
+    background: transparent;
+  }
+
+  .pf2e-combater .combater-col-plan .combater-plan-strip {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  /* The browse column is the scroll container; its inner body must not add a
+     second scrollbar, and the cost tabs pin to the top while the list scrolls. */
+  .pf2e-combater .combater-col-browse .combater-body {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .pf2e-combater .combater-col-browse .combater-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
 }
 
 .pf2e-combater .combater-compact {
@@ -1167,15 +1242,16 @@
   color: #d4ccbd;
 }
 
+/* Tiny viewport: let the floating panel fill the screen width. */
 @media (max-width: 430px) {
   .pf2e-combater.combater-panel {
     min-width: calc(100vw - 24px);
   }
+}
 
-  .pf2e-combater .combater-compact {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
+/* Narrow panel (single-column territory): tighten identity, tabs and rows.
+   Keyed off the panel's own width via the container, not the viewport. */
+@container (max-width: 639px) {
   .pf2e-combater .combater-identity {
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 8px;

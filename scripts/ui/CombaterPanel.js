@@ -764,7 +764,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       resizable: true,
     },
     position: {
-      width: 420,
+      width: 720,
       height: "auto",
     },
   };
