@@ -96,8 +96,15 @@ import {
 import { registerSettings, SETTINGS } from "../settings.js";
 import { STORAGE_KEYS } from "../constants.js";
 
-const panelTemplateSource = readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8");
+// The rendered UI spans two templates now: the plan-only panel and the detached browser
+// window. Concatenate both so "the UI exposes X" assertions cover either window (the panel
+// part comes first, so order-sensitive checks like "sustained renders before tabs" hold).
+const panelTemplateSource = [
+  readFileSync(new URL("../../templates/combater-panel.hbs", import.meta.url), "utf8"),
+  readFileSync(new URL("../../templates/combater-browser.hbs", import.meta.url), "utf8"),
+].join("\n");
 const panelSource = readFileSync(new URL("../ui/CombaterPanel.js", import.meta.url), "utf8");
+const browserSource = readFileSync(new URL("../ui/CombaterBrowser.js", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../main.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("./action-executor.js", import.meta.url), "utf8");
 const panelStyleSource = readFileSync(new URL("../../styles/combater.css", import.meta.url), "utf8");
@@ -262,7 +269,17 @@ assert.ok(panelSource.includes("unconditional: {"), "decorateBuilder should expo
 // --- Unconditional actions: panel handlers (Task 6) ---
 assert.ok(panelSource.includes("draftListForInstance"), "panel should resolve a step's list before persisting");
 assert.ok(panelSource.includes("_addUnconditionalAction"), "panel should have an unconditional add handler");
-assert.ok(panelSource.includes("data-add-unconditional"), "panel should wire the second (unconditional) add button");
+assert.ok(browserSource.includes("data-add-unconditional"), "browser should wire the second (unconditional) add button");
+// The action browser is a separate window that routes every mutation back through the panel.
+assert.ok(browserSource.includes("combater-browser.hbs"), "browser window should render the browser template");
+assert.ok(browserSource.includes("panel._addAction") && browserSource.includes("panel._addUnconditionalAction"),
+  "browser add buttons should route through the panel");
+assert.ok(browserSource.includes("panel._setActiveTab") && browserSource.includes("panel._setSearchQuery"),
+  "browser tab/search should drive the panel view state");
+assert.ok(panelSource.includes("browserViewContext"), "panel should expose its builder model to the browser");
+assert.ok(panelSource.includes("_toggleBrowser") && panelSource.includes("_onBrowserClosed"),
+  "panel should own the browser open/close lifecycle");
+assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
 assert.ok(panelSource.includes("chooseAreaMarker"), "panel should allow runtime AOE change");
@@ -611,7 +628,6 @@ assert.equal(
   "panel template should not render draft plan as a repeated tab body card",
 );
 for (const selectorHook of [
-  "data-open-action",
   "data-open-draft-step",
   "data-preview-step",
   "data-preview-draft-step",
@@ -619,6 +635,9 @@ for (const selectorHook of [
   assert.ok(panelTemplateSource.includes(selectorHook), `panel template should expose ${selectorHook}`);
   assert.ok(panelSource.includes(selectorHook), `panel source should bind ${selectorHook}`);
 }
+// Opening action details is wired in the browser window now.
+assert.ok(panelTemplateSource.includes("data-open-action"), "browser template should expose data-open-action");
+assert.ok(browserSource.includes("data-open-action"), "browser source should bind data-open-action");
 assert.ok(panelTemplateSource.includes("combater-debug"), "panel template should keep GM debug foldout");
 
 const executionTargetAction = {

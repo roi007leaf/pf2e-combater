@@ -42,6 +42,7 @@ import {
   writeSharedDraftPlanActorFlag,
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
+import { CombaterBrowser } from "./CombaterBrowser.js";
 import { showMovementPreview } from "./movement-preview.js";
 import { displayStepEntries } from "./display-steps.js";
 import { selectDisplayPlan } from "./plan-selection.js";
@@ -804,6 +805,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._selectedCombatant = options.combatant ?? null;
     this._onClose = typeof options.onClose === "function" ? options.onClose : null;
     this._restoredPosition = false;
+    this._browser = null;
+    this._closing = false;
     this._scrollPerformanceTimer = null;
     this._searchRenderTimer = null;
     this._searchFocusState = null;
@@ -916,6 +919,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       builder: this._builder,
       expanded: this.expanded,
       activeTab: this.activeTab,
+      browserOpen: Boolean(this._browser),
       showDebug,
       hasContext: Boolean(context),
       refreshSource: this.refreshSource,
@@ -944,28 +948,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._activateDrag(element);
     this._activateActionListScrollPerformance(element);
 
-    element.querySelector("[data-action='toggle-expanded']")
-      ?.addEventListener("click", () => this._setExpanded(!this.expanded));
+    element.querySelector("[data-action='toggle-browser']")
+      ?.addEventListener("click", () => this._toggleBrowser());
     element.querySelector("[data-action='refresh']")
       ?.addEventListener("click", () => this.refresh("button"));
 
-    for (const button of element.querySelectorAll("[data-tab]")) {
-      button.addEventListener("click", () => this._setActiveTab(button.dataset.tab));
-    }
-
-    for (const button of element.querySelectorAll("[data-add-unconditional]")) {
-      button.addEventListener("click", () => this._addUnconditionalAction(button.dataset.addUnconditional));
-    }
-
-    for (const input of element.querySelectorAll("[data-search-actions]")) {
-      input.addEventListener("input", () => this._setSearchQuery(input.value, input));
-    }
-    this._restoreSearchFocus(element);
-
-    for (const button of element.querySelectorAll("[data-add-action]")) {
-      button.addEventListener("click", () => this._addAction(button.dataset.addAction));
-    }
-
+    // Cost tabs, search, and the action add/favorite/open controls live in the detached
+    // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
     for (const button of element.querySelectorAll("[data-add-sustain-spell]")) {
       button.addEventListener("click", () => this._addSustainSpell(button.dataset.addSustainSpell));
     }
@@ -978,13 +967,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
         this._moveDraftStep(button.dataset.moveDraftStep, button.dataset.moveDirection);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-favorite-action]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._toggleFavorite(button.dataset.favoriteAction);
       });
     }
 
@@ -1026,10 +1008,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => this._removeAreaTemplate(button.dataset.removeArea));
     }
 
-    for (const button of element.querySelectorAll("[data-open-action]")) {
-      button.addEventListener("click", () => this._openBuilderAction(button.dataset.openAction));
-    }
-
     for (const button of element.querySelectorAll("[data-open-draft-step]")) {
       button.addEventListener("click", () => this._openDraftStep(button.dataset.openDraftStep));
     }
@@ -1055,9 +1033,60 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     this._restoreDestinationPickerPreview();
+
+    // Keep the detached browser window in sync: every panel render (mutation, refresh, or
+    // combat hook) recomputes _builder, so re-render the browser from it. No-op when closed.
+    this._browser?.render({ force: true });
+  }
+
+  _onFirstRender(context, options) {
+    super._onFirstRender?.(context, options);
+    // Reopen the browser window if it was open when the panel last closed.
+    if (!this._browser && readPanelState().browserOpen) this._toggleBrowser();
+  }
+
+  // Context for the browser window: it renders the panel's already-computed builder model.
+  browserViewContext() {
+    const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
+    return {
+      builder: this._builder,
+      readonly: this._builder?.readonly === true,
+      showDebug,
+      actor: this._context?.actor ?? null,
+      debug: {
+        candidates: this._candidates.map(debugAction),
+        rejected: this._rejected.map((entry, index) => ({
+          index,
+          action: debugAction(entry?.action, index),
+          reason: entry?.reason ?? "",
+        })),
+        detected: this._detected.map(debugAction),
+      },
+    };
+  }
+
+  _toggleBrowser() {
+    if (this._browser) {
+      this._browser.close();
+      return;
+    }
+    this._browser = new CombaterBrowser(this);
+    writePanelState({ browserOpen: true });
+    // Panel re-render updates the toggle's active state and cascades to show/render the browser.
+    this.render({ force: true });
+  }
+
+  _onBrowserClosed(browser) {
+    if (browser && this._browser && this._browser !== browser) return;
+    this._browser = null;
+    if (this._closing) return;
+    writePanelState({ browserOpen: false });
+    this.render({ force: true });
   }
 
   async close(options) {
+    this._closing = true;
+    this._browser?.close();
     this._cancelDestinationPicker();
     this._clearActionListScrollPerformance();
     this._clearSearchRenderTimer();

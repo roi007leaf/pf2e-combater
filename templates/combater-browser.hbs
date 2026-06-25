@@ -1,0 +1,115 @@
+<div class="combater-browser-shell">
+  {{#if builder}}
+    <nav class="combater-tabs" aria-label="PF2e Combater action costs">
+      {{#each builder.tabsList}}
+        <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">{{label}}</button>
+      {{/each}}
+    </nav>
+
+    <section class="combater-body">
+      <div class="combater-plan-list">
+        {{#each builder.tabsList}}
+          {{#if active}}
+            <div class="combater-search">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" data-search-actions value="{{searchQuery}}" placeholder="Search {{label}}" aria-label="Search {{label}} actions" autocomplete="off">
+            </div>
+            {{#each sections}}
+              <article class="combater-alt combater-builder-card combater-action-section">
+                <div class="combater-alt-head">
+                  <span class="combater-alt-title">
+                    <strong>{{label}}</strong>
+                    {{#if countLabel}}<span class="combater-section-count">{{countLabel}}</span>{{/if}}
+                  </span>
+                </div>
+                <div class="combater-alt-details">
+                  {{#each actions}}
+                    <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}}">
+                      {{#unless readonly}}
+                      <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" data-tooltip="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
+                        <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
+                      </button>
+                      {{/unless}}
+                      <span class="combater-step-cost {{costClass}}" data-tooltip="{{costLabel}}">
+                        <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
+                      </span>
+                      <div class="combater-alt-step-body">
+                        <h4>
+                          <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="Open action details">
+                            {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
+                            <span>{{name}}</span>
+                          </button>
+                        </h4>
+                        {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
+                        {{#if disabledReason}}<span class="combater-target is-warning" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
+                        {{#if hasDetailChips}}
+                          <div class="combater-detail-chips" aria-label="Action details">
+                            {{#each detailChips}}
+                              <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                            {{/each}}
+                          </div>
+                        {{/if}}
+                        <p>{{reason}}</p>
+                      </div>
+                      {{#unless readonly}}
+                      <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="Add {{name}} to plan" {{#if overBudget}}disabled{{/if}}>
+                        <i class="fa-solid fa-plus"></i>
+                      </button>
+                      <button type="button" class="combater-run combater-add-unconditional" data-add-unconditional="{{key}}" data-tooltip="Add to unconditional actions" aria-label="Add {{name}} to unconditional actions">
+                        <i class="fa-solid fa-bolt"></i>
+                      </button>
+                      {{/unless}}
+                    </div>
+                  {{else}}
+                    <p class="combater-empty">No actions in this section.</p>
+                  {{/each}}
+                </div>
+              </article>
+            {{/each}}
+          {{/if}}
+        {{/each}}
+
+        {{#if showDebug}}
+          <div class="combater-debug">
+            <details>
+              <summary>GM debug: Candidates ({{debug.candidates.length}})</summary>
+              {{#each debug.candidates}}
+                <div class="debug-row">
+                  <span>{{name}}</span>
+                  <code data-tooltip="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                  <span>{{costLabel}}</span>
+                  <span>{{#if skillCheckLabel}}{{skillCheckLabel}}{{else}}{{#if targetLabel}}{{targetLabel}}{{else}}{{score}}{{/if}}{{/if}}</span>
+                </div>
+              {{/each}}
+            </details>
+            <details>
+              <summary>Rejected ({{debug.rejected.length}})</summary>
+              {{#each debug.rejected}}
+                <div class="debug-row">
+                  <span>{{action.name}}</span>
+                  <code data-tooltip="{{action.source}}">{{action.source}}</code>
+                  <span>{{reason}}</span>
+                </div>
+              {{/each}}
+            </details>
+            <details>
+              <summary>Detected ({{debug.detected.length}})</summary>
+              {{#each debug.detected}}
+                <div class="debug-row">
+                  <span>{{name}}</span>
+                  <code data-tooltip="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
+                  <span>{{costLabel}}</span>
+                  <span>{{#if available}}available{{else}}blocked{{/if}}</span>
+                </div>
+              {{/each}}
+            </details>
+          </div>
+        {{/if}}
+      </div>
+    </section>
+  {{else}}
+    <section class="combater-body">
+      <p class="combater-empty">No combat context available.</p>
+    </section>
+  {{/if}}
+</div>

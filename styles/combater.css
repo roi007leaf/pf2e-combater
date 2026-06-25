@@ -13,7 +13,7 @@
   color: var(--combater-ink);
   filter: drop-shadow(0 12px 30px rgb(0 0 0 / 48%));
   min-width: 360px;
-  max-width: min(980px, calc(100vw - 24px));
+  max-width: min(560px, calc(100vw - 24px));
 }
 
 .pf2e-combater .window-header {
@@ -32,105 +32,47 @@
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
-  /* Establish a query container so the expanded workspace can switch between one
-     and two columns based on the panel's own width (not the viewport). */
-  container-type: inline-size;
 }
 
-/* Expanded body splits into a persistent plan column (draft + sustained +
-   unconditional) and a transient action-browser column. Single column by
-   default; the container query below promotes it to two columns once the panel
-   is wide enough, and narrowing the window collapses it back. */
-.pf2e-combater .combater-workspace {
-  display: grid;
-  grid-template-columns: 1fr;
-  min-width: 0;
-}
-
-/* Each column is a flex stack. In a single column they sit one above the other
-   (plan then browser) exactly like today's vertical order; the container query
-   below promotes them to two side-by-side scrolling columns. */
-.pf2e-combater .combater-col-plan,
-.pf2e-combater .combater-col-browse {
+/* Plan column: the panel below the header is just the plan (draft + sustained +
+   unconditional), stacked and auto-height — no browser, so no dead space. */
+.pf2e-combater .combater-plan {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 0 10px 10px;
   min-width: 0;
 }
 
-/* When expanded, the shell fills the window so the workspace columns scroll
-   within the available height. Without this, columns capped at a fixed vh are
-   clipped (not scrolled) whenever the window is shorter than that cap — e.g. a
-   resized player window, or an auto-height window clamped at Foundry's
-   max-height. The header stays fixed; the workspace takes the rest. */
-.pf2e-combater .combater-shell.is-expanded {
+/* The plan/unconditional sections were full-width bands when stacked with the
+   browser; standing alone in the plan column the inner card carries the styling. */
+.pf2e-combater .combater-plan > section {
+  border-top: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* The action browser is its own window; its shell fills the window and the
+   action list scrolls under the pinned cost tabs. */
+.pf2e-combater.combater-browser .combater-browser-shell {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-bg);
 }
 
-.pf2e-combater .combater-shell.is-expanded > .combater-compact {
+.pf2e-combater.combater-browser .combater-tabs {
   flex: 0 0 auto;
 }
 
-.pf2e-combater .combater-shell.is-expanded > .combater-workspace {
+.pf2e-combater.combater-browser .combater-body {
+  flex: 1 1 auto;
   min-height: 0;
-}
-
-@container (min-width: 640px) {
-  .pf2e-combater .combater-workspace {
-    grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 1.1fr);
-    gap: 10px;
-    padding: 0 10px 10px;
-    flex: 1 1 auto;
-    min-height: 0;
-    align-items: stretch;
-  }
-
-  .pf2e-combater .combater-col-plan,
-  .pf2e-combater .combater-col-browse {
-    gap: 10px;
-    min-height: 0;
-    /* Generous viewport fallback; the flex-fill above is the real bound. Only
-       binds if the window somehow exceeds the viewport (no Foundry clamp). */
-    max-height: calc(100vh - 90px);
-    overflow-y: auto;
-    scrollbar-width: thin;
-  }
-
-  /* The column is the scroll container, so its children keep their natural
-     height and the column scrolls — without this, flex-shrink crushes the cost
-     tabs (and other short rows) to a sliver. */
-  .pf2e-combater .combater-col-plan > *,
-  .pf2e-combater .combater-col-browse > * {
-    flex-shrink: 0;
-  }
-
-  /* The plan/unconditional sections were full-width bands; inside a column the
-     inner card carries the styling, so drop the band wrapper's separators. */
-  .pf2e-combater .combater-col-plan > section {
-    border-top: 0;
-    background: transparent;
-  }
-
-  .pf2e-combater .combater-col-plan .combater-plan-strip {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  /* The browse column is the scroll container; its inner body must not add a
-     second scrollbar, and the cost tabs pin to the top while the list scrolls. */
-  .pf2e-combater .combater-col-browse .combater-body {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .pf2e-combater .combater-col-browse .combater-tabs {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
+  max-height: none;
 }
 
 .pf2e-combater .combater-compact {
@@ -1282,9 +1224,8 @@
   }
 }
 
-/* Narrow panel (single-column territory): tighten identity, tabs and rows.
-   Keyed off the panel's own width via the container, not the viewport. */
-@container (max-width: 639px) {
+/* Narrow viewport: tighten identity, tabs and rows. */
+@media (max-width: 480px) {
   .pf2e-combater .combater-identity {
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 8px;
