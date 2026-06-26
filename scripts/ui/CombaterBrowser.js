@@ -93,6 +93,15 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const panel = this._panel;
     if (!panel) return;
 
+    // Every mutation (including each search keystroke) re-renders this window, which rebuilds the
+    // DOM and resets the action list to the top. Restore the last scroll offset and keep tracking
+    // it so the list stays put while the user types or adds actions.
+    const body = element.querySelector(".combater-body");
+    if (body) {
+      if (Number.isFinite(this._scrollTop)) body.scrollTop = this._scrollTop;
+      body.addEventListener("scroll", () => { this._scrollTop = body.scrollTop; }, { passive: true });
+    }
+
     for (const button of element.querySelectorAll("[data-tab]")) {
       button.addEventListener("click", () => panel._setActiveTab(button.dataset.tab));
     }

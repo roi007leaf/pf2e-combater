@@ -65,6 +65,17 @@
   background: var(--combater-bg);
 }
 
+.pf2e-combater.combater-browser .combater-browser-header {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--combater-bg);
+}
+
+.pf2e-combater.combater-browser .combater-browser-header .combater-search {
+  margin: 8px 10px;
+}
+
 .pf2e-combater.combater-browser .combater-tabs {
   flex: 0 0 auto;
 }
@@ -185,28 +196,6 @@
   font-weight: 700;
   line-height: 1.35;
   white-space: nowrap;
-}
-
-.pf2e-combater .combater-confidence {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 2px 7px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.pf2e-combater .confidence-high {
-  background: #2f7a4d;
-}
-
-.pf2e-combater .confidence-medium {
-  background: #9a6c1f;
-}
-
-.pf2e-combater .confidence-low {
-  background: #8f4747;
 }
 
 .pf2e-combater .combater-sequence {
@@ -797,6 +786,10 @@
 }
 
 .pf2e-combater .combater-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex: 1 1 72px;
   min-width: 0;
   border: 0;
@@ -808,6 +801,13 @@
   font-weight: 700;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.pf2e-combater .combater-tabs button .combater-tab-glyph {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
 }
 
 .pf2e-combater .combater-tabs button.active {
@@ -1058,6 +1058,9 @@
 }
 
 .pf2e-combater .combater-action-row {
+  /* The cost glyph now lives in the cost tab header, so the row drops that column:
+     favorite, body, add, add-uncounted all sit on one line. */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   contain: layout paint style;
   content-visibility: auto;
   contain-intrinsic-size: 74px;

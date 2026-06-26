@@ -1,7 +1,7 @@
 <div class="combater-shell">
   {{#*inline "draftSequence"}}
   <div class="combater-plan-strip">
-    <div class="combater-sequence" aria-label="{{headerMode}} action sequence">
+    <div class="combater-sequence" aria-label="Planned action sequence">
       {{#each headerSteps}}
         {{#if instanceId}}
           <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
@@ -129,7 +129,6 @@
                   </span>
                 {{/if}}
               {{/if}}
-              <span class="combater-confidence confidence-{{headerConfidenceClass}}">{{headerMode}}</span>
             </div>
           </div>
         </div>
@@ -140,11 +139,6 @@
         <div class="combater-headline">
           <div class="combater-name-row">
             <h2>No active combatant</h2>
-          </div>
-          <div class="combater-meta-row">
-            <div class="combater-header-badges">
-              <span class="combater-confidence confidence-low">Low</span>
-            </div>
           </div>
           <p class="combater-reason">Start combat or select readable active actor.</p>
         </div>

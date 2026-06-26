@@ -1,19 +1,24 @@
 <div class="combater-browser-shell">
   {{#if builder}}
-    <nav class="combater-tabs" aria-label="PF2e Combater action costs">
-      {{#each builder.tabsList}}
-        <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">{{label}}</button>
-      {{/each}}
-    </nav>
+    <div class="combater-browser-header">
+      <nav class="combater-tabs" aria-label="PF2e Combater action costs">
+        {{#each builder.tabsList}}
+          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">
+            <img class="combater-tab-glyph" src="{{glyphIcon}}" alt="">
+            <span>{{label}}</span>
+          </button>
+        {{/each}}
+      </nav>
+      <div class="combater-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="Search {{builder.activeTabLabel}}" aria-label="Search {{builder.activeTabLabel}} actions" autocomplete="off">
+      </div>
+    </div>
 
     <section class="combater-body">
       <div class="combater-plan-list">
         {{#each builder.tabsList}}
           {{#if active}}
-            <div class="combater-search">
-              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-              <input type="search" data-search-actions value="{{searchQuery}}" placeholder="Search {{label}}" aria-label="Search {{label}} actions" autocomplete="off">
-            </div>
             {{#each sections}}
               <article class="combater-alt combater-builder-card combater-action-section">
                 <div class="combater-alt-head">
@@ -30,9 +35,6 @@
                         <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
                       </button>
                       {{/unless}}
-                      <span class="combater-step-cost {{costClass}}" data-tooltip="{{costLabel}}">
-                        <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
-                      </span>
                       <div class="combater-alt-step-body">
                         <h4>
                           <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="Open action details">

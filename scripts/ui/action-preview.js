@@ -279,11 +279,15 @@ export function clearActionPreview() {
   graphics.destroy?.({ children: true });
 }
 
-export function showActionPreview(context, step) {
+export function showActionPreview(context, step, { skipMovement = false } = {}) {
   clearActionPreview();
 
-  const movementPreview = showMovementPreview(context, step);
-  if (movementPreview?.enabled) return { type: "movement", preview: movementPreview };
+  // An executed step's movement is already spent, so the stride path is stale noise on hover.
+  // Callers pass skipMovement for done steps; other overlays (target, area, range) still show.
+  if (!skipMovement) {
+    const movementPreview = showMovementPreview(context, step);
+    if (movementPreview?.enabled) return { type: "movement", preview: movementPreview };
+  }
 
   const PIXI = globalThis.PIXI;
   if (!PIXI?.Graphics) return null;

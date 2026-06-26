@@ -1746,7 +1746,7 @@ export function scoreCandidate(context, action) {
     reasons.push("Can move through enemy and set up off-guard pressure.");
   }
 
-  if (["balance", "climb", "swim", "high-jump", "long-jump"].includes(action.slug)) {
+  if (["balance", "climb", "swim"].includes(action.slug)) {
     score += 6;
     reasons.push("Terrain makes this movement action relevant.");
   }

@@ -270,6 +270,19 @@ function stepTargetLabel(name, { requiresTarget, requiresDestination }) {
   return "";
 }
 
+// A generic Stride carries no target of its own, so the movement preview falls back to the first
+// listed enemy. When the plan continues into an attack, the stride should instead close on the
+// enemy that attack will hit. Borrow the next targeted step's resolved target so the recommended
+// destination matches the strike (e.g. stride toward Alon when the plan is Stride -> Strike Alon).
+function strideStepTowardPlannedTarget(step, atomicSteps, index) {
+  if (step?.preferredTarget || step?.suggestedTarget) return step;
+  for (let next = index + 1; next < atomicSteps.length; next += 1) {
+    const selection = plannedTargetSelection(atomicSteps[next]);
+    if (selection.targets.length) return { ...step, preferredTarget: selection.targets[0] };
+  }
+  return step;
+}
+
 function normalizedSlug(value) {
   return String(value ?? "")
     .toLowerCase()
@@ -531,6 +544,7 @@ function decorateBuilderTab(tab, activeTab, { readonly = false, searchQuery = ""
   return {
     ...tab,
     active: tab.id === activeTab,
+    glyphIcon: actionGlyphIcon(tab.cost),
     searchQuery: String(searchQuery ?? ""),
     sections: sections.map((section) => ({
       ...section,
@@ -539,20 +553,13 @@ function decorateBuilderTab(tab, activeTab, { readonly = false, searchQuery = ""
   };
 }
 
+// Search matches the action's title only. Including the prose fields (reason, disabledReason,
+// target/cost labels) meant a query like "reach" matched "Force Open" via "...in reach.",
+// which reads as nonsense to the user. Slug is the title normalized, so it stays.
 function actionSearchHaystack(action) {
   return [
     action?.name,
     action?.slug,
-    action?.source,
-    action?.role,
-    action?.costLabel,
-    action?.targetLabel,
-    action?.disabledReason,
-    action?.reason,
-    action?.spellResource?.label,
-    action?.spellResource?.tooltip,
-    action?.spellcastingEntryLabel,
-    action?.rank !== undefined ? `rank ${action.rank}` : "",
   ].map((part) => String(part ?? "").toLowerCase()).join(" ");
 }
 
@@ -644,6 +651,7 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery })),
     activeTab: active,
     activeTabLabel: ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action",
+    searchQuery: String(searchQuery ?? ""),
     draft: {
       ...(builder.draft ?? {}),
       steps: draftSteps,
@@ -909,15 +917,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
     const autoFill = decoratePlan(this._builder?.autoFill ?? this._plan, 0);
     const draftSteps = this._builder?.draft?.steps ?? [];
-    const headerMode = "Draft";
 
     return {
       actor: context?.actor ?? null,
       token: context?.token ?? null,
       plan: autoFill,
       headerSteps: draftSteps,
-      headerMode,
-      headerConfidenceClass: draftSteps.length ? "medium" : "low",
       headerSummary: "",
       builder: this._builder,
       expanded: this.expanded,
@@ -1392,7 +1397,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // hand.) The projected origin advances so a chained stride starts where the prior one lands.
     const useAggroTargets = canUseFullAggro(this._context);
     let movementContext = this._context;
-    const steps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step)).map((step) => {
+    const atomicSteps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step));
+    const steps = atomicSteps.map((step, index) => {
       let draftStep = {
         instanceId: draftStepId(),
         actionKey: this._actionKeyForStep(step),
@@ -1413,7 +1419,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       }
 
       if (draftStep.requiresDestination && !draftStep.destination) {
-        const movement = recommendedMovementForStep(movementContext, step);
+        const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
+        const movement = recommendedMovementForStep(movementContext, movementStep);
         if (movement?.destination) {
           draftStep = {
             ...draftStep,
@@ -1769,6 +1776,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const step = this._findDraftStep(element.dataset.previewDraftStep);
     if (!step?.action) return;
     const reachBonus = this._draftRangeBonus(step.instanceId);
+    const isDone = step.execution?.status === "done";
     showActionPreview(this._contextForDraftStep(step.instanceId), {
       ...step.action,
       destination: step.destination,
@@ -1777,7 +1785,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...explicitTargetFields(step, step.action),
       requiresDestination: requiresDestinationForAction(step.action),
       ...(reachBonus > 0 ? { rangeBonusFeet: reachBonus } : {}),
-    });
+    }, { skipMovement: isDone });
   }
 
   _restorePosition() {

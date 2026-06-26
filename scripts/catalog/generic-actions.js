@@ -140,7 +140,6 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 2,
     role: "mobility",
     skill: "athletics",
-    requiresTerrain: "jump",
     executable: "pf2e-action",
   },
   {
@@ -150,7 +149,6 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 2,
     role: "mobility",
     skill: "athletics",
-    requiresTerrain: "jump",
     executable: "pf2e-action",
   },
   {

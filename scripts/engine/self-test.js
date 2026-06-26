@@ -148,6 +148,16 @@ assert.ok(
   "GM panel should follow the selected token via the controlToken hook",
 );
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
+// Ending a turn must reset BOTH the acting player's local plan and the GM-visible shared plan.
+assert.ok(
+  /function clearEndedTurnDraft\([\s\S]*?clearDraftPlan\(context\)[\s\S]*?clearSharedDraftPlan\(context\)/.test(mainSource),
+  "ending a turn should clear both the local (player) and shared (GM-visible) draft plans",
+);
+// The clear runs before the auto-open early-return, so a closed panel still resets on turn end.
+assert.ok(
+  /Hooks\.on\("updateCombat"[\s\S]*?clearEndedTurnDraft\(combat\);[\s\S]*?if \(!setting\(SETTINGS\.autoOpen\) && !activePanel\) return;/.test(mainSource),
+  "turn-end draft clear should run regardless of whether a panel is open",
+);
 assert.ok(
   /game\.user\?\.isGM === true && activePanel[\s\S]*?refresh\("combat-turn"\)/.test(mainSource),
   "on turn change the GM panel should refresh in place rather than jump to the active combatant",
@@ -159,6 +169,13 @@ assert.equal(panelTemplateSource.includes("{{#if isSearch}}"), false, "search in
 assert.ok(panelTemplateSource.includes("data-search-actions"), "each action-cost tab should expose an action-search input");
 assert.equal(panelSource.includes("SEARCH_TAB"), false, "panel source should not define a standalone Search tab");
 assert.ok(panelSource.includes("filterBuilderTabActions"), "panel source should filter actions inside each active tab");
+// Search matches the title only — not row prose. "reach" must not match "...in reach." copy.
+const searchHaystackBody = panelSource.match(/function actionSearchHaystack\([\s\S]*?\n}/)?.[0] ?? "";
+assert.ok(searchHaystackBody.includes("action?.name"), "action search should match the action title");
+for (const prose of ["disabledReason", "reason", "targetLabel", "costLabel"]) {
+  assert.equal(searchHaystackBody.includes(prose), false,
+    `action search should not match row prose (${prose}), only the title`);
+}
 assert.ok(panelSource.includes("groupActionsByBuilderCategory"), "panel should group tab actions into combat categories");
 assert.ok(panelSource.includes("actionDetailChips"), "panel should decorate spell/action detail chips");
 assert.ok(panelTemplateSource.includes("combater-detail-chips"), "panel template should render action detail chips");
@@ -281,6 +298,26 @@ assert.ok(browserSource.includes("panel._setActiveTab") && browserSource.include
 assert.ok(panelSource.includes("browserViewContext"), "panel should expose its builder model to the browser");
 assert.ok(panelSource.includes("_toggleBrowser") && panelSource.includes("_onBrowserClosed"),
   "panel should own the browser open/close lifecycle");
+// Tabs + search live in a pinned header so they stay visible while the action list scrolls.
+const browserTemplateSource = readFileSync(new URL("../../templates/combater-browser.hbs", import.meta.url), "utf8");
+assert.ok(
+  browserTemplateSource.indexOf("combater-browser-header") < browserTemplateSource.indexOf("combater-body"),
+  "tabs and search should sit in a header above the scrolling action body",
+);
+assert.ok(
+  browserTemplateSource.indexOf("data-search-actions") < browserTemplateSource.indexOf("combater-body"),
+  "the search input should live in the pinned header, not inside the scroll body",
+);
+assert.ok(panelStyleSource.includes(".combater-browser-header"), "the browser header should be styled as a pinned region");
+// Re-renders (every search keystroke) rebuild the DOM; the list must not jump back to the top.
+assert.ok(browserSource.includes("body.scrollTop = this._scrollTop"),
+  "browser should restore the action list scroll offset across re-renders");
+// Each cost tab already groups by action cost, so the glyph belongs on the tab header, not on
+// every row. The tab carries the glyph; the action rows no longer repeat it.
+assert.ok(browserTemplateSource.includes("combater-tab-glyph"),
+  "the cost tab header should show the action-cost glyph");
+assert.equal(browserTemplateSource.includes("combater-step-cost"), false,
+  "browser action rows should not repeat the per-row cost glyph");
 assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
@@ -347,7 +384,9 @@ assert.equal(
   false,
   "selected step count should not render as visible header summary over the plan rows",
 );
-assert.ok(panelTemplateSource.includes("headerConfidenceClass"), "panel template should style header from draft state");
+assert.equal(panelTemplateSource.includes("combater-confidence"), false,
+  "the vestigial static \"Draft\" mode badge should be gone from the header");
+assert.equal(panelSource.includes("headerMode"), false, "headerMode is removed; no frozen mode label");
 assert.ok(panelTemplateSource.includes("No selected actions"), "panel template should start with empty draft copy");
 assert.equal(
   panelSource.includes(": \"No selected actions.\""),
@@ -2288,6 +2327,40 @@ try {
     "GM should clear stale local player plan when the actor flag mirrors an empty player draft",
   );
 
+  // End-of-turn reset: clearEndedTurnDraft() runs clearDraftPlan (the acting player's local plan)
+  // and clearSharedDraftPlan (the GM-visible shared store + actor flag). After a turn ends neither
+  // role should still see the ended combatant's plan.
+  const endTurnContext = {
+    combat: { id: "combat-1" },
+    combatant: { id: "combatant-1", actor: actorFlagDocument },
+    actor: { uuid: "Actor.actor-1", document: actorFlagDocument },
+  };
+  localStore.set(STORAGE_KEYS.sharedDraftPlans, "{}");
+  writeDraftPlan(endTurnContext, { steps: [{ instanceId: "local-end", actionKey: "stride", actionCost: 1 }] });
+  writeSharedDraftPlan(endTurnContext, {
+    steps: [{ instanceId: "shared-end", actionKey: "strike", actionCost: 1 }],
+    userId: "user-1",
+    userName: "Player One",
+  });
+  await writeSharedDraftPlanActorFlag(endTurnContext, {
+    steps: [{ instanceId: "flag-end", actionKey: "haste", actionCost: 2 }],
+    userId: "user-1",
+    userName: "Player One",
+    updatedAt: 700,
+  });
+  assert.equal(readDraftPlan(endTurnContext).steps.length, 1, "precondition: the player has a local plan before the turn ends");
+  assert.equal(readSharedDraftPlan(endTurnContext).steps.length, 1, "precondition: the GM sees a shared plan before the turn ends");
+
+  draftPlanState.clearDraftPlan(endTurnContext);
+  await draftPlanState.clearSharedDraftPlan(endTurnContext);
+
+  assert.deepEqual(readDraftPlan(endTurnContext).steps, [], "ending a turn resets the player's local plan");
+  assert.deepEqual(
+    readSharedDraftPlan(endTurnContext).steps,
+    [],
+    "ending a turn resets the GM-visible shared plan (socket store + actor flag)",
+  );
+
   assert.equal(typeof draftPlanState.shouldDisplaySharedDraft, "function");
   assert.equal(
     draftPlanState.shouldDisplaySharedDraft(
@@ -3407,6 +3480,27 @@ assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
 assert.ok(panelSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
 assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelSource),
   "auto-fill should store the recommended destination and waypoints for GM NPCs");
+assert.ok(/_autoFillDraft\([\s\S]*strideStepTowardPlannedTarget\(step, atomicSteps, index\)/.test(panelSource),
+  "auto-fill should aim a generic stride at the plan's upcoming attack target");
+
+// A generic stride preceding a strike must close on the strike's target, not the first listed
+// enemy. recommendedMovementForStep honours a preferredTarget that matches a combat target, so
+// borrowing the next attack step's target makes the stride head the right way.
+const strideTowardPlannedTarget = recommendedMovementForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {
+    targets: [
+      { id: "bystander", name: "Bystander", token: { id: "bystander", center: { x: -100, y: 0 } }, distance: 100 },
+      { id: "alon", name: "Alon", token: { id: "alon", center: { x: 100, y: 0 } }, distance: 100 },
+    ],
+  },
+}, {
+  slug: "stride",
+  preferredTarget: { id: "alon", name: "Alon", token: { id: "alon" } },
+});
+assert.ok(strideTowardPlannedTarget && strideTowardPlannedTarget.destination.x > 0,
+  "a stride borrows the strike's target and heads toward it, not the first listed enemy");
 
 const npcAggroControl = scoreCandidate(npcAggroContext, {
   id: "slow",
@@ -6394,6 +6488,19 @@ try {
     call.type === "drawCircle" && call.x === 300 && call.y === 250 && call.radius === 200),
     "area hover preview should draw the planned template footprint");
 
+  // An executed step's movement is already spent: with skipMovement the stride overlay is
+  // suppressed and a bare stride (no target/area) draws nothing on hover.
+  actionPreviewCalls.length = 0;
+  const doneStridePreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Stride",
+    slug: "stride",
+    requiresDestination: true,
+  }, { skipMovement: true });
+  assert.equal(doneStridePreview, null, "skipMovement should suppress the stride overlay for an executed step");
+  assert.equal(actionPreviewLayer.children.length, 0, "a skipped-movement done step draws nothing on hover");
+
   clearActionPreview();
   assert.equal(actionPreviewLayer.children.length, 0);
 } finally {
@@ -6401,6 +6508,8 @@ try {
   globalThis.canvas = previousActionPreviewCanvas;
   globalThis.PIXI = previousActionPreviewPixi;
 }
+assert.ok(/_showDraftActionPreview\([\s\S]*execution\?\.status === "done"[\s\S]*skipMovement: isDone/.test(panelSource),
+  "hovering an executed draft step should skip its movement overlay");
 
 const previousPreviewVisibilityGame = globalThis.game;
 const previousPreviewVisibilityCanvas = globalThis.canvas;
