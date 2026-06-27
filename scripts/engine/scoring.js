@@ -1647,7 +1647,11 @@ export function scoreCandidate(context, action) {
     const distance = Number(target.distance ?? Infinity);
     const reach = profileReach(profile);
     if (distance <= reach) {
-      score -= 26;
+      // A reposition that closes no distance has no tactical value, so it must score below the
+      // unused-action penalty — otherwise the planner pads a spare action with a pointless
+      // "Stride to the same square". A -26 nudge off the +42 generic base still left it at +16
+      // and kept getting padded; force it negative. (Still selectable manually in the browser.)
+      score = -10;
       reasons.push("Target already in reach; repositioning is low priority.");
     } else {
       score += action.slug === "step" ? 4 : 8;

@@ -258,6 +258,69 @@ export function clearDraftPlan(context) {
   writeStoredDrafts(drafts);
 }
 
+function combatantList(combat) {
+  const combatants = combat?.combatants;
+  if (!combatants) return [];
+  if (Array.isArray(combatants)) return combatants;
+  if (Array.isArray(combatants.contents)) return combatants.contents;
+  if (typeof combatants.values === "function") return Array.from(combatants.values());
+  if (typeof combatants[Symbol.iterator] === "function") return Array.from(combatants);
+  return [];
+}
+
+function actorSharedDrafts(actor) {
+  const value = actor?.getFlag?.(MODULE_ID, SHARED_DRAFTS_FLAG)
+    ?? actor?.flags?.[MODULE_ID]?.[SHARED_DRAFTS_FLAG];
+  return isPlainObject(value) ? value : {};
+}
+
+function deleteKeysBySegment(store, segmentIndex, value) {
+  let changed = false;
+  for (const key of Object.keys(store)) {
+    if (key.split("|")[segmentIndex] === value) {
+      delete store[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function combatActorsByIdentity(combat) {
+  const actors = new Map();
+  for (const combatant of combatantList(combat)) {
+    const actor = combatant?.actor ?? combatant?.document?.actor ?? null;
+    const identity = actor?.uuid ?? actor?.id;
+    if (actor && identity && !actors.has(identity)) actors.set(identity, actor);
+  }
+  return [...actors.values()];
+}
+
+// Remove every draft tied to a combat — the local per-user store, the shared socket store, and
+// each combatant's actor-flag mirror — so nothing lingers after the combat is deleted. Local keys
+// are userId|combatId|combatantId; shared/flag keys are combatId|combatantId, so both are matched
+// on the combatId segment. Actors are deduped so a setFlag race can't clobber sibling combatants.
+export async function clearCombatDraftPlans(combat) {
+  const combatId = combat?.id;
+  if (!combatId) return;
+
+  const locals = readStoredDrafts();
+  if (deleteKeysBySegment(locals, 1, combatId)) writeStoredDrafts(locals);
+
+  const shared = readStoredSharedDrafts();
+  if (deleteKeysBySegment(shared, 0, combatId)) writeStoredSharedDrafts(shared);
+
+  await Promise.all(combatActorsByIdentity(combat).map(async (actor) => {
+    if (typeof actor?.setFlag !== "function") return;
+    const next = { ...actorSharedDrafts(actor) };
+    if (!deleteKeysBySegment(next, 0, combatId)) return;
+    try {
+      await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, next);
+    } catch (_error) {
+      // Flag write may be denied for non-owners; the local and shared stores are already cleared.
+    }
+  }));
+}
+
 // Clear a shared (player→GM) plan from both stores so an ended turn's plan does not linger.
 export async function clearSharedDraftPlan(context) {
   const key = sharedDraftPlanKey(context);

@@ -11,7 +11,10 @@
   --combater-three: #e06f67;
   --combater-focus: #79aee8;
   color: var(--combater-ink);
-  filter: drop-shadow(0 12px 30px rgb(0 0 0 / 48%));
+  /* Depth shadow lives on the shells as a box-shadow (see below), NOT a filter on the window root.
+     A `filter` here forced the browser to re-composite the whole filtered layer over Foundry's
+     continuously-rendering canvas every frame, which lagged the canvas the whole time the window
+     was open. box-shadow gives the same look without the per-frame filter pass. */
   min-width: 360px;
   max-width: min(560px, calc(100vw - 24px));
 }
@@ -32,6 +35,7 @@
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
 }
 
 /* Plan column: the panel below the header is just the plan (draft + sustained +
@@ -63,6 +67,7 @@
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
 }
 
 .pf2e-combater.combater-browser .combater-browser-header {

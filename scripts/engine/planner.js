@@ -238,6 +238,31 @@ function includesStand(step) {
     || includes.map((entry) => String(entry ?? "").toLowerCase()).includes("stand");
 }
 
+// Stride and Step are illegal while prone (only Crawl or Stand-then-move). Crawl is fine.
+const PRONE_INCOMPATIBLE_MOVES = new Set(["stride", "step"]);
+
+function appliesProne(step) {
+  // Match a slug that CONTAINS "drop-prone" — the live candidate's slug is the action id
+  // ("generic-drop-prone"), not the bare "drop-prone", so an exact check missed it.
+  const slug = String(step?.slug ?? "").toLowerCase();
+  if (slug.includes("drop-prone") || step?.executable === "drop-prone") return true;
+  const profile = step?.activityProfile ?? {};
+  const applied = [profile.appliesCondition, ...(Array.isArray(profile.appliesConditions) ? profile.appliesConditions : [])];
+  return applied.includes("prone");
+}
+
+// Does this step Stride/Step WITHOUT first Standing? Such movement is illegal while prone. Catches
+// bare Stride/Step AND move-and-strike composites (e.g. "stride-away-strike-dart", strideCount > 0)
+// whose slug isn't a bare move slug. Stand-then-move (includesStand) and Crawl stay legal.
+function stridesWithoutStanding(step) {
+  if (includesStand(step)) return false;
+  const profile = step?.activityProfile ?? {};
+  if (PRONE_INCOMPATIBLE_MOVES.has(String(step?.slug ?? "").toLowerCase())) return true;
+  if (Number(profile.strideCount) > 0) return true;
+  const includes = Array.isArray(profile.includes) ? profile.includes.map((part) => String(part).toLowerCase()) : [];
+  return includes.includes("stride") || includes.includes("step");
+}
+
 function values(value) {
   if (Array.isArray(value)) return value;
   if (value instanceof Set) return Array.from(value);
@@ -519,6 +544,17 @@ function hasPlanConflict(context, candidate, steps) {
   }
 
   if (BASIC_MOVE_SLUGS.has(candidate.slug) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug))) {
+    return true;
+  }
+
+  // "Drop Prone -> Stride" is nonsensical: you can't Stride/Step while prone (only Crawl/Stand),
+  // and the planner won't slip a Stand between them. Forbid pairing a prone-applying action with any
+  // striding action in either order — including move-and-strike composites (e.g.
+  // "stride-away-strike-dart") whose slug isn't a bare move slug.
+  if (
+    (appliesProne(candidate) && steps.some(stridesWithoutStanding))
+    || (stridesWithoutStanding(candidate) && steps.some(appliesProne))
+  ) {
     return true;
   }
 

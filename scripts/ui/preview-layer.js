@@ -25,7 +25,10 @@ export function previewLayer() {
     previewContainer.interactive = false;
     previewContainer.interactiveChildren = false;
     previewContainer.zIndex = 1_000_000;
-    stage.sortableChildren = true;
+    // Render on top via insertion order (added last) instead of flipping the main stage's
+    // sortableChildren. Forcing the stage to sort made PIXI re-sort every scene child whenever any
+    // child or zIndex changed — a continuous cost that dropped canvas FPS while the panel was open.
+    // The overlay's own children still sort, but on this tiny module-owned container (see callers).
     stage.addChild(previewContainer);
   }
 

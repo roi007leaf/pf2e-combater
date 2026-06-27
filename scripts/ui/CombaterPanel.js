@@ -57,6 +57,11 @@ import { canUseFullAggro } from "../rules/aggro.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
+// Panel-module build marker — logs once on load. main.js now STATICALLY imports this file, so it
+// rides main.js's module graph and re-fetches on reload (no separate dynamic-import cache). If this
+// marker doesn't match main.js's "Ready" build, do a hard reload to bust the HTTP cache.
+console.log("PF2e Combater | Panel module [build: stride-must-improve]");
+
 const DEFAULT_TAB = "one";
 const TABS = new Set(ACTION_BUILDER_TABS.map((tab) => tab.id));
 const RESET_PIN_REFRESH_SOURCES = new Set([
@@ -274,6 +279,44 @@ function stepTargetLabel(name, { requiresTarget, requiresDestination }) {
 // listed enemy. When the plan continues into an attack, the stride should instead close on the
 // enemy that attack will hit. Borrow the next targeted step's resolved target so the recommended
 // destination matches the strike (e.g. stride toward Alon when the plan is Stride -> Strike Alon).
+// A generic basic move the planner scored negative (e.g. "repositioning is low priority" when the
+// target is already in reach) wastes an action. Never auto-fill it, no matter which plan variant
+// feeds the auto-fill (best plan, a pinned variant, or a projected-origin edge case).
+const AUTO_FILL_BASIC_MOVE_SLUGS = new Set(["stride", "step", "stand-stride"]);
+function isRedundantAutoFillMove(step) {
+  return AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())
+    && step?.source === "generic"
+    && Number(step?.score) < 0;
+}
+
+// The candidate slug is often the action id ("generic-drop-prone"), so match a contained substring.
+function autoFillAppliesProne(step) {
+  const slug = String(step?.slug ?? "").toLowerCase();
+  return slug.includes("drop-prone") || step?.executable === "drop-prone";
+}
+
+function autoFillTargetCenter(step) {
+  const target = step?.preferredTarget ?? step?.suggestedTarget ?? step?.target;
+  return target?.token?.center ?? target?.center ?? null;
+}
+
+// Auto-fill aims a generic Stride at the plan's attack target, so its purpose is to improve position
+// toward that target. The reachable set excludes the origin, so the "Stride to the same place" the GM
+// sees is really a 1-cell shuffle that gets NO closer because the path is blocked (walls/water). Keep
+// the Stride only if its destination actually gets meaningfully closer to the target; otherwise it
+// accomplished nothing. (Kiting/retreat is a separate retreat action, not this target-aimed Stride.)
+function strideImprovesPosition(originCenter, destination, targetCenter) {
+  if (!destination || !originCenter) return true; // no recommendation/origin → don't second-guess
+  const gridSize = Number(globalThis.canvas?.grid?.size) || 0;
+  const minGain = gridSize > 0 ? gridSize * 0.5 : 1;
+  if (!targetCenter) {
+    return Math.hypot(destination.x - originCenter.x, destination.y - originCenter.y) >= minGain;
+  }
+  const before = Math.hypot(targetCenter.x - originCenter.x, targetCenter.y - originCenter.y);
+  const after = Math.hypot(targetCenter.x - destination.x, targetCenter.y - destination.y);
+  return (before - after) >= minGain;
+}
+
 function strideStepTowardPlannedTarget(step, atomicSteps, index) {
   if (step?.preferredTarget || step?.suggestedTarget) return step;
   for (let next = index + 1; next < atomicSteps.length; next += 1) {
@@ -830,18 +873,33 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async refresh(refreshSource = "manual") {
     this.refreshSource = refreshSource;
-    // A canvas picker is in progress (destination/template placement). Token/refresh hooks
-    // fire constantly while the cursor moves over tokens; if that refresh cancelled the picker
-    // it would kill the destination grid / region tools mid-selection. Re-render only and leave
-    // the in-progress picker alone — _onRender re-shows its overlay. Only explicit user actions
-    // cancel a picker.
-    if (this._areaPicker || this._destinationPicker) {
-      await this.render({ force: true });
-      return;
+    // Diagnostics: set `COMBATER_PROFILE = true` in the console to log every refresh (source +
+    // duration) and how often it fires. Zero cost when the flag is off.
+    const profileStart = globalThis.COMBATER_PROFILE ? performance.now() : 0;
+    if (globalThis.COMBATER_PROFILE) {
+      const now = profileStart;
+      const since = now - (CombaterPanel._profileLast ?? now);
+      CombaterPanel._profileLast = now;
+      console.log(`[combater] refresh src=${refreshSource} (+${since.toFixed(0)}ms since last)`);
     }
-    if (RESET_PIN_REFRESH_SOURCES.has(refreshSource)) this._pinnedPlanId = null;
-    this._cancelDestinationPicker();
-    await this.render({ force: true });
+    try {
+      // A canvas picker is in progress (destination/template placement). Token/refresh hooks
+      // fire constantly while the cursor moves over tokens; if that refresh cancelled the picker
+      // it would kill the destination grid / region tools mid-selection. Re-render only and leave
+      // the in-progress picker alone — _onRender re-shows its overlay. Only explicit user actions
+      // cancel a picker.
+      if (this._areaPicker || this._destinationPicker) {
+        await this.render({ force: true });
+        return;
+      }
+      if (RESET_PIN_REFRESH_SOURCES.has(refreshSource)) this._pinnedPlanId = null;
+      this._cancelDestinationPicker();
+      await this.render({ force: true });
+    } finally {
+      if (globalThis.COMBATER_PROFILE) {
+        console.log(`[combater]   refresh src=${refreshSource} total ${(performance.now() - profileStart).toFixed(0)}ms (prepare ${(this._profilePrepareMs ?? 0).toFixed(0)}ms)`);
+      }
+    }
   }
 
   async _prepareContext(options) {
@@ -875,6 +933,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       : gmViewingPlayerPlan
         ? { steps: [], readonly: true, shared: true, userName: "" }
         : draft;
+    const prepareStart = performance.now();
     const baseBuild = buildCandidates(context);
     const planningContext = projectContextForDraftDestination(context, activeDraft);
     this._planningContext = planningContext;
@@ -889,6 +948,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const draftStepActions = projectedDraftStepActions(context, activeDraft);
     const plans = buildTurnPlans(planningContext, builderCandidates);
     const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
+    // Diagnostics: set `COMBATER_PROFILE = true` in the console to log render frequency + build cost.
+    this._profilePrepareMs = performance.now() - prepareStart;
+    if (globalThis.COMBATER_PROFILE) {
+      const renderCount = (this.constructor._renderCount = (this.constructor._renderCount ?? 0) + 1);
+      const sinceRender = prepareStart - (this.constructor._lastRenderAt ?? prepareStart);
+      this.constructor._lastRenderAt = performance.now();
+      console.log(`[combater] render #${renderCount} src=${this.refreshSource} build=${this._profilePrepareMs.toFixed(0)}ms (+${sinceRender.toFixed(0)}ms since last)`);
+    }
     const favorites = readActionFavorites(context);
 
     this._candidates = builderCandidates;
@@ -946,6 +1013,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _onRender(context, options) {
     super._onRender(context, options);
+    // Debug handle: inspect the live planner output vs the draft in the console, e.g.
+    //   combaterPanel._plans.map(p => p.steps.map(s => s.slug).join("+"))
+    //   combaterPanel._builder.autoFill.steps.map(s => s.slug)
+    globalThis.combaterPanel = this;
     // Don't wipe the canvas preview on every render — incidental refreshes (e.g. a
     // refreshToken hook when the cursor passes over a token) would otherwise make the
     // hover overlay vanish. The preview is managed by step hover and explicit actions, and
@@ -1397,7 +1468,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // hand.) The projected origin advances so a chained stride starts where the prior one lands.
     const useAggroTargets = canUseFullAggro(this._context);
     let movementContext = this._context;
-    const atomicSteps = autoFill.steps.flatMap((step) => builderAtomicActionsForStep(step));
+    // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
+    // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
+    // legal while prone, so it is not in AUTO_FILL_BASIC_MOVE_SLUGS and survives.
+    const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
+    const atomicSteps = autoFill.steps
+      .filter((step) => !isRedundantAutoFillMove(step))
+      .flatMap((step) => builderAtomicActionsForStep(step))
+      // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
+      // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
+      .filter((step) => !(planAppliesProne && AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())));
     const steps = atomicSteps.map((step, index) => {
       let draftStep = {
         instanceId: draftStepId(),
@@ -1421,6 +1501,15 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       if (draftStep.requiresDestination && !draftStep.destination) {
         const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
         const movement = recommendedMovementForStep(movementContext, movementStep);
+        // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
+        // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
+        // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
+        if (AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase()) && movement?.destination) {
+          const originCenter = movementContext.token?.plannedCenter ?? movementContext.token?.center;
+          if (!strideImprovesPosition(originCenter, movement.destination, autoFillTargetCenter(movementStep))) {
+            return null;
+          }
+        }
         if (movement?.destination) {
           draftStep = {
             ...draftStep,
@@ -1435,7 +1524,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       }
 
       return draftStep;
-    });
+    }).filter(Boolean);
     writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
     await this._syncDraftToGM();
     clearActionPreview();

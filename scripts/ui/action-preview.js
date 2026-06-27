@@ -220,20 +220,12 @@ function drawConeShape(graphics, center, radius, angle, rotation, color = 0xf0b3
   }
 }
 
-function drawTargetPreview(graphics, context, tokens) {
-  const source = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
-  const sourceCenter = tokenCenter(source);
+function drawTargetPreview(graphics, tokens) {
+  // No actor->target connector line: to a distant target it stretched a green line across the whole
+  // scene on hover, which read as a full-scene overlay. Just outline the target token itself.
   for (const token of tokens) {
     const placement = tokenPlacement(token);
     if (!placement) continue;
-    if (sourceCenter) {
-      graphics.lineStyle?.(4, 0x101418, 0.7);
-      graphics.moveTo?.(sourceCenter.x, sourceCenter.y);
-      graphics.lineTo?.(placement.center.x, placement.center.y);
-      graphics.lineStyle?.(2, 0x66c78f, 0.95);
-      graphics.moveTo?.(sourceCenter.x, sourceCenter.y);
-      graphics.lineTo?.(placement.center.x, placement.center.y);
-    }
     drawRectShape(graphics, placement.x, placement.y, placement.width, placement.height, 0x66c78f);
   }
 }
@@ -300,22 +292,24 @@ export function showActionPreview(context, step, { skipMovement = false } = {}) 
     return mountGraphics(graphics) ? { type: "area", marker: areaMarker(step) } : null;
   }
 
-  // Single-target spells: show the caster's range ring as targeting guidance.
+  // Only ranged spells get a hover preview (target highlight + range ring) as placement guidance.
+  // Strikes and general actions — including self-targeted ones like Drop Prone — draw NOTHING:
+  // the green target overlay was scene noise, and for self/no-target actions it highlighted a
+  // random fallback enemy.
   const isRangedSpell = spellRangeFeet(step) != null;
-
-  const tokens = plannedTargetTokens(context, step);
-  if (tokens.length) {
-    drawTargetPreview(graphics, context, tokens);
-    if (isRangedSpell) showRangeOverlay(context, step);
-    else clearRangeOverlay();
-    return mountGraphics(graphics) ? { type: "target", tokens } : null;
-  }
-
-  // A ranged spell with no template or target chosen yet still shows its range ring.
-  graphics.destroy?.({ children: true });
   if (isRangedSpell) {
+    const tokens = plannedTargetTokens(context, step);
+    if (tokens.length) {
+      drawTargetPreview(graphics, tokens);
+      showRangeOverlay(context, step);
+      return mountGraphics(graphics) ? { type: "target", tokens } : null;
+    }
+    graphics.destroy?.({ children: true });
     const ring = showRangeOverlay(context, step);
     return ring ? { type: "range", ring } : null;
   }
+
+  graphics.destroy?.({ children: true });
+  clearRangeOverlay();
   return null;
 }

@@ -147,18 +147,13 @@ function sceneTemplateRefsForSpell(action) {
   const refs = [];
   for (const scene of sceneEntries()) {
     const sceneId = scene?.id ?? scene?._id ?? null;
+    // v14 merged MeasuredTemplate into Region, so area templates are Regions. Reading the legacy
+    // `scene.templates` / `MeasuredTemplate` collection throws a deprecation warning on every render
+    // (and is removed in v16), so we only read regions now.
     for (const region of sceneDocumentEntries(scene, "regions", "Region")) {
       const regionId = region?.id ?? region?._id ?? null;
       if (!regionId || !templateMatchesSpell(region, action)) continue;
       refs.push({ kind: "region", regionId, ...(sceneId ? { sceneId } : {}) });
-    }
-    for (const template of [
-      ...sceneDocumentEntries(scene, "templates", "MeasuredTemplate"),
-      ...sceneDocumentEntries(scene, "measuredTemplates", "MeasuredTemplate"),
-    ]) {
-      const templateId = template?.id ?? template?._id ?? null;
-      if (!templateId || !templateMatchesSpell(template, action)) continue;
-      refs.push({ kind: "template", templateId, ...(sceneId ? { sceneId } : {}) });
     }
   }
   return refs;

@@ -8,8 +8,9 @@ import {
   markMovementActionSpent,
   tokenUpdateAffectsCombatGeometry,
 } from "./state/token-refresh.js";
-import { clearDraftPlan, clearSharedDraftPlan, writeSharedDraftPlanPayload } from "./state/draft-plans.js";
+import { clearCombatDraftPlans, clearDraftPlan, clearSharedDraftPlan, writeSharedDraftPlanPayload } from "./state/draft-plans.js";
 import { clearMovementPreview } from "./ui/movement-preview.js";
+import { openPanelForCurrentCombatant, togglePanelForCurrentCombatant } from "./ui/CombaterPanel.js";
 import { cancelDestinationPicker } from "./ui/destination-picker.js";
 import { promptUnsustainedSpellCleanup } from "./rules/sustained-spells.js";
 import { expiredAreaRegionsForScene } from "./engine/area-duration.js";
@@ -159,7 +160,6 @@ function resetMovementPreview() {
 }
 
 async function openCurrent(source) {
-  const { openPanelForCurrentCombatant } = await import("./ui/CombaterPanel.js");
   activePanel = await openPanelForCurrentCombatant(activePanel, source, {
     onClose: handlePanelClosed,
     combatant: panelCombatantForAutomaticOpen(),
@@ -183,7 +183,6 @@ async function promptPreviousTurnSustainedCleanup(combat) {
 }
 
 async function openSelectedOrCurrent(source) {
-  const { openPanelForCurrentCombatant } = await import("./ui/CombaterPanel.js");
   activePanel = await openPanelForCurrentCombatant(activePanel, source, {
     onClose: handlePanelClosed,
     combatant: panelCombatantForTokenTool(),
@@ -200,9 +199,17 @@ async function closeActivePanel() {
   refreshSceneControls();
 }
 
+const REFRESH_DELAY_MS = 150;
+// Token movement fires updateToken/refreshToken once per committed grid step. Coalesce those into a
+// single rebuild AFTER movement settles (each step re-arms the timer) so a multi-square move costs
+// one ~end-of-move refresh instead of one per square.
+const MOVEMENT_REFRESH_SOURCES = new Set(["token-movement", "token-update", "token-refresh"]);
+const MOVEMENT_REFRESH_DELAY_MS = 350;
+
 function scheduleRefresh(source) {
   if (!activePanel) return;
   clearTimeout(refreshTimer);
+  const delay = MOVEMENT_REFRESH_SOURCES.has(source) ? MOVEMENT_REFRESH_DELAY_MS : REFRESH_DELAY_MS;
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
     const panel = activePanel;
@@ -210,7 +217,7 @@ function scheduleRefresh(source) {
     panel.refresh?.(source).catch((error) => {
       console.warn(`${MODULE_ID} | Refresh failed`, error);
     });
-  }, 150);
+  }, delay);
 }
 
 function scheduleDocumentRefresh(document, source) {
@@ -226,7 +233,6 @@ Hooks.once("init", () => {
     hint: "Open or close the PF2e Combater tactical advisor panel.",
     editable: [{ key: "KeyC", modifiers: ["Alt", "Shift"] }],
     onDown: async () => {
-      const { togglePanelForCurrentCombatant } = await import("./ui/CombaterPanel.js");
       activePanel = await togglePanelForCurrentCombatant(activePanel, "keybinding", {
         onClose: handlePanelClosed,
         combatant: panelCombatantForAutomaticOpen(),
@@ -273,7 +279,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
 });
 
 Hooks.once("ready", async () => {
-  console.log("PF2e Combater | Ready");
+  // Build marker — bump this string whenever you need to confirm a fresh build loaded (cache bust).
+  console.log("PF2e Combater | Ready [build: stride-must-improve]");
   game.socket?.on?.(`module.${MODULE_ID}`, (payload) => {
     if (payload?.type !== "shareDraft" || game.user?.isGM !== true) return;
     writeSharedDraftPlanPayload(payload);
@@ -354,6 +361,9 @@ Hooks.on("canvasReady", () => {
 });
 
 Hooks.on("deleteCombat", (combat) => {
+  // A deleted combat's plans are dead weight: drop every draft (local + shared + actor flag) tied
+  // to it, independent of whether its panel is open, so nothing lingers in storage.
+  clearCombatDraftPlans(combat).catch((error) => console.warn(`${MODULE_ID} | Combat draft cleanup failed`, error));
   const activeCombatId = activeContext()?.combat?.id;
   const isActiveCombat = activeCombatId && activeCombatId === combat.id;
   const isCurrentCombat = game.combat && combat === game.combat;
@@ -410,6 +420,10 @@ Hooks.on("updateToken", (token, changed, options) => {
 });
 
 Hooks.on("refreshToken", (token) => {
+  // Ignore drag previews / clones: while you hold-and-drag (before committing) Foundry animates a
+  // preview whose position changes every frame, which would rebuild the plan mid-drag. Only the
+  // real, committed move matters — that arrives via updateToken on drop.
+  if (token?.isPreview === true || token?.document?.isPreview === true || token?._original) return;
   if (!consumeTokenRefreshChange(token)) return;
   scheduleRefresh("token-refresh");
 });

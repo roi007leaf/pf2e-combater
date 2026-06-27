@@ -1,4 +1,8 @@
-const GEOMETRY_KEYS = new Set(["x", "y", "elevation", "hidden", "width", "height"]);
+// Only movement/footprint geometry matters for a combat plan. Visibility (`hidden`) is
+// deliberately excluded: modules like pf2e-visioner toggle per-observer visibility constantly,
+// and including it here made every visibility flicker trigger a full (expensive) plan rebuild,
+// which lagged the canvas the whole time the panel was open.
+const GEOMETRY_KEYS = new Set(["x", "y", "elevation", "width", "height"]);
 const MOVEMENT_KEYS = new Set(["x", "y", "elevation"]);
 const MAX_MOVEMENT_ACTION_SPENDS = 3;
 const tokenSnapshots = new Map();
@@ -89,13 +93,17 @@ function snapshotValue(...values) {
 
 function tokenSnapshot(token) {
   const document = tokenDocument(token);
+  // Snapshot the DOCUMENT position, never the placeable's live `token.x`/`token.y`. The placeable
+  // position animates every frame (turn-marker bobs, float effects, movement tweens), so reading it
+  // made each animation tick look like a move and triggered a full ~400ms plan rebuild ~6x/second —
+  // the "lag while the window is open". The document only changes on a real move. Also no `hidden`:
+  // visibility changes (e.g. pf2e-visioner) are not plan-relevant. Only real geometry counts.
   return JSON.stringify({
-    x: snapshotValue(token?.x, document.x),
-    y: snapshotValue(token?.y, document.y),
-    elevation: snapshotValue(token?.elevation, document.elevation),
-    hidden: snapshotValue(token?.hidden, document.hidden),
-    width: snapshotValue(token?.width, document.width),
-    height: snapshotValue(token?.height, document.height),
+    x: snapshotValue(document.x, token?.x),
+    y: snapshotValue(document.y, token?.y),
+    elevation: snapshotValue(document.elevation, token?.elevation),
+    width: snapshotValue(document.width, token?.width),
+    height: snapshotValue(document.height, token?.height),
   });
 }
 

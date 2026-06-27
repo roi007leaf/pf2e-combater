@@ -148,6 +148,10 @@ assert.ok(
   "GM panel should follow the selected token via the controlToken hook",
 );
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
+assert.ok(
+  /Hooks\.on\("deleteCombat"[\s\S]*?clearCombatDraftPlans\(combat\)/.test(mainSource),
+  "deleting a combat should clear all of its lingering draft plans",
+);
 // Ending a turn must reset BOTH the acting player's local plan and the GM-visible shared plan.
 assert.ok(
   /function clearEndedTurnDraft\([\s\S]*?clearDraftPlan\(context\)[\s\S]*?clearSharedDraftPlan\(context\)/.test(mainSource),
@@ -309,6 +313,12 @@ assert.ok(
   "the search input should live in the pinned header, not inside the scroll body",
 );
 assert.ok(panelStyleSource.includes(".combater-browser-header"), "the browser header should be styled as a pinned region");
+// Window depth must be a box-shadow on the shell, never a `filter` on the window root: a filter
+// re-composites over Foundry's live canvas every frame and lags the canvas while the window is open.
+assert.equal(panelStyleSource.includes("filter: drop-shadow"), false,
+  "the combater window must not use a filter (re-composites over the live canvas every frame)");
+assert.ok(/\.combater-shell\s*\{[\s\S]*?box-shadow:/.test(panelStyleSource),
+  "window depth should come from a cheap box-shadow on the shell");
 // Re-renders (every search keystroke) rebuild the DOM; the list must not jump back to the top.
 assert.ok(browserSource.includes("body.scrollTop = this._scrollTop"),
   "browser should restore the action list scroll offset across re-renders");
@@ -594,6 +604,22 @@ assert.equal(
 assert.ok(
   /Hooks\.on\("updateCombat"[\s\S]*resetMovementPreview\(\);[\s\S]*if \(!setting\(SETTINGS\.autoOpen\) && !activePanel\) return;/.test(mainSource),
   "combat turn updates should clear stride overlay before panel auto-open gating",
+);
+// Movement refreshes coalesce: each grid step re-arms a longer trailing debounce so a multi-square
+// move rebuilds once after it settles, not once per square.
+assert.ok(
+  /MOVEMENT_REFRESH_SOURCES\s*=\s*new Set\(\[[^\]]*"token-movement"[^\]]*"token-refresh"/.test(mainSource),
+  "token movement/refresh sources should be grouped for coalesced refresh",
+);
+assert.ok(
+  /MOVEMENT_REFRESH_SOURCES\.has\(source\)\s*\?\s*MOVEMENT_REFRESH_DELAY_MS\s*:\s*REFRESH_DELAY_MS/.test(mainSource),
+  "movement refreshes should use a longer trailing debounce than other refreshes",
+);
+// A hold-and-drag spawns a preview clone whose position changes every frame; refreshing on it would
+// rebuild the plan mid-drag. The refreshToken hook must ignore preview/clone tokens.
+assert.ok(
+  /Hooks\.on\("refreshToken"[\s\S]*?isPreview[\s\S]*?return;/.test(mainSource),
+  "refreshToken should ignore drag-preview/clone tokens",
 );
 assert.ok(panelSource.includes("hideTarget ? \"\" : decorated.targetLabel"), "panel should support hiding target labels per section");
 assert.equal(
@@ -2031,6 +2057,9 @@ assert.equal(confidenceLabel(best.confidence), "Medium");
 assert.equal(tokenUpdateAffectsCombatGeometry({ name: "Calder" }), false);
 assert.equal(tokenUpdateAffectsCombatGeometry({ x: 10 }), true);
 assert.equal(tokenUpdateAffectsCombatGeometry({ document: { y: 20 } }), true);
+// Visibility toggles (e.g. pf2e-visioner) must NOT trigger a plan rebuild — that churn lagged the
+// canvas the whole time the panel was open.
+assert.equal(tokenUpdateAffectsCombatGeometry({ hidden: true }), false, "a hidden/visibility change must not trigger a plan rebuild");
 assert.equal(tokenUpdateAffectsMovement({ name: "Calder" }), false);
 assert.equal(tokenUpdateAffectsMovement({ x: 10 }), true);
 assert.equal(tokenUpdateAffectsMovement({ document: { elevation: 5 } }), true);
@@ -2043,8 +2072,17 @@ const movingToken = {
 };
 assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true);
 assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), false);
+// Animating the placeable position (token.x/y), with the DOCUMENT unchanged, must NOT schedule a
+// refresh — that animation churn caused the continuous ~400ms-rebuild lag.
 movingToken.x = 5;
-assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true);
+movingToken.y = 7;
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), false, "animation of the placeable position must not schedule a refresh");
+// A visibility flip with no movement must NOT count as a refresh-worthy change.
+movingToken.document.hidden = true;
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), false, "toggling token visibility should not schedule a refresh");
+// A real DOCUMENT move still schedules a refresh.
+movingToken.document.x = 50;
+assert.equal(consumeTokenRefreshChange(movingToken, tokenRefreshSnapshots), true, "an actual document move still schedules a refresh");
 const movementSpendMap = new Map();
 const movementDistanceMap = new Map();
 const movementOriginMap = new Map();
@@ -2360,6 +2398,46 @@ try {
     [],
     "ending a turn resets the GM-visible shared plan (socket store + actor flag)",
   );
+
+  // Deleting a combat wipes EVERY combatant's drafts for that combat — local, shared store, and
+  // actor flag — without touching another combat's plans.
+  let firstActorFlags = {};
+  const firstActor = {
+    uuid: "Actor.del-1",
+    getFlag: (scope, key) => scope === "pf2e-combater" && key === "sharedDraftPlans" ? firstActorFlags : undefined,
+    setFlag: async (scope, key, value) => { if (scope === "pf2e-combater" && key === "sharedDraftPlans") firstActorFlags = value; return value; },
+  };
+  let secondActorFlags = {};
+  const secondActor = {
+    uuid: "Actor.del-2",
+    getFlag: (scope, key) => scope === "pf2e-combater" && key === "sharedDraftPlans" ? secondActorFlags : undefined,
+    setFlag: async (scope, key, value) => { if (scope === "pf2e-combater" && key === "sharedDraftPlans") secondActorFlags = value; return value; },
+  };
+  const deletedCombat = {
+    id: "combat-del",
+    combatants: [{ id: "c-a", actor: firstActor }, { id: "c-b", actor: secondActor }],
+  };
+  const ctxA = { combat: deletedCombat, combatant: { id: "c-a", actor: firstActor }, actor: { document: firstActor } };
+  const ctxB = { combat: deletedCombat, combatant: { id: "c-b", actor: secondActor }, actor: { document: secondActor } };
+  const survivorCtx = { combat: { id: "combat-keep" }, combatant: { id: "c-keep" }, actor: { uuid: "Actor.keep" } };
+
+  localStore.set(STORAGE_KEYS.sharedDraftPlans, "{}");
+  writeDraftPlan(ctxA, { steps: [{ instanceId: "a-local", actionKey: "stride", actionCost: 1 }] });
+  writeDraftPlan(ctxB, { steps: [{ instanceId: "b-local", actionKey: "step", actionCost: 1 }] });
+  writeDraftPlan(survivorCtx, { steps: [{ instanceId: "keep-local", actionKey: "strike", actionCost: 1 }] });
+  writeSharedDraftPlan(ctxA, { steps: [{ instanceId: "a-shared", actionKey: "stride", actionCost: 1 }], userId: "user-1" });
+  writeSharedDraftPlan(survivorCtx, { steps: [{ instanceId: "keep-shared", actionKey: "strike", actionCost: 1 }], userId: "user-1" });
+  await writeSharedDraftPlanActorFlag(ctxA, { steps: [{ instanceId: "a-flag", actionKey: "haste", actionCost: 2 }], userId: "user-1", updatedAt: 800 });
+  await writeSharedDraftPlanActorFlag(ctxB, { steps: [{ instanceId: "b-flag", actionKey: "haste", actionCost: 2 }], userId: "user-1", updatedAt: 800 });
+
+  await draftPlanState.clearCombatDraftPlans(deletedCombat);
+
+  assert.deepEqual(readDraftPlan(ctxA).steps, [], "deleting a combat clears each combatant's local plan");
+  assert.deepEqual(readDraftPlan(ctxB).steps, [], "deleting a combat clears every combatant's local plan");
+  assert.deepEqual(readSharedDraftPlan(ctxA).steps, [], "deleting a combat clears the shared store + actor flag");
+  assert.deepEqual(secondActorFlags, {}, "deleting a combat clears every combatant actor's flag mirror");
+  assert.equal(readDraftPlan(survivorCtx).steps.length, 1, "deleting one combat must not touch another combat's local plan");
+  assert.equal(readSharedDraftPlan(survivorCtx).steps.length, 1, "deleting one combat must not touch another combat's shared plan");
 
   assert.equal(typeof draftPlanState.shouldDisplaySharedDraft, "function");
   assert.equal(
@@ -3482,6 +3560,25 @@ assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/
   "auto-fill should store the recommended destination and waypoints for GM NPCs");
 assert.ok(/_autoFillDraft\([\s\S]*strideStepTowardPlannedTarget\(step, atomicSteps, index\)/.test(panelSource),
   "auto-fill should aim a generic stride at the plan's upcoming attack target");
+// Boundary guard: auto-fill drops a negative-scored generic basic move so a redundant in-reach
+// Stride can never be pre-filled, even from a pinned plan variant.
+assert.ok(/_autoFillDraft\([\s\S]*filter\(\(step\) => !isRedundantAutoFillMove\(step\)\)/.test(panelSource),
+  "auto-fill should skip redundant (negative-scored) generic basic moves");
+assert.ok(/function isRedundantAutoFillMove\([\s\S]*Number\(step\?\.score\) < 0/.test(panelSource),
+  "a redundant auto-fill move is a negative-scored generic basic move");
+// Hard guard at assembly: if the plan applies prone, no Stride/Step reaches the draft (can't Stride
+// while prone) — regardless of what the planner produced. The slug match is substring-based because
+// the candidate slug is the action id ("generic-drop-prone").
+assert.ok(/function autoFillAppliesProne\([\s\S]*includes\("drop-prone"\)/.test(panelSource),
+  "auto-fill prone detection should match a slug containing drop-prone");
+assert.ok(/_autoFillDraft\([\s\S]*planAppliesProne[\s\S]*AUTO_FILL_BASIC_MOVE_SLUGS\.has/.test(panelSource),
+  "auto-fill should drop Stride/Step when the plan applies prone");
+// A target-aimed Stride that can't get closer to the planned target (blocked path) is dropped —
+// that's the "Stride to the same place" the GM sees.
+assert.ok(/function strideImprovesPosition\([\s\S]*before - after\) >= minGain/.test(panelSource),
+  "a kept Stride must improve position toward its target");
+assert.ok(/_autoFillDraft\([\s\S]*!strideImprovesPosition\([\s\S]*return null/.test(panelSource),
+  "auto-fill should drop a basic move that can't improve position toward its target");
 
 // A generic stride preceding a strike must close on the strike's target, not the first listed
 // enemy. recommendedMovementForStep honours a preferredTarget that matches a combat target, so
@@ -3650,6 +3747,26 @@ assert.equal(standStride.actionCost, 2);
 assert.equal(standStride.preferredTarget.name, "Ogre");
 const scoredStandStride = scoreCandidate(proneFarContext, standStride);
 assert.ok(scoredStandStride.reasons.includes("Closes distance toward the target."));
+
+// A generic Stride toward a target already within reach closes no distance, so it must score
+// negative — below the planner's unused-action penalty — or the planner pads a spare action with
+// a "Stride to the same square" that auto-fill then recommends as a no-op move.
+const redundantStrideScore = scoreCandidate({
+  profile: { reach: 5, speed: { value: 25 } },
+  targets: [{ id: "adjacent", name: "Adjacent", distance: 5 }],
+  battlefield: {
+    targets: [{ id: "adjacent", name: "Adjacent", distance: 5 }],
+    enemies: [{ id: "adjacent", name: "Adjacent", distance: 5 }],
+  },
+}, { id: "stride", name: "Stride", slug: "stride", source: "generic", actionCost: 1, role: "mobility" });
+assert.ok(
+  redundantStrideScore.reasons.includes("Target already in reach; repositioning is low priority."),
+  "a stride toward an in-reach target should flag the repositioning as low priority",
+);
+assert.ok(
+  redundantStrideScore.score < 0,
+  "a redundant in-reach Stride must score negative so the planner never pads it as filler",
+);
 
 const proneStrideStrikeContext = {
   ...proneFarContext,
@@ -4110,6 +4227,41 @@ const redundantBasicMovementPlan = bestTurnPlan(fighterContext, [{
 assert.equal(
   redundantBasicMovementPlan.steps.filter((step) => ["step", "stride"].includes(step.slug)).length,
   1,
+);
+
+// "Drop Prone -> Stride" is illegal (can't Stride while prone), so no plan should contain both a
+// prone-applying action and a Stride/Step. Crawl is still allowed alongside Drop Prone.
+// The live candidate's slug is the action id ("generic-drop-prone") with no appliesConditions —
+// match the real shape so the conflict can't regress on the exact-slug assumption.
+const dropProneStridePlans = buildTurnPlans(fighterContext, [
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+  { id: "stride", name: "Stride", slug: "stride", source: "generic", actionCost: 1, score: 55, confidence: "medium", reason: "Move." },
+  { id: "crawl", name: "Crawl", slug: "crawl", source: "generic", actionCost: 1, score: 20, confidence: "low", reason: "Crawl." },
+]);
+assert.equal(
+  dropProneStridePlans.some((plan) =>
+    plan.steps.some((step) => step.slug.includes("drop-prone")) && plan.steps.some((step) => step.slug === "stride")),
+  false,
+  "no plan should pair Drop Prone with a Stride (illegal while prone)",
+);
+assert.ok(
+  dropProneStridePlans.some((plan) =>
+    plan.steps.some((step) => step.slug.includes("drop-prone")) && plan.steps.some((step) => step.slug === "crawl")),
+  "Drop Prone may still pair with Crawl (legal while prone)",
+);
+
+// The Stride can be baked into a move-and-strike composite (e.g. "stride-away-strike-dart",
+// strideCount > 0) whose slug is NOT a bare move slug. Drop Prone must still conflict with it.
+const dropProneMoveStrikePlans = buildTurnPlans(fighterContext, [
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+  { id: "stride-away-strike-dart", name: "Stride + Dart", slug: "stride-away-strike-dart", source: "strike", actionCost: 2, score: 80, confidence: "medium", reason: "Kite.", activityProfile: { includesStrike: true, strideCount: 1 } },
+]);
+assert.equal(
+  dropProneMoveStrikePlans.some((plan) =>
+    plan.steps.some((step) => step.slug.includes("drop-prone"))
+    && plan.steps.some((step) => Number(step.activityProfile?.strideCount) > 0)),
+  false,
+  "no plan should pair Drop Prone with a move-and-strike that Strides (illegal while prone)",
 );
 
 const setupBeforeStrikePlans = buildTurnPlans(fighterContext, [{
@@ -6384,6 +6536,10 @@ try {
   assert.equal(stablePreview.enabled, true);
   assert.equal(interfaceLayer.children.length, 0, "movement preview should not mount on Foundry interface layer");
   assert.equal(stageLayer.children.length, 1, "movement preview should use a module-owned stage overlay");
+  // The overlay must NOT force the main stage to sort: that made PIXI re-sort every scene child on
+  // each change and dropped canvas FPS while the panel was open. The overlay renders on top via
+  // insertion order instead, sorting only its own (tiny) child list.
+  assert.notEqual(stageLayer.sortableChildren, true, "preview overlay must not flip the main stage's sortableChildren");
   const stablePreviewLayer = stageLayer.children[0];
   assert.equal(stablePreviewLayer.eventMode, "none");
   assert.equal(stablePreviewLayer.interactiveChildren, false);
@@ -6458,21 +6614,37 @@ try {
       }],
     },
   };
-  const targetPreview = showActionPreview({
+  // Strikes / general actions (non-spell) draw NO hover overlay — the green target box/line was
+  // scene noise (and self-targeted actions like Drop Prone highlighted a random fallback enemy).
+  actionPreviewCalls.length = 0;
+  const strikePreview = showActionPreview({
     token: { id: "actor-token" },
   }, {
     name: "Strike",
     slug: "strike",
     targetTokenIds: ["target-token"],
   });
+  assert.equal(strikePreview, null, "a strike hover should draw no green target overlay");
+  assert.equal(actionPreviewCalls.some((call) => call.type === "drawRect"), false,
+    "a strike hover should not draw a target box");
+
+  // Ranged spells keep the target highlight + range ring as placement guidance.
+  actionPreviewCalls.length = 0;
+  const targetPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Daze",
+    slug: "daze",
+    source: "spell-curated",
+    range: { max: 30 },
+    targetTokenIds: ["target-token"],
+  });
   assert.equal(targetPreview.type, "target");
-  assert.equal(actionPreviewLayer.children.length, 1);
   assert.ok(actionPreviewCalls.some((call) =>
     call.type === "drawRect" && call.x === 150 && call.y === 125 && call.width === 100 && call.height === 50),
-    "target hover preview should frame the planned target token footprint");
-  assert.ok(actionPreviewCalls.some((call) =>
-    call.type === "lineTo" && call.x === 200 && call.y === 150),
-    "target hover preview should draw a line to the planned target");
+    "ranged spell hover should frame the planned target token footprint");
+  assert.equal(actionPreviewCalls.some((call) => call.type === "lineTo"), false,
+    "hover preview should NOT draw a scene-spanning line to the planned target");
 
   actionPreviewCalls.length = 0;
   const areaPreview = showActionPreview({
@@ -9201,6 +9373,34 @@ assert.equal(
 assert.deepEqual(
   rangedAlreadyInRangePlans[0].steps.map((step) => step.name),
   ["Crossbow", "Crossbow"],
+);
+
+
+// Integrated check: a generic Stride toward an in-reach target, scored by the real scoring pass
+// (so it carries the negative "repositioning is low priority" score), must never be padded into a
+// plan — even when the actor has a spare action a non-repeatable attack can't fill. The planner
+// should leave the action unused rather than add a "Stride to the same square".
+const adjacentRangedContext = {
+  ...fighterContext,
+  profile: { ...fighterContext.profile, reach: 5 },
+  targets: [{ id: "gromog", name: "Gromog", distance: 5 }],
+  battlefield: {
+    targets: [{ id: "gromog", name: "Gromog", distance: 5 }],
+    enemies: [{ id: "gromog", name: "Gromog", distance: 5 }],
+  },
+};
+const scoredAdjacentStride = scoreCandidate(adjacentRangedContext, {
+  id: "stride", name: "Stride", slug: "stride", source: "generic", actionCost: 1,
+});
+assert.ok(scoredAdjacentStride.score < 0, "the scored in-reach Stride should be negative before planning");
+const paddedStridePlans = buildTurnPlans(adjacentRangedContext, [
+  scoredAdjacentStride,
+  { id: "take-cover", name: "Take Cover", slug: "take-cover", source: "generic", actionCost: 1, score: 30, confidence: "medium", reason: "Cover." },
+]);
+assert.equal(
+  paddedStridePlans[0].steps.some((step) => step.slug === "stride"),
+  false,
+  "the best plan must not pad a spare action with a redundant in-reach Stride",
 );
 
 const twoActionOrderingContext = {
