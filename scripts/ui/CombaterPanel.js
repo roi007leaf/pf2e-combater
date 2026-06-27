@@ -57,11 +57,6 @@ import { canUseFullAggro } from "../rules/aggro.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
-// Panel-module build marker — logs once on load. main.js now STATICALLY imports this file, so it
-// rides main.js's module graph and re-fetches on reload (no separate dynamic-import cache). If this
-// marker doesn't match main.js's "Ready" build, do a hard reload to bust the HTTP cache.
-console.log("PF2e Combater | Panel module [build: stride-must-improve]");
-
 const DEFAULT_TAB = "one";
 const TABS = new Set(ACTION_BUILDER_TABS.map((tab) => tab.id));
 const RESET_PIN_REFRESH_SOURCES = new Set([
@@ -873,33 +868,18 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async refresh(refreshSource = "manual") {
     this.refreshSource = refreshSource;
-    // Diagnostics: set `COMBATER_PROFILE = true` in the console to log every refresh (source +
-    // duration) and how often it fires. Zero cost when the flag is off.
-    const profileStart = globalThis.COMBATER_PROFILE ? performance.now() : 0;
-    if (globalThis.COMBATER_PROFILE) {
-      const now = profileStart;
-      const since = now - (CombaterPanel._profileLast ?? now);
-      CombaterPanel._profileLast = now;
-      console.log(`[combater] refresh src=${refreshSource} (+${since.toFixed(0)}ms since last)`);
-    }
-    try {
-      // A canvas picker is in progress (destination/template placement). Token/refresh hooks
-      // fire constantly while the cursor moves over tokens; if that refresh cancelled the picker
-      // it would kill the destination grid / region tools mid-selection. Re-render only and leave
-      // the in-progress picker alone — _onRender re-shows its overlay. Only explicit user actions
-      // cancel a picker.
-      if (this._areaPicker || this._destinationPicker) {
-        await this.render({ force: true });
-        return;
-      }
-      if (RESET_PIN_REFRESH_SOURCES.has(refreshSource)) this._pinnedPlanId = null;
-      this._cancelDestinationPicker();
+    // A canvas picker is in progress (destination/template placement). Token/refresh hooks
+    // fire constantly while the cursor moves over tokens; if that refresh cancelled the picker
+    // it would kill the destination grid / region tools mid-selection. Re-render only and leave
+    // the in-progress picker alone — _onRender re-shows its overlay. Only explicit user actions
+    // cancel a picker.
+    if (this._areaPicker || this._destinationPicker) {
       await this.render({ force: true });
-    } finally {
-      if (globalThis.COMBATER_PROFILE) {
-        console.log(`[combater]   refresh src=${refreshSource} total ${(performance.now() - profileStart).toFixed(0)}ms (prepare ${(this._profilePrepareMs ?? 0).toFixed(0)}ms)`);
-      }
+      return;
     }
+    if (RESET_PIN_REFRESH_SOURCES.has(refreshSource)) this._pinnedPlanId = null;
+    this._cancelDestinationPicker();
+    await this.render({ force: true });
   }
 
   async _prepareContext(options) {
@@ -933,7 +913,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       : gmViewingPlayerPlan
         ? { steps: [], readonly: true, shared: true, userName: "" }
         : draft;
-    const prepareStart = performance.now();
     const baseBuild = buildCandidates(context);
     const planningContext = projectContextForDraftDestination(context, activeDraft);
     this._planningContext = planningContext;
@@ -948,14 +927,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const draftStepActions = projectedDraftStepActions(context, activeDraft);
     const plans = buildTurnPlans(planningContext, builderCandidates);
     const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
-    // Diagnostics: set `COMBATER_PROFILE = true` in the console to log render frequency + build cost.
-    this._profilePrepareMs = performance.now() - prepareStart;
-    if (globalThis.COMBATER_PROFILE) {
-      const renderCount = (this.constructor._renderCount = (this.constructor._renderCount ?? 0) + 1);
-      const sinceRender = prepareStart - (this.constructor._lastRenderAt ?? prepareStart);
-      this.constructor._lastRenderAt = performance.now();
-      console.log(`[combater] render #${renderCount} src=${this.refreshSource} build=${this._profilePrepareMs.toFixed(0)}ms (+${sinceRender.toFixed(0)}ms since last)`);
-    }
     const favorites = readActionFavorites(context);
 
     this._candidates = builderCandidates;
@@ -1013,10 +984,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _onRender(context, options) {
     super._onRender(context, options);
-    // Debug handle: inspect the live planner output vs the draft in the console, e.g.
-    //   combaterPanel._plans.map(p => p.steps.map(s => s.slug).join("+"))
-    //   combaterPanel._builder.autoFill.steps.map(s => s.slug)
-    globalThis.combaterPanel = this;
     // Don't wipe the canvas preview on every render — incidental refreshes (e.g. a
     // refreshToken hook when the cursor passes over a token) would otherwise make the
     // hover overlay vanish. The preview is managed by step hover and explicit actions, and

@@ -279,8 +279,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
 });
 
 Hooks.once("ready", async () => {
-  // Build marker — bump this string whenever you need to confirm a fresh build loaded (cache bust).
-  console.log("PF2e Combater | Ready [build: stride-must-improve]");
+  console.log("PF2e Combater | Ready");
   game.socket?.on?.(`module.${MODULE_ID}`, (payload) => {
     if (payload?.type !== "shareDraft" || game.user?.isGM !== true) return;
     writeSharedDraftPlanPayload(payload);
