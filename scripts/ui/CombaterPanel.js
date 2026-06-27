@@ -5,6 +5,7 @@ import {
   actionBuilderKey,
   ACTION_BUILDER_TABS,
   builderAtomicActionsForStep,
+  isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
   requiresDestinationForAction,
@@ -1492,7 +1493,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
       return draftStep;
     }).filter(Boolean);
-    writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps });
+    // Drop a Strike that can never connect: out of range from where it executes with no earlier
+    // move to close the gap (e.g. a move-and-strike whose Stride was pruned, or an aggro target
+    // left out of melee reach). Resolve each step from its projected origin, as the warnings do.
+    const reachDraft = { steps };
+    const reachableSteps = steps.filter((step, index) => {
+      const hasEarlierMove = steps.slice(0, index).some((earlier) => earlier.requiresDestination === true);
+      const projected = findProjectedDraftAction(this._context, reachDraft, step);
+      return !isUnreachableStrikeStep(projected, hasEarlierMove);
+    });
+    writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps: reachableSteps });
     await this._syncDraftToGM();
     clearActionPreview();
     await this.render({ force: true });

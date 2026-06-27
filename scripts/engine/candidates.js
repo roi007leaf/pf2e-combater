@@ -66,10 +66,10 @@ function dedupeDetected(detected, includeUnknown) {
 }
 
 export function buildCandidates(context) {
-  const actions = readActionSources(context);
   const spells = readSetting(SETTINGS.enableSpellRecommendations, true)
     ? readSpellActions(context)
     : [];
+  const actions = readActionSources(context, spells);
   const includeUnknown = readSetting(SETTINGS.includeUnknownCustomActions, false);
 
   const { detected, duplicates } = dedupeDetected([...actions, ...spells], includeUnknown);

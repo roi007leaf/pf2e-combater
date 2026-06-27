@@ -1,4 +1,5 @@
 const CATEGORY_ORDER = [
+  { id: "situational", label: "Situational" },
   { id: "attacks", label: "Attacks" },
   { id: "movement", label: "Movement" },
   { id: "defense", label: "Defense" },
@@ -20,6 +21,9 @@ const DEFENSE_ROLES = new Set(["defense", "defensive", "protection", "protect", 
 const SUPPORT_ROLES = new Set(["support", "healing", "heal", "buff", "setup"]);
 const UTILITY_ROLES = new Set(["utility", "detection", "exploration", "knowledge"]);
 const CLASS_SOURCES = new Set(["custom-curated", "custom-unknown", "system-inferred"]);
+// Self-condition gates that make an action only relevant while the actor carries that condition
+// (Stand/Crawl for prone, Retch for sickened, Escape for grabbed/restrained).
+const SITUATIONAL_REQUIRES = ["requiresProne", "requiresSickened", "requiresGrabbedOrRestrained"];
 
 function normalize(value) {
   return String(value ?? "")
@@ -61,6 +65,15 @@ function categoryMeta(id) {
   return CATEGORY_BY_ID.get(id) ?? CATEGORY_BY_ID.get("other");
 }
 
+// Situational = a self-remedy gated by a condition the actor currently has (Stand, Crawl, Retch,
+// Escape). Composite move-and-strikes that merely Stand first stay under Attacks, and spells keep
+// their own category, so both are excluded here.
+function isSituationalAction(action, profile, source, includesStrike) {
+  if (includesStrike || source.startsWith("spell")) return false;
+  if (profile.removesCondition || profile.reducesCondition) return true;
+  return SITUATIONAL_REQUIRES.some((flag) => action?.[flag] === true);
+}
+
 export function builderActionCategory(action) {
   const source = normalize(action?.source);
   const role = normalize(action?.role);
@@ -70,7 +83,9 @@ export function builderActionCategory(action) {
   const traits = actionTraits(action);
   const includes = actionIncludes(action);
   const profile = action?.activityProfile ?? {};
+  const includesStrike = profile.includesStrike === true || includes.has("strike") || source === "strike";
 
+  if (isSituationalAction(action, profile, source, includesStrike)) return categoryMeta("situational");
   if (source.startsWith("spell") || itemType === "spell" || profile.spell === true) return categoryMeta("spells");
   if (source === "strike" || action?.attackTrait === true || action?.damageProfile || ATTACK_ROLES.has(role) || traits.has("attack")) return categoryMeta("attacks");
   if (action?.requiresDestination === true || role === "mobility" || [...slugs].some((slug) => MOVEMENT_SLUGS.has(slug)) || includes.has("move") || includes.has("stride")) return categoryMeta("movement");
@@ -87,6 +102,11 @@ export function groupActionsByBuilderCategory(actions) {
   const buckets = new Map(CATEGORY_ORDER.map((category) => [category.id, []]));
   for (const action of Array.isArray(actions) ? actions : []) {
     const category = builderActionCategory(action);
+    // Situational actions are condition-gated: surface one only when its triggering condition is
+    // currently met. `available === false` on these means the condition is absent (not prone, not
+    // sickened, not grabbed). A condition-met action that is merely over budget stays available, so
+    // Stand/Crawl still show while prone even with no actions left.
+    if (category.id === "situational" && action?.available === false) continue;
     buckets.get(category.id)?.push(action);
   }
   return CATEGORY_ORDER

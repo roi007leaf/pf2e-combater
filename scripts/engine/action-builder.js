@@ -380,6 +380,51 @@ function atomicStrikeAction(action) {
   };
 }
 
+// Stride atom whose destination is the pre-computed flank/retreat square. Carrying the
+// destination directly means auto-fill copies it as-is and skips the target-aimed
+// "did this Stride get closer?" filter — the whole point of a deliberate flank/kite move.
+function positionalStrideAtom(action) {
+  const stride = atomicMovementAction("stride");
+  const attackCenter = action?.activityProfile?.attackCenter ?? null;
+  return {
+    ...stride,
+    preferredTarget: action?.preferredTarget ?? stride.preferredTarget ?? null,
+    requiresDestination: true,
+    ...(attackCenter ? { destination: attackCenter } : {}),
+    activityProfile: {
+      ...(stride.activityProfile ?? {}),
+      ...(attackCenter ? { attackCenter } : {}),
+      positionalStride: true,
+    },
+  };
+}
+
+// A finisher/prepend atom is the stored Strike or spell candidate, re-pointed at the
+// composite's target so it resolves against the right enemy.
+function positionalFinisherAtom(ref, action) {
+  if (!ref) return null;
+  return { ...ref, preferredTarget: action?.preferredTarget ?? ref.preferredTarget ?? null };
+}
+
+function positionalTacticAtoms(action) {
+  const tactic = action?.activityProfile?.positionalTactic;
+  if (tactic === "flank") {
+    const melee = positionalFinisherAtom(action.activityProfile.meleeStrike, action);
+    return [positionalStrideAtom(action), melee].filter(Boolean);
+  }
+  if (tactic === "skirmish") {
+    const finisher = action.activityProfile.finisher ?? null;
+    const meleeAtom = positionalFinisherAtom(action.activityProfile.meleeStrike, action);
+    const finisherAtom = positionalFinisherAtom(finisher?.ref ?? null, action);
+    return [
+      ...(meleeAtom ? [meleeAtom] : []),
+      positionalStrideAtom(action),
+      ...(finisherAtom ? [finisherAtom] : []),
+    ];
+  }
+  return null;
+}
+
 export function builderAtomicActionsForStep(action) {
   const activation = builderActivationAction(action);
   if (activation) {
@@ -388,6 +433,9 @@ export function builderAtomicActionsForStep(action) {
       actionCost: Number(action.interactDrawCost) || 1,
     }, activation];
   }
+
+  const positional = positionalTacticAtoms(action);
+  if (positional) return positional;
 
   if (!isCompositeAtomicAction(action)) return action ? [action] : [];
 
@@ -465,28 +513,85 @@ export function requiresDestinationForAction(action) {
     || Number(action?.activityProfile?.strideCount) > 0;
 }
 
+// A Strike auto-filled with no reachable target and nothing to fix it is never useful: it is out
+// of range from where it executes AND no earlier step moves the actor closer. (A Strike that
+// follows a Stride is left alone — the move may bring it into range.) `projectedAction` is the
+// step's action resolved from its projected origin; `hasEarlierMove` is whether any prior draft
+// step is a movement step.
+export function isUnreachableStrikeStep(projectedAction, hasEarlierMove) {
+  if (!projectedAction) return false;
+  const isStrike = projectedAction.source === "strike"
+    || projectedAction.attackTrait === true
+    || projectedAction.activityProfile?.includesStrike === true;
+  if (!isStrike || projectedAction.available !== false) return false;
+  const reason = String(projectedAction.unavailableReason ?? projectedAction.disabledReason ?? "").toLowerCase();
+  const noReachableTarget = reason.includes("range") || reason.includes("no target");
+  return noReachableTarget && !hasEarlierMove;
+}
+
 function numericPoint(value) {
   const x = Number(value?.x);
   const y = Number(value?.y);
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
-function pixelsPerFoot() {
-  const gridSize = Number(globalThis.canvas?.grid?.size ?? globalThis.canvas?.scene?.grid?.size);
-  const gridDistance = Number(globalThis.canvas?.scene?.grid?.distance ?? globalThis.canvas?.grid?.distance);
-  return Number.isFinite(gridSize) && gridSize > 0 && Number.isFinite(gridDistance) && gridDistance > 0
-    ? gridSize / gridDistance
-    : 1;
-}
-
-function distanceFeetBetween(left, right) {
-  const scale = pixelsPerFoot();
-  const distance = Math.hypot(right.x - left.x, right.y - left.y) / scale;
-  return Number.isFinite(distance) ? distance : null;
-}
-
 function targetCenter(target) {
   return numericPoint(target?.center) ?? numericPoint(target?.token?.center);
+}
+
+function gridCellCount(value) {
+  return Math.max(1, Math.ceil(Number(value ?? 1) || 1));
+}
+
+// Footprint cell centers for a token centered on `center`, mirroring combat-context's
+// distance measurement so projected distances match the unprojected ones.
+function footprintCentersAt(center, width, height) {
+  const size = Number(globalThis.canvas?.grid?.size ?? globalThis.canvas?.scene?.grid?.size) || 1;
+  const cols = gridCellCount(width);
+  const rows = gridCellCount(height);
+  if ((cols === 1 && rows === 1) || cols * rows > 64) return [center];
+  const x0 = center.x - (cols * size) / 2;
+  const y0 = center.y - (rows * size) / 2;
+  const centers = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      centers.push({ x: x0 + (col + 0.5) * size, y: y0 + (row + 0.5) * size });
+    }
+  }
+  return centers;
+}
+
+function measurePathFeet(from, to) {
+  try {
+    const path = globalThis.canvas?.grid?.measurePath?.([from, to]);
+    const distance = path?.distance ?? path;
+    if (Number.isFinite(distance)) return distance;
+  } catch (_error) {
+    // Fall back to a grid-cell measurement when Foundry's measurePath is unavailable.
+  }
+  // Chebyshev (grid-reach) fallback so diagonal adjacency reads as one cell, not 1.41 cells —
+  // matching how the readers compute reach. Euclidean here is what made a melee Strike after a
+  // diagonal Stride report "No target in range".
+  const size = Number(globalThis.canvas?.grid?.size ?? globalThis.canvas?.scene?.grid?.size) || 1;
+  const gridDistance = Number(globalThis.canvas?.scene?.grid?.distance ?? globalThis.canvas?.grid?.distance) || size;
+  const cells = Math.round(Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) / size);
+  return cells * gridDistance;
+}
+
+// Footprint/grid-aware distance from an actor centered on `origin` to a target, taking the
+// nearest cells of both footprints (consistent with combat-context's measureDistance).
+function footprintDistanceFeet(origin, originToken, target) {
+  const center = targetCenter(target);
+  if (!origin || !center) return null;
+  const fromCenters = footprintCentersAt(origin, originToken?.width, originToken?.height);
+  const toCenters = footprintCentersAt(center, target?.width ?? target?.token?.width, target?.height ?? target?.token?.height);
+  let shortest = Infinity;
+  for (const from of fromCenters) {
+    for (const to of toCenters) {
+      shortest = Math.min(shortest, measurePathFeet(from, to));
+    }
+  }
+  return Number.isFinite(shortest) ? shortest : null;
 }
 
 function draftActionSlug(step) {
@@ -594,15 +699,17 @@ function projectShieldCombatState(context, shieldState) {
   };
 }
 
-function projectTargetDistance(target, origin) {
+function projectTargetDistance(target, origin, originToken) {
   const center = targetCenter(target);
   if (!center) return target;
-  const distance = distanceFeetBetween(origin, center);
+  const distance = footprintDistanceFeet(origin, originToken, target);
   return Number.isFinite(distance) ? { ...target, distance } : target;
 }
 
-function projectTargetList(targets, origin) {
-  return Array.isArray(targets) ? targets.map((target) => projectTargetDistance(target, origin)) : targets;
+function projectTargetList(targets, origin, originToken) {
+  return Array.isArray(targets)
+    ? targets.map((target) => projectTargetDistance(target, origin, originToken))
+    : targets;
 }
 
 function draftStepLooksLikeDestinationStep(step) {
@@ -652,6 +759,7 @@ function projectContextToOrigin(context, destination, removedConditions = new Se
   if (!destination) return stateContext;
 
   const battlefield = stateContext.battlefield ?? {};
+  const originToken = stateContext.token ?? null;
   return {
     ...stateContext,
     token: {
@@ -661,13 +769,13 @@ function projectContextToOrigin(context, destination, removedConditions = new Se
     },
     battlefield: {
       ...battlefield,
-      targets: projectTargetList(battlefield.targets, destination),
-      enemies: projectTargetList(battlefield.enemies, destination),
-      allies: projectTargetList(battlefield.allies, destination),
+      targets: projectTargetList(battlefield.targets, destination, originToken),
+      enemies: projectTargetList(battlefield.enemies, destination, originToken),
+      allies: projectTargetList(battlefield.allies, destination, originToken),
     },
-    targets: projectTargetList(stateContext.targets, destination),
-    enemies: projectTargetList(stateContext.enemies, destination),
-    allies: projectTargetList(stateContext.allies, destination),
+    targets: projectTargetList(stateContext.targets, destination, originToken),
+    enemies: projectTargetList(stateContext.enemies, destination, originToken),
+    allies: projectTargetList(stateContext.allies, destination, originToken),
   };
 }
 

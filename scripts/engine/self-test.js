@@ -8,6 +8,7 @@ import {
   actionBuilderKey,
   builderAtomicActionsForStep,
   buildActionBuilderModel,
+  isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
   requiresDestinationForAction,
@@ -86,7 +87,7 @@ import { clearMovementPreview, movementPreviewForStep, recommendedMovementForSte
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
-import { groupActionsByBuilderCategory } from "../ui/action-categories.js";
+import { builderActionCategory, groupActionsByBuilderCategory } from "../ui/action-categories.js";
 import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
@@ -208,6 +209,43 @@ assert.deepEqual(
     { id: "class", actions: ["Quick Bomber"] },
   ],
   "builder tab actions should group into stable combat categories",
+);
+assert.deepEqual(
+  groupActionsByBuilderCategory([
+    { name: "Strike", source: "strike" },
+    { name: "Stand", slug: "stand", role: "mobility", traits: ["move"], requiresProne: true, activityProfile: { includes: ["move"], removesCondition: "prone" } },
+    { name: "Retch", slug: "retch", role: "recovery", requiresSickened: true, activityProfile: { reducesCondition: "sickened" } },
+    { name: "Escape", slug: "escape", role: "defense", attackTrait: true, requiresGrabbedOrRestrained: true },
+  ]).map((section) => ({ id: section.id, actions: section.actions.map((action) => action.name) })),
+  [
+    { id: "situational", actions: ["Stand", "Retch", "Escape"] },
+    { id: "attacks", actions: ["Strike"] },
+  ],
+  "self-condition remedies should group under Situational, ranked above the other combat categories",
+);
+// A move-and-strike that Stands first is still an attack, not a Situational remedy.
+assert.equal(
+  builderActionCategory({
+    name: "Stand -> Stride -> Claw",
+    slug: "stand-stride-strike-claw",
+    role: "mobility-attack",
+    attackTrait: true,
+    activityProfile: { includes: ["stand", "stride", "strike"], includesStrike: true, removesCondition: "prone" },
+  }).id,
+  "attacks",
+  "a Stand-first move-and-strike composite should stay under Attacks",
+);
+// Situational is condition-gated: when prone, Stand/Crawl (condition met, even over budget) show,
+// but Retch/Escape (condition unmet -> available:false) are dropped entirely, not shown disabled.
+assert.deepEqual(
+  groupActionsByBuilderCategory([
+    { name: "Stand", slug: "stand", role: "mobility", traits: ["move"], available: true, overBudget: true, requiresProne: true, activityProfile: { includes: ["move"], removesCondition: "prone" } },
+    { name: "Crawl", slug: "crawl", role: "mobility", traits: ["move"], available: true, requiresProne: true, activityProfile: { includes: ["move", "crawl"] } },
+    { name: "Retch", slug: "retch", role: "recovery", available: false, requiresSickened: true, activityProfile: { reducesCondition: "sickened" } },
+    { name: "Escape", slug: "escape", role: "defense", attackTrait: true, available: false, requiresGrabbedOrRestrained: true },
+  ]).map((section) => ({ id: section.id, actions: section.actions.map((action) => action.name) })),
+  [{ id: "situational", actions: ["Stand", "Crawl"] }],
+  "Situational should drop condition-unmet remedies but keep condition-met ones that are only over budget",
 );
 assert.deepEqual(
   actionDetailChips({
@@ -2685,6 +2723,95 @@ assert.deepEqual(
   [["Interact", 1], ["Healing Potion (Minor)", 1]],
 );
 
+// Positional tactic expansion: flank -> [Stride(to flank square), melee Strike].
+const flankExpansion = builderAtomicActionsForStep({
+  slug: "flank-strike-claw",
+  name: "Flank -> Claw",
+  preferredTarget: { id: "goblin", name: "Goblin" },
+  activityProfile: {
+    positionalTactic: "flank",
+    attackCenter: { x: -5, y: 0 },
+    includes: ["stride", "strike"],
+    includesStrike: true,
+    meleeStrike: { slug: "strike", source: "strike", name: "Claw", executable: "strike", item: { id: "claw" } },
+  },
+});
+assert.deepEqual(flankExpansion.map((action) => action.slug), ["stride", "strike"]);
+assert.deepEqual(flankExpansion[0].destination, { x: -5, y: 0 });
+assert.equal(flankExpansion[0].requiresDestination, true);
+assert.equal(flankExpansion[1].name, "Claw");
+assert.equal(flankExpansion[1].preferredTarget.id, "goblin");
+
+// Skirmish with a 1-action ranged Strike finisher -> [melee Strike, Stride away, ranged Strike].
+const skirmishStrikeExpansion = builderAtomicActionsForStep({
+  slug: "skirmish-strike-dart",
+  name: "Claw -> Stride Away -> Dart",
+  preferredTarget: { id: "bruiser", name: "Bruiser" },
+  activityProfile: {
+    positionalTactic: "skirmish",
+    attackCenter: { x: -25, y: 0 },
+    includesStrike: true,
+    meleeStrike: { slug: "strike", source: "strike", name: "Claw", executable: "strike", item: { id: "claw" } },
+    finisher: {
+      kind: "strike",
+      actionCost: 1,
+      ref: { slug: "strike", source: "strike", name: "Dart", executable: "strike", item: { id: "dart" } },
+    },
+  },
+});
+assert.deepEqual(skirmishStrikeExpansion.map((action) => action.slug), ["strike", "stride", "strike"]);
+assert.equal(skirmishStrikeExpansion[0].name, "Claw");
+assert.deepEqual(skirmishStrikeExpansion[1].destination, { x: -25, y: 0 });
+assert.equal(skirmishStrikeExpansion[2].name, "Dart");
+assert.equal(skirmishStrikeExpansion[2].preferredTarget.id, "bruiser");
+
+// Skirmish with a 2-action spell finisher -> [Stride away, Cast] (no melee prepend).
+const skirmishSpellExpansion = builderAtomicActionsForStep({
+  slug: "skirmish-spell-fireball",
+  name: "Stride Away -> Fireball",
+  preferredTarget: { id: "bruiser", name: "Bruiser" },
+  activityProfile: {
+    positionalTactic: "skirmish",
+    attackCenter: { x: -25, y: 0 },
+    includesStrike: true,
+    meleeStrike: null,
+    finisher: {
+      kind: "spell",
+      actionCost: 2,
+      ref: { slug: "fireball", name: "Fireball", executable: "open-item", item: { id: "fireball" } },
+    },
+  },
+});
+assert.deepEqual(skirmishSpellExpansion.map((action) => action.slug), ["stride", "fireball"]);
+assert.equal(skirmishSpellExpansion[1].name, "Fireball");
+assert.equal(skirmishSpellExpansion[1].preferredTarget.id, "bruiser");
+
+// Auto-fill must drop a Strike that can't reach its target with no earlier move to fix it, but keep
+// a Strike that follows a move, an in-range Strike, and non-strike steps.
+const outOfRangeMelee = { source: "strike", available: false, unavailableReason: "No target in range." };
+assert.equal(isUnreachableStrikeStep(outOfRangeMelee, false), true, "an out-of-range Strike with no earlier move is unreachable");
+assert.equal(isUnreachableStrikeStep(outOfRangeMelee, true), false, "a Strike that follows a move may be brought into range");
+assert.equal(
+  isUnreachableStrikeStep({ source: "strike", available: true }, false),
+  false,
+  "an in-range Strike is kept",
+);
+assert.equal(
+  isUnreachableStrikeStep({ source: "strike", available: false, unavailableReason: "Already grabbing the target." }, false),
+  false,
+  "a Strike disabled for a non-range reason is not pruned as unreachable",
+);
+assert.equal(
+  isUnreachableStrikeStep({ source: "generic", slug: "stride", available: false, unavailableReason: "No target in range." }, false),
+  false,
+  "a non-Strike step is never pruned by the unreachable-Strike guard",
+);
+assert.equal(
+  isUnreachableStrikeStep({ attackTrait: true, available: false, disabledReason: "No target in range." }, false),
+  true,
+  "an attack-trait action out of range with no earlier move is unreachable",
+);
+
 const previousProjectedDraftCanvas = globalThis.canvas;
 try {
   globalThis.canvas = { grid: { size: 5 }, scene: { grid: { distance: 5 } } };
@@ -2787,6 +2914,62 @@ try {
     delete globalThis.canvas;
   } else {
     globalThis.canvas = previousProjectedDraftCanvas;
+  }
+}
+
+// Regression: a melee Strike must read as in range after a Stride lands the actor diagonally
+// adjacent (center-to-center 7.07 ft) or beside a large target — the projected distance is now
+// footprint/grid-aware, matching the unprojected combat-context distance.
+const previousDiagonalReachCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = { grid: { size: 5 }, scene: { grid: { distance: 5 } } };
+  const meleeOnlyActor = (target) => ({
+    actor: {
+      document: {
+        itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [], weapon: [] },
+        items: [],
+        system: {
+          actions: [{
+            slug: "shortsword", label: "Shortsword", name: "Shortsword", type: "strike",
+            visible: true, ready: true, canAttack: true,
+            item: { system: { traits: { value: [] } } },
+          }],
+        },
+      },
+    },
+    token: { center: { x: 0, y: 0 }, width: 1, height: 1 },
+    profile: { reach: 5, meleeReach: 5, speed: 25, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: { targets: [target], enemies: [target], allies: [] },
+  });
+
+  // Diagonally adjacent: center-to-center is 7.07 ft (would fail a reach-5 check), grid reach is 5 ft.
+  const diagonalTarget = { id: "brute", name: "Brute", distance: 10, token: { center: { x: 10, y: 10 } } };
+  const diagonalProjected = projectContextForDraftDestination(meleeOnlyActor(diagonalTarget), {
+    steps: [{ instanceId: "d1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 5 } }],
+  });
+  assert.equal(diagonalProjected.battlefield.targets[0].distance, 5, "diagonal adjacency should read as 5 ft, not 7.07");
+  assert.equal(
+    buildCandidates(diagonalProjected).candidates.some((action) => action.name === "Shortsword"),
+    true,
+    "melee Strike should be reachable after a diagonal Stride",
+  );
+
+  // Large (2x2) target: striding beside its near edge is 5 ft even though the center is far.
+  const largeTarget = { id: "ogre", name: "Ogre", distance: 30, token: { center: { x: 20, y: 20 }, width: 2, height: 2 } };
+  const largeProjected = projectContextForDraftDestination(meleeOnlyActor(largeTarget), {
+    steps: [{ instanceId: "d1", actionKey: "stride", requiresDestination: true, destination: { x: 12.5, y: 20 } }],
+  });
+  assert.equal(largeProjected.battlefield.targets[0].distance, 5, "adjacency to a large target's footprint should read as 5 ft");
+  assert.equal(
+    buildCandidates(largeProjected).candidates.some((action) => action.name === "Shortsword"),
+    true,
+    "melee Strike should be reachable beside a large target",
+  );
+} finally {
+  if (previousDiagonalReachCanvas === undefined) {
+    delete globalThis.canvas;
+  } else {
+    globalThis.canvas = previousDiagonalReachCanvas;
   }
 }
 
@@ -13631,6 +13814,52 @@ try {
   globalThis.canvas = previousSkirmishCanvas;
 }
 
+// Diagonal Strides cost more (PF2e 5-10-5): a target the same number of cells away diagonally
+// needs more movement than one reached in a straight line, so the move-and-strike must not pick
+// an attack square beyond the actor's Speed (the bug: measuring each step reset the diagonal count).
+const previousDiagonalCostCanvas = globalThis.canvas;
+try {
+  // A walls layer must be present or canMoveIntoReach optimistically skips the reach BFS.
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: { placeables: [] },
+    walls: { checkCollision: () => false },
+  };
+  const diagonalCostContext = (center) => ({
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "claw", type: "strike", label: "Claw", visible: true, ready: true, canAttack: true,
+            item: { id: "claw", system: { traits: { value: [] } } }, roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "stalker", center: { x: 0, y: 0 } },
+    profile: { speed: 20, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "prey", name: "Prey", distance: 15, token: { center } }],
+      targets: [{ id: "prey", name: "Prey", distance: 15, token: { center } }],
+    },
+    targets: undefined,
+  });
+  // Straight 4 cells = 20 ft (= Speed 20): one Stride reaches the attack square.
+  const straightComposite = readActionSources(diagonalCostContext({ x: 25, y: 0 }))
+    .find((action) => action.slug === "stride-strike-claw");
+  // Diagonal 4 cells = 30 ft (5+10+5+10): the attack square is beyond one Stride, so two are needed.
+  const diagonalComposite = readActionSources(diagonalCostContext({ x: 25, y: 25 }))
+    .find((action) => action.slug === "stride-strike-claw");
+  assert.ok(straightComposite && diagonalComposite, "both targets should yield a move-and-strike composite");
+  assert.equal(straightComposite.activityProfile.strideCount, 1, "a straight-line approach reaches in one Stride");
+  assert.equal(diagonalComposite.activityProfile.strideCount, 2, "a diagonal approach costs more, needing two Strides");
+} finally {
+  globalThis.canvas = previousDiagonalCostCanvas;
+}
+
 const previousRangedRetreatCanvas = globalThis.canvas;
 try {
   globalThis.canvas = {
@@ -13710,6 +13939,345 @@ try {
   );
 } finally {
   globalThis.canvas = previousRangedRetreatCanvas;
+}
+
+// Flank-and-Strike: an ally adjacent to the target lets the actor Stride to the
+// opposite side and Strike an off-guard enemy.
+const previousFlankCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: { placeables: [] },
+  };
+  const flankContext = {
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "claw", type: "strike", label: "Claw",
+            visible: true, ready: true, canAttack: true,
+            item: { id: "claw", system: { traits: { value: [] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "brute-token", center: { x: -30, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      allies: [{ id: "valeros", name: "Valeros", token: { center: { x: 5, y: 0 } } }],
+      enemies: [{ id: "goblin", name: "Goblin", distance: 30, token: { center: { x: 0, y: 0 } } }],
+      targets: [{ id: "goblin", name: "Goblin", distance: 30, token: { center: { x: 0, y: 0 } } }],
+    },
+    targets: undefined,
+  };
+  const flankComposite = readActionSources(flankContext).find((action) => action.slug === "flank-strike-claw");
+  assert.ok(flankComposite, "expected a flank composite when an ally is adjacent to the target");
+  assert.equal(flankComposite.actionCost, 2);
+  assert.equal(flankComposite.name, "Flank -> Claw");
+  assert.equal(flankComposite.activityProfile.positionalTactic, "flank");
+  assert.equal(flankComposite.activityProfile.targetOffGuard, true);
+  assert.equal(flankComposite.activityProfile.flankAllyId, "valeros");
+  const flankSquare = flankComposite.activityProfile.attackCenter;
+  const flankDot = (flankSquare.x - 0) * (5 - 0) + (flankSquare.y - 0) * (0 - 0);
+  assert.ok(flankDot < 0, `flank square should sit opposite the ally, got ${JSON.stringify(flankSquare)}`);
+
+  const noAllyContext = {
+    ...flankContext,
+    battlefield: { ...flankContext.battlefield, allies: [] },
+  };
+  assert.equal(
+    readActionSources(noAllyContext).find((action) => action.slug === "flank-strike-claw"),
+    undefined,
+    "no flank composite without an adjacent ally",
+  );
+
+  const farAllyContext = {
+    ...flankContext,
+    battlefield: {
+      ...flankContext.battlefield,
+      allies: [{ id: "valeros", name: "Valeros", token: { center: { x: 40, y: 0 } } }],
+    },
+  };
+  assert.equal(
+    readActionSources(farAllyContext).find((action) => action.slug === "flank-strike-claw"),
+    undefined,
+    "no flank composite when the ally is not adjacent to the target",
+  );
+} finally {
+  globalThis.canvas = previousFlankCanvas;
+}
+
+// Skirmish / kite: in an enemy's melee threat, recommend Stride-out + ranged finisher
+// only when fragile or ranged-primary; budget decides whether a melee Strike leads.
+const previousSkirmishKiteCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: { placeables: [] },
+  };
+  const skirmishActorActions = (meleeDie, rangedDie) => [
+    {
+      slug: "claw", type: "strike", label: "Claw",
+      visible: true, ready: true, canAttack: true,
+      item: { id: "claw", system: { damage: { dice: 1, die: meleeDie, damageType: "slashing" }, traits: { value: [] } } },
+      roll: () => null,
+    },
+    {
+      slug: "dart", type: "strike", label: "Dart",
+      visible: true, ready: true, canAttack: true,
+      item: {
+        id: "dart",
+        system: { range: { max: 20 }, damage: { dice: 1, die: rangedDie, damageType: "piercing" }, traits: { value: ["thrown"] } },
+      },
+      roll: () => null,
+    },
+  ];
+  const skirmishContext = (overrides = {}) => ({
+    actor: {
+      document: {
+        system: { actions: skirmishActorActions(overrides.meleeDie ?? "d8", overrides.rangedDie ?? "d4") },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "skirmisher", center: { x: 0, y: 0 } },
+    profile: {
+      speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {},
+      ...(overrides.hp ? { hp: overrides.hp } : {}),
+    },
+    battlefield: {
+      enemies: [{ id: "bruiser", name: "Bruiser", distance: 5, token: { center: { x: 5, y: 0 } } }],
+      targets: [{ id: "bruiser", name: "Bruiser", distance: 5, token: { center: { x: 5, y: 0 } } }],
+    },
+    targets: undefined,
+  });
+
+  // Healthy melee-primary with only a weak ranged option: no skirmish.
+  const healthyMeleePrimary = readActionSources(skirmishContext({ meleeDie: "d8", rangedDie: "d4" }))
+    .filter((action) => action.slug && action.slug.startsWith("skirmish-"));
+  assert.equal(healthyMeleePrimary.length, 0, "healthy melee-primary should not get a skirmish composite");
+
+  // Same actor, now fragile (HP < 50%): skirmish triggers with a melee prepend (budget 3).
+  const fragileSkirmish = readActionSources(skirmishContext({ meleeDie: "d8", rangedDie: "d4", hp: { percent: 0.3 } }))
+    .find((action) => action.slug === "skirmish-strike-dart");
+  assert.ok(fragileSkirmish, "a fragile actor in melee threat should get a skirmish composite");
+  assert.equal(fragileSkirmish.actionCost, 3);
+  assert.equal(fragileSkirmish.name, "Claw -> Stride Away -> Dart");
+  assert.equal(fragileSkirmish.activityProfile.positionalTactic, "skirmish");
+  assert.ok(fragileSkirmish.activityProfile.meleeStrike, "fragile skirmish should include a melee prepend at budget 3");
+  assert.equal(fragileSkirmish.activityProfile.finisher.kind, "strike");
+  assert.ok(fragileSkirmish.activityProfile.attackCenter.x < 0, "skirmish retreat square should move away from the threat");
+
+  // Healthy but ranged-primary (ranged out-damages melee): skirmish triggers without fragility.
+  const rangedPrimarySkirmish = readActionSources(skirmishContext({ meleeDie: "d4", rangedDie: "d8" }))
+    .find((action) => action.slug === "skirmish-strike-dart");
+  assert.ok(rangedPrimarySkirmish, "a ranged-primary actor should get a skirmish composite");
+  assert.ok(rangedPrimarySkirmish.activityProfile.meleeStrike, "ranged-primary skirmish should include a melee prepend at budget 3");
+
+  // Spell finisher: a 2-action offensive ranged spell yields a Stride -> Cast composite (no melee prepend).
+  const spellFinishers = [{
+    id: "fireball", name: "Fireball", slug: "fireball",
+    actionCost: 2, available: true, role: "save-damage",
+    item: { id: "fireball" },
+    targetingProfile: { enemy: true, maxRange: 120 },
+    damageProfile: { average: 28 },
+    averageDamage: 28,
+  }];
+  const spellSkirmish = readActionSources(skirmishContext({ hp: { percent: 0.3 } }), spellFinishers)
+    .find((action) => action.slug === "skirmish-spell-fireball");
+  assert.ok(spellSkirmish, "an offensive ranged spell should yield a Stride -> Cast skirmish composite");
+  assert.equal(spellSkirmish.actionCost, 3);
+  assert.equal(spellSkirmish.name, "Stride Away -> Fireball");
+  assert.equal(spellSkirmish.activityProfile.finisher.kind, "spell");
+  assert.equal(spellSkirmish.activityProfile.meleeStrike, null, "a 2-action spell finisher leaves no budget for a melee prepend");
+} finally {
+  globalThis.canvas = previousSkirmishKiteCanvas;
+}
+
+// GM-NPC scoring preference: the GM auto-plan leads with the positional tactics; a player's
+// recommendation sees the same composites but without the preference bonus.
+const previousPositionalScoringCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 5 },
+    tokens: { placeables: [] },
+  };
+  const flankScoreContext = (isGM) => ({
+    isGM,
+    actor: {
+      document: {
+        system: {
+          actions: [{
+            slug: "claw", type: "strike", label: "Claw",
+            visible: true, ready: true, canAttack: true,
+            item: { id: "claw", system: { damage: { dice: 1, die: "d6", damageType: "slashing" }, traits: { value: [] } } },
+            roll: () => null,
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "brute-token", center: { x: -30, y: 0 } },
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      allies: [{ id: "valeros", name: "Valeros", token: { center: { x: 5, y: 0 } } }],
+      enemies: [{ id: "goblin", name: "Goblin", distance: 30, token: { center: { x: 0, y: 0 } } }],
+      targets: [{ id: "goblin", name: "Goblin", distance: 30, token: { center: { x: 0, y: 0 } } }],
+    },
+    targets: undefined,
+  });
+  const gmFlankCtx = flankScoreContext(true);
+  const playerFlankCtx = flankScoreContext(false);
+  const gmFlank = readActionSources(gmFlankCtx).find((action) => action.slug === "flank-strike-claw");
+  const playerFlank = readActionSources(playerFlankCtx).find((action) => action.slug === "flank-strike-claw");
+  assert.ok(gmFlank && playerFlank, "flank composite should be generated for both GM and player");
+  const gmFlankScore = scoreCandidate(gmFlankCtx, gmFlank);
+  const playerFlankScore = scoreCandidate(playerFlankCtx, playerFlank);
+  assert.ok(
+    gmFlankScore.reasons.some((reason) => reason.includes("Flanks ")),
+    "GM flank score should cite the off-guard flank advantage",
+  );
+  assert.ok(
+    !playerFlankScore.reasons.some((reason) => reason.includes("Flanks ")),
+    "player flank score should not receive the GM flank bonus",
+  );
+  assert.ok(gmFlankScore.score > playerFlankScore.score, "GM should score the flank higher than a player does");
+  const gmFlankPlan = bestTurnPlan(gmFlankCtx, buildCandidates(gmFlankCtx).candidates);
+  assert.ok(
+    gmFlankPlan.steps.some((step) => step.slug === "flank-strike-claw"),
+    `GM auto-plan should lead with the flank, got ${gmFlankPlan.summary}`,
+  );
+
+  const skirmishScoreContext = (isGM) => ({
+    isGM,
+    actor: {
+      document: {
+        system: {
+          actions: [
+            {
+              slug: "claw", type: "strike", label: "Claw", visible: true, ready: true, canAttack: true,
+              item: { id: "claw", system: { damage: { dice: 1, die: "d8", damageType: "slashing" }, traits: { value: [] } } },
+              roll: () => null,
+            },
+            {
+              slug: "dart", type: "strike", label: "Dart", visible: true, ready: true, canAttack: true,
+              item: { id: "dart", system: { range: { max: 20 }, damage: { dice: 1, die: "d4", damageType: "piercing" }, traits: { value: ["thrown"] } } },
+              roll: () => null,
+            },
+          ],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    token: { id: "skirmisher", center: { x: 0, y: 0 } },
+    profile: { speed: 25, reach: 5, hp: { percent: 0.3 }, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: {
+      enemies: [{ id: "bruiser", name: "Bruiser", distance: 5, token: { center: { x: 5, y: 0 } } }],
+      targets: [{ id: "bruiser", name: "Bruiser", distance: 5, token: { center: { x: 5, y: 0 } } }],
+    },
+    targets: undefined,
+  });
+  const gmSkirmishCtx = skirmishScoreContext(true);
+  const playerSkirmishCtx = skirmishScoreContext(false);
+  const gmSkirmish = readActionSources(gmSkirmishCtx).find((action) => action.slug === "skirmish-strike-dart");
+  const playerSkirmish = readActionSources(playerSkirmishCtx).find((action) => action.slug === "skirmish-strike-dart");
+  assert.ok(gmSkirmish && playerSkirmish, "skirmish composite should be generated for both GM and player");
+  const gmSkirmishScore = scoreCandidate(gmSkirmishCtx, gmSkirmish);
+  const playerSkirmishScore = scoreCandidate(playerSkirmishCtx, playerSkirmish);
+  assert.ok(
+    gmSkirmishScore.reasons.some((reason) => reason.toLowerCase().includes("kites out of melee")),
+    "GM skirmish score should cite kiting out of melee",
+  );
+  assert.ok(gmSkirmishScore.score > playerSkirmishScore.score, "GM should score the skirmish higher than a player does");
+  const gmSkirmishPlan = bestTurnPlan(gmSkirmishCtx, buildCandidates(gmSkirmishCtx).candidates);
+  assert.ok(
+    gmSkirmishPlan.steps.some((step) => String(step.slug).startsWith("skirmish-")),
+    `GM auto-plan should lead with the skirmish, got ${gmSkirmishPlan.summary}`,
+  );
+} finally {
+  globalThis.canvas = previousPositionalScoringCanvas;
+}
+
+// Volley weapons take a -2 (=-10 score) penalty within their volley range. An identical bow
+// with and without the trait isolates the penalty: a gap of 10 within range, none beyond it.
+const volleyLongbow = {
+  source: "strike", slug: "strike", name: "Longbow", actionCost: 1,
+  range: { max: 100 }, traits: ["ranged", "volley-30"], averageDamage: 12, attackTrait: true,
+};
+const plainLongbow = { ...volleyLongbow, name: "Composite Longbow", traits: ["ranged"] };
+const volleyDistanceContext = (distance) => ({
+  profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+  token: { center: { x: 0, y: 0 } },
+  battlefield: {
+    enemies: [{ id: "kobold", name: "Kobold", distance, token: { center: { x: distance, y: 0 } } }],
+    targets: [{ id: "kobold", name: "Kobold", distance, token: { center: { x: distance, y: 0 } } }],
+  },
+  targets: undefined,
+});
+const volleyCloseScore = scoreCandidate(volleyDistanceContext(20), volleyLongbow);
+const plainCloseScore = scoreCandidate(volleyDistanceContext(20), plainLongbow);
+assert.equal(plainCloseScore.score - volleyCloseScore.score, 10, "a volley weapon within range costs the -2 (=-10) penalty");
+assert.ok(volleyCloseScore.reasons.some((reason) => reason.includes("Volley")), "a close volley shot should cite the volley penalty");
+const volleyFarScore = scoreCandidate(volleyDistanceContext(50), volleyLongbow);
+const plainFarScore = scoreCandidate(volleyDistanceContext(50), plainLongbow);
+assert.equal(volleyFarScore.score, plainFarScore.score, "beyond its volley range a volley weapon has no penalty");
+assert.ok(volleyFarScore.score > volleyCloseScore.score, "a volley weapon should prefer firing from beyond its volley range");
+
+// Per-step projected volley penalty: a volley Strike taken AFTER a move-and-strike composite is
+// fired from the moved-in square (5 ft, inside volley 30) even though the base position (60 ft) was
+// beyond it — so the planner penalizes it, where base-position scoring alone cannot.
+const previousPlannerVolleyCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = { grid: { size: 5 }, scene: { grid: { distance: 5 } } };
+  const projectedVolleyTarget = { id: "ogre", name: "Ogre", distance: 60, token: { center: { x: 60, y: 0 } } };
+  const moveAndStrike = {
+    id: "stride-strike-claw", slug: "stride-strike-claw", name: "Stride -> Claw",
+    source: "system-inferred", role: "mobility-attack", actionCost: 2, score: 90,
+    attackTrait: true, preferredTarget: projectedVolleyTarget,
+    activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1, attackCenter: { x: 55, y: 0 } },
+  };
+  const projectedVolleyShot = {
+    id: "strike-longbow", slug: "strike", name: "Longbow", source: "strike", actionCost: 1, score: 60,
+    attackTrait: true, range: { max: 100 }, traits: ["ranged", "volley-30"],
+    preferredTarget: projectedVolleyTarget, averageDamage: 12,
+  };
+  const projectedPlainShot = { ...projectedVolleyShot, id: "strike-crossbow", name: "Crossbow", traits: ["ranged"] };
+  const plannerVolleyContext = {
+    profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+    token: { center: { x: 0, y: 0 } },
+    battlefield: { enemies: [projectedVolleyTarget], targets: [projectedVolleyTarget] },
+    targets: undefined,
+  };
+  const findCombo = (plans, shotName) => plans.find((plan) =>
+    plan.steps.some((step) => step.slug === "stride-strike-claw") && plan.steps.some((step) => step.name === shotName));
+  const volleyCombo = findCombo(buildTurnPlans(plannerVolleyContext, [moveAndStrike, projectedVolleyShot]), "Longbow");
+  const plainCombo = findCombo(buildTurnPlans(plannerVolleyContext, [moveAndStrike, projectedPlainShot]), "Crossbow");
+  assert.ok(volleyCombo && plainCombo, "planner should build the move-and-strike + ranged-shot combo");
+  const volleyComboStep = volleyCombo.steps.find((step) => step.name === "Longbow");
+  const plainComboStep = plainCombo.steps.find((step) => step.name === "Crossbow");
+  assert.equal(
+    plainComboStep.score - volleyComboStep.score,
+    10,
+    "a volley shot fired from the moved-in square takes the projected -2 penalty the base score missed",
+  );
+  // No prior movement -> no projected penalty (the volley shot stands at the unmoved 60 ft).
+  const standingVolleyPlans = buildTurnPlans(plannerVolleyContext, [projectedVolleyShot]);
+  const standingVolleyStep = standingVolleyPlans.flatMap((plan) => plan.steps).find((step) => step.name === "Longbow");
+  assert.equal(standingVolleyStep.score, 60, "a volley shot with no prior move keeps its base score");
+} finally {
+  if (previousPlannerVolleyCanvas === undefined) {
+    delete globalThis.canvas;
+  } else {
+    globalThis.canvas = previousPlannerVolleyCanvas;
+  }
 }
 
 const previousPerimeterBlockedStrikeCanvas = globalThis.canvas;

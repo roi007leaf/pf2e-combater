@@ -145,6 +145,73 @@ function hasAgileTrait(candidate) {
   return Array.isArray(traits) && traits.includes("agile");
 }
 
+function planNumericPoint(value) {
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function gridFeetPerPixel() {
+  const size = Number(globalThis.canvas?.grid?.size ?? globalThis.canvas?.scene?.grid?.size);
+  const distance = Number(globalThis.canvas?.scene?.grid?.distance ?? globalThis.canvas?.grid?.distance);
+  return Number.isFinite(size) && size > 0 && Number.isFinite(distance) && distance > 0 ? distance / size : 1;
+}
+
+// Where the actor stands after the prior plan steps: a move-and-strike composite's attack square,
+// or a committed Stride destination. Null when nothing moved the actor (base score already fits).
+function priorProjectedCenter(steps) {
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const center = planNumericPoint(steps[index]?.activityProfile?.attackCenter)
+      ?? planNumericPoint(steps[index]?.destination);
+    if (center) return center;
+  }
+  return null;
+}
+
+function candidateTraitSlugs(candidate) {
+  const values = [
+    ...(Array.isArray(candidate?.traits) ? candidate.traits : []),
+    ...(Array.isArray(candidate?.weaponTraits) ? candidate.weaponTraits : []),
+    ...(Array.isArray(candidate?.item?.system?.traits?.value) ? candidate.item.system.traits.value : []),
+  ];
+  return values.map((trait) => String(trait?.slug ?? trait?.name ?? trait ?? "").toLowerCase()).filter(Boolean);
+}
+
+function candidateVolleyRange(candidate) {
+  for (const trait of candidateTraitSlugs(candidate)) {
+    const match = trait.match(/^volley-(\d+)$/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  }
+  return 0;
+}
+
+function candidateTargetCenter(candidate) {
+  const target = candidate?.preferredTarget ?? candidate?.suggestedTarget ?? candidate?.target;
+  return planNumericPoint(target?.token?.center) ?? planNumericPoint(target?.center);
+}
+
+// Per-step projected volley penalty: a Volley weapon fired from where a prior move lands the actor
+// may be within its volley range even when the unmoved base position was not. Only the penalty the
+// base score did NOT already include is added here, so scoring's base-position penalty isn't doubled.
+function projectedVolleyPenalty(candidate, steps) {
+  if (candidate?.source !== "strike") return 0;
+  const volley = candidateVolleyRange(candidate);
+  if (volley <= 0) return 0;
+
+  const baseDistance = Number(candidate?.preferredTarget?.distance ?? Infinity);
+  if (Number.isFinite(baseDistance) && baseDistance <= volley) return 0;
+
+  const origin = priorProjectedCenter(steps);
+  const targetCenter = candidateTargetCenter(candidate);
+  if (!origin || !targetCenter) return 0;
+
+  const projected = Math.hypot(targetCenter.x - origin.x, targetCenter.y - origin.y) * gridFeetPerPixel();
+  return projected <= volley ? 10 : 0;
+}
+
 function isAttackAction(candidate) {
   return candidate.source === "strike"
     || candidate.activityProfile?.includesStrike === true
@@ -680,6 +747,7 @@ export function buildTurnPlans(context, candidates) {
       }
 
       const penalty = mapPenalty(candidate, attackCount);
+      const projectedVolley = attackAction ? projectedVolleyPenalty(candidate, steps) : 0;
       const plannedCandidate = attackAction
         ? {
           ...candidate,
@@ -696,10 +764,11 @@ export function buildTurnPlans(context, candidates) {
             : candidate.activityProfile,
           mapPenalty: penalty,
           attackIndex: attackCount + 1,
-          score: candidate.score - penalty * MAP_SCORE_WEIGHT,
+          score: candidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
           reason: [
             repeatReloadCost > 0 ? `Reloads before firing ${candidate.name}.` : "",
             penalty > 0 ? `${candidate.reason ?? ""} MAP -${penalty}.`.trim() : candidate.reason,
+            projectedVolley > 0 ? "Volley -2 when fired from the moved-in position." : "",
           ].filter(Boolean).join(" "),
         }
         : candidate;

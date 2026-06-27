@@ -234,7 +234,7 @@ function actionTraitSlugs(action) {
 
 function isRangedStrike(action) {
   const traits = actionTraitSlugs(action);
-  if (traits.some((trait) => trait === "ranged" || trait === "volley" || trait.startsWith("thrown-"))) {
+  if (traits.some((trait) => trait === "ranged" || trait.startsWith("volley") || trait.startsWith("thrown-"))) {
     return true;
   }
 
@@ -268,6 +268,18 @@ function maxRange(action) {
 function inRange(action, target) {
   if (!target) return false;
   return (target.distance ?? Infinity) <= maxRange(action);
+}
+
+// Volley N: a -2 attack penalty against targets within N feet (e.g. longbow = volley-30).
+function volleyRange(action) {
+  for (const trait of actionTraitSlugs(action)) {
+    const match = trait.match(/^volley-(\d+)$/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  }
+  return 0;
 }
 
 function isSpellAction(action) {
@@ -1641,6 +1653,14 @@ export function scoreCandidate(context, action) {
       score += targetDamageAdjustment.scoreDelta;
       reasons.push(...targetDamageAdjustment.reasons);
     }
+
+    // Volley weapons take a -2 to attack within their volley range; firing one point-blank is
+    // worse than repositioning to optimal range (or a kite composite that moves out first).
+    const volley = volleyRange(action);
+    if (volley > 0 && Number(target?.distance ?? Infinity) <= volley) {
+      score -= 10;
+      reasons.push(`Volley weapon takes a -2 penalty within ${volley} ft.`);
+    }
   }
 
   if (["step", "stride", "stand-stride"].includes(action.slug) && action.source === "generic" && target) {
@@ -2211,6 +2231,23 @@ export function scoreCandidate(context, action) {
         score += 18;
         reasons.push("Plan returns to cover after attacking.");
       }
+    }
+  }
+
+  // GM-NPC preference for the positional move-and-strike tactics. Players still see the
+  // composites in the browser, but only the GM auto-plan leads with them (consistent with
+  // the existing aggro-only preference). The generators already gate skirmish on
+  // fragile/ranged-primary, so reaching here means the tactic is warranted.
+  if (action.activityProfile?.positionalTactic && canUseTargetDefenses(context)) {
+    if (action.activityProfile.positionalTactic === "flank") {
+      score += 30;
+      reasons.unshift(`Flanks ${target?.name ?? "the target"} for an off-guard Strike.`);
+    } else if (action.activityProfile.positionalTactic === "skirmish") {
+      const fragile = hpPercent(profile) < 0.5;
+      score += fragile ? 26 : 18;
+      reasons.unshift(fragile
+        ? "Fragile attacker kites out of melee before striking from range."
+        : "Fights better at range; kites out of melee before striking.");
     }
   }
 

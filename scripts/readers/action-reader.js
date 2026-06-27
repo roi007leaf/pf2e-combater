@@ -1,6 +1,7 @@
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { classifySystemAction } from "../engine/action-classifier.js";
+import { actionBudget } from "../engine/planner.js";
 import {
   isSeekRelevantVisibility,
   isVisionerActive,
@@ -10,6 +11,7 @@ import {
 import { compareTacticalCenters } from "../rules/battlefield-analysis.js";
 import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
 import { triggerMatchesContext } from "../rules/event-context.js";
+import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
 
 const ACTION_ITEM_TYPES = new Set(["action", "feat", "feature", "consumable"]);
 const ACTIVATABLE_ITEM_TYPES = new Set([
@@ -148,7 +150,7 @@ function contextAllies(context) {
   return context?.allies ?? context?.battlefield?.allies ?? [];
 }
 
-export function readActionSources(context) {
+export function readActionSources(context, spells = []) {
   const actor = contextActor(context);
   const generatedStrikes = readGeneratedStrikes(actor, context);
   return [
@@ -164,6 +166,7 @@ export function readActionSources(context) {
     ...readStrideStrikeActivities(context, generatedStrikes),
     ...readRangedRetreatStrikeActivities(context, generatedStrikes),
     ...readSkirmishStrikeActivities(context, generatedStrikes),
+    ...readPositionalTacticActivities(context, generatedStrikes, spells),
     ...readGeneratedActivities(actor, context),
     ...readShieldSpellBlockActions(actor, context),
     ...readActorItemActions(actor, context),
@@ -965,18 +968,6 @@ function canAttackTargetPerimeter(attackerRectangle, targetRectangle, metrics) {
   );
 }
 
-function measureMovementFeet(from, to, metrics) {
-  try {
-    const path = globalThis.canvas?.grid?.measurePath?.([from, to]);
-    const distance = Number(path?.distance ?? path);
-    if (Number.isFinite(distance)) return distance;
-  } catch (_error) {
-    // Fall back to Euclidean distance when Foundry measurement is unavailable.
-  }
-
-  return Math.hypot(to.x - from.x, to.y - from.y) / metrics.pixelsPerFoot;
-}
-
 function movementPointKey(point) {
   return `${point.x},${point.y}`;
 }
@@ -1001,7 +992,7 @@ function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
   const maxDistance = distanceFeet + 0.0001;
   const centers = [];
   const bestCosts = new Map([[movementPointKey(origin), 0]]);
-  const queue = [{ center: origin, cost: 0 }];
+  const queue = [{ center: origin, cost: 0, diagonalCount: 0 }];
 
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
@@ -1009,15 +1000,24 @@ function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
       if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
       if (movementPathBlocked(current.center, center, token)) continue;
 
-      const stepCost = measureMovementFeet(current.center, center, metrics);
-      const cost = current.cost + stepCost;
+      // Use PF2e's stateful diagonal cost (every 2nd diagonal is 10 ft) so the chosen attack
+      // square matches what a Stride actually costs. Measuring each step independently
+      // undercounted diagonals and produced destinations beyond the actor's Speed.
+      const movement = pf2eMovementSegmentCost(current.center, center, {
+        gridSize: metrics.pixelSize,
+        gridDistance: metrics.sceneDistance,
+        startingDiagonalCount: current.diagonalCount,
+        token,
+        actor: token?.actor ?? null,
+      });
+      const cost = current.cost + movement.cost;
       if (!Number.isFinite(cost) || cost > maxDistance) continue;
 
       const key = movementPointKey(center);
       if ((bestCosts.get(key) ?? Infinity) <= cost) continue;
       bestCosts.set(key, cost);
       centers.push(center);
-      queue.push({ center, cost });
+      queue.push({ center, cost, diagonalCount: movement.diagonalCount });
     }
   }
 
@@ -1551,6 +1551,320 @@ function readSkirmishStrikeActivities(context, readyStrikes) {
       reasons: [`Stride to attack ${target.name}, then return to ${coverState} cover.`],
     }];
   });
+}
+
+// --- Positional move-and-strike tactics (skirmish/kite + flank) ----------------
+
+// Actor and ally flank a target when they sit on opposite sides of the target
+// center (PF2e flanking approximation): the dot product of the two offset
+// vectors measured from the target center is negative.
+function flanksTarget(attackerCenter, allyCenter, targetCenter) {
+  if (!attackerCenter || !allyCenter || !targetCenter) return false;
+  const ax = attackerCenter.x - targetCenter.x;
+  const ay = attackerCenter.y - targetCenter.y;
+  const bx = allyCenter.x - targetCenter.x;
+  const by = allyCenter.y - targetCenter.y;
+  if ((ax === 0 && ay === 0) || (bx === 0 && by === 0)) return false;
+  return ax * bx + ay * by < 0;
+}
+
+function allyThreatensTarget(ally, target, metrics) {
+  const allyCenter = centerPoint(ally);
+  const targetCenter = centerPoint(target);
+  if (!allyCenter || !targetCenter) return false;
+  const allyRectangle = rectangleForCenter(allyCenter, tokenFootprintPixels(ally, metrics));
+  const targetRectangle = rectangleForCenter(targetCenter, tokenFootprintPixels(target, metrics));
+  return gridReachDistanceFeet(allyRectangle, targetRectangle, metrics) <= targetThreatReach(ally);
+}
+
+// Find an enemy that already has an ally adjacent, plus a Stride-reachable square
+// on the opposite side so the actor's melee Strike lands against an off-guard target.
+function flankStrikePlan(context, profile, strike) {
+  if (isRangedStrike(strike)) return null;
+
+  const reach = strikeMeleeReach(strike);
+  const speed = movementRange(profile);
+  if (reach <= 0 || speed <= 0) return null;
+
+  const metrics = movementGridMetrics();
+  const allies = contextAllies(context).filter((ally) => centerPoint(ally));
+  if (!allies.length) return null;
+
+  for (const target of uniqueTargets(context)) {
+    const targetCenter = centerPoint(target);
+    if (!targetCenter) continue;
+
+    const flankAllies = allies.filter((ally) => allyThreatensTarget(ally, target, metrics));
+    if (!flankAllies.length) continue;
+
+    const attackCenter = reachableAttackCenters(context, target, speed, reach)
+      .filter((center) => flankAllies.some((ally) => flanksTarget(center, centerPoint(ally), targetCenter)))
+      .toSorted((left, right) => compareTacticalCenters(context, left, right, { target }))[0] ?? null;
+    if (!attackCenter) continue;
+
+    const ally = flankAllies.find((candidate) => flanksTarget(attackCenter, centerPoint(candidate), targetCenter))
+      ?? flankAllies[0];
+    return { target, attackCenter, ally };
+  }
+
+  return null;
+}
+
+function readFlankStrikeActivities(context, readyStrikes) {
+  const profile = contextProfile(context);
+  if (movementBlockingCondition(profile, { slug: "stride" })) return [];
+
+  const seenTargets = new Set();
+  return readyStrikes.flatMap((strike) => {
+    const plan = flankStrikePlan(context, profile, strike);
+    if (!plan) return [];
+    const { target, attackCenter, ally } = plan;
+
+    const key = targetKey(target);
+    if (key && seenTargets.has(key)) return [];
+    if (key) seenTargets.add(key);
+
+    const reach = strikeMeleeReach(strike);
+    const slug = slugify(strike.name ?? strike.slug ?? "strike");
+    return [{
+      id: `flank-strike-${strike.id ?? slug}`,
+      name: `Flank -> ${strike.name}`,
+      slug: `flank-strike-${slug}`,
+      actionCost: 2,
+      actionType: "action",
+      source: "system-inferred",
+      confidence: "medium",
+      executable: "open-item",
+      detected: true,
+      available: true,
+      item: strike.item ?? null,
+      preferredTarget: target,
+      role: "mobility-attack",
+      activityProfile: {
+        positionalTactic: "flank",
+        includes: ["stride", "strike"],
+        includesStrike: true,
+        strideCount: 1,
+        strikeReach: reach,
+        attackCenter,
+        meleeStrike: strike,
+        flankAllyId: ally?.id ?? ally?.token?.id ?? null,
+        targetOffGuard: true,
+      },
+      targetingProfile: {
+        enemy: true,
+        reachAfterMove: true,
+        preferredTargetId: target.id ?? null,
+        preferredTargetName: target.name ?? null,
+      },
+      attackTrait: true,
+      setupFor: [],
+      reasons: [`Stride to flank ${target.name} with ${ally?.name ?? "an ally"}, then Strike for an off-guard hit.`],
+    }];
+  });
+}
+
+function actorHpPercent(profile) {
+  const nested = Number(profile?.hp?.percent);
+  if (Number.isFinite(nested)) return nested;
+  const flat = Number(profile?.hpPercent);
+  if (Number.isFinite(flat)) return flat;
+  return 1;
+}
+
+// Mirror of scoring's damageAverage so the reader can compare finisher options
+// without importing the scorer (keeps the reader layer self-contained).
+function candidateAverageDamage(candidate) {
+  const values = [
+    candidate?.damageProfile?.average,
+    candidate?.activityProfile?.averageDamage,
+    candidate?.averageDamage,
+  ];
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) {
+      const multiplier = candidate?.activityProfile?.damageScalesWithActions
+        ? Math.max(1, Number(candidate?.actionCost) || 1)
+        : 1;
+      return number * multiplier;
+    }
+  }
+  return 0;
+}
+
+const OFFENSIVE_SPELL_ROLES = new Set(["damage", "save-damage", "area-damage"]);
+
+function isOffensiveRangedSpell(spell, meleeReach) {
+  if (spell?.available !== true) return false;
+  if (!OFFENSIVE_SPELL_ROLES.has(spell?.role)) return false;
+  if (spell?.targetingProfile?.enemy !== true) return false;
+  const range = Number(spell?.targetingProfile?.maxRange);
+  return Number.isFinite(range) && range > meleeReach;
+}
+
+// Normalize ranged Strikes and offensive ranged spells into a single finisher list.
+function skirmishFinishers(readyStrikes, spells, meleeReach) {
+  const finishers = [];
+  for (const strike of readyStrikes) {
+    if (!isRangedStrike(strike)) continue;
+    const reach = rangedStrikeReach(strike);
+    if (reach <= 5) continue;
+    finishers.push({ kind: "strike", ref: strike, reach, actionCost: 1, average: candidateAverageDamage(strike) });
+  }
+  for (const spell of spells) {
+    if (!isOffensiveRangedSpell(spell, meleeReach)) continue;
+    finishers.push({
+      kind: "spell",
+      ref: spell,
+      reach: Number(spell.targetingProfile.maxRange),
+      actionCost: Math.max(1, Number(spell.actionCost) || 1),
+      average: candidateAverageDamage(spell),
+    });
+  }
+  return finishers;
+}
+
+function bestMeleeDamage(readyStrikes) {
+  return readyStrikes
+    .filter((strike) => !isRangedStrike(strike))
+    .reduce((best, strike) => Math.max(best, candidateAverageDamage(strike)), 0);
+}
+
+// A retreat square outside the target's threat from which the finisher still reaches.
+function retreatSquareForFinisher(context, target, finisher, speed, threatReach) {
+  return reachableAttackCenters(context, target, speed, finisher.reach)
+    .filter((center) => distanceFromCenterToTarget(context, center, target) > threatReach)
+    .toSorted((left, right) => {
+      const tactical = compareTacticalCenters(context, left, right, { target, preferFartherFromTarget: true });
+      if (tactical !== 0) return tactical;
+      const leftDistance = distanceFromCenterToTarget(context, left, target);
+      const rightDistance = distanceFromCenterToTarget(context, right, target);
+      if (leftDistance !== rightDistance) return rightDistance - leftDistance;
+      return (left.cost ?? Infinity) - (right.cost ?? Infinity);
+    })[0] ?? null;
+}
+
+function bestFinisherForTarget(context, target, finishers, speed, threatReach) {
+  let best = null;
+  for (const finisher of finishers) {
+    const attackCenter = retreatSquareForFinisher(context, target, finisher, speed, threatReach);
+    if (!attackCenter) continue;
+    const better = !best
+      || finisher.average > best.average
+      || (finisher.average === best.average && finisher.actionCost < best.actionCost);
+    if (better) best = { ...finisher, attackCenter };
+  }
+  return best;
+}
+
+// Skirmish / kite: the actor stands in an enemy's melee threat but fights better at
+// range (fragile or ranged-primary). Recommend an optional melee Strike, a Stride out
+// of threat, and a ranged finisher (Strike or offensive spell), fit to the action budget.
+function skirmishKitePlan(context, profile, readyStrikes, spells, budget) {
+  const origin = centerPoint(context?.token);
+  const speed = movementRange(profile);
+  if (!origin || speed <= 0) return null;
+
+  const actorMelee = meleeReach(profile);
+  const finishers = skirmishFinishers(readyStrikes, spells, actorMelee);
+  if (!finishers.length) return null;
+
+  const fragile = actorHpPercent(profile) < 0.5;
+  const bestMelee = bestMeleeDamage(readyStrikes);
+
+  for (const target of uniqueTargets(context)) {
+    const threatReach = targetThreatReach(target);
+    const currentDistance = distanceFromCenterToTarget(context, origin, target);
+    if (!Number.isFinite(currentDistance) || currentDistance > threatReach) continue;
+
+    const finisher = bestFinisherForTarget(context, target, finishers, speed, threatReach);
+    if (!finisher) continue;
+
+    const rangedPrimary = finisher.average > 0 && finisher.average >= bestMelee;
+    if (!fragile && !rangedPrimary) continue;
+
+    const meleeStrike = readyStrikes.find((strike) =>
+      !isRangedStrike(strike) && currentDistance <= strikeMeleeReach(strike),
+    ) ?? null;
+    const includeMelee = Boolean(meleeStrike) && (1 + 1 + finisher.actionCost) <= budget;
+    if (!includeMelee && (1 + finisher.actionCost) > budget) continue;
+
+    return {
+      target,
+      finisher,
+      attackCenter: finisher.attackCenter,
+      threatReach,
+      meleeStrike: includeMelee ? meleeStrike : null,
+    };
+  }
+
+  return null;
+}
+
+function readSkirmishKiteActivities(context, readyStrikes, spells) {
+  const profile = contextProfile(context);
+  if (movementBlockingCondition(profile, { slug: "stride" })) return [];
+
+  const budget = actionBudget(context).totalActions;
+  if (budget < 2) return [];
+
+  const plan = skirmishKitePlan(context, profile, readyStrikes, spells, budget);
+  if (!plan) return [];
+
+  const { target, finisher, attackCenter, threatReach, meleeStrike } = plan;
+  const finisherName = finisher.ref.name ?? finisher.ref.slug ?? (finisher.kind === "spell" ? "Cast a Spell" : "Strike");
+  const slug = slugify(finisherName);
+  const verb = finisher.kind === "spell" ? "Cast" : finisherName;
+  const namePrefix = meleeStrike ? `${meleeStrike.name} -> ` : "";
+
+  return [{
+    id: `skirmish-${finisher.kind}-${finisher.ref.id ?? slug}`,
+    name: `${namePrefix}Stride Away -> ${finisherName}`,
+    slug: `skirmish-${finisher.kind}-${slug}`,
+    actionCost: (meleeStrike ? 1 : 0) + 1 + finisher.actionCost,
+    actionType: "action",
+    source: "system-inferred",
+    confidence: "medium",
+    executable: "open-item",
+    detected: true,
+    available: true,
+    item: finisher.ref.item ?? null,
+    preferredTarget: target,
+    role: "mobility-attack",
+    activityProfile: {
+      positionalTactic: "skirmish",
+      meleeStrike,
+      finisher: { kind: finisher.kind, ref: finisher.ref, actionCost: finisher.actionCost },
+      includes: [...(meleeStrike ? ["strike"] : []), "stride", ...(finisher.kind === "strike" ? ["strike"] : [])],
+      includesStrike: true,
+      retreatBeforeStrike: true,
+      strideCount: 1,
+      strikeReach: finisher.reach,
+      threatReach,
+      attackCenter,
+    },
+    targetingProfile: {
+      enemy: true,
+      reachAfterMove: true,
+      retreatBeforeStrike: true,
+      preferredTargetId: target.id ?? null,
+      preferredTargetName: target.name ?? null,
+    },
+    attackTrait: true,
+    setupFor: [],
+    reasons: [meleeStrike
+      ? `Strike ${target.name}, Stride out of reach, then ${verb} from range.`
+      : `Stride out of ${target.name}'s reach, then ${verb} from range.`],
+  }];
+}
+
+// Combines the positional move-and-strike tactics. Spells are passed in by the
+// caller so the skirmish finisher can be a ranged Strike or an offensive spell.
+function readPositionalTacticActivities(context, readyStrikes, spells = []) {
+  return [
+    ...readSkirmishKiteActivities(context, readyStrikes, spells),
+    ...readFlankStrikeActivities(context, readyStrikes),
+  ];
 }
 
 function readActorItemActions(actor, context) {
