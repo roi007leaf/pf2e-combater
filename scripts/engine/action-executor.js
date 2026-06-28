@@ -1,6 +1,7 @@
 import { requiresDestinationForAction } from "./action-builder.js";
 import { movementPreviewForStep } from "../ui/movement-preview.js";
 import { buildAreaTimerEffectData, buildAreaTimerFlag, parseSpellDuration } from "./area-duration.js";
+import { t } from "../i18n.js";
 
 const AREA_SHAPES = new Set(["burst", "cone", "cube", "cylinder", "emanation", "line", "ring", "square"]);
 const AREA_REGION_TYPES = new Set(["circle", "cone", "emanation", "line", "rectangle", "ring"]);
@@ -108,7 +109,7 @@ export function currentTargetSelection() {
   return {
     targets,
     targetTokenIds,
-    targetLabel: targetNames.length ? `Target: ${targetNames.join(", ")}` : "",
+    targetLabel: targetNames.length ? t("Label.Target", "Target: {name}", { name: targetNames.join(", ") }) : "",
   };
 }
 
@@ -125,7 +126,7 @@ export function plannedTargetSelection(action) {
   return {
     targets: target ? [target] : [],
     targetTokenIds: ids,
-    targetLabel: name ? `Target: ${name}` : "",
+    targetLabel: name ? t("Label.Target", "Target: {name}", { name }) : "",
   };
 }
 
@@ -227,10 +228,11 @@ export function executionReadinessForStep(step, action = step?.action ?? step) {
   if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");
   if (requiresTargetForAction(resolvedAction) && !resolveTarget(step, resolvedAction)) choices.push("target");
   if (requiresAreaMarkerForAction(resolvedAction) && !areaMarkerFromStep(step)) choices.push("area");
+  const choiceLabels = choices.map((choice) => t(`Choice.${choice}`, choice));
   return {
     status: choices.length ? "needs-choice" : "ready",
     choices,
-    warning: choices.length ? `Choose ${choices.join(", ")} at execution.` : "",
+    warning: choices.length ? t("Exec.ChooseAtExec", "Choose {choices} at execution.", { choices: choiceLabels.join(", ") }) : "",
   };
 }
 
@@ -429,10 +431,10 @@ function chatActionRevert(nativeResult, action, { target = null, slotOp = null }
 
   const targetName = String(target?.label ?? "").replace(/^Target:\s*/i, "").trim();
   if (targetName) {
-    manualWarnings.push(`${action?.name ?? "This action"} may have applied effects to ${targetName} — undo them manually.`);
+    manualWarnings.push(t("Exec.ManualEffects", "{action} may have applied effects to {target} — undo them manually.", { action: action?.name ?? t("Exec.ThisActionCap", "This action"), target: targetName }));
   }
   if (!messageId) {
-    manualWarnings.push(`Undo ${action?.name ?? "this action"} manually; its chat output could not be tracked.`);
+    manualWarnings.push(t("Exec.ManualUndo", "Undo {action} manually; its chat output could not be tracked.", { action: action?.name ?? t("Exec.ThisAction", "this action") }));
   }
   return revertEnvelope(ops, manualWarnings);
 }
@@ -454,7 +456,7 @@ function targetTokenUuid(token) {
 
 function targetLabelFor(token) {
   const name = targetTokenName(token);
-  return name ? `Target: ${name}` : "";
+  return name ? t("Label.Target", "Target: {name}", { name }) : "";
 }
 
 function clearTokenTargets() {
@@ -714,8 +716,8 @@ async function executeMovement({ context, step, action, choices }) {
   if (preview.enabled && preview.explicitDestination && preview.destinationAvailable === false) {
     return {
       status: "failed",
-      patch: executionPatch({ destination }, "failed", { error: preview.destinationIllegalReason || "Destination is unavailable." }),
-      error: preview.destinationIllegalReason || "Destination is unavailable.",
+      patch: executionPatch({ destination }, "failed", { error: preview.destinationIllegalReason || t("Exec.DestinationUnavailable", "Destination is unavailable.") }),
+      error: preview.destinationIllegalReason || t("Exec.DestinationUnavailable", "Destination is unavailable."),
     };
   }
 
@@ -729,8 +731,8 @@ async function executeMovement({ context, step, action, choices }) {
   if (!canMoveOnCurrentTurn(context, token)) {
     return {
       status: "failed",
-      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: "Token can only move on its turn." }),
-      error: "Token can only move on its turn.",
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: t("Exec.MoveOnlyOnTurn", "Token can only move on its turn.") }),
+      error: t("Exec.MoveOnlyOnTurn", "Token can only move on its turn."),
     };
   }
 
@@ -738,15 +740,15 @@ async function executeMovement({ context, step, action, choices }) {
   if (plannedStarted) {
     return {
       status: "done",
-      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: "Started planned movement.", revert: movementRevert }),
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.StartedMovement", "Started planned movement."), revert: movementRevert }),
     };
   }
 
   if (movementPlan?.id && document?.movement?.state === "planned") {
     return {
       status: "failed",
-      patch: executionPatch({ destination, movementPlan }, "failed", { error: "Planned movement is stale. Choose destination again." }),
-      error: "Planned movement is stale. Choose destination again.",
+      patch: executionPatch({ destination, movementPlan }, "failed", { error: t("Exec.MovementStale", "Planned movement is stale. Choose destination again.") }),
+      error: t("Exec.MovementStale", "Planned movement is stale. Choose destination again."),
     };
   }
 
@@ -758,14 +760,14 @@ async function executeMovement({ context, step, action, choices }) {
       if (!moved) {
         return {
           status: "failed",
-          patch: executionPatch({ destination, movementPlan }, "failed", { error: "Movement was prevented." }),
-          error: "Movement was prevented.",
+          patch: executionPatch({ destination, movementPlan }, "failed", { error: t("Exec.MovementPrevented", "Movement was prevented.") }),
+          error: t("Exec.MovementPrevented", "Movement was prevented."),
         };
       }
     }
     return {
       status: "done",
-      patch: executionPatch({ destination, movementPlan }, "done", { result: "Moved token.", revert: movementRevert }),
+      patch: executionPatch({ destination, movementPlan }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
     };
   }
 
@@ -775,21 +777,21 @@ async function executeMovement({ context, step, action, choices }) {
     if (!moved) {
       return {
         status: "failed",
-        patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: "Movement was prevented." }),
-        error: "Movement was prevented.",
+        patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: t("Exec.MovementPrevented", "Movement was prevented.") }),
+        error: t("Exec.MovementPrevented", "Movement was prevented."),
       };
     }
     return {
       status: "done",
-      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: "Moved token.", revert: movementRevert }),
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
     };
   }
 
   if (typeof document?.update !== "function") {
     return {
       status: "failed",
-      patch: executionPatch({ destination }, "failed", { error: "Token document is not available." }),
-      error: "Token document is not available.",
+      patch: executionPatch({ destination }, "failed", { error: t("Exec.NoTokenDocument", "Token document is not available.") }),
+      error: t("Exec.NoTokenDocument", "Token document is not available."),
     };
   }
 
@@ -799,7 +801,7 @@ async function executeMovement({ context, step, action, choices }) {
   });
   return {
     status: "done",
-    patch: executionPatch({ destination }, "done", { result: "Moved token.", revert: movementRevert }),
+    patch: executionPatch({ destination }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
   };
 }
 
@@ -830,8 +832,8 @@ export async function increaseCondition(actor, slug, options = {}) {
 async function executeStand(actor) {
   const removed = await decreaseCondition(actor, "prone", { forceRemove: true });
   return removed
-    ? { status: "done", patch: executionPatch({}, "done", { result: "Removed prone.", revert: revertEnvelope([{ kind: "condition", slug: "prone" }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not remove prone." }), error: "Could not remove prone." };
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.RemovedProne", "Removed prone."), revert: revertEnvelope([{ kind: "condition", slug: "prone" }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotRemoveProne", "Could not remove prone.") }), error: t("Exec.CouldNotRemoveProne", "Could not remove prone.") };
 }
 
 function resultDegree(result) {
@@ -867,50 +869,63 @@ async function rollFortitudeSave(actor, { event, dc } = {}) {
   }
 }
 
-// Retch is a Fortitude save against the DC of the effect that sickened you (not a PF2e action), so
-// roll the save directly. Success removes 1 sickened, critical success removes 2. When no DC is
-// known the save still rolls to chat; the degree can't be judged automatically, so the panel asks
-// for the outcome.
-async function executeRetch({ actor, action, event, choices }) {
-  let succeeded = choices.retchSucceeded;
-  let critical = choices.retchCritical === true;
-  if (succeeded === undefined) {
-    const dc = numeric(action?.dc ?? action?.difficultyClass ?? choices?.dc);
-    const roll = await rollFortitudeSave(actor, { event, dc: Number.isFinite(dc) ? dc : undefined });
-    const degree = resultDegree(roll);
-    succeeded = degreeSucceeded(degree);
-    critical = isCriticalSuccessDegree(degree);
-  }
-  if (succeeded === null || succeeded === undefined) {
-    return { status: "needs-choice", choices: ["retch-result"], patch: {} };
-  }
+// Apply a settled Retch result: a success removes 1 sickened, a critical success removes 2, each
+// reduction getting its own revert op. A non-success leaves sickened unchanged.
+async function applyRetchResult(actor, succeeded, critical) {
   if (succeeded !== true) {
-    return { status: "done", patch: executionPatch({}, "done", { result: "Retch failed; sickened unchanged." }) };
+    return { status: "done", patch: executionPatch({}, "done", { result: t("Exec.RetchFailed", "Retch failed; sickened unchanged.") }) };
   }
-
-  // Success reduces sickened by 1, critical success by 2; each reduction gets its own revert op.
   const reduceBy = critical ? 2 : 1;
   let removed = 0;
   for (let index = 0; index < reduceBy; index += 1) {
     if (await decreaseCondition(actor, "sickened")) removed += 1;
   }
   if (removed <= 0) {
-    return { status: "failed", patch: executionPatch({}, "failed", { error: "Could not reduce sickened." }), error: "Could not reduce sickened." };
+    return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotReduceSickened", "Could not reduce sickened.") }), error: t("Exec.CouldNotReduceSickened", "Could not reduce sickened.") };
   }
   return {
     status: "done",
     patch: executionPatch({}, "done", {
-      result: removed >= 2 ? "Reduced sickened by 2." : "Reduced sickened.",
+      result: removed >= 2 ? t("Exec.ReducedSickened2", "Reduced sickened by 2.") : t("Exec.ReducedSickened", "Reduced sickened."),
       revert: revertEnvelope(Array.from({ length: removed }, () => ({ kind: "condition", slug: "sickened" }))),
     }),
+  };
+}
+
+// Retch is a Fortitude save against the DC of the effect that sickened you (not a PF2e action), and
+// only the GM knows that DC. The flow runs in three phases driven by the panel:
+//   1. No DC yet            -> needs-choice "retch-dc"     (GM supplies the DC)
+//   2. DC supplied (no rule)-> roll the save vs the DC, then needs-choice "retch-result" carrying the
+//                              rolled degree (the player rolls; the GM then judges)
+//   3. GM ruled             -> apply choices.retchSucceeded / retchCritical
+async function executeRetch({ actor, action, event, choices }) {
+  if (choices.retchSucceeded !== undefined) {
+    return applyRetchResult(actor, choices.retchSucceeded === true, choices.retchCritical === true);
+  }
+  const dc = numeric(action?.dc ?? action?.difficultyClass ?? choices?.dc);
+  if (!Number.isFinite(dc)) {
+    return { status: "needs-choice", choices: ["retch-dc"], patch: {} };
+  }
+  // DC known — the player rolls the save against it (posted to chat); the GM rules on the outcome.
+  const roll = await rollFortitudeSave(actor, { event, dc });
+  const degree = resultDegree(roll);
+  return {
+    status: "needs-choice",
+    choices: ["retch-result"],
+    patch: {},
+    rolled: {
+      degree: degree ?? null,
+      succeeded: degreeSucceeded(degree),
+      critical: isCriticalSuccessDegree(degree),
+    },
   };
 }
 
 async function executeDropProne(actor) {
   const added = await increaseCondition(actor, "prone");
   return added
-    ? { status: "done", patch: executionPatch({}, "done", { result: "Dropped prone.", revert: revertEnvelope([{ kind: "condition", slug: "prone", remove: true }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not drop prone." }), error: "Could not drop prone." };
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedProne", "Dropped prone."), revert: revertEnvelope([{ kind: "condition", slug: "prone", remove: true }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDropProne", "Could not drop prone.") }), error: t("Exec.CouldNotDropProne", "Could not drop prone.") };
 }
 
 function weaponCarryState(item) {
@@ -935,40 +950,40 @@ async function changeWeaponCarry(actor, item, target) {
 
 async function executeDrawWeapon({ actor, action }) {
   const item = action?.item;
-  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to draw." }), error: "No weapon to draw." };
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoWeaponDraw", "No weapon to draw.") }), error: t("Exec.NoWeaponDraw", "No weapon to draw.") };
   const prior = weaponCarryState(item);
   const hands = Number(item?.system?.usage?.hands) || 1;
   const changed = await changeWeaponCarry(actor, item, { carryType: "held", handsHeld: hands });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: `Drew ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not draw the weapon." }), error: "Could not draw the weapon." };
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Drew", "Drew {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDraw", "Could not draw the weapon.") }), error: t("Exec.CouldNotDraw", "Could not draw the weapon.") };
 }
 
 async function executeDropWeapon({ actor, action }) {
   const item = action?.item;
-  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to drop." }), error: "No weapon to drop." };
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoWeaponDrop", "No weapon to drop.") }), error: t("Exec.NoWeaponDrop", "No weapon to drop.") };
   const prior = weaponCarryState(item);
   const changed = await changeWeaponCarry(actor, item, { carryType: "dropped", handsHeld: 0 });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: `Dropped ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not drop the weapon." }), error: "Could not drop the weapon." };
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedWeapon", "Dropped {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDropWeapon", "Could not drop the weapon.") }), error: t("Exec.CouldNotDropWeapon", "Could not drop the weapon.") };
 }
 
 async function executeSheatheWeapon({ actor, action }) {
   const item = action?.item;
-  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to sheathe." }), error: "No weapon to sheathe." };
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoWeaponSheathe", "No weapon to sheathe.") }), error: t("Exec.NoWeaponSheathe", "No weapon to sheathe.") };
   const prior = weaponCarryState(item);
   const changed = await changeWeaponCarry(actor, item, { carryType: "worn", handsHeld: 0 });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: `Sheathed ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not sheathe the weapon." }), error: "Could not sheathe the weapon." };
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Sheathed", "Sheathed {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") }), error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") };
 }
 
 // PF2e has no scriptable reload action (ammo selection happens in the weapon UI), so post a
 // reminder to reload rather than guessing at the ammunition state.
 async function executeReloadWeapon({ actor, action }) {
-  await createGuidance({ ...action, reason: `Reload ${action?.item?.name ?? "your weapon"} before firing again.` }, actor);
-  return { status: "done", patch: executionPatch({}, "done", { result: "Posted reload reminder." }) };
+  await createGuidance({ ...action, reason: t("Exec.ReloadReason", "Reload {name} before firing again.", { name: action?.item?.name ?? t("Exec.YourWeapon", "your weapon") }) }, actor);
+  return { status: "done", patch: executionPatch({}, "done", { result: t("Exec.PostedReloadReminder", "Posted reload reminder.") }) };
 }
 
 function pf2eActionsCollection() {
@@ -1061,15 +1076,15 @@ async function executePf2eAction({ actor, context, step, action, event, choices 
     return {
       status: "failed",
       patch: executionPatch(target ? { targetTokenIds: [target.id], targetLabel: target.label } : {}, "failed", {
-        error: "PF2e action API is not available.",
+        error: t("Exec.NoActionApi", "PF2e action API is not available."),
       }),
-      error: "PF2e action API is not available.",
+      error: t("Exec.NoActionApi", "PF2e action API is not available."),
     };
   }
   return {
     status: "done",
     patch: executionPatch(target ? { targetTokenIds: [target.id], targetLabel: target.label } : {}, "done", {
-      result: "PF2e action opened.",
+      result: t("Exec.ActionOpened", "PF2e action opened."),
       revert: chatActionRevert(result, action, { target }),
     }),
     nativeResult: result,
@@ -1092,8 +1107,8 @@ async function executeStrike({ step, action, event, choices }) {
   if (typeof roller !== "function") {
     return {
       status: "failed",
-      patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "failed", { error: "Strike roll API is not available." }),
-      error: "Strike roll API is not available.",
+      patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "failed", { error: t("Exec.NoStrikeApi", "Strike roll API is not available.") }),
+      error: t("Exec.NoStrikeApi", "Strike roll API is not available."),
     };
   }
   // PF2e resolves the strike's target from game.user.targets (set above), the same way the
@@ -1103,7 +1118,7 @@ async function executeStrike({ step, action, event, choices }) {
   return {
     status: "done",
     patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "done", {
-      result: "Strike roll opened.",
+      result: t("Exec.StrikeOpened", "Strike roll opened."),
       revert: chatActionRevert(result, action, { target }),
     }),
     nativeResult: result,
@@ -1152,7 +1167,7 @@ function escapeHtml(value) {
 }
 
 async function createGuidance(action, actor) {
-  const content = `<strong>${escapeHtml(action?.name ?? "Action")}</strong><br>${escapeHtml(action?.reason ?? "Review this action before resolving it.")}`;
+  const content = `<strong>${escapeHtml(action?.name ?? t("Exec.ActionName", "Action"))}</strong><br>${escapeHtml(action?.reason ?? t("Exec.ReviewActionLong", "Review this action before resolving it."))}`;
   if (globalThis.ChatMessage?.create) {
     await globalThis.ChatMessage.create({
       speaker: globalThis.ChatMessage.getSpeaker?.({ actor }) ?? {},
@@ -1161,7 +1176,7 @@ async function createGuidance(action, actor) {
     });
     return true;
   }
-  globalThis.ui?.notifications?.info?.(`${action?.name ?? "Action"}: ${action?.reason ?? "Review this action."}`);
+  globalThis.ui?.notifications?.info?.(`${action?.name ?? t("Exec.ActionName", "Action")}: ${action?.reason ?? t("Exec.ReviewAction", "Review this action.")}`);
   return true;
 }
 
@@ -1201,12 +1216,12 @@ async function executeSustainSpell({ actor, step, action }) {
     });
     messageId = chatMessageIdFromResult({ message }) ?? message?.id ?? message?._id ?? null;
   } else {
-    await createGuidance({ ...action, reason: sustained?.name ? `Sustain ${sustained.name}.` : action?.reason }, actor);
+    await createGuidance({ ...action, reason: sustained?.name ? t("Exec.SustainReason", "Sustain {name}.", { name: sustained.name }) : action?.reason }, actor);
   }
   return {
     status: "done",
     patch: executionPatch({}, "done", {
-      result: spell ? `Re-posted ${spell.name ?? sustained?.name ?? "spell"}.` : "Posted sustain reminder.",
+      result: spell ? t("Exec.RePosted", "Re-posted {name}.", { name: spell.name ?? sustained?.name ?? t("Exec.Spell", "spell") }) : t("Exec.PostedSustainReminder", "Posted sustain reminder."),
       revert: revertEnvelope(messageId ? [{ kind: "chat", messageId }] : []),
     }),
   };
@@ -1308,7 +1323,7 @@ async function createAreaRegion({ context, action, marker }) {
     const placed = await globalThis.canvas.regions.placeRegion(data);
     return { data, regionId: regionIdFromCreated(placed), sceneId };
   }
-  throw new Error("Region creation API is not available.");
+  throw new Error(t("Exec.NoRegionApi", "Region creation API is not available."));
 }
 
 function spellDurationInfo(action) {
@@ -1521,7 +1536,7 @@ function actionDamageFormula(action) {
 // Best-effort: roll an action's @Damage[...] to chat. Strikes and PF2e actions roll their own
 // damage, so this only runs for the open-item / custom path. Returns the produced chat message
 // id (so revert can delete it) or null.
-async function rollActionDamage({ actor, action, target = null }) {
+async function rollActionDamage({ actor, action, target = null, timestamp = null }) {
   const parsed = actionDamageFormula(action);
   if (!parsed?.formula) return null;
   const DamageRoll = pf2eDamageRollClass();
@@ -1540,6 +1555,9 @@ async function rollActionDamage({ actor, action, target = null }) {
       speaker: globalThis.ChatMessage?.getSpeaker?.({ actor }) ?? {},
       flavor: damageFlavor(action),
       flags: damageMessageFlags({ actor, action, target }),
+      // Stamp the damage strictly after the spell/action card so the chat log always sorts the
+      // card first, even if the card's creation resolves on a later tick than this roll.
+      ...(Number.isFinite(timestamp) ? { timestamp } : {}),
     });
     return message?.id ?? message?._id ?? null;
   } catch (error) {
@@ -1562,11 +1580,13 @@ async function flushPendingChat() {
   await new Promise((resolve) => { schedule(resolve, 0); });
 }
 
-async function rollActionDamageMessages({ actor, action, target = null }) {
+async function rollActionDamageMessages({ actor, action, target = null, after = null }) {
   const count = damageRollCount(action);
+  const base = Number.isFinite(after) ? after : null;
   const messageIds = [];
   for (let index = 0; index < count; index += 1) {
-    const messageId = await rollActionDamage({ actor, action, target });
+    const timestamp = base != null ? base + 1 + index : null;
+    const messageId = await rollActionDamage({ actor, action, target, timestamp });
     if (messageId) messageIds.push(messageId);
   }
   return messageIds;
@@ -1606,7 +1626,7 @@ function areaTemplatePersists(action) {
 }
 
 export async function executeDraftStep({ context, step, action = step?.action ?? step, event = null, choices = {} } = {}) {
-  if (!step || !action) return { status: "failed", patch: executionPatch({}, "failed", { error: "No action selected." }), error: "No action selected." };
+  if (!step || !action) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoActionSelected", "No action selected.") }), error: t("Exec.NoActionSelected", "No action selected.") };
 
   const resolvedAction = executionAction(step, action);
   const actor = actorDocument(context);
@@ -1677,7 +1697,7 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     // damage in that case — the cast never happened. (A spell merely opened via the fallback path,
     // with no spellcasting entry, is not a failed cast and still rolls its @Damage.)
     if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {
-      const reason = resolvedAction?.unavailableReason || "Spell could not be cast (no slot available).";
+      const reason = resolvedAction?.unavailableReason || t("Exec.SpellNoSlot", "Spell could not be cast (no slot available).");
       result = {
         status: "failed",
         patch: executionPatch(patch, "failed", { error: reason }),
@@ -1686,13 +1706,21 @@ export async function executeDraftStep({ context, step, action = step?.action ??
       };
     } else {
       // Let the action's own chat card commit before rolling damage, so the damage message
-      // always lands after the spell/strike card instead of racing ahead of it.
+      // always lands after the spell/strike card instead of racing ahead of it. The timestamp on
+      // the card is the reliable anchor: damage is stamped strictly after it so the log sorts the
+      // card first even when the card's creation resolves on a later tick.
       await flushPendingChat();
-      const damageMessageIds = await rollActionDamageMessages({ actor, action: resolvedAction, target });
+      const cardTimestamp = Number(nativeResult?.message?.timestamp);
+      const damageMessageIds = await rollActionDamageMessages({
+        actor,
+        action: resolvedAction,
+        target,
+        after: Number.isFinite(cardTimestamp) ? cardTimestamp : null,
+      });
       result = {
         status: "done",
         patch: executionPatch(patch, "done", {
-          result: nativeResult?.opened ? "Opened action." : "Executed action.",
+          result: nativeResult?.opened ? t("Exec.OpenedAction", "Opened action.") : t("Exec.ExecutedAction", "Executed action."),
           revert: chatActionRevert(nativeResult, resolvedAction, { target, slotOp }),
         }),
         nativeResult,

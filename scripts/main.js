@@ -1,7 +1,9 @@
 import { MODULE_ID } from "./constants.js";
 import { registerSettings, setting, SETTINGS } from "./settings.js";
 import { clearMovementCollisionCache } from "./readers/action-reader.js";
-import { handleRetchSocket } from "./rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "./rules/retch-decision.js";
+import { setSocket } from "./socket.js";
+import { t } from "./i18n.js";
 import { documentRelevantToContext } from "./state/context-relevance.js";
 import {
   captureMovementOrigin,
@@ -231,8 +233,8 @@ Hooks.once("init", () => {
   registerSettings();
 
   game.keybindings.register(MODULE_ID, "togglePanel", {
-    name: "Toggle PF2e Combater",
-    hint: "Open or close the PF2e Combater tactical advisor panel.",
+    name: t("Keybind.ToggleName", "Toggle PF2e Combater"),
+    hint: t("Keybind.ToggleHint", "Open or close the PF2e Combater tactical advisor panel."),
     editable: [{ key: "KeyC", modifiers: ["Alt", "Shift"] }],
     onDown: async () => {
       activePanel = await togglePanelForCurrentCombatant(activePanel, "keybinding", {
@@ -261,7 +263,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
 
   addTool(tokenControl.tools, {
     name: `${MODULE_ID}-toggle-panel`,
-    title: "Toggle PF2e Combater",
+    title: t("Keybind.ToggleName", "Toggle PF2e Combater"),
     icon: "fa-solid fa-crosshairs",
     toggle: true,
     active: Boolean(activePanel),
@@ -280,18 +282,32 @@ Hooks.on("getSceneControlButtons", (controls) => {
   });
 });
 
+// GM-side handler for a player's shared draft plan (runs on each GM via socketlib.executeForAllGMs).
+function receiveSharedDraft(payload) {
+  if (game.user?.isGM !== true) return;
+  writeSharedDraftPlanPayload(payload);
+  scheduleRefresh("shared-draft");
+  if (!payload?.silent) {
+    ui?.notifications?.info?.(t("Notify.PlanSharedBy", "PF2e Combater: {user} shared {actor} plan.", { user: payload?.userName ?? "Player", actor: payload?.actorName ?? "a" }));
+  }
+}
+
+// socketlib owns the player↔GM transport (Retch adjudication, shared-plan sync). Register our
+// handlers as soon as it's ready; the typed callers in scripts/socket.js use this instance.
+Hooks.once("socketlib.ready", () => {
+  const socket = globalThis.socketlib?.registerModule?.(MODULE_ID);
+  if (!socket) {
+    console.warn("PF2e Combater | socketlib unavailable — GM round-trips will fall back to local prompts");
+    return;
+  }
+  socket.register("promptRetchDc", promptRetchDc);
+  socket.register("promptRetchResult", promptRetchResult);
+  socket.register("receiveSharedDraft", receiveSharedDraft);
+  setSocket(socket);
+});
+
 Hooks.once("ready", async () => {
   console.log("PF2e Combater | Ready");
-  game.socket?.on?.(`module.${MODULE_ID}`, (payload) => {
-    // Retch adjudication round-trip (player asks, GM answers) is handled on both client roles.
-    if (handleRetchSocket(payload)) return;
-    if (payload?.type !== "shareDraft" || game.user?.isGM !== true) return;
-    writeSharedDraftPlanPayload(payload);
-    scheduleRefresh("shared-draft");
-    if (!payload.silent) {
-      ui?.notifications?.info?.(`PF2e Combater: ${payload.userName ?? "Player"} shared ${payload.actorName ?? "a"} plan.`);
-    }
-  });
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;

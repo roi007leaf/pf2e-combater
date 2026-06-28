@@ -7,6 +7,7 @@ import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../ru
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
+import { pf2eSave, t } from "../i18n.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
 const ELEMENT_DAMAGE_FALLBACKS = {
@@ -34,7 +35,7 @@ function enemies(context) {
 function actorTarget(context) {
   const actor = context?.actor ?? context?.combatant?.actor ?? null;
   const token = context?.token ?? null;
-  if (!actor && !token) return { type: "self", name: "Self" };
+  if (!actor && !token) return { type: "self", name: t("ScoreReason.SelfWord", "Self") };
   return {
     type: "self",
     id: token?.id ?? actor?.id ?? actor?.document?.id ?? null,
@@ -418,19 +419,19 @@ function damageAdjustment(context, action, target) {
 
   if (immune) {
     scoreDelta -= 70;
-    reasons.push(`${target.name} is immune to ${types.join("/")}.`);
+    reasons.push(t("ScoreReason.TargetImmune", "{target} is immune to {types}.", { target: target.name, types: types.join("/") }));
   }
   if (resistance > 0) {
     scoreDelta -= Math.min(35, resistance * 3);
-    reasons.push(`${target.name} resists ${types.join("/")} ${resistance}.`);
+    reasons.push(t("ScoreReason.TargetResists", "{target} resists {types} {amount}.", { target: target.name, types: types.join("/"), amount: resistance }));
   }
   if (weakness > 0) {
     scoreDelta += Math.min(45, weakness * 4);
-    reasons.push(`${target.name} has ${types.join("/")} weakness ${weakness}.`);
+    reasons.push(t("ScoreReason.TargetWeakness", "{target} has {types} weakness {amount}.", { target: target.name, types: types.join("/"), amount: weakness }));
   }
   if (Number.isFinite(average) && average > 0 && resistance > average * 0.75) {
     scoreDelta -= 18;
-    reasons.push("Resistance absorbs most expected damage.");
+    reasons.push(t("ScoreReason.ResistanceAbsorbsMostExpected", "Resistance absorbs most expected damage."));
   }
 
   return scoreDelta || reasons.length ? { scoreDelta, reasons, immune, resistance, weakness } : null;
@@ -1256,7 +1257,7 @@ function trainedSkillRequirement(profile, action) {
 
   return {
     skill: skillSlug,
-    reason: `Requires trained ${titleCase(skillSlug)}.`,
+    reason: t("ScoreReason.RequiresTrained", "Requires trained {skill}.", { skill: titleCase(skillSlug) }),
   };
 }
 
@@ -1331,12 +1332,12 @@ function skillCheckScore(profile, target, action) {
 
   if (skill.rank === 0) {
     scoreDelta -= 6;
-    reasons.push(`Untrained in ${titleCase(action.skill)}; reliability reduced.`);
+    reasons.push(t("ScoreReason.UntrainedSkill", "Untrained in {skill}; reliability reduced.", { skill: titleCase(action.skill) }));
   }
 
   if (chance < 0.35) {
     scoreDelta -= 4;
-    reasons.push(`${titleCase(action.skill)} success odds are poor.`);
+    reasons.push(t("ScoreReason.SkillOddsPoor", "{skill} success odds are poor.", { skill: titleCase(action.skill) }));
   }
 
   return {
@@ -1366,18 +1367,18 @@ function ownSkillReliabilityScore(profile, action, context) {
 
   if (!skill) {
     scoreDelta -= spellcasterFallback ? 70 : 20;
-    reasons.push("No Athletics data; melee maneuvers are unreliable.");
+    reasons.push(t("ScoreReason.NoAthleticsDataMelee", "No Athletics data; melee maneuvers are unreliable."));
   } else if (skill.rank === 0) {
     scoreDelta -= spellcasterFallback ? 110 : (profile?.actorType === "character" ? 80 : 42);
-    reasons.push("Untrained Athletics makes melee maneuvers poor combat filler.");
+    reasons.push(t("ScoreReason.UntrainedAthleticsMakesMelee", "Untrained Athletics makes melee maneuvers poor combat filler."));
   } else if (Number.isFinite(skill.mod) && skill.mod < 5) {
     scoreDelta -= spellcasterFallback ? 36 : 12;
-    reasons.push("Low Athletics makes melee maneuvers unreliable.");
+    reasons.push(t("ScoreReason.LowAthleticsMakesMelee", "Low Athletics makes melee maneuvers unreliable."));
   }
 
   if (spellcasterFallback) {
     scoreDelta -= 12;
-    reasons.push("Wizard-like spellcaster should prefer spells over Athletics maneuvers.");
+    reasons.push(t("ScoreReason.WizardLikeSpellcasterShould", "Wizard-like spellcaster should prefer spells over Athletics maneuvers."));
   }
 
   return scoreDelta ? { scoreDelta, reasons } : null;
@@ -1456,42 +1457,42 @@ function spellTacticalAdjustment(action, role, context) {
 
   if (action.isCantrip || profile.cantrip) {
     scoreDelta += ["damage", "save-damage", "control"].includes(role) ? 10 : 4;
-    reasons.push("Cantrip conserves spell slots.");
+    reasons.push(t("ScoreReason.CantripConservesSpellSlots", "Cantrip conserves spell slots."));
   } else if (action.isFocusSpell || profile.focus) {
     scoreDelta += 10;
-    reasons.push("Focus spell is recoverable after combat.");
+    reasons.push(t("ScoreReason.FocusSpellIsRecoverable", "Focus spell is recoverable after combat."));
   } else if (Number(action.rank ?? profile.rank) > 0) {
     const lowImpact = ["utility", "exploration-utility", "combat-utility"].includes(role)
       || (role === "area-damage" && (context?.battlefield?.enemies?.length ?? 0) <= 1);
     scoreDelta -= lowImpact ? 14 : 5;
-    reasons.push("Uses a ranked spell slot.");
+    reasons.push(t("ScoreReason.UsesARankedSpell", "Uses a ranked spell slot."));
   }
 
   if (profile.sustained) {
     if (["control", "sustain-control", "buff", "summon"].includes(role)) {
       scoreDelta += 12;
-      reasons.push("Sustained spell can keep affecting the fight.");
+      reasons.push(t("ScoreReason.SustainedSpellCanKeep", "Sustained spell can keep affecting the fight."));
     } else {
       scoreDelta -= 4;
-      reasons.push("Sustaining may cost later actions.");
+      reasons.push(t("ScoreReason.SustainingMayCostLater", "Sustaining may cost later actions."));
     }
   } else if (profile.lastingDuration && ["control", "sustain-control", "buff", "stealth-defense", "defense", "summon"].includes(role)) {
     scoreDelta += 8;
-    reasons.push("Duration can persist beyond this turn.");
+    reasons.push(t("ScoreReason.DurationCanPersistBeyond", "Duration can persist beyond this turn."));
   }
 
   if (profile.terrainControl || profile.wall || profile.areaDenial) {
     const enemyCount = enemies(context).length;
     scoreDelta += 14 + Math.min(12, enemyCount * 3);
-    reasons.push("Battlefield control can restrict enemy movement.");
+    reasons.push(t("ScoreReason.BattlefieldControlCanRestrict", "Battlefield control can restrict enemy movement."));
   }
   if (profile.obscuring) {
     scoreDelta += 8;
-    reasons.push("Obscuring effect can break enemy lines of sight.");
+    reasons.push(t("ScoreReason.ObscuringEffectCanBreak", "Obscuring effect can break enemy lines of sight."));
   }
   if (profile.forcedMovement) {
     scoreDelta += 8;
-    reasons.push("Forced movement can improve positioning.");
+    reasons.push(t("ScoreReason.ForcedMovementCanImprove", "Forced movement can improve positioning."));
   }
 
   return { scoreDelta, reasons };
@@ -1528,8 +1529,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "Target is temporarily immune to Demoralize.",
-      reasons: ["Target is temporarily immune to Demoralize."],
+      reason: t("ScoreReason.TargetIsTemporarilyImmune", "Target is temporarily immune to Demoralize."),
+      reasons: [t("ScoreReason.TargetIsTemporarilyImmune", "Target is temporarily immune to Demoralize.")],
     };
   }
 
@@ -1538,8 +1539,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No valid elemental target.",
-      reasons: ["No valid elemental target."],
+      reason: t("ScoreReason.NoValidElementalTarget", "No valid elemental target."),
+      reasons: [t("ScoreReason.NoValidElementalTarget", "No valid elemental target.")],
     };
   }
 
@@ -1548,8 +1549,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "Target is already exploited.",
-      reasons: ["Target is already exploited."],
+      reason: t("ScoreReason.TargetIsAlreadyExploited", "Target is already exploited."),
+      reasons: [t("ScoreReason.TargetIsAlreadyExploited", "Target is already exploited.")],
     };
   }
 
@@ -1560,13 +1561,13 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: `Target already has ${label}.`,
-      reasons: [`Target already has ${label}.`],
+      reason: t("ScoreReason.TargetAlreadyHas", "Target already has {label}.", { label }),
+      reasons: [t("ScoreReason.TargetAlreadyHas", "Target already has {label}.", { label })],
     };
   }
 
   if (Number(action.interactDrawCost) > 0) {
-    reasons.push("Includes Interact to draw or retrieve the consumable.");
+    reasons.push(t("ScoreReason.IncludesInteractToDraw", "Includes Interact to draw or retrieve the consumable."));
   }
 
   if (isChannelElementsAction(action) && kineticAuraActive(context, profile)) {
@@ -1574,8 +1575,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "Kinetic aura already active; Channel Elements is redundant.",
-      reasons: ["Kinetic aura already active; Channel Elements is redundant."],
+      reason: t("ScoreReason.KineticAuraAlreadyActive", "Kinetic aura already active; Channel Elements is redundant."),
+      reasons: [t("ScoreReason.KineticAuraAlreadyActive", "Kinetic aura already active; Channel Elements is redundant.")],
     };
   }
 
@@ -1584,8 +1585,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No valid enemy target.",
-      reasons: ["No valid enemy target."],
+      reason: t("ScoreReason.NoValidEnemyTarget", "No valid enemy target."),
+      reasons: [t("ScoreReason.NoValidEnemyTarget", "No valid enemy target.")],
     };
   }
 
@@ -1594,8 +1595,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No attackable enemy target.",
-      reasons: ["No attackable enemy target."],
+      reason: t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target."),
+      reasons: [t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target.")],
     };
   }
 
@@ -1604,8 +1605,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No targetable enemy target.",
-      reasons: ["No targetable enemy target."],
+      reason: t("ScoreReason.NoTargetableEnemyTarget", "No targetable enemy target."),
+      reasons: [t("ScoreReason.NoTargetableEnemyTarget", "No targetable enemy target.")],
     };
   }
 
@@ -1614,8 +1615,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No attackable enemy target.",
-      reasons: ["No attackable enemy target."],
+      reason: t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target."),
+      reasons: [t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target.")],
     };
   }
 
@@ -1624,8 +1625,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "No valid enemy target.",
-      reasons: ["No valid enemy target."],
+      reason: t("ScoreReason.NoValidEnemyTarget", "No valid enemy target."),
+      reasons: [t("ScoreReason.NoValidEnemyTarget", "No valid enemy target.")],
     };
   }
 
@@ -1634,8 +1635,8 @@ export function scoreCandidate(context, action) {
       ...action,
       score: -999,
       suggestedTarget: null,
-      reason: "Target is out of range.",
-      reasons: ["Target is out of range."],
+      reason: t("ScoreReason.TargetIsOutOf", "Target is out of range."),
+      reasons: [t("ScoreReason.TargetIsOutOf", "Target is out of range.")],
     };
   }
 
@@ -1648,7 +1649,7 @@ export function scoreCandidate(context, action) {
     const average = Number(action.averageDamage);
     if (Number.isFinite(average) && average > 0) {
       score += strikeDamageScore(average);
-      reasons.push(`Average damage about ${Math.round(average)}.`);
+      reasons.push(t("ScoreReason.AverageDamage", "Average damage about {amount}.", { amount: Math.round(average) }));
     }
     if (targetDamageAdjustment) {
       score += targetDamageAdjustment.scoreDelta;
@@ -1660,7 +1661,7 @@ export function scoreCandidate(context, action) {
     const volley = volleyRange(action);
     if (volley > 0 && Number(target?.distance ?? Infinity) <= volley) {
       score -= 10;
-      reasons.push(`Volley weapon takes a -2 penalty within ${volley} ft.`);
+      reasons.push(t("ScoreReason.VolleyPenalty", "Volley weapon takes a -2 penalty within {range} ft.", { range: volley }));
     }
   }
 
@@ -1673,24 +1674,24 @@ export function scoreCandidate(context, action) {
       // "Stride to the same square". A -26 nudge off the +42 generic base still left it at +16
       // and kept getting padded; force it negative. (Still selectable manually in the browser.)
       score = -10;
-      reasons.push("Target already in reach; repositioning is low priority.");
+      reasons.push(t("ScoreReason.TargetAlreadyInReach", "Target already in reach; repositioning is low priority."));
     } else {
       score += action.slug === "step" ? 4 : 8;
-      reasons.push("Closes distance toward the target.");
+      reasons.push(t("ScoreReason.ClosesDistanceTowardThe", "Closes distance toward the target."));
     }
   }
 
   if (includesStand(action)) {
     if (!hasCondition(profile, "prone")) {
       score = -999;
-      reasons.push("Actor is not prone.");
+      reasons.push(t("ScoreReason.ActorIsNotProne", "Actor is not prone."));
     } else {
       score += 18;
-      reasons.push("Removes prone and restores normal movement.");
+      reasons.push(t("ScoreReason.RemovesProneAndRestores", "Removes prone and restores normal movement."));
 
       if (enemyInMelee(context)) {
         score += 22;
-        reasons.push("Standing removes melee attack penalty and off-guard risk.");
+        reasons.push(t("ScoreReason.StandingRemovesMeleeAttack", "Standing removes melee attack penalty and off-guard risk."));
       }
 
       const needsMovement = attackableEnemies(context).some((enemy) => {
@@ -1699,7 +1700,7 @@ export function scoreCandidate(context, action) {
       });
       if (needsMovement) {
         score += 14;
-        reasons.push("Standing unlocks Stride and Step options.");
+        reasons.push(t("ScoreReason.StandingUnlocksStrideAnd", "Standing unlocks Stride and Step options."));
       }
     }
   }
@@ -1707,13 +1708,13 @@ export function scoreCandidate(context, action) {
   if (action.slug === "retch") {
     if (!hasCondition(profile, "sickened")) {
       score = -999;
-      reasons.push("Actor is not sickened.");
+      reasons.push(t("ScoreReason.ActorIsNotSickened", "Actor is not sickened."));
     } else {
       score += 30;
-      reasons.push("Retch can reduce sickened.");
+      reasons.push(t("ScoreReason.RetchCanReduceSickened", "Retch can reduce sickened."));
       if (enemyInMelee(context)) {
         score += 6;
-        reasons.push("Reducing sickened helps under melee pressure.");
+        reasons.push(t("ScoreReason.ReducingSickenedHelpsUnder", "Reducing sickened helps under melee pressure."));
       }
     }
   }
@@ -1722,133 +1723,133 @@ export function scoreCandidate(context, action) {
     const mark = action.activityProfile.targetMark;
     if (targetHasMarkState(target, mark) || hasCondition(target, mark) || hasEffect(target, mark)) {
       score -= 200;
-      reasons.push(`${target.name} already has ${mark}.`);
+      reasons.push(t("ScoreReason.TargetAlreadyMark", "{target} already has {mark}.", { target: target.name, mark }));
     }
   }
 
   if (action.slug === "demoralize" && target && !hasCondition(target, "frightened")) {
     score += 22;
-    reasons.push("Target is not frightened.");
+    reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
   }
 
   if (action.slug === "trip" && target && !hasCondition(target, "prone")) {
     score += 18;
-    reasons.push("Target is standing and can be knocked prone.");
+    reasons.push(t("ScoreReason.TargetIsStandingAnd", "Target is standing and can be knocked prone."));
   }
 
   if (action.slug === "grapple" && target && !hasCondition(target, "grabbed")) {
     score += 16;
-    reasons.push("Target is not grabbed.");
+    reasons.push(t("ScoreReason.TargetIsNotGrabbed", "Target is not grabbed."));
   }
 
   if (action.slug === "disarm" && target) {
     score += 10;
-    reasons.push("Can pressure enemy weapon or held item.");
+    reasons.push(t("ScoreReason.CanPressureEnemyWeapon", "Can pressure enemy weapon or held item."));
   }
 
   if (action.slug === "reposition" && target) {
     score += 12;
-    reasons.push("Can move target into a better square.");
+    reasons.push(t("ScoreReason.CanMoveTargetInto", "Can move target into a better square."));
   }
 
   if (action.slug === "shove" && target) {
     score += 12;
-    reasons.push("Can push target out of position.");
+    reasons.push(t("ScoreReason.CanPushTargetOut", "Can push target out of position."));
   }
 
   if (action.slug === "feint" && enemyInMelee(context) && !hasCondition(target, "off-guard")) {
     score += 18;
-    reasons.push("Target is in melee and not off-guard.");
+    reasons.push(t("ScoreReason.TargetIsInMelee", "Target is in melee and not off-guard."));
   }
 
   if (action.slug === "create-a-diversion" && target && !hasCondition(profile, "hidden")) {
     score += 12;
-    reasons.push("Can create a hidden opening.");
+    reasons.push(t("ScoreReason.CanCreateAHidden", "Can create a hidden opening."));
   }
 
   if (action.slug === "tumble-through" && target && !hasCondition(target, "off-guard")) {
     score += 14;
-    reasons.push("Can move through enemy and set up off-guard pressure.");
+    reasons.push(t("ScoreReason.CanMoveThroughEnemy", "Can move through enemy and set up off-guard pressure."));
   }
 
   if (["balance", "climb", "swim"].includes(action.slug)) {
     score += 6;
-    reasons.push("Terrain makes this movement action relevant.");
+    reasons.push(t("ScoreReason.TerrainMakesThisMovement", "Terrain makes this movement action relevant."));
   }
 
   if (action.slug === "force-open") {
     score += 8;
-    reasons.push("Obstacle or object can be forced open.");
+    reasons.push(t("ScoreReason.ObstacleOrObjectCan", "Obstacle or object can be forced open."));
   }
 
   if (action.slug === "seek") {
     score += 8;
-    reasons.push("Useful when hidden enemies or hazards may matter.");
+    reasons.push(t("ScoreReason.UsefulWhenHiddenEnemies", "Useful when hidden enemies or hazards may matter."));
   }
 
   if (action.slug === "sense-motive" && target) {
     score += 6;
-    reasons.push("Useful when enemy intent is unclear.");
+    reasons.push(t("ScoreReason.UsefulWhenEnemyIntent", "Useful when enemy intent is unclear."));
   }
 
   if (action.slug === "recall-knowledge" && target) {
     score += 16;
-    reasons.push(`Identify ${target.name} defenses and weaknesses.`);
+    reasons.push(t("ScoreReason.IdentifyDefenses", "Identify {target} defenses and weaknesses.", { target: target.name }));
   }
 
   if (action.slug === "raise-a-shield" && profile.hasShield) {
     score += hpPercent(profile) < 0.5 ? 24 : 12;
-    reasons.push("Shield equipped.");
+    reasons.push(t("ScoreReason.ShieldEquipped", "Shield equipped."));
     if (pressure.inMeleeThreat || pressure.hasOpenEnemyLine) {
       score += 12;
-      reasons.push("Enemies have a clear attack line.");
+      reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
     }
   }
 
   if (action.slug === "take-cover") {
     score += hpPercent(profile) < 0.5 ? 18 : 10;
-    reasons.push("Cover is available.");
+    reasons.push(t("ScoreReason.CoverIsAvailable", "Cover is available."));
     if (pressure.hasOpenEnemyLine) {
       score += 18;
-      reasons.push("Open enemy line makes cover valuable.");
+      reasons.push(t("ScoreReason.OpenEnemyLineMakes", "Open enemy line makes cover valuable."));
     }
   }
 
   if (action.slug === "escape") {
     score += 30;
-    reasons.push("Actor is grabbed or restrained.");
+    reasons.push(t("ScoreReason.ActorIsGrabbedOr", "Actor is grabbed or restrained."));
   }
 
   if (action.slug === "hide") {
     score += 12;
-    reasons.push("Cover or concealment supports hiding.");
+    reasons.push(t("ScoreReason.CoverOrConcealmentSupports", "Cover or concealment supports hiding."));
   }
 
   if (action.slug === "sneak") {
     score += 10;
-    reasons.push("Can reposition while hidden or covered.");
+    reasons.push(t("ScoreReason.CanRepositionWhileHidden", "Can reposition while hidden or covered."));
   }
 
   if (action.slug === "steal" && target) {
     score -= 4;
-    reasons.push("Combat theft is situational.");
+    reasons.push(t("ScoreReason.CombatTheftIsSituational", "Combat theft is situational."));
   }
 
   if (action.slug === "palm-an-object") {
     score -= 2;
-    reasons.push("Nearby object can be palmed, but combat value is situational.");
+    reasons.push(t("ScoreReason.NearbyObjectCanBe", "Nearby object can be palmed, but combat value is situational."));
   }
 
   if (action.slug === "command-an-animal") {
     score += 18;
-    reasons.push("Companion or minion can contribute this turn.");
+    reasons.push(t("ScoreReason.CompanionOrMinionCan", "Companion or minion can contribute this turn."));
   }
 
   if (action.slug === "administer-first-aid") {
     const ally = dyingAlly(context) ?? bleedingAlly(context);
     if (ally) {
       score += 36;
-      reasons.push(`${ally.name} needs immediate aid.`);
+      reasons.push(t("ScoreReason.AllyNeedsAid", "{ally} needs immediate aid.", { ally: ally.name }));
     }
   }
 
@@ -1856,7 +1857,7 @@ export function scoreCandidate(context, action) {
     const ally = dyingAlly(context);
     if (ally) {
       score += 40;
-      reasons.push(`${ally.name} is dying.`);
+      reasons.push(t("ScoreReason.AllyDying", "{ally} is dying.", { ally: ally.name }));
     }
   }
 
@@ -1864,20 +1865,20 @@ export function scoreCandidate(context, action) {
     const injuredAlly = allies(context).find((ally) => hpPercent(ally) < 0.5);
     if (hpPercent(profile) < 0.5) {
       score += 34;
-      reasons.push(`${actorTarget(context).name} is badly injured.`);
+      reasons.push(t("ScoreReason.BadlyInjured", "{name} is badly injured.", { name: actorTarget(context).name }));
     } else if (injuredAlly) {
       score += 34;
-      reasons.push(`${injuredAlly.name} is badly injured.`);
+      reasons.push(t("ScoreReason.BadlyInjured", "{name} is badly injured.", { name: injuredAlly.name }));
     } else {
       score -= 10;
-      reasons.push("No ally is badly injured.");
+      reasons.push(t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
     }
   }
 
   if (isCurated(action) && role === "damage" && target && !action.activityProfile?.drawsWeapon) {
     const average = damageAverage(action);
     score += Number.isFinite(average) ? 18 + Math.min(28, Math.round(average * 1.2)) : 18;
-    reasons.push(`${action.name} can damage ${target.name}.`);
+    reasons.push(t("ScoreReason.CanDamage", "{action} can damage {target}.", { action: action.name, target: target.name }));
     if (targetDamageAdjustment) {
       score += targetDamageAdjustment.scoreDelta;
       reasons.push(...targetDamageAdjustment.reasons);
@@ -1891,26 +1892,26 @@ export function scoreCandidate(context, action) {
       // enemy is already in melee reach; otherwise an in-hand Strike on the
       // adjacent enemy is the better use of the turn.
       score += enemyInMelee(context) ? 18 : 82;
-      reasons.unshift(`Draw ${weaponName} and Strike ${target.name}.`);
+      reasons.unshift(t("ScoreReason.DrawAndStrike", "Draw {p0} and Strike {p1}.", { p0: weaponName, p1: target.name }));
     } else {
       score -= 40;
-      reasons.unshift(`${weaponName} is still out of range after drawing.`);
+      reasons.unshift(t("ScoreReason.IsStillOutOfRange", "{p0} is still out of range after drawing.", { p0: weaponName }));
     }
   }
 
   const aggro = target ? aggroProfile(context, target) : null;
   if (aggro?.gmOnly && aggro.roles.length && aggro.score > 0) {
-    reasons.push(`Aggro priority: ${aggro.roles.join(", ")}.`);
+    reasons.push(t("ScoreReason.AggroPriority", "Aggro priority: {roles}.", { roles: aggro.roles.join(", ") }));
   }
 
   if (isCurated(action) && role === "debuff" && target) {
     score += 20;
-    reasons.push(`Debuff spell can pressure ${target.name}.`);
+    reasons.push(t("ScoreReason.DebuffPressure", "Debuff spell can pressure {target}.", { target: target.name }));
   }
 
   if (isCurated(action) && role === "setup" && target) {
     score += action.activityProfile?.precisionDamageSetup ? 28 : 20;
-    reasons.unshift(`${action.name} sets up stronger follow-up attacks.`);
+    reasons.unshift(t("ScoreReason.SetsUpStrongerFollowUp", "{p0} sets up stronger follow-up attacks.", { p0: action.name }));
   }
 
   if (isCurated(action) && role === "mobility") {
@@ -1919,17 +1920,17 @@ export function scoreCandidate(context, action) {
     const moveReach = activityMoveReach(profile, action, strideCount);
     if (action.activityProfile?.retreat && enemyInMelee(context)) {
       score += 24;
-      reasons.unshift(`${action.name} can disengage from melee.`);
+      reasons.unshift(t("ScoreReason.CanDisengageFromMelee", "{p0} can disengage from melee.", { p0: action.name }));
     } else if (target && distance > profileReach(profile) && distance <= moveReach) {
       score += 18;
-      reasons.unshift(`${action.name} can improve position toward ${target.name}.`);
+      reasons.unshift(t("ScoreReason.CanImprovePositionToward", "{p0} can improve position toward {p1}.", { p0: action.name, p1: target.name }));
     } else {
       score += 8;
-      reasons.unshift(`${action.name} improves position.`);
+      reasons.unshift(t("ScoreReason.ImprovesPosition", "{p0} improves position.", { p0: action.name }));
     }
     if (action.activityProfile?.safeMovement) {
       score += 6;
-      reasons.push("Movement reduces reaction risk.");
+      reasons.push(t("ScoreReason.MovementReducesReactionRisk", "Movement reduces reaction risk."));
     }
   }
 
@@ -1937,10 +1938,10 @@ export function scoreCandidate(context, action) {
     const required = action.activityProfile?.requiresAnyTargetCondition ?? [];
     if (required.length && !hasAnyCondition(target, required)) {
       score -= 28;
-      reasons.unshift(`${action.name} needs a grabbed, restrained, paralyzed, or unconscious target.`);
+      reasons.unshift(t("ScoreReason.NeedsAGrabbedRestrainedParalyzed", "{p0} needs a grabbed, restrained, paralyzed, or unconscious target.", { p0: action.name }));
     } else {
       score += hpPercent(profile) < 0.5 ? 58 : 42;
-      reasons.unshift(`${action.name} can drain ${target.name} and recover Hit Points.`);
+      reasons.unshift(t("ScoreReason.CanDrainAndRecoverHit", "{p0} can drain {p1} and recover Hit Points.", { p0: action.name, p1: target.name }));
     }
   }
 
@@ -1948,21 +1949,21 @@ export function scoreCandidate(context, action) {
     const corpse = nearbyCorpse(context, profile);
     if (action.activityProfile?.requiresCorpse && !corpse) {
       score -= 24;
-      reasons.unshift(`${action.name} needs an adjacent corpse.`);
+      reasons.unshift(t("ScoreReason.NeedsAnAdjacentCorpse", "{p0} needs an adjacent corpse.", { p0: action.name }));
     } else {
       score += hpPercent(profile) < 0.5 ? 46 : 20;
-      reasons.unshift(corpse ? `${action.name} can use ${corpse.name}.` : `${action.name} can recover Hit Points.`);
+      reasons.unshift(corpse ? t("ScoreReason.CanUse", "{p0} can use {p1}.", { p0: action.name, p1: corpse.name }) : t("ScoreReason.CanRecoverHitPoints", "{p0} can recover Hit Points.", { p0: action.name }));
     }
   }
 
   if (isCurated(action) && role === "resource-recovery") {
     score += 8;
-    reasons.unshift(`${action.name} can recover an expended combat resource.`);
+    reasons.unshift(t("ScoreReason.CanRecoverAnExpendedCombat", "{p0} can recover an expended combat resource.", { p0: action.name }));
   }
 
   if (isCurated(action) && role === "transformation") {
     score += 6;
-    reasons.unshift(`${action.name} may alter movement or attack options.`);
+    reasons.unshift(t("ScoreReason.MayAlterMovementOrAttack", "{p0} may alter movement or attack options.", { p0: action.name }));
   }
 
   if (isCurated(action) && role === "area-damage") {
@@ -1975,17 +1976,17 @@ export function scoreCandidate(context, action) {
         ? 14
         : 34 + enemiesInArea.length * 18;
       const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
-      reasons.unshift(`${action.name} can hit ${enemiesInArea.length} ${plural(enemiesInArea.length, "enemy", "enemies")}${centerName}.`);
+      reasons.unshift(t("ScoreReason.CanHit", "{p0} can hit {p1} {p2}{p3}.", { p0: action.name, p1: enemiesInArea.length, p2: plural(enemiesInArea.length, "enemy", "enemies"), p3: centerName }));
     } else {
       score -= 28;
-      reasons.unshift(`No enemy is in ${action.name} area.`);
+      reasons.unshift(t("ScoreReason.NoEnemyIsInArea", "No enemy is in {p0} area.", { p0: action.name }));
     }
     if (alliesInArea.length > 0) {
       score -= alliesInArea.length * 18;
-      reasons.push(`${alliesInArea.length} ${plural(alliesInArea.length, "ally", "allies")} may be in the area.`);
+      reasons.push(t(alliesInArea.length === 1 ? "ScoreReason.AlliesInAreaOne" : "ScoreReason.AlliesInAreaMany", alliesInArea.length === 1 ? "{count} ally may be in the area." : "{count} allies may be in the area.", { count: alliesInArea.length }));
     } else if (enemiesInArea.length > 1 && placement.centerTarget) {
       score += 8;
-      reasons.push("Best area placement avoids allies.");
+      reasons.push(t("ScoreReason.BestAreaPlacementAvoids", "Best area placement avoids allies."));
     }
     if (canUseTargetDefenses(context)) {
       const saveDeltas = enemiesInArea
@@ -2000,7 +2001,7 @@ export function scoreCandidate(context, action) {
       );
       score += tacticalDelta;
       const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
-      if (bestSave) reasons.push(`Area targets ${titleCase(action.saveProfile?.stat)} saves (${bestSave.label})`);
+      if (bestSave) reasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
       for (const entry of damageDeltas.slice(0, 2)) reasons.push(...entry.reasons);
     }
   }
@@ -2009,12 +2010,12 @@ export function scoreCandidate(context, action) {
     const requiredCondition = action.activityProfile?.requiresTargetCondition;
     if (requiredCondition && !hasCondition(target, requiredCondition)) {
       score -= 24;
-      reasons.unshift(`${action.name} wants a ${requiredCondition} target.`);
+      reasons.unshift(t("ScoreReason.WantsATarget", "{p0} wants a {p1} target.", { p0: action.name, p1: requiredCondition }));
     } else {
       const average = damageAverage(action);
       score += requiredCondition ? 52 : 34;
       if (Number.isFinite(average)) score += Math.min(30, Math.round(average));
-      reasons.unshift(`${action.name} can force a ${action.saveProfile?.stat ?? "save"} save.`);
+      reasons.unshift(t("ScoreReason.CanForceASave", "{p0} can force a {p1} save.", { p0: action.name, p1: action.saveProfile?.stat ?? "save" }));
       if (targetSaveScore) {
         score += targetSaveScore.scoreDelta;
         reasons.push(targetSaveScore.label);
@@ -2029,13 +2030,13 @@ export function scoreCandidate(context, action) {
   if (isCurated(action) && role === "grab" && target) {
     if (hasCondition(target, "grabbed") || hasCondition(target, "restrained")) {
       score -= 14;
-      reasons.unshift(`${target.name} is already grabbed.`);
+      reasons.unshift(t("ScoreReason.IsAlreadyGrabbed", "{p0} is already grabbed.", { p0: target.name }));
     } else if (inProfileReach(profile, target)) {
       score += 42;
-      reasons.unshift(`${action.name} can grab ${target.name}.`);
+      reasons.unshift(t("ScoreReason.CanGrab", "{p0} can grab {p1}.", { p0: action.name, p1: target.name }));
     } else {
       score -= 24;
-      reasons.unshift(`${action.name} target is out of reach.`);
+      reasons.unshift(t("ScoreReason.TargetIsOutOfReach", "{p0} target is out of reach.", { p0: action.name }));
     }
   }
 
@@ -2050,17 +2051,17 @@ export function scoreCandidate(context, action) {
 
     if (!enemiesInArea.length) {
       score -= 24;
-      reasons.unshift(`No enemy is in ${action.name} area.`);
+      reasons.unshift(t("ScoreReason.NoEnemyIsInArea", "No enemy is in {p0} area.", { p0: action.name }));
     } else if (
       appliedConditions.length
       && enemiesInArea.every((enemy) => appliedConditions.some((condition) => hasCondition(enemy, condition)))
     ) {
       score -= 8;
-      reasons.unshift(`${action.name} area targets already have ${appliedConditions[0]}.`);
+      reasons.unshift(t("ScoreReason.AreaTargetsAlreadyHave", "{p0} area targets already have {p1}.", { p0: action.name, p1: appliedConditions[0] }));
     } else {
       const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
       score += (appliedConditions.length ? 30 : 22) + enemiesInArea.length * 12;
-      reasons.unshift(`${action.name} can affect ${enemiesInArea.length} ${plural(enemiesInArea.length, "enemy", "enemies")}${centerName}.`);
+      reasons.unshift(t("ScoreReason.CanAffect", "{p0} can affect {p1} {p2}{p3}.", { p0: action.name, p1: enemiesInArea.length, p2: plural(enemiesInArea.length, "enemy", "enemies"), p3: centerName }));
       if (canUseTargetDefenses(context)) {
         const saveDeltas = enemiesInArea
           .map((enemy) => saveScoreDelta(context, action, enemy, profile))
@@ -2070,7 +2071,7 @@ export function scoreCandidate(context, action) {
         );
         score += tacticalDelta;
         const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
-        if (bestSave) reasons.push(`Area targets ${titleCase(action.saveProfile?.stat)} saves (${bestSave.label})`);
+        if (bestSave) reasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
       }
     }
   } else if (isCurated(action) && role === "control" && target) {
@@ -2082,13 +2083,13 @@ export function scoreCandidate(context, action) {
     const appliedCondition = appliedConditions[0];
     if (requiredCondition && !hasCondition(target, requiredCondition)) {
       score -= 24;
-      reasons.unshift(`${action.name} wants a ${requiredCondition} target.`);
+      reasons.unshift(t("ScoreReason.WantsATarget", "{p0} wants a {p1} target.", { p0: action.name, p1: requiredCondition }));
     } else if (appliedConditions.some((condition) => hasCondition(target, condition))) {
       score -= 10;
-      reasons.unshift(`${target.name} already has ${appliedCondition}.`);
+      reasons.unshift(t("ScoreReason.AlreadyHas", "{p0} already has {p1}.", { p0: target.name, p1: appliedCondition }));
     } else {
       score += appliedCondition ? 42 : 32;
-      reasons.unshift(`${action.name} can control ${target.name}.`);
+      reasons.unshift(t("ScoreReason.CanControl", "{p0} can control {p1}.", { p0: action.name, p1: target.name }));
       if (targetSaveScore) {
         score += targetSaveScore.scoreDelta;
         reasons.push(targetSaveScore.label);
@@ -2098,12 +2099,12 @@ export function scoreCandidate(context, action) {
 
   if (isCurated(action) && role === "reaction-attack") {
     score += 26;
-    reasons.unshift("Reaction can punish the current trigger.");
+    reasons.unshift(t("ScoreReason.ReactionCanPunishTheCurrent", "Reaction can punish the current trigger."));
   }
 
   if (isCurated(action) && role === "defense") {
     score += hpPercent(profile) < 0.5 ? 34 : 18;
-    reasons.unshift("Defensive reaction is available for the trigger.");
+    reasons.unshift(t("ScoreReason.DefensiveReactionIsAvailableFor", "Defensive reaction is available for the trigger."));
   }
 
   if (isCurated(action) && role === "buff") {
@@ -2127,14 +2128,10 @@ export function scoreCandidate(context, action) {
     }
     if (recipient?.entity && targetAlreadyHasBuff(recipient.entity, action)) {
       buffValue -= 36;
-      reasons.push(`${recipient.entity.name ?? "Target"} already has ${action.name}.`);
+      reasons.push(t("ScoreReason.RecipientAlreadyHas", "{recipient} already has {action}.", { recipient: recipient.entity.name ?? t("ScoreReason.TargetWord", "Target"), action: action.name }));
     }
     score += buffValue;
-    reasons.unshift(grantsQuickened
-      ? `${action.name} grants quickened.`
-      : allyTarget
-        ? `${action.name} can boost ${recipient.entity?.name ?? "an ally"}.`
-        : `${action.name} grants the actor a beneficial effect.`);
+    reasons.unshift(grantsQuickened ? t("ScoreReason.GrantsQuickened", "{p0} grants quickened.", { p0: action.name }) : allyTarget ? t("ScoreReason.CanBoost", "{p0} can boost {p1}.", { p0: action.name, p1: recipient.entity?.name ?? "an ally" }) : t("ScoreReason.GrantsTheActorABeneficial", "{p0} grants the actor a beneficial effect.", { p0: action.name }));
   }
 
   if (isCurated(action) && role === "stealth-defense") {
@@ -2143,41 +2140,41 @@ export function scoreCandidate(context, action) {
     score += 22 + Math.max(0, Number(recipient?.value) || 0);
     if (targetAlreadyHasBuff(recipient?.entity, action)) {
       score -= 44;
-      reasons.push(`${recipientName} already has ${action.name}.`);
+      reasons.push(t("ScoreReason.RecipientAlreadyHas", "{recipient} already has {action}.", { recipient: recipientName, action: action.name }));
     }
-    reasons.unshift(`${action.name} can make ${recipientName} harder to target.`);
+    reasons.unshift(t("ScoreReason.CanMakeHarderToTarget", "{p0} can make {p1} harder to target.", { p0: action.name, p1: recipientName }));
   }
 
   if (isCurated(action) && role === "summon") {
     score += 14;
-    reasons.unshift(`${action.name} brings an ally or construct onto the battlefield.`);
+    reasons.unshift(t("ScoreReason.BringsAnAllyOrConstruct", "{p0} brings an ally or construct onto the battlefield.", { p0: action.name }));
   }
 
   // Last-resort options: recognized but no tactical pattern. Push well below the
   // basics so they only surface when nothing stronger fills the turn.
   if (role === "utility") {
     score -= 30;
-    reasons.unshift(`${action.name} is available; no stronger pattern recognized.`);
+    reasons.unshift(t("ScoreReason.IsAvailableNoStrongerPattern", "{p0} is available; no stronger pattern recognized.", { p0: action.name }));
   }
 
   if (role === "exploration-utility") {
     score -= enemies(context).length ? 46 : 18;
-    reasons.unshift(`${action.name} is mostly exploration utility.`);
+    reasons.unshift(t("ScoreReason.IsMostlyExplorationUtility", "{p0} is mostly exploration utility.", { p0: action.name }));
   }
 
   if (role === "combat-utility") {
     score += enemies(context).length ? 4 : -8;
-    reasons.unshift(`${action.name} has situational combat utility.`);
+    reasons.unshift(t("ScoreReason.HasSituationalCombatUtility", "{p0} has situational combat utility.", { p0: action.name }));
   }
 
   if (role === "sustain-control") {
     score += enemies(context).length ? 18 : 4;
-    reasons.unshift(`${action.name} can maintain ongoing control.`);
+    reasons.unshift(t("ScoreReason.CanMaintainOngoingControl", "{p0} can maintain ongoing control.", { p0: action.name }));
   }
 
   if (action.slug === "rage" && !hasCondition(profile, "rage") && !hasCondition(profile, "raging")) {
     score += 46;
-    reasons.push("Rage sets up this turn's attack.");
+    reasons.push(t("ScoreReason.RageSetsUpThis", "Rage sets up this turn's attack."));
   }
 
   if (action.slug === "sudden-charge" && target) {
@@ -2188,13 +2185,13 @@ export function scoreCandidate(context, action) {
 
     if (distance > reach && distance <= chargeReach) {
       score += 72;
-      reasons.push(`Closes ${distance} ft and attacks in one activity.`);
+      reasons.push(t("ScoreReason.ClosesAndAttacks", "Closes {distance} ft and attacks in one activity.", { distance }));
     } else if (distance <= reach) {
       score -= 18;
-      reasons.push("Already in reach; Sudden Charge has less value.");
+      reasons.push(t("ScoreReason.AlreadyInReachSudden", "Already in reach; Sudden Charge has less value."));
     } else {
       score -= 24;
-      reasons.push("Target is beyond Sudden Charge reach.");
+      reasons.push(t("ScoreReason.TargetIsBeyondSudden", "Target is beyond Sudden Charge reach."));
     }
   }
 
@@ -2208,29 +2205,29 @@ export function scoreCandidate(context, action) {
 
     if (action.activityProfile?.retreatBeforeStrike) {
       score += 66;
-      reasons.unshift(`Moves out of melee before attacking ${target.name}.`);
+      reasons.unshift(t("ScoreReason.MovesOutOfMeleeBefore", "Moves out of melee before attacking {p0}.", { p0: target.name }));
       if (destinationThreatCount !== null && destinationThreatCount < pressure.meleeThreats.length) {
         score += 20;
-        reasons.push("Attack square reduces melee exposure.");
+        reasons.push(t("ScoreReason.AttackSquareReducesMelee", "Attack square reduces melee exposure."));
       }
     } else if (distance > reach && distance <= moveReach) {
       score += 60;
-      reasons.unshift(`Moves into reach and attacks ${target.name}.`);
+      reasons.unshift(t("ScoreReason.MovesIntoReachAndAttacks", "Moves into reach and attacks {p0}.", { p0: target.name }));
     } else if (distance <= reach) {
       score += 18;
-      reasons.unshift(`${target.name} is already in reach for the attack.`);
+      reasons.unshift(t("ScoreReason.IsAlreadyInReachFor", "{p0} is already in reach for the attack.", { p0: target.name }));
     } else {
       score -= 30;
-      reasons.unshift("Target is beyond this move-and-attack activity.");
+      reasons.unshift(t("ScoreReason.TargetIsBeyondThisMove", "Target is beyond this move-and-attack activity."));
     }
 
     if (destinationThreatCount !== null && !action.activityProfile?.retreatBeforeStrike) {
       if (destinationThreatCount > Math.max(1, pressure.meleeThreats.length)) {
         score -= 18 + destinationThreatCount * 4;
-        reasons.push("Attack square ends in heavy enemy reach.");
+        reasons.push(t("ScoreReason.AttackSquareEndsIn", "Attack square ends in heavy enemy reach."));
       } else if (action.activityProfile?.retreatAfterStrike && action.activityProfile?.defensiveCoverState) {
         score += 18;
-        reasons.push("Plan returns to cover after attacking.");
+        reasons.push(t("ScoreReason.PlanReturnsToCover", "Plan returns to cover after attacking."));
       }
     }
   }
@@ -2242,13 +2239,11 @@ export function scoreCandidate(context, action) {
   if (action.activityProfile?.positionalTactic && canUseTargetDefenses(context)) {
     if (action.activityProfile.positionalTactic === "flank") {
       score += 30;
-      reasons.unshift(`Flanks ${target?.name ?? "the target"} for an off-guard Strike.`);
+      reasons.unshift(t("ScoreReason.FlanksForAnOffGuard", "Flanks {p0} for an off-guard Strike.", { p0: target?.name ?? "the target" }));
     } else if (action.activityProfile.positionalTactic === "skirmish") {
       const fragile = hpPercent(profile) < 0.5;
       score += fragile ? 26 : 18;
-      reasons.unshift(fragile
-        ? "Fragile attacker kites out of melee before striking from range."
-        : "Fights better at range; kites out of melee before striking.");
+      reasons.unshift(fragile ? t("ScoreReason.FragileAttackerKitesOutOf", "Fragile attacker kites out of melee before striking from range.") : t("ScoreReason.FightsBetterAtRangeKites", "Fights better at range; kites out of melee before striking."));
     }
   }
 
@@ -2257,20 +2252,20 @@ export function scoreCandidate(context, action) {
     const reachableEnemies = attackableEnemies(context).filter((enemy) => (enemy?.distance ?? Infinity) <= moveReach);
     if (reachableEnemies.length > 0) {
       score += 24 + reachableEnemies.length * 12;
-      reasons.unshift(`${action.name} can move through ${reachableEnemies.length} ${plural(reachableEnemies.length, "enemy", "enemies")}.`);
+      reasons.unshift(t("ScoreReason.CanMoveThrough", "{p0} can move through {p1} {p2}.", { p0: action.name, p1: reachableEnemies.length, p2: plural(reachableEnemies.length, "enemy", "enemies") }));
     } else {
       score -= 18;
-      reasons.unshift(`No enemy is reachable for ${action.name}.`);
+      reasons.unshift(t("ScoreReason.NoEnemyIsReachableFor", "No enemy is reachable for {p0}.", { p0: action.name }));
     }
   }
 
   if (action.activityProfile?.focusedStrike && target && !action.activityProfile?.strideCount) {
     if (inActionReach(profile, action, target)) {
       score += 72;
-      reasons.unshift(`${action.name} focuses attacks on ${target.name}.`);
+      reasons.unshift(t("ScoreReason.FocusesAttacksOn", "{p0} focuses attacks on {p1}.", { p0: action.name, p1: target.name }));
     } else {
       score -= 40;
-      reasons.unshift(`${action.name} target is out of range.`);
+      reasons.unshift(t("ScoreReason.TargetIsOutOfRange", "{p0} target is out of range.", { p0: action.name }));
     }
   }
 
@@ -2278,28 +2273,28 @@ export function scoreCandidate(context, action) {
     const reachableEnemies = attackableEnemies(context).filter((enemy) => inProfileReach(profile, enemy));
     if (reachableEnemies.length >= 2) {
       score += 76;
-      reasons.unshift(`${reachableEnemies.length} enemies are in reach for separate Strikes.`);
+      reasons.unshift(t("ScoreReason.EnemiesAreInReachFor", "{p0} enemies are in reach for separate Strikes.", { p0: reachableEnemies.length }));
     } else if (inProfileReach(profile, target)) {
       score += 36;
-      reasons.unshift("Only one enemy is in reach; focused offense is usually better.");
+      reasons.unshift(t("ScoreReason.OnlyOneEnemyIsIn", "Only one enemy is in reach; focused offense is usually better."));
     } else {
       score -= 40;
-      reasons.unshift(`No enemy is in reach for ${action.name}.`);
+      reasons.unshift(t("ScoreReason.NoEnemyIsInReach", "No enemy is in reach for {p0}.", { p0: action.name }));
     }
   }
 
   if (isCurated(action) && (action.curated?.friendlyFireRisk ?? action.friendlyFireRisk)) {
     if (allies(context).some((ally) => (ally?.distance ?? Infinity) <= 20)) score -= 18;
-    reasons.push("Area spell has friendly-fire risk.");
+    reasons.push(t("ScoreReason.AreaSpellHasFriendly", "Area spell has friendly-fire risk."));
   }
 
   if (hasSpellcastingCapability(context)) {
     if (isSpellAction(action)) {
       score += 18;
-      reasons.push("Spellcaster spell option is preferred over melee fallback.");
+      reasons.push(t("ScoreReason.SpellcasterSpellOptionIs", "Spellcaster spell option is preferred over melee fallback."));
     } else if (isMeleeStrikeFallback(action)) {
       score -= 18;
-      reasons.push("Spellcaster melee Strike is lower priority than spell options.");
+      reasons.push(t("ScoreReason.SpellcasterMeleeStrikeIs", "Spellcaster melee Strike is lower priority than spell options."));
     }
   }
 
@@ -2347,7 +2342,7 @@ export function scoreCandidate(context, action) {
     const extraActions = Math.min(2, Number(action.actionCost) - 1);
     const extraActionValue = role === "area-damage" && areaHitCount === 1 ? 20 : 55;
     score += extraActions * extraActionValue;
-    reasons.push(`Commits ${action.actionCost} actions to one effect.`);
+    reasons.push(t("ScoreReason.CommitsActions", "Commits {count} actions to one effect.", { count: action.actionCost }));
   }
 
   if (skillCheck) {

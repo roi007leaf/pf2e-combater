@@ -2,6 +2,8 @@
 // slug, name, traits, and description (see itemText), which is normalized to lowercase with hyphens
 // and underscores turned into spaces — so multi-word PF2e names like "lay-on-hands" match "lay on
 // hands". Word boundaries keep matches whole (e.g. "harm" does not match "harmless").
+import { t } from "../i18n.js";
+
 function roleCuePattern(words) {
   return new RegExp(`\\b(${words.join("|")})\\b`, "i");
 }
@@ -173,12 +175,12 @@ export function aggroProfile(context, target) {
 
   const hp = hpPercent(target);
   if (hp <= 0.35 || hasCondition(target, "dying") || hasCondition(target, "wounded")) {
-    addRole(profile, "finisher-target", hp <= 0.2 ? 34 : 24, "Target is close to being removed.");
+    addRole(profile, "finisher-target", hp <= 0.2 ? 34 : 24, t("Aggro.FinisherTarget", "Target is close to being removed."));
   }
 
   const distance = Number(target?.distance);
   if (Number.isFinite(distance) && distance <= 10) {
-    addRole(profile, "immediate-threat", distance <= 5 ? 18 : 10, "Target is an immediate threat.");
+    addRole(profile, "immediate-threat", distance <= 5 ? 18 : 10, t("Aggro.ImmediateThreat", "Target is an immediate threat."));
   }
 
   if (!full || !actor) {
@@ -187,25 +189,25 @@ export function aggroProfile(context, target) {
   }
 
   if (hasItemMatching(actor, HEALING_WORDS, ["spell", "action", "feat", "feature", "consumable"])) {
-    addRole(profile, "healer", 42, "Target can heal or recover allies.");
+    addRole(profile, "healer", 42, t("Aggro.Healer", "Target can heal or recover allies."));
   }
 
   if (spellCount(actor) > 0 || itemTypes(actor, "spellcastingEntry").length > 0) {
-    addRole(profile, "caster", 18 + Math.min(12, spellCount(actor) * 2), "Target has active spellcasting.");
+    addRole(profile, "caster", 18 + Math.min(12, spellCount(actor) * 2), t("Aggro.Caster", "Target has active spellcasting."));
   }
 
   if (hasItemMatching(actor, CONTROL_WORDS, ["spell", "action", "feat", "feature"])) {
-    addRole(profile, "controller", 26, "Target can control the fight.");
+    addRole(profile, "controller", 26, t("Aggro.Controller", "Target can control the fight."));
   }
 
   const weapons = itemTypes(actor, "weapon");
   if (weapons.length > 0 || hasItemMatching(actor, DAMAGE_WORDS, ["spell", "action", "feat", "feature"])) {
-    addRole(profile, "main-attacker", 18 + Math.min(12, weapons.length * 3), "Target has meaningful offense.");
+    addRole(profile, "main-attacker", 18 + Math.min(12, weapons.length * 3), t("Aggro.MainAttacker", "Target has meaningful offense."));
   }
 
   const ac = numericAc(target, actor);
   if ((Number.isFinite(ac) && ac >= 24) || hasItemMatching(actor, DEFENDER_WORDS, ["action", "feat", "feature", "armor", "weapon"])) {
-    addRole(profile, "main-defender", 18, "Target is built to defend or block.");
+    addRole(profile, "main-defender", 18, t("Aggro.MainDefender", "Target is built to defend or block."));
   }
 
   profile.roles = [...new Set(profile.roles)];

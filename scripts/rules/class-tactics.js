@@ -1,6 +1,7 @@
 import { CLASS_TACTICS, SUBCLASS_TACTICS } from "./class-tactics-data/index.js";
 import { hasExploitVulnerabilityMark } from "./exploit-vulnerability.js";
 import { readTargetCombatState, targetHasMarkState } from "./combat-state.js";
+import { pf2eTrait, t } from "../i18n.js";
 
 const MAX_CLASS_TACTIC_DELTA = 44;
 
@@ -29,6 +30,12 @@ const ROLE_LABELS = {
   "sustain-control": "sustain control",
   transformation: "transformation",
 };
+
+function roleLabel(role) {
+  const fallback = ROLE_LABELS[role] ?? role;
+  if (!role) return fallback;
+  return t(`ClassTactic.Role_${String(role).replace(/[^a-z0-9]+/gi, "_")}`, fallback);
+}
 
 function normalize(value) {
   return String(value ?? "")
@@ -207,29 +214,29 @@ function addSubclassDeltas(currentClassSlug, actorClasses, parts, profile, actio
       entries.push({ delta: number, label });
     };
 
-    add(tactic.actions?.[actionSlug], `${tactic.label} action`);
-    add(tactic.roles?.[signals.role], ROLE_LABELS[signals.role] ?? signals.role);
+    add(tactic.actions?.[actionSlug], t("ClassTactic.LabelAction", "{label} action", { label: tactic.label }));
+    add(tactic.roles?.[signals.role], roleLabel(signals.role));
 
     for (const [trait, delta] of Object.entries(tactic.traits ?? {})) {
-      if (actionTraits.has(normalize(trait))) add(delta, `${trait} trait`);
+      if (actionTraits.has(normalize(trait))) add(delta, t("ClassTactic.TraitFrag", "{trait} trait", { trait: pf2eTrait(trait, trait) }));
     }
     for (const [include, delta] of Object.entries(tactic.activity ?? {})) {
-      if (actionIncludes.has(normalize(include))) add(delta, `${include} action`);
+      if (actionIncludes.has(normalize(include))) add(delta, t("ClassTactic.IncludeAction", "{include} action", { include }));
     }
 
-    if (signals.isSpell) add(tactic.spell, "spells");
-    if (signals.isImpulse) add(tactic.impulseAction, "impulses");
-    if (signals.isMeleeStrike) add(tactic.meleeStrike, "melee Strikes");
-    if (signals.isRangedStrike) add(tactic.rangedStrike, "ranged Strikes");
-    if (signals.includesStrike) add(tactic.includesStrike, "Strike activities");
-    if (signals.reloadBeforeStrike) add(tactic.reloadBeforeStrike, "reload attacks");
-    if (signals.consumable) add(tactic.consumable, "consumables");
+    if (signals.isSpell) add(tactic.spell, t("ClassTactic.Spells", "spells"));
+    if (signals.isImpulse) add(tactic.impulseAction, t("ClassTactic.Impulses", "impulses"));
+    if (signals.isMeleeStrike) add(tactic.meleeStrike, t("ClassTactic.MeleeStrikes", "melee Strikes"));
+    if (signals.isRangedStrike) add(tactic.rangedStrike, t("ClassTactic.RangedStrikes", "ranged Strikes"));
+    if (signals.includesStrike) add(tactic.includesStrike, t("ClassTactic.StrikeActivities", "Strike activities"));
+    if (signals.reloadBeforeStrike) add(tactic.reloadBeforeStrike, t("ClassTactic.ReloadAttacks", "reload attacks"));
+    if (signals.consumable) add(tactic.consumable, t("ClassTactic.Consumables", "consumables"));
 
     const delta = entries.reduce((sum, entry) => sum + entry.delta, 0);
     if (!delta) continue;
 
     const label = tactic.reason
-      ?? `${tactic.label} favors ${[...new Set(entries.map((entry) => entry.label))].slice(0, 2).join(" and ")}.`;
+      ?? t("ClassTactic.Favors", "{label} favors {items}.", { label: tactic.label, items: [...new Set(entries.map((entry) => entry.label))].slice(0, 2).join(t("ClassTactic.And", " and ")) });
     addPlaybookDelta(parts, Math.max(-36, Math.min(36, delta)), label);
   }
 }
@@ -239,33 +246,31 @@ function alchemistPlaybook(parts, profile, action, signals, actionSlug) {
   const mutagenActive = state.mutagenActive === true || profileHasState(profile, ["mutagen"]);
 
   if (actionSlug === "quick-alchemy") {
-    addPlaybookDelta(parts, 34, "Quick Alchemy creates the right tool for the turn.");
+    addPlaybookDelta(parts, 34, t("ClassTactic.QuickAlchemyCreatesTheRight", "Quick Alchemy creates the right tool for the turn."));
   }
   if (actionSlug === "quick-bomber" || action?.activityProfile?.bomb === true) {
-    addPlaybookDelta(parts, 24, "Alchemist bomb actions convert reagents into immediate damage.");
+    addPlaybookDelta(parts, 24, t("ClassTactic.AlchemistBombActionsConvertReagents", "Alchemist bomb actions convert reagents into immediate damage."));
   }
   if (actionSlug.includes("mutagen") || action?.activityProfile?.mutagen === true) {
-    addPlaybookDelta(parts, mutagenActive ? -36 : 18, mutagenActive
-      ? "Mutagen effect already active."
-      : "Mutagen can set up better alchemical offense.");
+    addPlaybookDelta(parts, mutagenActive ? -36 : 18, mutagenActive ? t("ClassTactic.MutagenEffectAlreadyActive", "Mutagen effect already active.") : t("ClassTactic.MutagenCanSetUpBetter", "Mutagen can set up better alchemical offense."));
   }
   if (signals.consumable) {
-    addPlaybookDelta(parts, signals.role === "healing" && hasInjuredAlly(signals) ? 22 : 12, "Alchemist wants consumables and alchemical tools online.");
+    addPlaybookDelta(parts, signals.role === "healing" && hasInjuredAlly(signals) ? 22 : 12, t("ClassTactic.AlchemistWantsConsumablesAndAlchemical", "Alchemist wants consumables and alchemical tools online."));
   }
   if (signals.isMeleeStrike) {
-    addPlaybookDelta(parts, -12, "Alchemist melee Strike is usually fallback damage.");
+    addPlaybookDelta(parts, -12, t("ClassTactic.AlchemistMeleeStrikeIsUsually", "Alchemist melee Strike is usually fallback damage."));
   }
 }
 
 function animistPlaybook(parts, _profile, action, signals, actionSlug) {
   if (actionSlug.includes("apparition") || actionSlug === "circle-of-spirits") {
-    addPlaybookDelta(parts, 22, "Animist apparition actions set up spirit magic.");
+    addPlaybookDelta(parts, 22, t("ClassTactic.AnimistApparitionActionsSetUp", "Animist apparition actions set up spirit magic."));
   }
   if (actionSlug === "grudge-strike") {
-    addPlaybookDelta(parts, isStrikeSignal(signals) ? 18 : 8, "Grudge Strike is the Animist martial payoff.");
+    addPlaybookDelta(parts, isStrikeSignal(signals) ? 18 : 8, t("ClassTactic.GrudgeStrikeIsTheAnimist", "Grudge Strike is the Animist martial payoff."));
   }
   if (signals.isSpell) {
-    addPlaybookDelta(parts, 10, "Animist should lean on apparition spells over basic Strikes.");
+    addPlaybookDelta(parts, 10, t("ClassTactic.AnimistShouldLeanOnApparition", "Animist should lean on apparition spells over basic Strikes."));
   }
 }
 
@@ -273,15 +278,13 @@ function barbarianPlaybook(parts, profile, _action, signals, actionSlug) {
   const raging = profile?.combatState?.rageActive === true || profileHasState(profile, ["rage"]);
 
   if (actionSlug === "rage") {
-    addPlaybookDelta(parts, raging ? -90 : 44, raging ? "Rage is already active." : "Barbarian wants Rage before attacking.");
+    addPlaybookDelta(parts, raging ? -90 : 44, raging ? t("ClassTactic.RageIsAlreadyActive", "Rage is already active.") : t("ClassTactic.BarbarianWantsRageBeforeAttacking", "Barbarian wants Rage before attacking."));
   }
   if (actionSlug === "renewed-vigor") {
-    addPlaybookDelta(parts, raging ? 18 : -28, raging ? "Renewed Vigor pays off active Rage." : "Renewed Vigor wants Rage active first.");
+    addPlaybookDelta(parts, raging ? 18 : -28, raging ? t("ClassTactic.RenewedVigorPaysOffActive", "Renewed Vigor pays off active Rage.") : t("ClassTactic.RenewedVigorWantsRageActive", "Renewed Vigor wants Rage active first."));
   }
   if (isStrikeSignal(signals) || signals.role === "mobility-attack") {
-    addPlaybookDelta(parts, raging ? 24 : -10, raging
-      ? "Rage makes Barbarian attacks stronger."
-      : "Barbarian attacks want Rage first.");
+    addPlaybookDelta(parts, raging ? 24 : -10, raging ? t("ClassTactic.RageMakesBarbarianAttacksStronger", "Rage makes Barbarian attacks stronger.") : t("ClassTactic.BarbarianAttacksWantRageFirst", "Barbarian attacks want Rage first."));
   }
 }
 
@@ -295,17 +298,13 @@ function bardPlaybook(parts, profile, action, signals, actionSlug) {
     || action?.activityProfile?.composition === true;
 
   if (actionSlug === "lingering-composition") {
-    addPlaybookDelta(parts, lingeringActive ? -36 : 24, lingeringActive
-      ? "Lingering Composition is already active."
-      : "Lingering Composition extends Bard support.");
+    addPlaybookDelta(parts, lingeringActive ? -36 : 24, lingeringActive ? t("ClassTactic.LingeringCompositionIsAlreadyActive", "Lingering Composition is already active.") : t("ClassTactic.LingeringCompositionExtendsBardSupport", "Lingering Composition extends Bard support."));
   }
   if (composition && actionSlug !== "lingering-composition") {
-    addPlaybookDelta(parts, compositionActive ? -18 : 28, compositionActive
-      ? "A composition is already active; avoid redundant anthem spam."
-      : "Bard composition should anchor the turn.");
+    addPlaybookDelta(parts, compositionActive ? -18 : 28, compositionActive ? t("ClassTactic.ACompositionIsAlreadyActive", "A composition is already active; avoid redundant anthem spam.") : t("ClassTactic.BardCompositionShouldAnchorThe", "Bard composition should anchor the turn."));
   }
   if (signals.role === "buff" && contextAllies(signals).length) {
-    addPlaybookDelta(parts, 14, "Bard support is strongest with allies in the fight.");
+    addPlaybookDelta(parts, 14, t("ClassTactic.BardSupportIsStrongestWith", "Bard support is strongest with allies in the fight."));
   }
 }
 
@@ -314,28 +313,28 @@ function championPlaybook(parts, profile, action, signals, actionSlug) {
   const smiteActive = state.smiteActive === true || profileHasState(profile, ["smite"]);
 
   if (actionSlug === "smite") {
-    addPlaybookDelta(parts, smiteActive ? -44 : 26, smiteActive ? "Smite is already active." : "Smite sets up Champion punishment.");
+    addPlaybookDelta(parts, smiteActive ? -44 : 26, smiteActive ? t("ClassTactic.SmiteIsAlreadyActive", "Smite is already active.") : t("ClassTactic.SmiteSetsUpChampionPunishment", "Smite sets up Champion punishment."));
   }
   if (actionSlug === "lay-on-hands" || (signals.role === "healing" && action?.activityProfile?.focus)) {
-    addPlaybookDelta(parts, hasInjuredAlly(signals, 0.8) ? 30 : 8, "Champion healing protects wounded allies.");
+    addPlaybookDelta(parts, hasInjuredAlly(signals, 0.8) ? 30 : 8, t("ClassTactic.ChampionHealingProtectsWoundedAllies", "Champion healing protects wounded allies."));
   }
   if (signals.role === "defense" || actionSlug === "raise-a-shield") {
-    addPlaybookDelta(parts, 16, "Champion defense keeps pressure off allies.");
+    addPlaybookDelta(parts, 16, t("ClassTactic.ChampionDefenseKeepsPressureOff", "Champion defense keeps pressure off allies."));
   }
   if (isStrikeSignal(signals) && smiteActive) {
-    addPlaybookDelta(parts, 16, "Smite makes this Champion attack better.");
+    addPlaybookDelta(parts, 16, t("ClassTactic.SmiteMakesThisChampionAttack", "Smite makes this Champion attack better."));
   }
 }
 
 function clericPlaybook(parts, _profile, action, signals, actionSlug) {
   if (signals.role === "healing") {
-    addPlaybookDelta(parts, hasInjuredAlly(signals, 0.85) ? 34 : 10, "Cleric should stabilize wounded allies.");
+    addPlaybookDelta(parts, hasInjuredAlly(signals, 0.85) ? 34 : 10, t("ClassTactic.ClericShouldStabilizeWoundedAllies", "Cleric should stabilize wounded allies."));
   }
   if (actionSlug === "channel-smite") {
-    addPlaybookDelta(parts, 24, "Channel Smite converts divine power into a Strike.");
+    addPlaybookDelta(parts, 24, t("ClassTactic.ChannelSmiteConvertsDivinePower", "Channel Smite converts divine power into a Strike."));
   }
   if (actionSlug === "raise-symbol" || actionSlug === "divine-infusion" || action?.activityProfile?.spellBuff) {
-    addPlaybookDelta(parts, 16, "Cleric support action sets up the next divine payoff.");
+    addPlaybookDelta(parts, 16, t("ClassTactic.ClericSupportActionSetsUp", "Cleric support action sets up the next divine payoff."));
   }
 }
 
@@ -354,12 +353,10 @@ function commanderPlaybook(parts, _profile, _action, signals, actionSlug) {
   ]);
 
   if (commandAction || signals.role === "buff") {
-    addPlaybookDelta(parts, allyCount ? 28 : -30, allyCount
-      ? "Commander tactics are high value with allies to command."
-      : "Commander tactics need allies to command.");
+    addPlaybookDelta(parts, allyCount ? 28 : -30, allyCount ? t("ClassTactic.CommanderTacticsAreHighValue", "Commander tactics are high value with allies to command.") : t("ClassTactic.CommanderTacticsNeedAlliesTo", "Commander tactics need allies to command."));
   }
   if (signals.role === "mobility" && allyCount) {
-    addPlaybookDelta(parts, 14, "Commander movement tactics improve ally positioning.");
+    addPlaybookDelta(parts, 14, t("ClassTactic.CommanderMovementTacticsImproveAlly", "Commander movement tactics improve ally positioning."));
   }
 }
 
@@ -367,16 +364,16 @@ function druidPlaybook(parts, profile, _action, signals, actionSlug) {
   const inForm = hasActiveStance(profile) || profileHasState(profile, ["wild-shape", "battle-form", "animal-form", "form"]);
 
   if (actionSlug === "wild-shape") {
-    addPlaybookDelta(parts, inForm ? -40 : 26, inForm ? "Battle form is already active." : "Wild Shape opens Druid martial options.");
+    addPlaybookDelta(parts, inForm ? -40 : 26, inForm ? t("ClassTactic.BattleFormIsAlreadyActive", "Battle form is already active.") : t("ClassTactic.WildShapeOpensDruidMartial", "Wild Shape opens Druid martial options."));
   }
   if (actionSlug === "form-control") {
-    addPlaybookDelta(parts, inForm ? 18 : -24, inForm ? "Form Control extends active Wild Shape." : "Form Control wants a form active first.");
+    addPlaybookDelta(parts, inForm ? 18 : -24, inForm ? t("ClassTactic.FormControlExtendsActiveWild", "Form Control extends active Wild Shape.") : t("ClassTactic.FormControlWantsAForm", "Form Control wants a form active first."));
   }
   if (signals.role === "healing" && hasInjuredAlly(signals)) {
-    addPlaybookDelta(parts, 18, "Druid healing helps stabilize the front line.");
+    addPlaybookDelta(parts, 18, t("ClassTactic.DruidHealingHelpsStabilizeThe", "Druid healing helps stabilize the front line."));
   }
   if (signals.isSpell && ["area-damage", "control", "summon"].includes(signals.role)) {
-    addPlaybookDelta(parts, 12, "Druid spell list rewards terrain control and area pressure.");
+    addPlaybookDelta(parts, 12, t("ClassTactic.DruidSpellListRewardsTerrain", "Druid spell list rewards terrain control and area pressure."));
   }
 }
 
@@ -384,27 +381,25 @@ function exemplarPlaybook(parts, profile, _action, signals, actionSlug) {
   const immanenceActive = profileHasState(profile, ["immanence", "ikon"]);
 
   if (actionSlug === "shift-immanence") {
-    addPlaybookDelta(parts, 24, "Shift Immanence sets up the right ikon.");
+    addPlaybookDelta(parts, 24, t("ClassTactic.ShiftImmanenceSetsUpThe", "Shift Immanence sets up the right ikon."));
   }
   if (actionSlug === "spark-transcendence") {
-    addPlaybookDelta(parts, immanenceActive ? 30 : 16, immanenceActive
-      ? "Spark Transcendence pays off active immanence."
-      : "Spark Transcendence is Exemplar's main class payoff.");
+    addPlaybookDelta(parts, immanenceActive ? 30 : 16, immanenceActive ? t("ClassTactic.SparkTranscendencePaysOffActive", "Spark Transcendence pays off active immanence.") : t("ClassTactic.SparkTranscendenceIsExemplarS", "Spark Transcendence is Exemplar's main class payoff."));
   }
   if (isDamageSignal(signals)) {
-    addPlaybookDelta(parts, 10, "Exemplar wants class damage payoffs over filler.");
+    addPlaybookDelta(parts, 10, t("ClassTactic.ExemplarWantsClassDamagePayoffs", "Exemplar wants class damage payoffs over filler."));
   }
 }
 
 function fighterPlaybook(parts, _profile, action, signals, actionSlug) {
   if (actionIn(actionSlug, ["power-attack", "vicious-swing", "double-slice", "intimidating-strike", "knockdown", "snagging-strike"])) {
-    addPlaybookDelta(parts, 22, "Fighter class Strike is stronger than a plain Strike.");
+    addPlaybookDelta(parts, 22, t("ClassTactic.FighterClassStrikeIsStronger", "Fighter class Strike is stronger than a plain Strike."));
   }
   if (signals.role === "setup" && action?.activityProfile?.appliesCondition) {
-    addPlaybookDelta(parts, 14, "Fighter setup can make follow-up Strikes more reliable.");
+    addPlaybookDelta(parts, 14, t("ClassTactic.FighterSetupCanMakeFollow", "Fighter setup can make follow-up Strikes more reliable."));
   }
   if (actionSlug === "reactive-strike") {
-    addPlaybookDelta(parts, -30, "Reactive Strike is trigger-based, not normal turn filler.");
+    addPlaybookDelta(parts, -30, t("ClassTactic.ReactiveStrikeIsTriggerBased", "Reactive Strike is trigger-based, not normal turn filler."));
   }
 }
 
@@ -413,13 +408,13 @@ function guardianPlaybook(parts, _profile, _action, signals, actionSlug) {
   const taunted = targetMarked(target, ["taunt", "taunted"]);
 
   if (actionSlug === "taunt") {
-    addPlaybookDelta(parts, taunted ? -54 : 40, taunted ? "Target is already taunted." : "Guardian wants Taunt before defensive payoffs.");
+    addPlaybookDelta(parts, taunted ? -54 : 40, taunted ? t("ClassTactic.TargetIsAlreadyTaunted", "Target is already taunted.") : t("ClassTactic.GuardianWantsTauntBeforeDefensive", "Guardian wants Taunt before defensive payoffs."));
   }
   if (signals.role === "defense" || actionSlug === "intercept-attack" || actionSlug === "raise-a-shield") {
-    addPlaybookDelta(parts, 22, "Guardian defense protects allies and controls enemy focus.");
+    addPlaybookDelta(parts, 22, t("ClassTactic.GuardianDefenseProtectsAlliesAnd", "Guardian defense protects allies and controls enemy focus."));
   }
   if (signals.role === "control" && taunted) {
-    addPlaybookDelta(parts, 12, "Taunted target is easier to punish with Guardian control.");
+    addPlaybookDelta(parts, 12, t("ClassTactic.TauntedTargetIsEasierTo", "Taunted target is easier to punish with Guardian control."));
   }
 }
 
@@ -427,13 +422,13 @@ function gunslingerPlaybook(parts, _profile, action, signals, actionSlug) {
   const reloadAction = actionSlug.includes("reload") || action?.activityProfile?.reload || action?.activityProfile?.reloadBeforeStrike;
 
   if (reloadAction) {
-    addPlaybookDelta(parts, 28, "Gunslinger reload action keeps ranged offense online.");
+    addPlaybookDelta(parts, 28, t("ClassTactic.GunslingerReloadActionKeepsRanged", "Gunslinger reload action keeps ranged offense online."));
   }
   if (signals.isRangedStrike || signals.reloadBeforeStrike) {
-    addPlaybookDelta(parts, 18, "Gunslinger wants ranged Strike lines over melee fallback.");
+    addPlaybookDelta(parts, 18, t("ClassTactic.GunslingerWantsRangedStrikeLines", "Gunslinger wants ranged Strike lines over melee fallback."));
   }
   if (signals.isMeleeStrike) {
-    addPlaybookDelta(parts, -18, "Gunslinger melee Strike is fallback only.");
+    addPlaybookDelta(parts, -18, t("ClassTactic.GunslingerMeleeStrikeIsFallback", "Gunslinger melee Strike is fallback only."));
   }
 }
 
@@ -443,15 +438,13 @@ function inventorPlaybook(parts, profile, _action, signals, actionSlug) {
   const unstableUsed = state.unstableUsed === true || profileHasState(profile, ["unstable"]);
 
   if (actionSlug === "overdrive") {
-    addPlaybookDelta(parts, overdrive ? -70 : 42, overdrive ? "Overdrive is already active." : "Inventor wants Overdrive before attacking.");
+    addPlaybookDelta(parts, overdrive ? -70 : 42, overdrive ? t("ClassTactic.OverdriveIsAlreadyActive", "Overdrive is already active.") : t("ClassTactic.InventorWantsOverdriveBeforeAttacking", "Inventor wants Overdrive before attacking."));
   }
   if (actionSlug === "explode" || actionSlug.includes("unstable") || actionSlug === "searing-restoration") {
-    addPlaybookDelta(parts, unstableUsed ? -30 : 18, unstableUsed
-      ? "Unstable action may already be spent."
-      : "Unstable action can be a strong Inventor payoff.");
+    addPlaybookDelta(parts, unstableUsed ? -30 : 18, unstableUsed ? t("ClassTactic.UnstableActionMayAlreadyBe", "Unstable action may already be spent.") : t("ClassTactic.UnstableActionCanBeA", "Unstable action can be a strong Inventor payoff."));
   }
   if (isDamageSignal(signals)) {
-    addPlaybookDelta(parts, overdrive ? 22 : -8, overdrive ? "Overdrive boosts Inventor attacks." : "Inventor attacks want Overdrive first.");
+    addPlaybookDelta(parts, overdrive ? 22 : -8, overdrive ? t("ClassTactic.OverdriveBoostsInventorAttacks", "Overdrive boosts Inventor attacks.") : t("ClassTactic.InventorAttacksWantOverdriveFirst", "Inventor attacks want Overdrive first."));
   }
 }
 
@@ -460,13 +453,13 @@ function monkPlaybook(parts, profile, action, signals, actionSlug) {
   const stanceAction = action?.activityProfile?.stance === true || actionSlug.includes("stance");
 
   if (stanceAction) {
-    addPlaybookDelta(parts, stanceActive ? -42 : 26, stanceActive ? "A stance is already active." : "Monk stance sets up better attacks.");
+    addPlaybookDelta(parts, stanceActive ? -42 : 26, stanceActive ? t("ClassTactic.AStanceIsAlreadyActive", "A stance is already active.") : t("ClassTactic.MonkStanceSetsUpBetter", "Monk stance sets up better attacks."));
   }
   if (actionSlug === "flurry-of-blows" || signals.role === "multiattack") {
-    addPlaybookDelta(parts, 34, "Flurry-style action is Monk's efficient attack routine.");
+    addPlaybookDelta(parts, 34, t("ClassTactic.FlurryStyleActionIsMonk", "Flurry-style action is Monk's efficient attack routine."));
   }
   if (actionSlug === "ki-strike") {
-    addPlaybookDelta(parts, 20, "Ki Strike sets up Monk burst damage.");
+    addPlaybookDelta(parts, 20, t("ClassTactic.KiStrikeSetsUpMonk", "Ki Strike sets up Monk burst damage."));
   }
 }
 
@@ -474,12 +467,10 @@ function oraclePlaybook(parts, profile, _action, signals, actionSlug) {
   const curseActive = profile?.combatState?.curseActive === true || profileHasState(profile, ["cursebound", "oracular-curse", "curse"]);
 
   if (actionIn(actionSlug, ["foretell-harm", "whispers-of-weakness", "debilitating-dichotomy", "nudge-the-scales"])) {
-    addPlaybookDelta(parts, curseActive ? 22 : 14, curseActive
-      ? "Oracle curse state makes revelation payoffs matter."
-      : "Oracle revelation action is a class payoff.");
+    addPlaybookDelta(parts, curseActive ? 22 : 14, curseActive ? t("ClassTactic.OracleCurseStateMakesRevelation", "Oracle curse state makes revelation payoffs matter.") : t("ClassTactic.OracleRevelationActionIsA", "Oracle revelation action is a class payoff."));
   }
   if (signals.role === "healing" && hasInjuredAlly(signals)) {
-    addPlaybookDelta(parts, 18, "Oracle healing can stabilize allies despite curse pressure.");
+    addPlaybookDelta(parts, 18, t("ClassTactic.OracleHealingCanStabilizeAllies", "Oracle healing can stabilize allies despite curse pressure."));
   }
 }
 
@@ -487,12 +478,10 @@ function psychicPlaybook(parts, profile, _action, signals, actionSlug) {
   const unleashed = profile?.combatState?.unleashPsycheActive === true || profileHasState(profile, ["unleash-psyche"]);
 
   if (actionSlug === "unleash-psyche") {
-    addPlaybookDelta(parts, unleashed ? -80 : 44, unleashed ? "Psyche is already unleashed." : "Psychic wants Unleash Psyche before burst spells.");
+    addPlaybookDelta(parts, unleashed ? -80 : 44, unleashed ? t("ClassTactic.PsycheIsAlreadyUnleashed", "Psyche is already unleashed.") : t("ClassTactic.PsychicWantsUnleashPsycheBefore", "Psychic wants Unleash Psyche before burst spells."));
   }
   if (actionIn(actionSlug, ["psi-burst", "restore-the-mind"]) || (signals.isSpell && ["damage", "save-damage", "area-damage"].includes(signals.role))) {
-    addPlaybookDelta(parts, unleashed ? 24 : -8, unleashed
-      ? "Unleashed Psyche boosts Psychic burst actions."
-      : "Psychic burst wants Unleash Psyche first when available.");
+    addPlaybookDelta(parts, unleashed ? 24 : -8, unleashed ? t("ClassTactic.UnleashedPsycheBoostsPsychicBurst", "Unleashed Psyche boosts Psychic burst actions.") : t("ClassTactic.PsychicBurstWantsUnleashPsyche", "Psychic burst wants Unleash Psyche first when available."));
   }
 }
 
@@ -503,17 +492,13 @@ function roguePlaybook(parts, _profile, action, signals, actionSlug) {
     || action?.activityProfile?.acPenalty;
 
   if (createsOpening) {
-    addPlaybookDelta(parts, offGuard ? -18 : 30, offGuard
-      ? "Target is already off-guard."
-      : "Rogue wants off-guard before damage.");
+    addPlaybookDelta(parts, offGuard ? -18 : 30, offGuard ? t("ClassTactic.TargetIsAlreadyOffGuard", "Target is already off-guard.") : t("ClassTactic.RogueWantsOffGuardBefore", "Rogue wants off-guard before damage."));
   }
   if (actionSlug === "poison-weapon") {
-    addPlaybookDelta(parts, 18, "Poison Weapon sets up Rogue Strike damage.");
+    addPlaybookDelta(parts, 18, t("ClassTactic.PoisonWeaponSetsUpRogue", "Poison Weapon sets up Rogue Strike damage."));
   }
   if (isDamageSignal(signals)) {
-    addPlaybookDelta(parts, offGuard ? 24 : -10, offGuard
-      ? "Off-guard target enables Rogue payoff damage."
-      : "Rogue damage wants off-guard first.");
+    addPlaybookDelta(parts, offGuard ? 24 : -10, offGuard ? t("ClassTactic.OffGuardTargetEnablesRogue", "Off-guard target enables Rogue payoff damage.") : t("ClassTactic.RogueDamageWantsOffGuard", "Rogue damage wants off-guard first."));
   }
 }
 
@@ -521,22 +506,22 @@ function runesmithPlaybook(parts, _profile, _action, signals, actionSlug) {
   const traced = targetMarked(signals.target, ["traced-rune", "trace-rune", "etched-rune", "rune"]);
 
   if (actionSlug === "trace-rune" || actionSlug === "etched-rune") {
-    addPlaybookDelta(parts, traced ? -42 : 36, traced ? "Target already has a rune traced." : "Runesmith wants a rune traced before invoking.");
+    addPlaybookDelta(parts, traced ? -42 : 36, traced ? t("ClassTactic.TargetAlreadyHasARune", "Target already has a rune traced.") : t("ClassTactic.RunesmithWantsARuneTraced", "Runesmith wants a rune traced before invoking."));
   }
   if (actionSlug === "invoke-rune" || signals.role === "damage" || signals.role === "control") {
-    addPlaybookDelta(parts, traced ? 26 : -12, traced ? "Invoke Rune pays off a traced rune." : "Invoke Rune wants a traced rune first.");
+    addPlaybookDelta(parts, traced ? 26 : -12, traced ? t("ClassTactic.InvokeRunePaysOffA", "Invoke Rune pays off a traced rune.") : t("ClassTactic.InvokeRuneWantsATraced", "Invoke Rune wants a traced rune first."));
   }
 }
 
 function sorcererPlaybook(parts, _profile, action, signals, actionSlug) {
   if (actionIn(actionSlug, ["bloodline-conduit", "energy-fusion"]) || action?.activityProfile?.spellBuff) {
-    addPlaybookDelta(parts, 20, "Sorcerer class action sets up stronger spell output.");
+    addPlaybookDelta(parts, 20, t("ClassTactic.SorcererClassActionSetsUp", "Sorcerer class action sets up stronger spell output."));
   }
   if (signals.isSpell && ["damage", "save-damage", "area-damage"].includes(signals.role)) {
-    addPlaybookDelta(parts, 16, "Sorcerer should lean into spell damage.");
+    addPlaybookDelta(parts, 16, t("ClassTactic.SorcererShouldLeanIntoSpell", "Sorcerer should lean into spell damage."));
   }
   if (signals.isMeleeStrike) {
-    addPlaybookDelta(parts, -18, "Sorcerer melee Strike is fallback only.");
+    addPlaybookDelta(parts, -18, t("ClassTactic.SorcererMeleeStrikeIsFallback", "Sorcerer melee Strike is fallback only."));
   }
 }
 
@@ -544,15 +529,13 @@ function summonerPlaybook(parts, profile, _action, signals, actionSlug) {
   const eidolonActive = profile?.combatState?.eidolonManifested === true || profileHasState(profile, ["eidolon-manifested", "manifest-eidolon", "eidolon"]);
 
   if (actionSlug === "manifest-eidolon") {
-    addPlaybookDelta(parts, eidolonActive ? -80 : 44, eidolonActive ? "Eidolon is already manifested." : "Summoner wants Eidolon manifested first.");
+    addPlaybookDelta(parts, eidolonActive ? -80 : 44, eidolonActive ? t("ClassTactic.EidolonIsAlreadyManifested", "Eidolon is already manifested.") : t("ClassTactic.SummonerWantsEidolonManifestedFirst", "Summoner wants Eidolon manifested first."));
   }
   if (actionIn(actionSlug, ["act-together", "tandem-movement", "tandem-strike", "defend-summoner", "transpose"])) {
-    addPlaybookDelta(parts, eidolonActive ? 30 : -28, eidolonActive
-      ? "Tandem action pays off manifested Eidolon."
-      : "Tandem action wants Eidolon manifested first.");
+    addPlaybookDelta(parts, eidolonActive ? 30 : -28, eidolonActive ? t("ClassTactic.TandemActionPaysOffManifested", "Tandem action pays off manifested Eidolon.") : t("ClassTactic.TandemActionWantsEidolonManifested", "Tandem action wants Eidolon manifested first."));
   }
   if (signals.isSpell && eidolonActive) {
-    addPlaybookDelta(parts, 8, "Summoner spells pair well with an active Eidolon.");
+    addPlaybookDelta(parts, 8, t("ClassTactic.SummonerSpellsPairWellWith", "Summoner spells pair well with an active Eidolon."));
   }
 }
 
@@ -560,30 +543,28 @@ function witchPlaybook(parts, _profile, _action, signals, actionSlug) {
   const hex = actionSlug.includes("hex") || signals.role === "debuff";
 
   if (actionSlug === "split-hex") {
-    addPlaybookDelta(parts, contextEnemyCount(signals) >= 2 ? 24 : -18, contextEnemyCount(signals) >= 2
-      ? "Split Hex has multiple enemies to punish."
-      : "Split Hex wants multiple valid enemies.");
+    addPlaybookDelta(parts, contextEnemyCount(signals) >= 2 ? 24 : -18, contextEnemyCount(signals) >= 2 ? t("ClassTactic.SplitHexHasMultipleEnemies", "Split Hex has multiple enemies to punish.") : t("ClassTactic.SplitHexWantsMultipleValid", "Split Hex wants multiple valid enemies."));
   }
   if (hex) {
-    addPlaybookDelta(parts, 24, "Witch hexes are strong class pressure.");
+    addPlaybookDelta(parts, 24, t("ClassTactic.WitchHexesAreStrongClass", "Witch hexes are strong class pressure."));
   }
   if (actionSlug === "sympathetic-strike" || isStrikeSignal(signals)) {
-    addPlaybookDelta(parts, -6, "Witch Strikes are usually setup or fallback.");
+    addPlaybookDelta(parts, -6, t("ClassTactic.WitchStrikesAreUsuallySetup", "Witch Strikes are usually setup or fallback."));
   }
 }
 
 function wizardPlaybook(parts, _profile, action, signals, actionSlug) {
   if (actionSlug === "drain-bonded-item" || action?.activityProfile?.recoversSpellResource) {
-    addPlaybookDelta(parts, 20, "Wizard resource recovery can restore a key spell.");
+    addPlaybookDelta(parts, 20, t("ClassTactic.WizardResourceRecoveryCanRestore", "Wizard resource recovery can restore a key spell."));
   }
   if (action?.activityProfile?.spellBuff || actionIn(actionSlug, ["bond-conservation", "spell-protection-array", "convincing-illusion"])) {
-    addPlaybookDelta(parts, 16, "Wizard class action sets up better spell value.");
+    addPlaybookDelta(parts, 16, t("ClassTactic.WizardClassActionSetsUp", "Wizard class action sets up better spell value."));
   }
   if (signals.isSpell && ["control", "area-damage", "save-damage"].includes(signals.role)) {
-    addPlaybookDelta(parts, 18, "Wizard should prioritize high-impact spells.");
+    addPlaybookDelta(parts, 18, t("ClassTactic.WizardShouldPrioritizeHighImpact", "Wizard should prioritize high-impact spells."));
   }
   if (signals.isMeleeStrike) {
-    addPlaybookDelta(parts, -18, "Wizard melee Strike is fallback only.");
+    addPlaybookDelta(parts, -18, t("ClassTactic.WizardMeleeStrikeIsFallback", "Wizard melee Strike is fallback only."));
   }
 }
 
@@ -596,18 +577,18 @@ function kineticistPlaybook(parts, profile, action, signals, actionSlug) {
 
   if (actionSlug === "channel-elements") {
     if (auraActive) {
-      addPlaybookDelta(parts, -80, "Kinetic aura already active; Channel Elements is redundant.");
+      addPlaybookDelta(parts, -80, t("ClassTactic.KineticAuraAlreadyActiveChannel", "Kinetic aura already active; Channel Elements is redundant."));
     } else {
-      addPlaybookDelta(parts, 38, "Channel Elements opens kinetic aura for impulses.");
+      addPlaybookDelta(parts, 38, t("ClassTactic.ChannelElementsOpensKineticAura", "Channel Elements opens kinetic aura for impulses."));
     }
   }
 
   if (isImpulse && actionSlug !== "channel-elements") {
     if (auraActive) {
-      addPlaybookDelta(parts, 12, "Kinetic aura active; impulses are online.");
-      if (overflow) addPlaybookDelta(parts, 18, "Overflow impulse spends the aura for a strong payoff.");
+      addPlaybookDelta(parts, 12, t("ClassTactic.KineticAuraActiveImpulsesAre", "Kinetic aura active; impulses are online."));
+      if (overflow) addPlaybookDelta(parts, 18, t("ClassTactic.OverflowImpulseSpendsTheAura", "Overflow impulse spends the aura for a strong payoff."));
     } else if (state.kineticistAuraActive === false || state.channelElementsActive === false) {
-      addPlaybookDelta(parts, -44, "Impulse wants Channel Elements active first.");
+      addPlaybookDelta(parts, -44, t("ClassTactic.ImpulseWantsChannelElementsActive", "Impulse wants Channel Elements active first."));
     }
   }
 
@@ -616,7 +597,7 @@ function kineticistPlaybook(parts, profile, action, signals, actionSlug) {
     || actionSlug === "two-element-infusion"
     || actionHasNextAction(action, "elemental-blast")
   ) {
-    addPlaybookDelta(parts, auraActive ? 20 : 8, "Infusion sets up the next Elemental Blast.");
+    addPlaybookDelta(parts, auraActive ? 20 : 8, t("ClassTactic.InfusionSetsUpTheNext", "Infusion sets up the next Elemental Blast."));
   }
 }
 
@@ -627,32 +608,32 @@ function magusPlaybook(parts, profile, action, signals, actionSlug) {
 
   if (isSpellstrike) {
     if (state.spellstrikeNeedsRecharge === true || state.spellstrikeCharged === false) {
-      addPlaybookDelta(parts, -120, "Spellstrike needs recharge before use.");
+      addPlaybookDelta(parts, -120, t("ClassTactic.SpellstrikeNeedsRechargeBeforeUse", "Spellstrike needs recharge before use."));
     } else if (state.spellstrikeCharged === true) {
-      addPlaybookDelta(parts, 42, "Spellstrike is charged.");
+      addPlaybookDelta(parts, 42, t("ClassTactic.SpellstrikeIsCharged", "Spellstrike is charged."));
     } else {
-      addPlaybookDelta(parts, 18, "Spellstrike is Magus' main payoff.");
+      addPlaybookDelta(parts, 18, t("ClassTactic.SpellstrikeIsMagusMainPayoff", "Spellstrike is Magus' main payoff."));
     }
   }
 
   if (recharge) {
     if (state.spellstrikeNeedsRecharge === true || state.spellstrikeCharged === false) {
-      addPlaybookDelta(parts, 44, "Recharge Spellstrike restores Magus' main payoff.");
+      addPlaybookDelta(parts, 44, t("ClassTactic.RechargeSpellstrikeRestoresMagusMain", "Recharge Spellstrike restores Magus' main payoff."));
     } else if (state.spellstrikeCharged === true) {
-      addPlaybookDelta(parts, -80, "Spellstrike is already charged.");
+      addPlaybookDelta(parts, -80, t("ClassTactic.SpellstrikeIsAlreadyCharged", "Spellstrike is already charged."));
     }
   }
 
   if (actionSlug === "arcane-cascade") {
     if (state.arcaneCascadeActive) {
-      addPlaybookDelta(parts, -70, "Arcane Cascade is already active.");
+      addPlaybookDelta(parts, -70, t("ClassTactic.ArcaneCascadeIsAlreadyActive", "Arcane Cascade is already active."));
     } else {
-      addPlaybookDelta(parts, 18, "Arcane Cascade sets up Magus follow-up damage.");
+      addPlaybookDelta(parts, 18, t("ClassTactic.ArcaneCascadeSetsUpMagus", "Arcane Cascade sets up Magus follow-up damage."));
     }
   }
 
   if (!isSpellstrike && (signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike) && state.spellstrikeCharged === true) {
-    addPlaybookDelta(parts, -10, "Charged Magus usually wants Spellstrike over a plain Strike.");
+    addPlaybookDelta(parts, -10, t("ClassTactic.ChargedMagusUsuallyWantsSpellstrike", "Charged Magus usually wants Spellstrike over a plain Strike."));
   }
 }
 
@@ -664,27 +645,27 @@ function thaumaturgePlaybook(parts, profile, action, signals, actionSlug) {
 
   if (actionSlug === "exploit-vulnerability") {
     if (exploited) {
-      addPlaybookDelta(parts, -90, "Target is already exploited.");
+      addPlaybookDelta(parts, -90, t("ClassTactic.TargetIsAlreadyExploited", "Target is already exploited."));
     } else {
-      addPlaybookDelta(parts, 42, "Exploit Vulnerability should come before Thaumaturge attacks.");
+      addPlaybookDelta(parts, 42, t("ClassTactic.ExploitVulnerabilityShouldComeBefore", "Exploit Vulnerability should come before Thaumaturge attacks."));
     }
   }
 
   if (actionSlug === "intensify-vulnerability") {
     if (exploited) {
-      addPlaybookDelta(parts, 28, "Intensify Vulnerability pays off an exploited target.");
+      addPlaybookDelta(parts, 28, t("ClassTactic.IntensifyVulnerabilityPaysOffAn", "Intensify Vulnerability pays off an exploited target."));
     } else {
-      addPlaybookDelta(parts, -60, "Intensify wants an exploited target first.");
+      addPlaybookDelta(parts, -60, t("ClassTactic.IntensifyWantsAnExploitedTarget", "Intensify wants an exploited target first."));
     }
   }
 
   if (signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike || signals.role === "damage") {
     if (exploited) {
-      addPlaybookDelta(parts, 24, "Exploited target makes Thaumaturge damage better.");
+      addPlaybookDelta(parts, 24, t("ClassTactic.ExploitedTargetMakesThaumaturgeDamage", "Exploited target makes Thaumaturge damage better."));
     } else if (state.exploitVulnerabilityActive === true) {
-      addPlaybookDelta(parts, -4, "This target is not the exploited target.");
+      addPlaybookDelta(parts, -4, t("ClassTactic.ThisTargetIsNotThe", "This target is not the exploited target."));
     } else {
-      addPlaybookDelta(parts, -8, "Thaumaturge damage wants Exploit Vulnerability first.");
+      addPlaybookDelta(parts, -8, t("ClassTactic.ThaumaturgeDamageWantsExploitVulnerability", "Thaumaturge damage wants Exploit Vulnerability first."));
     }
   }
 }
@@ -697,9 +678,9 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
 
   if (actionSlug === "hunt-prey") {
     if (hunted) {
-      addPlaybookDelta(parts, -80, "Target is already hunted prey.");
+      addPlaybookDelta(parts, -80, t("ClassTactic.TargetIsAlreadyHuntedPrey", "Target is already hunted prey."));
     } else {
-      addPlaybookDelta(parts, 38, "Hunt Prey should come before Ranger attacks.");
+      addPlaybookDelta(parts, 38, t("ClassTactic.HuntPreyShouldComeBefore", "Hunt Prey should come before Ranger attacks."));
     }
   }
 
@@ -712,11 +693,11 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
     || signals.isRangedStrike
   ) {
     if (hunted) {
-      addPlaybookDelta(parts, 24, "Hunted prey makes Ranger attacks better.");
+      addPlaybookDelta(parts, 24, t("ClassTactic.HuntedPreyMakesRangerAttacks", "Hunted prey makes Ranger attacks better."));
     } else if (state.huntedPreyActive === true) {
-      addPlaybookDelta(parts, -6, "This target is not the hunted prey.");
+      addPlaybookDelta(parts, -6, t("ClassTactic.ThisTargetIsNotThe2", "This target is not the hunted prey."));
     } else {
-      addPlaybookDelta(parts, -10, "Ranger attacks want Hunt Prey first.");
+      addPlaybookDelta(parts, -10, t("ClassTactic.RangerAttacksWantHuntPrey", "Ranger attacks want Hunt Prey first."));
     }
   }
 }
@@ -729,19 +710,19 @@ function investigatorPlaybook(parts, profile, action, signals, actionSlug) {
 
   if (actionSlug === "devise-a-stratagem") {
     if (devised) {
-      addPlaybookDelta(parts, -80, "Devise a Stratagem is already active.");
+      addPlaybookDelta(parts, -80, t("ClassTactic.DeviseAStratagemIsAlready", "Devise a Stratagem is already active."));
     } else {
-      addPlaybookDelta(parts, 40, "Devise a Stratagem should come before Investigator attacks.");
+      addPlaybookDelta(parts, 40, t("ClassTactic.DeviseAStratagemShouldCome", "Devise a Stratagem should come before Investigator attacks."));
     }
   }
 
   if (signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike || signals.role === "damage") {
     if (devised) {
-      addPlaybookDelta(parts, 26, "Devised Stratagem supports this attack.");
+      addPlaybookDelta(parts, 26, t("ClassTactic.DevisedStratagemSupportsThisAttack", "Devised Stratagem supports this attack."));
     } else if (state.deviseStratagemActive === true) {
-      addPlaybookDelta(parts, -8, "This target is not the devised target.");
+      addPlaybookDelta(parts, -8, t("ClassTactic.ThisTargetIsNotThe3", "This target is not the devised target."));
     } else {
-      addPlaybookDelta(parts, -12, "Investigator attacks want Devise a Stratagem first.");
+      addPlaybookDelta(parts, -12, t("ClassTactic.InvestigatorAttacksWantDeviseA", "Investigator attacks want Devise a Stratagem first."));
     }
   }
 }
@@ -761,22 +742,22 @@ function swashbucklerPlaybook(parts, profile, action, signals, actionSlug) {
 
   if (finisher) {
     if (panache) {
-      addPlaybookDelta(parts, 44, "Panache active; finisher is ready.");
+      addPlaybookDelta(parts, 44, t("ClassTactic.PanacheActiveFinisherIsReady", "Panache active; finisher is ready."));
     } else {
-      addPlaybookDelta(parts, -100, "Finisher needs panache first.");
+      addPlaybookDelta(parts, -100, t("ClassTactic.FinisherNeedsPanacheFirst", "Finisher needs panache first."));
     }
   }
 
   if (gainsPanache) {
     if (panache) {
-      addPlaybookDelta(parts, -24, "Panache already active; gaining panache is lower value.");
+      addPlaybookDelta(parts, -24, t("ClassTactic.PanacheAlreadyActiveGainingPanache", "Panache already active; gaining panache is lower value."));
     } else {
-      addPlaybookDelta(parts, 34, "Swashbuckler wants panache before finishers.");
+      addPlaybookDelta(parts, 34, t("ClassTactic.SwashbucklerWantsPanacheBeforeFinishers", "Swashbuckler wants panache before finishers."));
     }
   }
 
   if ((signals.includesStrike || signals.isMeleeStrike || signals.isRangedStrike) && panache && !finisher) {
-    addPlaybookDelta(parts, -8, "Panache active; consider a finisher payoff.");
+    addPlaybookDelta(parts, -8, t("ClassTactic.PanacheActiveConsiderAFinisher", "Panache active; consider a finisher payoff."));
   }
 }
 
@@ -814,8 +795,8 @@ function classPlaybookAdjustment(slug, parts, profile, action, signals, actionSl
 function summarize(label, parts) {
   const positive = parts.filter((part) => part.delta > 0).map((part) => part.label);
   const negative = parts.filter((part) => part.delta < 0).map((part) => part.label);
-  if (positive.length) return `${label} tactic favors ${[...new Set(positive)].slice(0, 2).join(" and ")}.`;
-  if (negative.length) return `${label} tactic de-prioritizes ${[...new Set(negative)].slice(0, 2).join(" and ")}.`;
+  if (positive.length) return t("ClassTactic.TacticFavors", "{label} tactic favors {items}.", { label, items: [...new Set(positive)].slice(0, 2).join(t("ClassTactic.And", " and ")) });
+  if (negative.length) return t("ClassTactic.TacticDeprioritizes", "{label} tactic de-prioritizes {items}.", { label, items: [...new Set(negative)].slice(0, 2).join(t("ClassTactic.And", " and ")) });
   return null;
 }
 
@@ -834,15 +815,15 @@ export function classTacticAdjustment(profile, action, signals = {}) {
 
     const parts = [];
     const signatureDelta = tactic.signatureActions?.[actionSlug] ?? tactic.slugs?.[actionSlug];
-    addDelta(parts, signatureDelta, `${action?.name ?? actionSlug} signature`);
-    if (traits.has(slug)) addDelta(parts, tactic.classAction ?? 4, "class actions");
-    if (signals.isImpulse) addDelta(parts, tactic.impulseAction, "impulses");
-    if (signals.isSpell) addDelta(parts, tactic.spell, "spells");
-    if (signals.isMeleeStrike) addDelta(parts, tactic.meleeStrike, "melee Strikes");
-    if (signals.isRangedStrike) addDelta(parts, tactic.rangedStrike, "ranged Strikes");
-    if (signals.includesStrike) addDelta(parts, tactic.includesStrike, "Strike activities");
-    if (signals.reloadBeforeStrike) addDelta(parts, tactic.reloadBeforeStrike, "reload attacks");
-    if (signals.consumable) addDelta(parts, tactic.consumable, "consumables");
+    addDelta(parts, signatureDelta, t("ClassTactic.SignatureFrag", "{name} signature", { name: action?.name ?? actionSlug }));
+    if (traits.has(slug)) addDelta(parts, tactic.classAction ?? 4, t("ClassTactic.ClassActions", "class actions"));
+    if (signals.isImpulse) addDelta(parts, tactic.impulseAction, t("ClassTactic.Impulses", "impulses"));
+    if (signals.isSpell) addDelta(parts, tactic.spell, t("ClassTactic.Spells", "spells"));
+    if (signals.isMeleeStrike) addDelta(parts, tactic.meleeStrike, t("ClassTactic.MeleeStrikes", "melee Strikes"));
+    if (signals.isRangedStrike) addDelta(parts, tactic.rangedStrike, t("ClassTactic.RangedStrikes", "ranged Strikes"));
+    if (signals.includesStrike) addDelta(parts, tactic.includesStrike, t("ClassTactic.StrikeActivities", "Strike activities"));
+    if (signals.reloadBeforeStrike) addDelta(parts, tactic.reloadBeforeStrike, t("ClassTactic.ReloadAttacks", "reload attacks"));
+    if (signals.consumable) addDelta(parts, tactic.consumable, t("ClassTactic.Consumables", "consumables"));
 
     const roleDelta = tactic.roles?.[signals.role];
     addDelta(parts, roleDelta, ROLE_LABELS[signals.role] ?? signals.role);

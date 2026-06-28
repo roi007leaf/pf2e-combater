@@ -1,5 +1,6 @@
 import { confidenceLabel } from "./confidence.js";
 import { actionBudget } from "./planner.js";
+import { pf2eActionName, t } from "../i18n.js";
 
 export const ACTION_BUILDER_TABS = [
   { id: "one", label: "1 Action", cost: 1 },
@@ -39,6 +40,17 @@ const SYNTHETIC_INTERACT_ACTION = {
   activityProfile: { includes: ["interact"] },
   reason: "Draw, retrieve, or manipulate an item.",
 };
+
+// Localized copy of the synthetic Interact action; resolved at call time so i18n is ready
+// (the const above keeps English fields as the headless/self-test fallback).
+function syntheticInteractAction(overrides = {}) {
+  return {
+    ...SYNTHETIC_INTERACT_ACTION,
+    name: pf2eActionName("interact", SYNTHETIC_INTERACT_ACTION.name),
+    reason: t("Reason.InteractItem", "Draw, retrieve, or manipulate an item."),
+    ...overrides,
+  };
+}
 
 // No longer injected into the builder tabs (the sustained-spells section handles sustaining),
 // but kept as a self-contained template the section uses to build a Sustain step.
@@ -428,10 +440,10 @@ function positionalTacticAtoms(action) {
 export function builderAtomicActionsForStep(action) {
   const activation = builderActivationAction(action);
   if (activation) {
-    return [{
-      ...SYNTHETIC_INTERACT_ACTION,
-      actionCost: Number(action.interactDrawCost) || 1,
-    }, activation];
+    return [
+      syntheticInteractAction({ actionCost: Number(action.interactDrawCost) || 1 }),
+      activation,
+    ];
   }
 
   const positional = positionalTacticAtoms(action);
@@ -445,7 +457,7 @@ export function builderAtomicActionsForStep(action) {
   return parts.flatMap((part) => {
     const normalized = String(part).toLowerCase();
     if (["crawl", "stand", "step", "stride"].includes(normalized)) return atomicMovementAction(normalized) ?? [];
-    if (normalized === "draw" || normalized === "interact") return [{ ...SYNTHETIC_INTERACT_ACTION }];
+    if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
     if (normalized === "strike") return [atomicStrikeAction(action)];
     return [];
   });
@@ -480,7 +492,7 @@ function builderActionRows(actions, { includeSyntheticInteract = true } = {}) {
     rows.push(action);
   }
 
-  if (includeSyntheticInteract && needsInteract && !hasInteractAction(rows)) rows.push(SYNTHETIC_INTERACT_ACTION);
+  if (includeSyntheticInteract && needsInteract && !hasInteractAction(rows)) rows.push(syntheticInteractAction());
   return rows;
 }
 
@@ -801,7 +813,7 @@ export function projectContextForDraftStepOrigin(context, draft, instanceId) {
 function targetLabel(action) {
   const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target;
   const name = target?.name ?? target?.label;
-  return name ? `Target: ${name}` : "";
+  return name ? t("Label.Target", "Target: {name}", { name }) : "";
 }
 
 function actionUnavailableReason(action) {
@@ -809,7 +821,7 @@ function actionUnavailableReason(action) {
     || action?.unavailableReason
     || action?.rejectionReason
     || action?.reason
-    || "Action is no longer available.";
+    || t("Disabled.NoLongerAvailable", "Action is no longer available.");
 }
 
 // `overBudget` marks actions that do not fit the turn's action economy (no actions
@@ -828,7 +840,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
   if (cost === "reaction" && reactionPlanned) {
     return {
       disabled: false,
-      disabledReason: "Reaction already planned.",
+      disabledReason: t("Disabled.ReactionPlanned", "Reaction already planned."),
       overBudget: true,
     };
   }
@@ -839,7 +851,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
   if (typeof cost === "number" && cost > 0 && cost > remainingActions) {
     return {
       disabled: false,
-      disabledReason: "Not enough actions remaining.",
+      disabledReason: t("Disabled.NotEnoughActions", "Not enough actions remaining."),
       overBudget: true,
     };
   }
@@ -1020,8 +1032,8 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions =
     actionCost: plannedCost,
     stale,
     warning: stale
-      ? "Action is no longer available."
-      : unavailableWarning || (missingDestination ? "Choose destination at execution." : ""),
+      ? t("Disabled.NoLongerAvailable", "Action is no longer available.")
+      : unavailableWarning || (missingDestination ? t("Warning.ChooseDestExec", "Choose destination at execution.") : ""),
   };
 }
 

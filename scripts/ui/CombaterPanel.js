@@ -55,7 +55,9 @@ import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
 import { canUseFullAggro } from "../rules/aggro.js";
-import { requestRetchDecision } from "../rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
+import { requestRetchDc, requestRetchResult, shareDraftPlan } from "../socket.js";
+import { pf2eActionName, t } from "../i18n.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -151,10 +153,10 @@ function actionCostClass(cost) {
 }
 
 function actionCostLabel(cost) {
-  if (cost === "reaction") return "reaction";
-  if (cost === 0) return "free";
+  if (cost === "reaction") return t("Cost.Reaction", "reaction");
+  if (cost === 0) return t("Cost.Free", "free");
   const numeric = Math.max(1, Math.min(3, Number(cost) || 1));
-  return `${numeric} action${numeric === 1 ? "" : "s"}`;
+  return t(numeric === 1 ? "Cost.ActionOne" : "Cost.ActionMany", numeric === 1 ? "{count} action" : "{count} actions", { count: numeric });
 }
 
 // PF2e action-cost key: 0/free → "F", 1/2/3 → "1"/"2"/"3", reaction → "R".
@@ -396,7 +398,7 @@ function draftStepActionRows(candidateBuild) {
     ...rejected.map((entry) => {
       const action = entry?.action ?? entry;
       if (!action) return null;
-      const reason = action.disabledReason ?? action.unavailableReason ?? entry?.reason ?? "Action is not available in current context.";
+      const reason = action.disabledReason ?? action.unavailableReason ?? entry?.reason ?? t("Reject.NotAvailable", "Action is not available in current context.");
       return {
         ...action,
         available: false,
@@ -410,7 +412,13 @@ function draftStepActionRows(candidateBuild) {
 
 function findProjectedDraftAction(context, draft, step) {
   if (isSustainAction(step)) {
-    return { ...SUSTAIN_A_SPELL_ACTION, key: "sustain-a-spell", baseKey: "sustain-a-spell" };
+    return {
+      ...SUSTAIN_A_SPELL_ACTION,
+      name: pf2eActionName("sustain-a-spell", SUSTAIN_A_SPELL_ACTION.name),
+      reason: t("Reason.SustainExtend", "Spend 1 action to extend a sustained spell's duration."),
+      key: "sustain-a-spell",
+      baseKey: "sustain-a-spell",
+    };
   }
   const stepContext = projectContextForDraftStepOrigin(context, draft, step?.instanceId);
   const keys = draftStepLookupKeys(step);
@@ -446,8 +454,10 @@ function executionStatus(step) {
 
 function executionLabel(step) {
   const status = executionStatus(step);
-  if (status === "done") return "Done";
-  if (status === "failed") return `Failed${step?.execution?.error ? `: ${step.execution.error}` : ""}`;
+  if (status === "done") return t("Panel.Done", "Done");
+  if (status === "failed") return step?.execution?.error
+    ? t("Panel.FailedReason", "Failed: {error}", { error: step.execution.error })
+    : t("Panel.Failed", "Failed");
   return "";
 }
 
@@ -509,7 +519,8 @@ function decorateAction(action, options = {}) {
   };
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false } = {}) {
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null } = {}) {
+  const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
   const displaySource = action
@@ -523,14 +534,14 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
   const isExecutionDone = status === "done";
   const canRunStep = readonly !== true || gmExecute === true;
   const sustainLabel = isSustainAction(action ?? step) && step?.sustainedSpell?.name
-    ? `Sustain: ${step.sustainedSpell.name}`
+    ? t("Panel.SustainLabel", "Sustain: {name}", { name: step.sustainedSpell.name })
     : "";
   const targetLabel = sustainLabel || stepTargetLabel(rawTargetName(step, action), { requiresTarget, requiresDestination });
   const stepAreaLabel = areaLabel(step?.areaMarker);
   const readiness = isExecutionDone
     ? { status: "ready", choices: [], warning: "" }
     : executionReadinessForStep(step, action ?? step);
-  const rawWarning = step?.warning === "Choose a destination." ? "Choose destination at execution." : step?.warning;
+  const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
   // A completed step's readiness/validity warnings are stale — don't surface them.
   const warning = isExecutionDone ? "" : (readiness.warning || rawWarning);
   const canShowExecuteStep = canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
@@ -544,7 +555,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     position: index + 1,
     instanceId: step?.instanceId,
     readonly,
-    name: action?.name ?? step?.name ?? step?.actionKey ?? "Unknown action",
+    name: action?.name ?? step?.name ?? step?.actionKey ?? t("Panel.UnknownAction", "Unknown action"),
     reason: action?.reason ?? step?.reason ?? "",
     targetLabel,
     requiresDestination,
@@ -558,15 +569,19 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     isExecutionDone,
     isExecutionFailed: status === "failed",
     canShowExecuteStep,
-    canExecuteStep: canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true && readiness.status === "ready",
-    executionBlocked,
-    executeTooltip: executionBlocked ? (readiness.warning || "Resolve required choices before executing.") : "Execute this step",
+    canExecuteStep: !isAwaitingGm && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true && readiness.status === "ready",
+    executionBlocked: executionBlocked || isAwaitingGm,
+    executeTooltip: isAwaitingGm
+      ? t("Panel.AwaitingGm", "Waiting for the GM…")
+      : (executionBlocked ? (readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing.")) : t("Panel.ExecuteStep", "Execute this step")),
+    awaitingGm: isAwaitingGm,
+    awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM…"),
     canMoveStepUp: canEditStepOrder && index > 0,
     canMoveStepDown: canEditStepOrder && index < total - 1,
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
     canRevertStep: isExecutionDone && canRunStep,
     warning,
-    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning),
+    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm),
   };
 }
 
@@ -588,12 +603,12 @@ function decorateBuilderTab(tab, activeTab, { readonly = false, searchQuery = ""
   const sections = [
     {
       id: "favorites",
-      label: "Favorites",
+      label: t("Section.Favorites", "Favorites"),
       actions: filterBuilderTabActions(tab.favorites, searchQuery)
         .map((action) => decorateAction(action, { readonly })),
     },
     ...(quickenedActions.length
-      ? [{ id: "quickened", label: "Quickened actions", actions: quickenedActions }]
+      ? [{ id: "quickened", label: t("Section.Quickened", "Quickened actions"), actions: quickenedActions }]
       : []),
     ...groupActionsByBuilderCategory(categorizedActions),
   ];
@@ -626,19 +641,30 @@ function searchTerms(query) {
 function remainingActionPoolSummary(builder) {
   const normal = Number(builder?.remainingNormalActions ?? 0);
   const quickened = Number(builder?.remainingQuickenedActions ?? 0);
-  const normalLabel = `${normal} normal`;
-  if (quickened <= 0) return `${normalLabel} action${normal === 1 ? "" : "s"} left`;
-  return `${normalLabel}, ${quickened} quickened left`;
+  if (quickened <= 0) {
+    return t(
+      normal === 1 ? "Summary.NormalActionLeft" : "Summary.NormalActionsLeft",
+      normal === 1 ? "{count} normal action left" : "{count} normal actions left",
+      { count: normal },
+    );
+  }
+  return t("Summary.NormalQuickenedLeft", "{normal} normal, {quickened} quickened left", { normal, quickened });
 }
 
 function decoratedSustainedSpells(entries, { readonly = false } = {}) {
   return (Array.isArray(entries) ? entries : []).map((entry) => {
     const effectCount = entry.effectIds?.length ?? entry.effects?.length ?? 0;
     const templateCount = entry.templateRefs?.length ?? 0;
-    const statusLabel = entry.sustained ? "Sustained" : entry.planned ? "Planned" : "Needs sustain";
+    const statusLabel = entry.sustained
+      ? t("Sustain.Sustained", "Sustained")
+      : entry.planned ? t("Sustain.Planned", "Planned") : t("Sustain.NeedsSustain", "Needs sustain");
     const detailParts = [];
-    if (effectCount) detailParts.push(`${effectCount} effect${effectCount === 1 ? "" : "s"}`);
-    if (templateCount) detailParts.push(`${templateCount} template${templateCount === 1 ? "" : "s"}`);
+    if (effectCount) {
+      detailParts.push(t(effectCount === 1 ? "Sustain.EffectOne" : "Sustain.EffectMany", effectCount === 1 ? "{count} effect" : "{count} effects", { count: effectCount }));
+    }
+    if (templateCount) {
+      detailParts.push(t(templateCount === 1 ? "Sustain.TemplateOne" : "Sustain.TemplateMany", templateCount === 1 ? "{count} template" : "{count} templates", { count: templateCount }));
+    }
     return {
       ...entry,
       effectCount,
@@ -654,14 +680,14 @@ function decoratedSustainedSpells(entries, { readonly = false } = {}) {
 function sustainedSpellDraftFields(entry) {
   return {
     id: entry?.id,
-    name: entry?.name ?? "Sustained spell",
+    name: entry?.name ?? t("Sustain.DefaultName", "Sustained spell"),
     spellUuid: entry?.spellUuid ?? null,
     effectIds: Array.isArray(entry?.effectIds) ? [...entry.effectIds] : [],
     templateRefs: Array.isArray(entry?.templateRefs) ? [...entry.templateRefs] : [],
   };
 }
 
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [] } = {}) {
+function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
   const isPlayerPlan = builder.draft?.shared === true;
@@ -676,6 +702,7 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       gmExecute: gmCanRunPlayerPlan,
       total: rawSteps.length,
       reorderLocked,
+      awaitingGm,
     }));
   const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
   const draftSteps = rawDraftSteps.map((step) => ({
@@ -691,6 +718,7 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
     gmExecute: gmCanRunPlayerPlan,
     total: rawUncounted.length,
     reorderLocked: uncountedReorderLocked,
+    awaitingGm,
   }));
   const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
   const uncountedEntries = rawUncountedSteps.map((step) => ({
@@ -703,17 +731,21 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   return {
     ...builder,
     readonly: draftReadonly,
-    tabsList: ACTION_BUILDER_TABS.map((tab) =>
-      decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery })),
+    tabsList: ACTION_BUILDER_TABS.map((tab) => ({
+      ...decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery }),
+      label: t(`Tab.${tab.id}`, tab.label),
+    })),
     activeTab: active,
-    activeTabLabel: ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action",
+    activeTabLabel: t(`Tab.${active}`, ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action"),
     searchQuery: String(searchQuery ?? ""),
     draft: {
       ...(builder.draft ?? {}),
       steps: draftSteps,
       hasSteps: draftSteps.length > 0,
       readonly: draftReadonly,
-      countLabel: draftSteps.length ? `${draftSteps.length} step${draftSteps.length === 1 ? "" : "s"}` : "Empty",
+      countLabel: draftSteps.length
+        ? t(draftSteps.length === 1 ? "Summary.StepOne" : "Summary.StepMany", draftSteps.length === 1 ? "{count} step" : "{count} steps", { count: draftSteps.length })
+        : t("Summary.Empty", "Empty"),
       confidenceClass: draftSteps.length ? "medium" : "low",
       warnings: [...new Set(draftSteps.map((step) => step.warning).filter(Boolean))],
     },
@@ -728,17 +760,23 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
     execution: {
       hasSteps: allExecutable.length > 0,
       canReset: (draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution,
-      progressLabel: executedCount > 0 ? `${executedCount}/${allExecutable.length} done` : "",
+      progressLabel: executedCount > 0 ? t("Summary.Progress", "{done}/{total} done", { done: executedCount, total: allExecutable.length }) : "",
       hasStatus: ((draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution) || executedCount > 0,
       current: currentExecutionStep ?? null,
       currentInstanceId: currentExecutionStep?.instanceId ?? "",
     },
     isPlayerPlan,
-    playerPlanLabel: "Player plan",
-    playerPlanTooltip: sharedDraftUserName ? `Player plan from ${sharedDraftUserName}` : "Player plan",
+    playerPlanLabel: t("Summary.PlayerPlan", "Player plan"),
+    playerPlanTooltip: sharedDraftUserName
+      ? t("Summary.PlayerPlanFrom", "Player plan from {user}", { user: sharedDraftUserName })
+      : t("Summary.PlayerPlan", "Player plan"),
     poolSummary: remainingActionPoolSummary(builder),
-    totalSummary: `${builder.remainingTotalActions} total action${builder.remainingTotalActions === 1 ? "" : "s"} left`,
-    reactionSummary: builder.usage?.reaction ? "Reaction planned" : "Reaction open",
+    totalSummary: t(
+      builder.remainingTotalActions === 1 ? "Summary.TotalActionLeft" : "Summary.TotalActionsLeft",
+      builder.remainingTotalActions === 1 ? "{count} total action left" : "{count} total actions left",
+      { count: builder.remainingTotalActions },
+    ),
+    reactionSummary: builder.usage?.reaction ? t("Summary.ReactionPlanned", "Reaction planned") : t("Summary.ReactionOpen", "Reaction open"),
   };
 }
 
@@ -752,7 +790,7 @@ function debugAction(action, index) {
   if (skillCheckLabel) profileParts.push(skillCheckLabel);
   return {
     index,
-    name: action?.name ?? "Unknown action",
+    name: action?.name ?? t("Panel.UnknownAction", "Unknown action"),
     slug: action?.slug ?? "",
     source: action?.source ?? "",
     role: action?.role ?? "",
@@ -791,7 +829,9 @@ function escapeHtml(value) {
 }
 
 async function createGuidance(step, actor) {
-  const message = `<strong>${escapeHtml(step?.name ?? "Recommended action")}</strong><br>${escapeHtml(step?.reason ?? "Review this recommendation before acting.")}`;
+  const name = step?.name ?? t("Guidance.RecommendedAction", "Recommended action");
+  const reason = step?.reason ?? t("Guidance.ReviewRecommendation", "Review this recommendation before acting.");
+  const message = `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(reason)}`;
   const userId = game?.user?.id;
 
   if (globalThis.ChatMessage?.create && userId) {
@@ -803,18 +843,18 @@ async function createGuidance(step, actor) {
     return;
   }
 
-  globalThis.ui?.notifications?.info?.(`${step?.name ?? "Recommended action"}: ${step?.reason ?? "Review recommendation."}`);
+  globalThis.ui?.notifications?.info?.(`${name}: ${step?.reason ?? t("Guidance.ReviewShort", "Review recommendation.")}`);
 }
 
 async function confirmReplaceDraft() {
-  const message = "Replace current draft with Auto-fill plan?";
+  const message = t("Dialog.ReplaceDraft.Message", "Replace current draft with Auto-fill plan?");
   const dialog = globalThis.foundry?.applications?.api?.DialogV2;
   if (dialog?.confirm) {
     return dialog.confirm({
-      window: { title: "Replace draft" },
+      window: { title: t("Dialog.ReplaceDraft.Title", "Replace draft") },
       content: `<p>${escapeHtml(message)}</p>`,
-      yes: { label: "Replace" },
-      no: { label: "Cancel" },
+      yes: { label: t("Dialog.Replace", "Replace") },
+      no: { label: t("Dialog.Cancel", "Cancel") },
     });
   }
   return globalThis.window?.confirm?.(message) ?? true;
@@ -868,6 +908,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._gmExecuteMode = false;
     this._destinationPicker = null;
     this._areaPicker = null;
+    // Draft-step instanceIds currently blocked on a GM socket response (e.g. Retch DC/result), so
+    // the step can show a "waiting for the GM" indicator. Transient, never persisted.
+    this._awaitingGm = new Set();
     this._pinnedPlanId = null;
     this._selectedCombatant = options.combatant ?? null;
     this._onClose = typeof options.onClose === "function" ? options.onClose : null;
@@ -971,7 +1014,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       favorites,
     });
     const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells });
+    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm });
     this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
 
     return this._viewContext(context);
@@ -1249,7 +1292,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     // The action is no longer offered in the tabs; the sustained-spells section uses this
     // self-contained template to build a Sustain step.
-    return { ...SUSTAIN_A_SPELL_ACTION, key: "sustain-a-spell", baseKey: "sustain-a-spell" };
+    return {
+      ...SUSTAIN_A_SPELL_ACTION,
+      name: pf2eActionName("sustain-a-spell", SUSTAIN_A_SPELL_ACTION.name),
+      reason: t("Reason.SustainExtend", "Spend 1 action to extend a sustained spell's duration."),
+      key: "sustain-a-spell",
+      baseKey: "sustain-a-spell",
+    };
   }
 
   _findSustainedSpell(spellId) {
@@ -1346,7 +1395,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // The normal plan respects the turn's action economy; only uncounted actions
     // run off-budget. Refuse a plan add that would exceed the budget.
     if (action.overBudget) {
-      globalThis.ui?.notifications?.warn?.(action.disabledReason || "Not enough actions remaining.");
+      globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
       return;
     }
 
@@ -1381,7 +1430,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const spell = this._findSustainedSpell(spellId);
     const action = this._findSustainAction();
     if (!this._context || !spell || !action || action.disabled) {
-      globalThis.ui?.notifications?.warn?.(action?.disabledReason ?? "Sustain a Spell is not available.");
+      globalThis.ui?.notifications?.warn?.(action?.disabledReason ?? t("Notify.SustainUnavailable", "Sustain a Spell is not available."));
       return;
     }
 
@@ -1418,7 +1467,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const draft = readDraftPlan(this._context);
     const listKey = draftListForInstance(draft, instanceId);
     if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
-      globalThis.ui?.notifications?.warn?.("Revert executed steps before reordering.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.RevertBeforeReorder", "Revert executed steps before reordering."));
       return;
     }
     if (!moveDraftStep(this._context, instanceId, direction, listKey)) return;
@@ -1549,12 +1598,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _syncDraftToGM({ notify = false } = {}) {
     if (!this._context || globalThis.game?.user?.isGM === true) return false;
     const draft = readDraftPlan(this._context);
-    const socket = globalThis.game?.socket;
-    if (typeof socket?.emit !== "function") {
-      console.warn(`${MODULE_ID} | Cannot sync plan: Foundry socket is not available.`);
-      if (notify) globalThis.ui?.notifications?.warn?.("Cannot sync plan with GM: Foundry socket is not available.");
-      return false;
-    }
 
     try {
       const sharedDraft = writeSharedDraftPlan(this._context, {
@@ -1578,12 +1621,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         ...sharedDraft,
       };
 
-      await socket.emit(`module.${MODULE_ID}`, payload);
-      if (notify) globalThis.ui?.notifications?.info?.("Plan shared with GM.");
+      if (!shareDraftPlan(payload)) {
+        console.warn(`${MODULE_ID} | Cannot sync plan: socketlib is not available.`);
+        if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncNoSocket", "Cannot sync plan with GM: Foundry socket is not available."));
+        return false;
+      }
+      if (notify) globalThis.ui?.notifications?.info?.(t("Notify.PlanShared", "Plan shared with GM."));
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Plan sync failed`, error);
-      if (notify) globalThis.ui?.notifications?.warn?.("Could not sync plan with GM.");
+      if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncFailed", "Could not sync plan with GM."));
       return false;
     }
   }
@@ -1685,7 +1732,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!picker) {
       this._destinationPicker = null;
       clearActionPreview();
-      globalThis.ui?.notifications?.warn?.("Canvas destination picker is not available.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.NoDestinationPicker", "Canvas destination picker is not available."));
       return;
     }
     this._destinationPicker = { instanceId, native: picker.native === true };
@@ -1699,7 +1746,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._cancelDestinationPicker();
     const selection = currentTargetSelection();
     if (!selection.targetTokenIds.length) {
-      globalThis.ui?.notifications?.warn?.("Target a token in Foundry first.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.TargetFirst", "Target a token in Foundry first."));
       return;
     }
     const current = this._findActiveStep(instanceId) ?? step;
@@ -1737,7 +1784,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
             await scene.deleteEmbeddedDocuments("Region", [regionOp.regionId]);
           }
         } catch (_error) {
-          globalThis.ui?.notifications?.warn?.("Could not remove the placed template region.");
+          globalThis.ui?.notifications?.warn?.(t("Notify.RemoveTemplateFailed", "Could not remove the placed template region."));
         }
       }
       // Keep the step executed; just drop the template, its auto-targets, and the region revert op.
@@ -1765,9 +1812,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       label: template.label ?? `${template.type} ${template.distance ?? ""} ft`.trim(),
     }));
     const choice = await dialog.wait({
-      window: { title: "Choose template" },
-      content: "<p>This action has more than one area template. Choose which to place:</p>",
-      buttons: [...buttons, { action: "cancel", label: "Cancel" }],
+      window: { title: t("Dialog.ChooseTemplate.Title", "Choose template") },
+      content: `<p>${escapeHtml(t("Dialog.ChooseTemplate.Content", "This action has more than one area template. Choose which to place:"))}</p>`,
+      buttons: [...buttons, { action: "cancel", label: t("Dialog.Cancel", "Cancel") }],
       rejectClose: false,
     }).catch(() => null);
     if (choice === null || choice === undefined || choice === "cancel") return null;
@@ -1776,12 +1823,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _chooseArea(instanceId) {
     if (!this._canExecuteDraft()) {
-      globalThis.ui?.notifications?.warn?.("This draft is read-only.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.ReadOnly", "This draft is read-only."));
       return;
     }
     const step = this._findDraftStep(instanceId);
     if (!this._context || !step) {
-      globalThis.ui?.notifications?.warn?.("No draft step is available for area placement.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.NoAreaStep", "No draft step is available for area placement."));
       return;
     }
     const action = step.action ?? step;
@@ -1810,7 +1857,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     this._cancelDestinationPicker();
     this._areaPicker = { instanceId };
-    globalThis.ui?.notifications?.info?.("Place the area template on the canvas.");
+    globalThis.ui?.notifications?.info?.(t("Notify.PlaceAreaCanvas", "Place the area template on the canvas."));
 
     // Show the caster's spell-range ring while the template is being placed. Cleared
     // when placement resolves/cancels, and by _cancelDestinationPicker on teardown.
@@ -1844,7 +1891,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!picker) {
       this._areaPicker = null;
       clearRangeOverlay();
-      globalThis.ui?.notifications?.warn?.("Canvas area picker is not available.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.NoAreaPicker", "Canvas area picker is not available."));
     }
   }
 
@@ -1991,7 +2038,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const entries = readSustainedSpellEntries(this._context, undefined, this._readActiveDraftPlan())
       .filter((entry) => entry.planned !== true && entry.sustained !== true);
     if (!entries.length) {
-      globalThis.ui?.notifications?.warn?.("No sustained spells need sustaining.");
+      globalThis.ui?.notifications?.warn?.(t("Notify.NoSustainNeeded", "No sustained spells need sustaining."));
       return null;
     }
 
@@ -1999,18 +2046,18 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (entries.length > 1) {
       const dialog = globalThis.foundry?.applications?.api?.DialogV2;
       if (typeof dialog?.wait !== "function") {
-        globalThis.ui?.notifications?.warn?.("Choose a spell from the Sustained spells section first.");
+        globalThis.ui?.notifications?.warn?.(t("Notify.ChooseSustainFirst", "Choose a spell from the Sustained spells section first."));
         return null;
       }
       const choice = await dialog.wait({
-        window: { title: "Sustain a Spell" },
-        content: "<p>Choose which sustained spell to sustain.</p>",
+        window: { title: t("Dialog.SustainSpell.Title", "Sustain a Spell") },
+        content: `<p>${escapeHtml(t("Dialog.SustainSpell.Content", "Choose which sustained spell to sustain."))}</p>`,
         buttons: [
           ...entries.map((entry) => ({
             action: entry.id,
             label: escapeHtml(entry.name),
           })),
-          { action: "cancel", label: "Cancel" },
+          { action: "cancel", label: t("Dialog.Cancel", "Cancel") },
         ],
         rejectClose: false,
       }).catch(() => "cancel");
@@ -2033,32 +2080,39 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _executeDraftStep(instanceId, event) {
-    if (!this._canExecuteDraft()) return;
-    let step = this._findDraftStep(instanceId);
-    if (!this._context || !step || step.executionStatus === "done") return;
+    // Invoked fire-and-forget from a click handler, so surface failures instead of letting them die
+    // as a silent unhandled rejection (which reads as "nothing happens" when a step is clicked).
+    try {
+      if (!this._canExecuteDraft()) return;
+      let step = this._findDraftStep(instanceId);
+      if (!this._context || !step || step.executionStatus === "done") return;
 
-    const action = step.action ?? step;
-    if (isSustainAction(action) && !step.sustainedSpell) {
-      step = await this._chooseSustainedSpellForStep(step);
-      if (!step) return;
+      const action = step.action ?? step;
+      if (isSustainAction(action) && !step.sustainedSpell) {
+        step = await this._chooseSustainedSpellForStep(step);
+        if (!step) return;
+      }
+
+      const readiness = executionReadinessForStep(step, action);
+      if (readiness.choices.length) {
+        globalThis.ui?.notifications?.warn?.(readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing."));
+        return;
+      }
+
+      const result = await executeDraftStep({
+        context: this._contextForDraftStep(step.instanceId) ?? this._context,
+        step,
+        action,
+        event,
+      });
+      await this._applyExecutionResult(step, result, event);
+    } catch (error) {
+      globalThis.console?.error?.("pf2e-combater | Execute step failed", error);
+      globalThis.ui?.notifications?.error?.(t("Notify.ExecuteFailed", "Could not execute the step; see the console."));
     }
-
-    const readiness = executionReadinessForStep(step, action);
-    if (readiness.choices.length) {
-      globalThis.ui?.notifications?.warn?.(readiness.warning || "Resolve required choices before executing.");
-      return;
-    }
-
-    const result = await executeDraftStep({
-      context: this._contextForDraftStep(step.instanceId) ?? this._context,
-      step,
-      action,
-      event,
-    });
-    await this._applyExecutionResult(step, result, event);
   }
 
-  _handleExecutionChoice(step, choice, event) {
+  _handleExecutionChoice(step, choice, event, result = null) {
     if (choice === "destination") {
       this._chooseDestination(step.instanceId);
       return true;
@@ -2071,52 +2125,100 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       this._chooseArea(step.instanceId);
       return true;
     }
+    if (choice === "retch-dc") {
+      this._provideRetchDc(step, event);
+      return true;
+    }
     if (choice === "retch-result") {
-      this._confirmRetchResult(step, event);
+      this._confirmRetchResult(step, event, result?.rolled ?? null);
       return true;
     }
     return false;
   }
 
-  async _askRetchResultLocally() {
-    const message = "Did the Retch check reduce sickened?";
-    const dialog = globalThis.foundry?.applications?.api?.DialogV2;
-    return dialog?.confirm
-      ? await dialog.confirm({
-        window: { title: "Retch result" },
-        content: `<p>${escapeHtml(message)}</p>`,
-        yes: { label: "Reduce sickened" },
-        no: { label: "No reduction" },
-      })
-      : (globalThis.window?.confirm?.(message) ?? false);
+  _retchActorName() {
+    return this._context?.actor?.name ?? this._context?.combatant?.name ?? null;
   }
 
-  async _confirmRetchResult(step, event) {
-    let succeeded;
-    if (game?.user?.isGM === true) {
-      // The GM knows the save DC, so they judge the outcome directly.
-      succeeded = await this._askRetchResultLocally();
-    } else {
-      // A player rolled the save but can't know the DC — ask the GM whether it reduced sickened.
-      // Fall back to a local prompt only if no GM is connected to answer.
-      const actorName = this._context?.actor?.name ?? this._context?.combatant?.name ?? "your character";
-      globalThis.ui?.notifications?.info?.("Waiting for the GM to judge your Retch save.");
-      const decision = await requestRetchDecision({ actorName });
-      succeeded = decision === null ? await this._askRetchResultLocally() : decision;
+  // Mark/clear a draft step as blocked on a GM response and re-render so the step shows (or hides)
+  // its "waiting for the GM" indicator. The flag is transient panel state, never persisted.
+  async _setAwaitingGm(instanceId, on) {
+    if (!instanceId) return;
+    const before = this._awaitingGm.has(instanceId);
+    if (on) this._awaitingGm.add(instanceId);
+    else this._awaitingGm.delete(instanceId);
+    if (this._awaitingGm.has(instanceId) !== before) await this.render({ force: true });
+  }
+
+  // Phase 1: the GM supplies the effect's save DC. Re-running with the DC rolls the save (phase 2)
+  // and comes back as a "retch-result" choice for the GM to rule on. Wrapped so a dialog/socket
+  // failure surfaces instead of dying as a silent unhandled rejection (this runs fire-and-forget).
+  async _provideRetchDc(step, event) {
+    try {
+      const actorName = this._retchActorName();
+      let dc;
+      if (game?.user?.isGM === true) {
+        dc = await promptRetchDc({ actorName });
+      } else {
+        globalThis.ui?.notifications?.info?.(t("Notify.WaitingRetchDcGM", "Waiting for the GM to set the Retch save DC."));
+        await this._setAwaitingGm(step.instanceId, true);
+        try {
+          dc = await requestRetchDc({ actorName });
+        } finally {
+          await this._setAwaitingGm(step.instanceId, false);
+        }
+        if (dc == null) dc = await promptRetchDc({ actorName });
+      }
+      if (!Number.isFinite(dc)) return; // dismissed
+      const result = await executeDraftStep({
+        context: this._contextForDraftStep(step.instanceId) ?? this._context,
+        step,
+        action: step.action ?? step,
+        event,
+        choices: { dc },
+      });
+      await this._applyExecutionResult(step, result, event);
+    } catch (error) {
+      globalThis.console?.error?.("pf2e-combater | Retch DC step failed", error);
+      globalThis.ui?.notifications?.error?.(t("Notify.RetchFailed", "Retch could not be resolved; see the console."));
     }
-    const result = await executeDraftStep({
-      context: this._contextForDraftStep(step.instanceId) ?? this._context,
-      step,
-      action: step.action ?? step,
-      event,
-      choices: { retchSucceeded: succeeded === true },
-    });
-    await this._applyExecutionResult(step, result, event);
+  }
+
+  // Phase 3: the player has rolled the save; the GM sets the result accordingly.
+  async _confirmRetchResult(step, event, rolled) {
+    try {
+      const actorName = this._retchActorName();
+      let decision;
+      if (game?.user?.isGM === true) {
+        decision = await promptRetchResult({ actorName, rolled });
+      } else {
+        globalThis.ui?.notifications?.info?.(t("Notify.WaitingRetchGM", "Waiting for the GM to judge your Retch save."));
+        await this._setAwaitingGm(step.instanceId, true);
+        try {
+          decision = await requestRetchResult({ actorName, rolled });
+        } finally {
+          await this._setAwaitingGm(step.instanceId, false);
+        }
+        if (decision === null) decision = await promptRetchResult({ actorName, rolled });
+      }
+      if (!decision) return; // dismissed
+      const result = await executeDraftStep({
+        context: this._contextForDraftStep(step.instanceId) ?? this._context,
+        step,
+        action: step.action ?? step,
+        event,
+        choices: { retchSucceeded: decision.succeeded === true, retchCritical: decision.critical === true },
+      });
+      await this._applyExecutionResult(step, result, event);
+    } catch (error) {
+      globalThis.console?.error?.("pf2e-combater | Retch result step failed", error);
+      globalThis.ui?.notifications?.error?.(t("Notify.RetchFailed", "Retch could not be resolved; see the console."));
+    }
   }
 
   async _applyExecutionResult(step, result, event) {
     if (result?.status === "needs-choice") {
-      this._handleExecutionChoice(step, result.choices?.[0], event);
+      this._handleExecutionChoice(step, result.choices?.[0], event, result);
       return;
     }
     if (!result || result.status === "cancelled") return;

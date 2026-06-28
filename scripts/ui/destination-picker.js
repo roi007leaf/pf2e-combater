@@ -1,4 +1,5 @@
 import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+import { t } from "../i18n.js";
 
 let activeCleanup = null;
 let activeOnCancel = null;
@@ -459,7 +460,7 @@ function movementPlanFromResult(plan) {
 }
 
 function notifyNativeDestinationFailure(error) {
-  const message = error?.message ? `Destination ruler failed: ${error.message}` : "Destination ruler failed.";
+  const message = error?.message ? t("Picker.RulerFailedReason", "Destination ruler failed: {error}", { error: error.message }) : t("Picker.RulerFailed", "Destination ruler failed.");
   globalThis.console?.warn?.("pf2e-combater | Destination ruler failed", error);
   globalThis.ui?.notifications?.warn?.(message);
 }
@@ -500,7 +501,7 @@ function chooseNativeDestination({ context, action, onChoose, onCancel }) {
       }
 
       const destination = destinationCenter(plan.destination, token);
-      if (!destination) throw new Error("Movement plan did not include a destination.");
+      if (!destination) throw new Error(t("Picker.NoDestinationInPlan", "Movement plan did not include a destination."));
       onChoose(destination, { movementPlan: movementPlanFromResult(plan) });
     } catch (error) {
       notifyNativeDestinationFailure(error);
@@ -570,7 +571,7 @@ export function chooseDestination({
         : {};
 
       if (candidateMovementPlan && candidateMovementPlan.cost > candidateMovementPlan.maxCost) {
-        globalThis.ui?.notifications?.warn?.("Destination is beyond movement range.");
+        globalThis.ui?.notifications?.warn?.(t("Move.BeyondRangeDest", "Destination is beyond movement range."));
         return;
       }
 

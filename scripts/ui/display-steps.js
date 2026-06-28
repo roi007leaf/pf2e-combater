@@ -1,10 +1,12 @@
+import { pf2eActionName, t } from "../i18n.js";
+
 function stripInteractPrefix(name) {
   const value = String(name ?? "").trim();
   return value.replace(/^Interact\s*->\s*/i, "").trim() || value;
 }
 
 function itemDisplayName(step) {
-  return stripInteractPrefix(step?.name ?? step?.item?.name ?? "Item");
+  return stripInteractPrefix(step?.name ?? step?.item?.name ?? t("Label.Item", "Item"));
 }
 
 export function displayStepEntries(steps) {
@@ -20,9 +22,9 @@ export function displayStepEntries(steps) {
       step: {
         ...step,
         id: `${step?.id ?? sourceIndex}-draw`,
-        name: "Interact",
+        name: pf2eActionName("interact", "Interact"),
         actionCost: drawCost,
-        reason: `Draw or retrieve ${name}.`,
+        reason: t("Reason.DrawOrRetrieve", "Draw or retrieve {name}.", { name }),
         suggestedTarget: null,
         targetLabel: "",
         mapPenalty: 0,

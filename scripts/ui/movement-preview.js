@@ -1,5 +1,6 @@
 import { previewLayer } from "./preview-layer.js";
 import { pf2eMovementActionForStep, pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+import { t } from "../i18n.js";
 
 const MOVEMENT_SLUGS = new Set(["crawl", "stride", "step", "stand-stride"]);
 const MAX_REACHABLE_MARKERS = 48;
@@ -409,11 +410,11 @@ function explicitDestination(step) {
 }
 
 function explicitDestinationReason(origin, destination, distanceFeet, gridSize, options = {}) {
-  if (!pointVisible(destination, options)) return "Destination is not visible.";
+  if (!pointVisible(destination, options)) return t("Move.NotVisible", "Destination is not visible.");
   if (movementSegmentCost(origin, destination, gridSize, 0, options).cost > distanceFeet) {
-    return "Destination is beyond movement range.";
+    return t("Move.BeyondRangeDest", "Destination is beyond movement range.");
   }
-  return "No collision-free movement path to destination.";
+  return t("Move.NoPath", "No collision-free movement path to destination.");
 }
 
 function placementForCenter(center, footprint, gridSize) {
@@ -462,17 +463,17 @@ function validateWaypointPath(origin, waypoints, distanceFeet, gridSize, options
   let diagonalCount = 0;
   for (const waypoint of waypoints) {
     if (!pointVisible(waypoint, options)) {
-      return { available: false, reason: "Destination is not visible.", cost };
+      return { available: false, reason: t("Move.NotVisible", "Destination is not visible."), cost };
     }
     if (pathBlocked(from, waypoint, options)) {
-      return { available: false, reason: "No collision-free movement path to destination.", cost };
+      return { available: false, reason: t("Move.NoPath", "No collision-free movement path to destination."), cost };
     }
 
     const movement = movementSegmentCost(from, waypoint, gridSize, diagonalCount, options);
     cost += movement.cost;
     diagonalCount = movement.diagonalCount;
     if (cost > distanceFeet) {
-      return { available: false, reason: "Waypoint path is beyond movement range.", cost };
+      return { available: false, reason: t("Move.BeyondRange", "Waypoint path is beyond movement range."), cost };
     }
     from = waypoint;
   }
@@ -481,7 +482,7 @@ function validateWaypointPath(origin, waypoints, distanceFeet, gridSize, options
 
 function distanceLabelText(distance) {
   const rounded = Math.round(distance * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} ft`;
+  return t("Chip.RangeFt", "{range} ft", { range: Number.isInteger(rounded) ? rounded : rounded.toFixed(1) });
 }
 
 function waypointSegmentLabels(origin, waypoints, gridSize, options = {}) {
@@ -778,7 +779,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   if (waypointCenters?.length) {
     const waypointValidation = destinationVisible
       ? validateWaypointPath(origin, waypointCenters, distanceFeet, gridSize, options)
-      : { available: false, reason: "Destination is not visible." };
+      : { available: false, reason: t("Move.NotVisible", "Destination is not visible.") };
     const destinationAvailable = destinationVisible && waypointValidation.available === true;
     const remainingDistanceFeet = destinationAvailable
       ? Math.max(0, distanceFeet - waypointValidation.cost)
@@ -858,7 +859,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       ? ""
       : (destinationVisible
         ? explicitDestinationReason(origin, destinationCenter, distanceFeet, gridSize, options)
-        : "Destination is not visible."),
+        : t("Move.NotVisible", "Destination is not visible.")),
     stridePath,
     reachableCenters: [],
     reachablePlacements: [],

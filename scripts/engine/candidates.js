@@ -3,6 +3,7 @@ import { readSpellActions } from "../readers/spell-reader.js";
 import { npcTacticRejection } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
+import { t } from "../i18n.js";
 
 const REJECTED_SCORE = -900;
 
@@ -59,7 +60,7 @@ function dedupeDetected(detected, includeUnknown) {
     const preferred = preferAction(existing, action, includeUnknown);
     const rejected = preferred === existing ? action : existing;
     byKey.set(key, preferred);
-    duplicates.push({ action: rejected, reason: "Duplicate detected action replaced by preferred source." });
+    duplicates.push({ action: rejected, reason: t("Reject.Duplicate", "Duplicate detected action replaced by preferred source.") });
   }
 
   return { detected: [...byKey.values()], duplicates };
@@ -78,15 +79,15 @@ export function buildCandidates(context) {
 
   for (const action of detected) {
     if (!action.available) {
-      rejected.push({ action, reason: action.unavailableReason || "Action is not available in current context." });
+      rejected.push({ action, reason: action.unavailableReason || t("Reject.NotAvailable", "Action is not available in current context.") });
       continue;
     }
     if (action.source === "spell-unknown") {
-      rejected.push({ action, reason: "Spell is not in curated catalog." });
+      rejected.push({ action, reason: t("Reject.SpellNotCurated", "Spell is not in curated catalog.") });
       continue;
     }
     if (action.source === "custom-unknown" && !includeUnknown) {
-      rejected.push({ action, reason: "Unknown custom action hidden by setting." });
+      rejected.push({ action, reason: t("Reject.UnknownHidden", "Unknown custom action hidden by setting.") });
       continue;
     }
     const scored = scoreCandidate(context, action);

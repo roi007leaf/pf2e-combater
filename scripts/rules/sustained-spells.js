@@ -1,6 +1,7 @@
 import { readSpellActions } from "../readers/spell-reader.js";
 import { readDraftPlan } from "../state/draft-plans.js";
 import { MODULE_ID } from "../constants.js";
+import { t } from "../i18n.js";
 
 function collectionValues(collection) {
   if (!collection) return [];
@@ -281,7 +282,7 @@ async function deleteActorEffects(actor, entry, warnings) {
     try {
       await actor.deleteEmbeddedDocuments(type, existing);
     } catch (_error) {
-      warnings.push(`Could not remove ${entry.name} effect.`);
+      warnings.push(t("Sustain.CouldNotRemoveEffect", "Could not remove {name} effect.", { name: entry.name }));
     }
   }
 }
@@ -299,7 +300,7 @@ async function deleteTemplates(entry, warnings) {
         await scene.deleteEmbeddedDocuments("MeasuredTemplate", [ref.templateId]);
       }
     } catch (_error) {
-      warnings.push(`Could not remove ${entry.name} template.`);
+      warnings.push(t("Sustain.CouldNotRemoveTemplate", "Could not remove {name} template.", { name: entry.name }));
     }
   }
 }
@@ -336,16 +337,16 @@ function canCleanup(context) {
 
 async function confirmCleanup(entries) {
   const names = entries.map((entry) => `<li>${escapeHtml(entry.name)}</li>`).join("");
-  const suffix = entries.some((entry) => entry.templateRefs?.length) ? " Effects and templates will be removed." : "";
-  const content = `<p>Remove unsustained spells?</p><ul>${names}</ul><p>${escapeHtml(suffix)}</p>`;
+  const suffix = entries.some((entry) => entry.templateRefs?.length) ? t("Sustain.CleanupSuffix", " Effects and templates will be removed.") : "";
+  const content = `<p>${escapeHtml(t("Sustain.CleanupPrompt", "Remove unsustained spells?"))}</p><ul>${names}</ul><p>${escapeHtml(suffix)}</p>`;
   const dialog = globalThis.foundry?.applications?.api?.DialogV2;
   if (typeof dialog?.wait === "function") {
     const choice = await dialog.wait({
-      window: { title: "Unsustained spells" },
+      window: { title: t("Sustain.CleanupTitle", "Unsustained spells") },
       content,
       buttons: [
-        { action: "remove", label: "Remove unsustained" },
-        { action: "keep", label: "Keep all" },
+        { action: "remove", label: t("Sustain.CleanupRemove", "Remove unsustained") },
+        { action: "keep", label: t("Sustain.CleanupKeep", "Keep all") },
       ],
       rejectClose: false,
     }).catch(() => "keep");
@@ -353,7 +354,7 @@ async function confirmCleanup(entries) {
   }
   const confirm = globalThis.window?.confirm;
   return typeof confirm === "function"
-    ? confirm(`Remove unsustained spells: ${entries.map((entry) => entry.name).join(", ")}?`)
+    ? confirm(t("Sustain.CleanupConfirmList", "Remove unsustained spells: {names}?", { names: entries.map((entry) => entry.name).join(", ") }))
     : false;
 }
 

@@ -400,6 +400,20 @@
   color: var(--combater-two);
 }
 
+.pf2e-combater .combater-chip-target.is-awaiting,
+.pf2e-combater .combater-target.is-awaiting {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--color-text-hyperlink, #5e9cff);
+  font-style: italic;
+}
+
+.pf2e-combater .combater-chip-tool.combater-step-waiting {
+  color: var(--color-text-hyperlink, #5e9cff);
+  cursor: progress;
+}
+
 .pf2e-combater .combater-chip,
 .pf2e-combater .combater-empty-chip {
   display: inline-flex;

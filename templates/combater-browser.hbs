@@ -1,7 +1,7 @@
 <div class="combater-browser-shell">
   {{#if builder}}
     <div class="combater-browser-header">
-      <nav class="combater-tabs" aria-label="PF2e Combater action costs">
+      <nav class="combater-tabs" aria-label="{{localize "PF2E_COMBATER.Browser.TabsAria"}}">
         {{#each builder.tabsList}}
           <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">
             <img class="combater-tab-glyph" src="{{glyphIcon}}" alt="">
@@ -11,7 +11,7 @@
       </nav>
       <div class="combater-search">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="Search {{builder.activeTabLabel}}" aria-label="Search {{builder.activeTabLabel}} actions" autocomplete="off">
+        <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="{{localize "PF2E_COMBATER.Browser.SearchPlaceholder" label=builder.activeTabLabel}}" aria-label="{{localize "PF2E_COMBATER.Browser.SearchAria" label=builder.activeTabLabel}}" autocomplete="off">
       </div>
     </div>
 
@@ -37,7 +37,7 @@
                       {{/unless}}
                       <div class="combater-alt-step-body">
                         <h4>
-                          <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="Open action details">
+                          <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.OpenDetails"}}">
                             {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
                             <span>{{name}}</span>
                           </button>
@@ -45,7 +45,7 @@
                         {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
                         {{#if disabledReason}}<span class="combater-target is-warning" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
                         {{#if hasDetailChips}}
-                          <div class="combater-detail-chips" aria-label="Action details">
+                          <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
                             {{#each detailChips}}
                               <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
                             {{/each}}
@@ -54,16 +54,16 @@
                         <p>{{reason}}</p>
                       </div>
                       {{#unless readonly}}
-                      <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="Add {{name}} to plan" {{#if overBudget}}disabled{{/if}}>
+                      <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
                         <i class="fa-solid fa-plus"></i>
                       </button>
-                      <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="Add to uncounted actions" aria-label="Add {{name}} to uncounted actions">
+                      <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}">
                         <i class="fa-solid fa-bolt"></i>
                       </button>
                       {{/unless}}
                     </div>
                   {{else}}
-                    <p class="combater-empty">No actions in this section.</p>
+                    <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
                   {{/each}}
                 </div>
               </article>
@@ -74,7 +74,7 @@
         {{#if showDebug}}
           <div class="combater-debug">
             <details>
-              <summary>GM debug: Candidates ({{debug.candidates.length}})</summary>
+              <summary>{{localize "PF2E_COMBATER.Browser.DebugCandidates" count=debug.candidates.length}}</summary>
               {{#each debug.candidates}}
                 <div class="debug-row">
                   <span>{{name}}</span>
@@ -85,7 +85,7 @@
               {{/each}}
             </details>
             <details>
-              <summary>Rejected ({{debug.rejected.length}})</summary>
+              <summary>{{localize "PF2E_COMBATER.Browser.DebugRejected" count=debug.rejected.length}}</summary>
               {{#each debug.rejected}}
                 <div class="debug-row">
                   <span>{{action.name}}</span>
@@ -95,13 +95,13 @@
               {{/each}}
             </details>
             <details>
-              <summary>Detected ({{debug.detected.length}})</summary>
+              <summary>{{localize "PF2E_COMBATER.Browser.DebugDetected" count=debug.detected.length}}</summary>
               {{#each debug.detected}}
                 <div class="debug-row">
                   <span>{{name}}</span>
                   <code data-tooltip="{{profile}}">{{source}}{{#if role}}/{{role}}{{/if}}</code>
                   <span>{{costLabel}}</span>
-                  <span>{{#if available}}available{{else}}blocked{{/if}}</span>
+                  <span>{{#if available}}{{localize "PF2E_COMBATER.Browser.Available"}}{{else}}{{localize "PF2E_COMBATER.Browser.Blocked"}}{{/if}}</span>
                 </div>
               {{/each}}
             </details>
@@ -111,7 +111,7 @@
     </section>
   {{else}}
     <section class="combater-body">
-      <p class="combater-empty">No combat context available.</p>
+      <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoContext"}}</p>
     </section>
   {{/if}}
 </div>

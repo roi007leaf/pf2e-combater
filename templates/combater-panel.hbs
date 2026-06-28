@@ -1,7 +1,7 @@
 <div class="combater-shell">
   {{#*inline "draftSequence"}}
   <div class="combater-plan-strip">
-    <div class="combater-sequence" aria-label="Planned action sequence">
+    <div class="combater-sequence" aria-label="{{localize "PF2E_COMBATER.Panel.PlannedSequenceAria"}}">
       {{#each headerSteps}}
         {{#if instanceId}}
           <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
@@ -13,13 +13,14 @@
                 <span class="combater-step-headline">
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}
                   <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" data-tooltip="{{rangeLabel}}"></i>{{/if}}</span>
-                  {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> Done</span>{{/if}}
-                  {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> Failed</span>{{/if}}
+                  {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> {{localize "PF2E_COMBATER.Panel.Done"}}</span>{{/if}}
+                  {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> {{localize "PF2E_COMBATER.Panel.Failed"}}</span>{{/if}}
                 </span>
                 {{#if hasStepDetails}}
                 <span class="combater-step-details">
                   {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
+                  {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
                 </span>
                 {{/if}}
@@ -27,44 +28,50 @@
             </button>
             <span class="combater-step-tools">
               {{#if canMoveStepUp}}
-                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="Move up" aria-label="Move {{name}} up">
+                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveUp"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveUpAria" name=name}}">
                   <i class="fa-solid fa-arrow-up"></i>
                 </button>
               {{/if}}
               {{#if canMoveStepDown}}
-                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="Move down" aria-label="Move {{name}} down">
+                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveDown"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveDownAria" name=name}}">
                   <i class="fa-solid fa-arrow-down"></i>
                 </button>
               {{/if}}
               {{#if isExecutionDone}}
                 {{#if canRevertStep}}
-                <button type="button" class="combater-chip-tool combater-step-run is-revert" data-revert-step="{{instanceId}}" data-tooltip="Revert this step" aria-label="Revert this step">
+                <button type="button" class="combater-chip-tool combater-step-run is-revert" data-revert-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.RevertStep"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RevertStep"}}">
                   <i class="fa-solid fa-rotate-left"></i>
                 </button>
                 {{/if}}
               {{else}}
+                {{#if awaitingGm}}
+                <span class="combater-chip-tool combater-step-waiting" data-tooltip="{{awaitingGmLabel}}" aria-label="{{awaitingGmLabel}}">
+                  <i class="fa-solid fa-hourglass-half fa-spin"></i>
+                </span>
+                {{else}}
                 {{#if canShowExecuteStep}}
                 <button type="button" class="combater-chip-tool combater-step-run is-execute {{#if executionBlocked}}is-disabled{{/if}}" data-execute-draft-step="{{instanceId}}" data-tooltip="{{executeTooltip}}" aria-label="{{executeTooltip}}" {{#if executionBlocked}}disabled{{/if}}>
                   <i class="fa-solid fa-play"></i>
                 </button>
                 {{/if}}
+                {{/if}}
                 {{#if requiresDestination}}
                   {{#unless readonly}}
-                  <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="Set destination" aria-label="Set destination">
+                  <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetDestination"}}">
                     <i class="fa-solid fa-location-crosshairs"></i>
                   </button>
                   {{/unless}}
                 {{/if}}
                 {{#if requiresTarget}}
                   {{#unless readonly}}
-                  <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="Use current target" aria-label="Use current target">
+                  <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}" aria-label="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}">
                     <i class="fa-solid fa-crosshairs"></i>
                   </button>
                   {{/unless}}
                 {{/if}}
                 {{#if requiresArea}}
                   {{#unless readonly}}
-                  <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="Set template" aria-label="Set template">
+                  <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}">
                     <i class="fa-solid fa-draw-polygon"></i>
                   </button>
                   {{/unless}}
@@ -73,13 +80,13 @@
               {{!-- Remove template stays available after execution so a placed region can be cleared. --}}
               {{#if hasAreaMarker}}
                 {{#unless readonly}}
-                <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="Remove template" aria-label="Remove template">
+                <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}">
                   <i class="fa-solid fa-eraser"></i>
                 </button>
                 {{/unless}}
               {{/if}}
               {{#unless readonly}}
-              <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="Remove" aria-label="Remove">
+              <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Remove"}}">
                 <i class="fa-solid fa-trash"></i>
               </button>
               {{/unless}}
@@ -101,7 +108,7 @@
           </button>
         {{/if}}
       {{else}}
-        <span class="combater-empty-chip">No selected actions</span>
+        <span class="combater-empty-chip">{{localize "PF2E_COMBATER.Panel.NoSelectedActions"}}</span>
       {{/each}}
     </div>
     {{#if headerSummary}}
@@ -138,9 +145,9 @@
         <div class="combater-portrait placeholder" aria-hidden="true"></div>
         <div class="combater-headline">
           <div class="combater-name-row">
-            <h2>No active combatant</h2>
+            <h2>{{localize "PF2E_COMBATER.Panel.NoActiveCombatant"}}</h2>
           </div>
-          <p class="combater-reason">Start combat or select readable active actor.</p>
+          <p class="combater-reason">{{localize "PF2E_COMBATER.Panel.NoActiveCombatantHint"}}</p>
         </div>
       </div>
     {{/if}}
@@ -150,13 +157,13 @@
         {{#if builder.execution.hasStatus}}
           <div class="combater-execution-controls">
             {{#if builder.execution.canReset}}
-              <button type="button" class="combater-chip-tool combater-header-reset" data-reset-execution data-tooltip="Revert every executed step" aria-label="Reset execution">
+              <button type="button" class="combater-chip-tool combater-header-reset" data-reset-execution data-tooltip="{{localize "PF2E_COMBATER.Panel.ResetTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ResetAria"}}">
                 <i class="fa-solid fa-rotate-left"></i>
-                <span>Reset</span>
+                <span>{{localize "PF2E_COMBATER.Panel.Reset"}}</span>
               </button>
             {{/if}}
             {{#if builder.execution.progressLabel}}
-              <span class="combater-exec-progress" data-tooltip="Executed steps">{{builder.execution.progressLabel}}</span>
+              <span class="combater-exec-progress" data-tooltip="{{localize "PF2E_COMBATER.Panel.ExecutedSteps"}}">{{builder.execution.progressLabel}}</span>
             {{/if}}
           </div>
         {{/if}}
@@ -164,17 +171,17 @@
       <div class="combater-actions-row">
         {{#if builder}}
           {{#unless builder.readonly}}
-            <button type="button" class="combater-header-autofill" data-auto-fill data-tooltip="Fill draft from recommended plan" aria-label="Auto-fill draft">
+            <button type="button" class="combater-header-autofill" data-auto-fill data-tooltip="{{localize "PF2E_COMBATER.Panel.AutoFillTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.AutoFillAria"}}">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <span>Auto-fill</span>
+              <span>{{localize "PF2E_COMBATER.Panel.AutoFill"}}</span>
             </button>
           {{/unless}}
         {{/if}}
-        <button type="button" class="combater-header-browse {{#if browserOpen}}is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}Close the action browser{{else}}Open the action browser{{/if}}" aria-label="Toggle action browser" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}">
+        <button type="button" class="combater-header-browse {{#if browserOpen}}is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}{{localize "PF2E_COMBATER.Panel.BrowseClose"}}{{else}}{{localize "PF2E_COMBATER.Panel.BrowseOpen"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.BrowseAria"}}" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}">
           <i class="fa-solid fa-layer-group"></i>
-          <span>Browse</span>
+          <span>{{localize "PF2E_COMBATER.Panel.Browse"}}</span>
         </button>
-        <button type="button" class="icon-button" data-action="refresh" data-tooltip="Refresh" aria-label="Refresh">
+        <button type="button" class="icon-button" data-action="refresh" data-tooltip="{{localize "PF2E_COMBATER.Panel.Refresh"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Refresh"}}">
           <i class="fa-solid fa-arrows-rotate"></i>
         </button>
       </div>
@@ -190,13 +197,13 @@
           <article class="combater-alt combater-builder-card combater-sustained-spells">
             <div class="combater-alt-head">
               <span class="combater-alt-title">
-                <strong>Sustained spells</strong>
+                <strong>{{localize "PF2E_COMBATER.Panel.SustainedSpells"}}</strong>
               </span>
             </div>
             <div class="combater-alt-details">
               {{#each builder.sustainedSpells.entries}}
                 <div class="combater-alt-step combater-sustained-row {{statusClass}}">
-                  <span class="combater-step-cost cost-1" data-tooltip="1 action">
+                  <span class="combater-step-cost cost-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.OneAction"}}">
                     <span>◆</span>
                   </span>
                   <div class="combater-alt-step-body">
@@ -208,7 +215,7 @@
                     </span>
                   </div>
                   {{#if canAdd}}
-                    <button type="button" class="combater-run combater-add-action" data-add-sustain-spell="{{id}}" data-tooltip="Add Sustain a Spell" aria-label="Sustain {{name}}">
+                    <button type="button" class="combater-run combater-add-action" data-add-sustain-spell="{{id}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.AddSustain"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SustainAria" name=name}}">
                       <i class="fa-solid fa-plus"></i>
                     </button>
                   {{/if}}
@@ -223,7 +230,7 @@
         <section class="combater-uncounted-panel">
           <article class="combater-alt combater-builder-card combater-uncounted">
             <div class="combater-alt-head">
-              <span class="combater-alt-title"><strong>Uncounted actions</strong></span>
+              <span class="combater-alt-title"><strong>{{localize "PF2E_COMBATER.Panel.UncountedActions"}}</strong></span>
             </div>
             <div class="combater-alt-details">
               {{#each builder.uncounted.entries}}
@@ -237,42 +244,46 @@
                         {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
                         <span>{{name}}</span>
                       </button>
-                      {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> Done</span>{{/if}}
-                      {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> Failed</span>{{/if}}
+                      {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> {{localize "PF2E_COMBATER.Panel.Done"}}</span>{{/if}}
+                      {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> {{localize "PF2E_COMBATER.Panel.Failed"}}</span>{{/if}}
                     </h4>
                     {{#if hasStepDetails}}
-                      <span class="combater-target">
-                        {{#if targetLabel}}{{targetLabel}}{{/if}}{{#if areaLabel}} {{areaLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}
+                      <span class="combater-target{{#if awaitingGm}} is-awaiting{{/if}}">
+                        {{#if awaitingGm}}<i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}{{else}}{{#if targetLabel}}{{targetLabel}}{{/if}}{{#if areaLabel}} {{areaLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}{{/if}}
                       </span>
                     {{/if}}
                   </div>
                   <div class="combater-uncounted-tools">
                     {{#if requiresTarget}}
-                      <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="Choose target" aria-label="Choose target for {{name}}"><i class="fa-solid fa-crosshairs"></i></button>
+                      <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.ChooseTarget"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseTargetAria" name=name}}"><i class="fa-solid fa-crosshairs"></i></button>
                     {{/if}}
                     {{#if requiresDestination}}
-                      <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="Choose destination" aria-label="Choose destination for {{name}}"><i class="fa-solid fa-location-dot"></i></button>
+                      <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.ChooseDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseDestinationAria" name=name}}"><i class="fa-solid fa-location-dot"></i></button>
                     {{/if}}
                     {{#if requiresArea}}
-                      <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="Place template" aria-label="Place template for {{name}}"><i class="fa-solid fa-draw-polygon"></i></button>
+                      <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.PlaceTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.PlaceTemplateAria" name=name}}"><i class="fa-solid fa-draw-polygon"></i></button>
                     {{/if}}
                     {{#if hasAreaMarker}}
-                      <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="Remove template" aria-label="Remove template"><i class="fa-solid fa-eraser"></i></button>
+                      <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}"><i class="fa-solid fa-eraser"></i></button>
                     {{/if}}
                     {{#if canMoveStepUp}}
-                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="Move up" aria-label="Move {{name}} up"><i class="fa-solid fa-arrow-up"></i></button>
+                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveUp"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveUpAria" name=name}}"><i class="fa-solid fa-arrow-up"></i></button>
                     {{/if}}
                     {{#if canMoveStepDown}}
-                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="Move down" aria-label="Move {{name}} down"><i class="fa-solid fa-arrow-down"></i></button>
+                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveDown"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveDownAria" name=name}}"><i class="fa-solid fa-arrow-down"></i></button>
                     {{/if}}
+                    {{#if awaitingGm}}
+                      <span class="combater-chip-tool combater-step-waiting" data-tooltip="{{awaitingGmLabel}}" aria-label="{{awaitingGmLabel}}"><i class="fa-solid fa-hourglass-half fa-spin"></i></span>
+                    {{else}}
                     {{#if canShowExecuteStep}}
                       <button type="button" class="combater-chip-tool combater-step-run is-execute {{#if executionBlocked}}is-disabled{{/if}}" data-execute-draft-step="{{instanceId}}" data-tooltip="{{executeTooltip}}" aria-label="{{executeTooltip}}" {{#if executionBlocked}}disabled{{/if}}><i class="fa-solid fa-play"></i></button>
                     {{/if}}
+                    {{/if}}
                     {{#if canRevertStep}}
-                      <button type="button" class="combater-chip-tool" data-revert-draft-step="{{instanceId}}" data-tooltip="Revert" aria-label="Revert {{name}}"><i class="fa-solid fa-rotate-left"></i></button>
+                      <button type="button" class="combater-chip-tool" data-revert-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Revert"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RevertAria" name=name}}"><i class="fa-solid fa-rotate-left"></i></button>
                     {{/if}}
                     {{#unless readonly}}
-                      <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="Remove" aria-label="Remove {{name}}"><i class="fa-solid fa-xmark"></i></button>
+                      <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveAria" name=name}}"><i class="fa-solid fa-xmark"></i></button>
                     {{/unless}}
                   </div>
                 </div>

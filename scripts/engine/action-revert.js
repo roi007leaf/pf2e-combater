@@ -7,6 +7,7 @@ import {
   resetDraftExecution,
   tokenId,
 } from "./action-executor.js";
+import { t } from "../i18n.js";
 
 async function moveTokenTo(document, point) {
   if (typeof document.update === "function") {
@@ -46,11 +47,11 @@ async function revertCondition(op, { actor }) {
   // otherwise the action REMOVED the condition (e.g. Stand) and revert restores it.
   if (op?.remove === true) {
     const cleared = await decreaseCondition(actor, op?.slug, { forceRemove: true });
-    if (!cleared) throw new Error(`could not clear ${op?.slug ?? "condition"}`);
+    if (!cleared) throw new Error(t("Revert.CouldNotClear", "could not clear {slug}", { slug: op?.slug ?? "condition" }));
     return;
   }
   const restored = await increaseCondition(actor, op?.slug, op?.options ?? {});
-  if (!restored) throw new Error(`could not restore ${op?.slug ?? "condition"}`);
+  if (!restored) throw new Error(t("Revert.CouldNotRestoreCond", "could not restore {slug}", { slug: op?.slug ?? "condition" }));
 }
 
 // Restore a weapon's carry state (undo a Draw or a Release/Drop).
@@ -316,7 +317,7 @@ async function revertSlot(op, { actor, warnings }) {
     spellcastingEntryUuid: op?.entryUuid,
   });
   if (!entry) {
-    warnings.push("Spell slot could not be auto-restored - restore it manually.");
+    warnings.push(t("Revert.SlotManual", "Spell slot could not be auto-restored - restore it manually."));
     return;
   }
 
@@ -336,15 +337,15 @@ async function revertSlot(op, { actor, warnings }) {
   if (await restoreSlotPool(entry, op)) return;
 
   if (apiError) {
-    warnings.push(`Spell slot API restore failed: ${apiError?.message ?? apiError}`);
+    warnings.push(t("Revert.SlotApiFailed", "Spell slot API restore failed: {error}", { error: apiError?.message ?? apiError }));
     return;
   }
   if (preparedApiErrors.length) {
     const error = preparedApiErrors[0];
-    warnings.push(`Prepared spell slot API restore failed: ${error?.message ?? error}`);
+    warnings.push(t("Revert.PreparedSlotApiFailed", "Prepared spell slot API restore failed: {error}", { error: error?.message ?? error }));
     return;
   }
-  warnings.push("Spell slot could not be auto-restored - restore it manually.");
+  warnings.push(t("Revert.SlotManual", "Spell slot could not be auto-restored - restore it manually."));
 }
 
 async function applyRevertOp(op, scope) {
@@ -382,7 +383,7 @@ export async function revertDraftStep({ context, step } = {}) {
     try {
       await applyRevertOp(op, { context, actor, warnings });
     } catch (error) {
-      warnings.push(`Could not revert ${op?.kind ?? "action"}: ${error?.message ?? error}`);
+      warnings.push(t("Revert.CouldNotRevert", "Could not revert {kind}: {error}", { kind: op?.kind ?? "action", error: error?.message ?? error }));
     }
   }
   return { status: "reverted", patch: resetPatch, warnings };

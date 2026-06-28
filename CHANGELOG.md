@@ -8,6 +8,16 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 ### Added
 
+- **Localization (i18n) support.** All panel text, dialogs, notifications, generated action
+  names, and tactical reasons are localized under the `PF2E_COMBATER` namespace with a bundled
+  English language file; PF2e proper nouns (traits, saves, conditions, basic action names) reuse
+  the system's own translations. Adding a new language is now just a matter of dropping in a
+  translated lang file.
+- **GM-adjudicated Retch.** When a player executes Retch, the GM sets the effect's Fortitude
+  save DC, the player rolls the save against it, and the GM rules on the result (no reduction /
+  reduce sickened / reduce by 2, pre-selected from the rolled degree). The exchange runs over
+  **socketlib** (now a required dependency); the player's step shows a **Waiting for the GM…**
+  indicator while pending and falls back to a local prompt when no GM is connected.
 - **Revert executed steps.** Undo a completed draft step's real game-state effect, not just
   its status: movement returns the token to where it started, Stand re-applies prone, a
   successful Retch restores sickened, and area actions delete the template they placed.
@@ -20,16 +30,17 @@ All notable changes to PF2e Combater are documented here. The format is based on
   template automatically when its duration ends — in encounter or exploration. Sustained
   areas gain a max-duration cap, dismissing the effect early clears the template, and
   reverting the step removes both.
-- **Unconditional actions.** A manually-managed list below the plan for real, executable
+- **Uncounted actions.** A manually-managed list below the plan for real, executable
   actions (e.g. Sudden Charge's "Stride, Stride, Strike") that run alongside the plan but stay
   off the action-economy budget, the planner's scoring, and slot tracking. Add to it with the
-  "Add to: Plan / Unconditional" toggle; each chip executes and reverts like a plan step, and
+  "Add to: Plan / Uncounted" toggle; each chip executes and reverts like a plan step, and
   the header Reset reverts both lists together.
 - **Weapon and position manipulate actions.** Each sheathed weapon gets a 1-action **Draw**,
   each held weapon a free-action **Release** (drop to the ground), and reloadable weapons a
-  **Reload** action costing the weapon's reload value. A 1-action **Drop Prone** is offered
-  when the actor isn't already prone (and lacks its own Drop Prone). Draw and Release update
-  the weapon's carry state and can be reverted.
+  **Reload** action costing the weapon's reload value — reload-0 ammunition weapons (e.g. bows)
+  show a *free* Reload step that doesn't draw from the action budget. A 1-action **Drop Prone**
+  is offered when the actor isn't already prone (and lacks its own Drop Prone). Draw and Release
+  update the weapon's carry state and can be reverted.
 
 ### Changed
 
@@ -61,3 +72,14 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 - The standalone **Sustain a Spell** action no longer appears in the action tabs; the
   dedicated sustained-spells section on the panel handles sustaining.
+
+### Fixed
+
+- Action damage now lands **reliably** after its spell/strike chat card: the damage message is
+  stamped just after the card so the chat log always orders the card first, even when the card's
+  creation resolves a tick later.
+
+### Dependencies
+
+- **socketlib** is now required. It carries the player↔GM hand-offs (Retch adjudication and
+  shared-plan sync); Foundry will offer to install it automatically when you enable the module.

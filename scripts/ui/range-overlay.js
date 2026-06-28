@@ -1,4 +1,5 @@
 import { previewLayer } from "./preview-layer.js";
+import { t } from "../i18n.js";
 
 // Visual-only guidance: a ring at a spell's max range around the caster, with the
 // canvas dimmed outside it. It never blocks placing a template or picking a target —
@@ -307,7 +308,7 @@ export function updateRangePlacement(rawPoint) {
   const feet = distanceFeet(placementOrigin, target);
   const overRange = placementMaxFeet != null && feet > placementMaxFeet + 0.5;
   const fontSize = labelFontSize();
-  const text = `${Math.round(feet)} ft`;
+  const text = t("Chip.RangeFt", "{range} ft", { range: Math.round(feet) });
 
   if (!placementLabel) {
     placementLabel = createTextLabel(text, labelStyle(fontSize, overRange));

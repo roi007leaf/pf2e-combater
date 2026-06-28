@@ -1,4 +1,5 @@
 import { createAreaRegionData } from "../engine/action-executor.js";
+import { t } from "../i18n.js";
 
 let activeCleanup = null;
 let activeOnCancel = null;
@@ -293,7 +294,7 @@ export function cancelAreaPicker() {
 }
 
 function notifyNativePlacementFailure(error) {
-  const message = error?.message ? `Area template preview failed: ${error.message}` : "Area template preview failed.";
+  const message = error?.message ? t("Picker.AreaFailedReason", "Area template preview failed: {error}", { error: error.message }) : t("Picker.AreaFailed", "Area template preview failed.");
   globalThis.console?.warn?.("pf2e-combater | Area template preview failed", error);
   globalThis.ui?.notifications?.warn?.(message);
 }

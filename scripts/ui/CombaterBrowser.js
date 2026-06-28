@@ -1,4 +1,5 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
+import { t } from "../i18n.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -53,7 +54,9 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   get title() {
     const actorName = this._panel?._context?.actor?.name;
-    return actorName ? `Combater Actions - ${actorName}` : "Combater Actions";
+    return actorName
+      ? t("Browser.TitleFor", "Combater Actions - {actor}", { actor: actorName })
+      : t("Browser.Title", "Combater Actions");
   }
 
   async _prepareContext(options) {

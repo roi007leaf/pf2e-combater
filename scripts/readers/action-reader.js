@@ -12,6 +12,7 @@ import { compareTacticalCenters } from "../rules/battlefield-analysis.js";
 import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
 import { triggerMatchesContext } from "../rules/event-context.js";
 import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+import { pf2eActionName, pf2eCondition, t } from "../i18n.js";
 
 const ACTION_ITEM_TYPES = new Set(["action", "feat", "feature", "consumable"]);
 const ACTIVATABLE_ITEM_TYPES = new Set([
@@ -185,6 +186,7 @@ function readGenericActions(context) {
     const itemAvailability = isGenericAvailable(action, context);
     return {
       ...action,
+      name: pf2eActionName(action.slug, action.name),
       source: "generic",
       confidence: "medium",
       detected: true,
@@ -212,7 +214,7 @@ function readStandStrideActivities(context) {
 
   return [{
     id: "stand-stride",
-    name: "Stand -> Stride",
+    name: t("Action.StandStride", "Stand -> Stride"),
     slug: "stand-stride",
     actionCost: 2,
     actionType: "action",
@@ -235,7 +237,7 @@ function readStandStrideActivities(context) {
       preferredTargetName: target.name ?? null,
     },
     setupFor: [],
-    reasons: [`Stand, then Stride toward ${target.name}.`],
+    reasons: [t("Reason.StandThenStride", "Stand, then Stride toward {name}.", { name: target.name })],
   }];
 }
 
@@ -577,12 +579,12 @@ function generatedStrikeAvailability(context, action) {
   if (!context) return availability(true, "");
 
   const targets = uniqueTargets(context).filter((target) => actionCanReach(action, target));
-  if (!targets.length) return availability(false, "No target in range.");
+  if (!targets.length) return availability(false, t("Avail.NoTargetInRange", "No target in range."));
 
   const target = targets.find((candidate) => canStrikeTargetFromCurrentPosition(context, action, candidate));
   if (target) return { ...availability(true, ""), target };
 
-  return availability(false, "Attack path to target is blocked.");
+  return availability(false, t("Avail.AttackPathBlocked", "Attack path to target is blocked."));
 }
 
 function actorLevel(actor) {
@@ -672,12 +674,14 @@ function elementalBlastLabel(config) {
   const element = String(config?.element ?? "").trim();
   const elementLabel = titleCaseWords(element || "element");
   const key = `PF2E.SpecificRule.Kineticist.Impulse.ElementalBlast.Label.${elementLabel}`;
-  return localizeLabel(key) ?? `Elemental Blast (${elementLabel})`;
+  return localizeLabel(key) ?? t("Action.ElementalBlastNamed", "Elemental Blast ({element})", { element: elementLabel });
 }
 
 function elementalBlastModeLabel(baseLabel, mode, actionCost) {
-  const actionSuffix = actionCost === 2 ? ", 2 actions" : "";
-  return `${baseLabel} (${mode}${actionSuffix})`;
+  const modeLabel = t(`Mode.${mode}`, mode);
+  return actionCost === 2
+    ? t("Action.ElementalBlast2", "{base} ({mode}, 2 actions)", { base: baseLabel, mode: modeLabel })
+    : t("Action.ElementalBlast1", "{base} ({mode})", { base: baseLabel, mode: modeLabel });
 }
 
 function readElementalBlastActions(actor, context) {
@@ -728,7 +732,7 @@ function readElementalBlastActions(actor, context) {
         averageDamage,
         traits: commonTraits,
         variants: [],
-        reasons: ["Elemental Blast is available."],
+        reasons: [t("Reason.ElementalBlast", "Elemental Blast is available.")],
       };
 
       return [{
@@ -1183,7 +1187,7 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
       return [{
         id: `draw-strike-${weapon.id ?? slug}`,
-        name: `Draw ${weapon.name} -> Strike`,
+        name: t("Action.DrawStrike", "Draw {weapon} -> Strike", { weapon: weapon.name }),
         slug: `draw-strike-${slug}`,
         actionCost: 2,
         actionType: "action",
@@ -1211,7 +1215,7 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
         traits: range.traits,
         attackTrait: true,
         setupFor: [],
-        reasons: [`Draw ${weapon.name} enables a Strike against ${target.name}.`],
+        reasons: [t("Reason.DrawEnablesStrike", "Draw {weapon} enables a Strike against {target}.", { weapon: weapon.name, target: target.name })],
       }];
     });
 }
@@ -1229,7 +1233,7 @@ function readDrawWeaponActions(actor) {
     const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
     return {
       id: `draw-weapon-${weapon.id ?? slug}`,
-      name: `Draw ${weapon.name}`,
+      name: t("Action.Draw", "Draw {weapon}", { weapon: weapon.name }),
       slug: `draw-${slug}`,
       actionCost: 1,
       actionType: "action",
@@ -1242,7 +1246,7 @@ function readDrawWeaponActions(actor) {
       role: "setup",
       activityProfile: { includes: ["draw", "interact"], drawsWeapon: true, weaponName: weapon.name },
       targetingProfile: { self: true },
-      reasons: [`Draw ${weapon.name} to ready it.`],
+      reasons: [t("Reason.DrawToReady", "Draw {weapon} to ready it.", { weapon: weapon.name })],
       traits: [],
       attackTrait: false,
     };
@@ -1255,7 +1259,7 @@ function readSheatheWeaponActions(actor) {
     const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
     return {
       id: `sheathe-weapon-${weapon.id ?? slug}`,
-      name: `Sheathe ${weapon.name}`,
+      name: t("Action.Sheathe", "Sheathe {weapon}", { weapon: weapon.name }),
       slug: `sheathe-${slug}`,
       actionCost: 1,
       actionType: "action",
@@ -1268,7 +1272,7 @@ function readSheatheWeaponActions(actor) {
       role: "utility",
       activityProfile: { includes: ["interact"], sheathesWeapon: true, weaponName: weapon.name },
       targetingProfile: { self: true },
-      reasons: [`Sheathe ${weapon.name} to stow it.`],
+      reasons: [t("Reason.SheatheToStow", "Sheathe {weapon} to stow it.", { weapon: weapon.name })],
       traits: [],
       attackTrait: false,
     };
@@ -1281,7 +1285,7 @@ function readReleaseWeaponActions(actor) {
     const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
     return {
       id: `release-weapon-${weapon.id ?? slug}`,
-      name: `Release ${weapon.name}`,
+      name: t("Action.Release", "Release {weapon}", { weapon: weapon.name }),
       slug: `release-${slug}`,
       actionCost: 0,
       actionType: "free",
@@ -1294,44 +1298,61 @@ function readReleaseWeaponActions(actor) {
       role: "utility",
       activityProfile: { includes: ["release"], dropsWeapon: true, free: true, weaponName: weapon.name },
       targetingProfile: { self: true },
-      reasons: [`Release ${weapon.name}, dropping it to the ground.`],
+      reasons: [t("Reason.ReleaseToGround", "Release {weapon}, dropping it to the ground.", { weapon: weapon.name })],
       traits: [],
       attackTrait: false,
     };
   });
 }
 
-function weaponReloadCost(weapon) {
-  return parseReloadCost(weapon?.reload)
-    ?? parseReloadCost(weapon?.system?.reload)
-    ?? parseReloadCost(weapon?.system?.reload?.value)
-    ?? 0;
+// The weapon's reload value as a number (0, 1, 2, 3), or null when the weapon has no reload at all
+// (melee/thrown). A reload-0 ammunition weapon (e.g. a bow) IS reloadable but reloading is free,
+// which is distinct from a melee weapon that carries no reload value — so an empty/"-"/absent value
+// returns null rather than collapsing to 0.
+function weaponReloadValue(weapon) {
+  for (const raw of [weapon?.reload, systemValue(weapon?.system?.reload), systemValue(weapon?.system?.reload?.value)]) {
+    if (raw === undefined || raw === null) continue;
+    const text = String(raw).trim().toLowerCase();
+    if (text === "" || text === "-" || text === "—" || text === "none") return null;
+    const numeric = Number(text);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+    const word = text.match(/\b(zero|one|two|three)\b/)?.[1];
+    if (word) return word === "zero" ? 0 : WORD_NUMBERS[word];
+  }
+  return null;
 }
 
 function readReloadWeaponActions(actor) {
   return readWeaponItems(actor)
     .filter(isHeldWeapon)
-    .map((weapon) => ({ weapon, reload: weaponReloadCost(weapon) }))
-    .filter(({ reload }) => Number.isFinite(reload) && reload > 0)
+    .map((weapon) => ({ weapon, reload: weaponReloadValue(weapon) }))
+    // Include reload-0 ammunition weapons (shown as a free step) but exclude melee/thrown weapons,
+    // which have no reload value at all.
+    .filter(({ reload }) => reload !== null)
     .map(({ weapon, reload }) => {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+      // Reload 0 reloads as part of firing: keep it in the plan for clarity, but as a free action
+      // that does not draw from the action budget.
+      const free = reload <= 0;
       return {
         id: `reload-weapon-${weapon.id ?? slug}`,
-        name: `Reload ${weapon.name}`,
+        name: t("Action.Reload", "Reload {weapon}", { weapon: weapon.name }),
         slug: `reload-${slug}`,
-        actionCost: Math.max(1, Math.min(3, reload)),
-        actionType: "action",
+        actionCost: free ? 0 : Math.max(1, Math.min(3, reload)),
+        actionType: free ? "free" : "action",
         source: "system-inferred",
-        confidence: "medium",
+        confidence: free ? "low" : "medium",
         executable: "reload-weapon",
         detected: true,
         available: true,
         item: weapon,
         role: "setup",
-        activityProfile: { includes: ["reload"], reload: true, weaponName: weapon.name },
+        activityProfile: { includes: ["reload"], reload: true, free, weaponName: weapon.name },
         targetingProfile: { self: true },
         setupFor: ["strike", "damage"],
-        reasons: [`Reload ${weapon.name}.`],
+        reasons: [free
+          ? t("Reason.ReloadFree", "{weapon} reloads as part of firing (no action).", { weapon: weapon.name })
+          : t("Reason.ReloadWeapon", "Reload {weapon}.", { weapon: weapon.name })],
         traits: [],
         attackTrait: false,
       };
@@ -1354,7 +1375,7 @@ function readDropProneAction(actor, context) {
   const prone = hasCondition(contextProfile(context), "prone");
   return [{
     id: "generic-drop-prone",
-    name: "Drop Prone",
+    name: pf2eActionName("drop-prone", "Drop Prone"),
     slug: "drop-prone",
     actionCost: 1,
     actionType: "action",
@@ -1363,12 +1384,12 @@ function readDropProneAction(actor, context) {
     executable: "drop-prone",
     detected: true,
     available: !prone,
-    unavailableReason: prone ? "Already prone." : "",
+    unavailableReason: prone ? t("Reason.AlreadyProne", "Already prone.") : "",
     item: null,
     role: "defense",
     activityProfile: { appliesConditions: ["prone"] },
     targetingProfile: { self: true },
-    reasons: ["Drop Prone for cover against ranged attackers."],
+    reasons: [t("Reason.DropProneCover", "Drop Prone for cover against ranged attackers.")],
     traits: [],
     attackTrait: false,
   }];
@@ -1437,7 +1458,7 @@ function readStrideStrikeActivities(context, readyStrikes) {
     seenTargets.add(targetKey);
 
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
-    const movePrefix = `${standFirst ? "Stand -> " : ""}${"Stride -> ".repeat(strides)}`;
+    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
     return [{
       id: `${standFirst ? "stand-" : ""}stride-strike-${strike.id ?? slug}`,
       name: `${movePrefix}${strike.name}`,
@@ -1469,10 +1490,10 @@ function readStrideStrikeActivities(context, readyStrikes) {
       attackTrait: true,
       setupFor: [],
       reasons: [standFirst
-        ? `Stand, Stride into reach, and Strike ${target.name}.`
+        ? t("Reason.StandStrideStrike", "Stand, Stride into reach, and Strike {target}.", { target: target.name })
         : strides > 1
-          ? `Stride twice into reach and Strike ${target.name}.`
-          : `Stride into reach and Strike ${target.name}.`],
+          ? t("Reason.StrideTwiceStrike", "Stride twice into reach and Strike {target}.", { target: target.name })
+          : t("Reason.StrideStrike", "Stride into reach and Strike {target}.", { target: target.name })],
     }];
   });
 }
@@ -1542,7 +1563,7 @@ function readRangedRetreatStrikeActivities(context, readyStrikes) {
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
     return [{
       id: `stride-away-strike-${strike.id ?? slug}`,
-      name: `Stride Away -> ${strike.name}`,
+      name: t("Action.StrideAwayStrike", "Stride Away -> {strike}", { strike: strike.name }),
       slug: `stride-away-strike-${slug}`,
       actionCost: 2,
       actionType: "action",
@@ -1572,7 +1593,7 @@ function readRangedRetreatStrikeActivities(context, readyStrikes) {
       },
       attackTrait: true,
       setupFor: [],
-      reasons: [`Stride away from ${target.name}, then Strike with ${strike.name}.`],
+      reasons: [t("Reason.StrideAwayStrike", "Stride away from {target}, then Strike with {strike}.", { target: target.name, strike: strike.name })],
     }];
   });
 }
@@ -1626,7 +1647,7 @@ function readSkirmishStrikeActivities(context, readyStrikes) {
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
     return [{
       id: `stride-strike-stride-${strike.id ?? slug}`,
-      name: `Stride -> ${strike.name} -> Stride`,
+      name: t("Action.StrideStrikeStride", "Stride -> {strike} -> Stride", { strike: strike.name }),
       slug: `stride-strike-stride-${slug}`,
       actionCost: 3,
       actionType: "action",
@@ -1657,7 +1678,7 @@ function readSkirmishStrikeActivities(context, readyStrikes) {
       },
       attackTrait: true,
       setupFor: [],
-      reasons: [`Stride to attack ${target.name}, then return to ${coverState} cover.`],
+      reasons: [t("Reason.StrideReturnCover", "Stride to attack {target}, then return to {cover} cover.", { target: target.name, cover: coverState })],
     }];
   });
 }
@@ -1737,7 +1758,7 @@ function readFlankStrikeActivities(context, readyStrikes) {
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
     return [{
       id: `flank-strike-${strike.id ?? slug}`,
-      name: `Flank -> ${strike.name}`,
+      name: t("Action.FlankStrike", "Flank -> {strike}", { strike: strike.name }),
       slug: `flank-strike-${slug}`,
       actionCost: 2,
       actionType: "action",
@@ -1768,7 +1789,7 @@ function readFlankStrikeActivities(context, readyStrikes) {
       },
       attackTrait: true,
       setupFor: [],
-      reasons: [`Stride to flank ${target.name} with ${ally?.name ?? "an ally"}, then Strike for an off-guard hit.`],
+      reasons: [t("Reason.FlankStrike", "Stride to flank {target} with {ally}, then Strike for an off-guard hit.", { target: target.name, ally: ally?.name ?? t("Reason.AnAlly", "an ally") })],
     }];
   });
 }
@@ -1921,14 +1942,14 @@ function readSkirmishKiteActivities(context, readyStrikes, spells) {
   if (!plan) return [];
 
   const { target, finisher, attackCenter, threatReach, meleeStrike } = plan;
-  const finisherName = finisher.ref.name ?? finisher.ref.slug ?? (finisher.kind === "spell" ? "Cast a Spell" : "Strike");
+  const finisherName = finisher.ref.name ?? finisher.ref.slug ?? (finisher.kind === "spell" ? pf2eActionName("cast-a-spell", "Cast a Spell") : pf2eActionName("strike", "Strike"));
   const slug = slugify(finisherName);
-  const verb = finisher.kind === "spell" ? "Cast" : finisherName;
+  const verb = finisher.kind === "spell" ? t("Reason.CastVerb", "Cast") : finisherName;
   const namePrefix = meleeStrike ? `${meleeStrike.name} -> ` : "";
 
   return [{
     id: `skirmish-${finisher.kind}-${finisher.ref.id ?? slug}`,
-    name: `${namePrefix}Stride Away -> ${finisherName}`,
+    name: t("Action.SkirmishKite", "{prefix}Stride Away -> {finisher}", { prefix: namePrefix, finisher: finisherName }),
     slug: `skirmish-${finisher.kind}-${slug}`,
     actionCost: (meleeStrike ? 1 : 0) + 1 + finisher.actionCost,
     actionType: "action",
@@ -1962,8 +1983,8 @@ function readSkirmishKiteActivities(context, readyStrikes, spells) {
     attackTrait: true,
     setupFor: [],
     reasons: [meleeStrike
-      ? `Strike ${target.name}, Stride out of reach, then ${verb} from range.`
-      : `Stride out of ${target.name}'s reach, then ${verb} from range.`],
+      ? t("Reason.KiteMelee", "Strike {target}, Stride out of reach, then {verb} from range.", { target: target.name, verb })
+      : t("Reason.KiteRanged", "Stride out of {target}'s reach, then {verb} from range.", { target: target.name, verb })],
   }];
 }
 
@@ -2087,13 +2108,13 @@ function readTriggerAvailability(trigger, context) {
 
   if (triggerMatchesContext(trigger, context)) return availability(true, "");
 
-  return availability(false, `Trigger is not active: ${trigger}`);
+  return availability(false, t("Avail.TriggerNotActive", "Trigger is not active: {trigger}", { trigger }));
 }
 
 function readShieldBlockAvailability(slug, item, context) {
   if (!isShieldBlockAction(slug, item)) return availability(true, "");
   if (shieldBlockDefenseActive(context)) return availability(true, "");
-  return availability(false, "Shield Block requires Raise a Shield or an active Shield spell.");
+  return availability(false, t("Avail.ShieldBlockNeedsShield", "Shield Block requires Raise a Shield or an active Shield spell."));
 }
 
 function isShieldBlockAction(slug, item) {
@@ -2170,14 +2191,14 @@ function readShieldSpellBlockActions(actor, context) {
   if (!shieldSpellDefenseActive(context)) return [];
   if (actorHasShieldBlockAction(actor)) return [];
 
-  const trigger = "You would take damage from an attack while your Shield spell is active.";
+  const trigger = t("Reason.ShieldBlockTrigger", "You would take damage from an attack while your Shield spell is active.");
   // This is a standing reaction the Shield spell makes available: it should appear whenever the
   // shield is active, not only when an incoming-attack event is already in context (which never
   // happens on the caster's own turn). The trigger is shown for reference, not as a gate.
   const shieldBlockAvailability = readShieldBlockAvailability("shield-block", { name: "Shield Block" }, context);
   return [{
     id: "spell-shield-block",
-    name: "Shield Block",
+    name: pf2eActionName("shield-block", "Shield Block"),
     slug: "shield-block",
     actionCost: "reaction",
     actionType: "reaction",
@@ -2197,7 +2218,7 @@ function readShieldSpellBlockActions(actor, context) {
     damageProfile: null,
     gatingProfile: null,
     setupFor: [],
-    reasons: ["Shield spell grants Shield Block while active."],
+    reasons: [t("Reason.ShieldBlockActive", "Shield spell grants Shield Block while active.")],
     traits: [],
     attackTrait: false,
   }];
@@ -2219,109 +2240,109 @@ function isGenericAvailable(action, context) {
   const movementAvailability = readMovementAvailability(context, action);
 
   if (action.playerFacing && isNpcProfile(profile)) {
-    return availability(false, "NPCs do not need Recall Knowledge recommendations.");
+    return availability(false, t("Avail.NpcNoRecall", "NPCs do not need Recall Knowledge recommendations."));
   }
   if (!movementAvailability.available) {
     return movementAvailability;
   }
   if (action.slug === "raise-a-shield") {
-    return availability(Boolean(profile.hasShield), "No shield equipped.");
+    return availability(Boolean(profile.hasShield), t("Avail.NoShield", "No shield equipped."));
   }
   if (action.requiresTarget) {
     const targetExists = Boolean(actionTargets.length);
     if (!targetExists && action.slug === "demoralize" && targetableTargets.length) {
-      return availability(false, "Target is temporarily immune to Demoralize.");
+      return availability(false, t("Avail.DemoralizeImmune", "Target is temporarily immune to Demoralize."));
     }
-    if (!targetExists) return availability(false, "No enemy target selected.");
+    if (!targetExists) return availability(false, t("Avail.NoEnemySelected", "No enemy target selected."));
   }
   if (Number.isFinite(action.maxRange)) {
     const targetPool = action.requiresTarget ? actionTargets : [...actionTargets, ...actionEnemies];
     const inRange = targetPool.some((target) => (target?.distance ?? Infinity) <= action.maxRange);
-    if (!inRange) return availability(false, `No target within ${action.maxRange} feet.`);
+    if (!inRange) return availability(false, t("Avail.NoTargetWithin", "No target within {range} feet.", { range: action.maxRange }));
   }
   if (action.requiresEnemyInReach) {
     const enemyInReach = targetableTargets.some((target) => (target?.distance ?? Infinity) <= meleeReach(profile));
-    if (!enemyInReach) return availability(false, "No enemy in reach.");
+    if (!enemyInReach) return availability(false, t("Avail.NoEnemyInReach", "No enemy in reach."));
   }
   if (action.requiresFreeHand && freeHands(profile) < 1) {
-    return availability(false, "No free hand to manipulate an object.");
+    return availability(false, t("Avail.NoFreeHand", "No free hand to manipulate an object."));
   }
   if (action.requiresNearbyEnemy) {
     const nearbyEnemy = targetableTargets.some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
-    if (!nearbyEnemy) return availability(false, "No enemy close enough.");
+    if (!nearbyEnemy) return availability(false, t("Avail.NoEnemyClose", "No enemy close enough."));
   }
   if (action.requiresSeekTarget) {
     if (!hasSeekTarget(context, enemies)) {
-      return availability(false, "No hidden or undetected target detected.");
+      return availability(false, t("Avail.NoHiddenTarget", "No hidden or undetected target detected."));
     }
   }
   if (action.requiresCombatSignal) {
     if (!hasCombatSignal(context, targetableTargets)) {
-      return availability(false, "No combat-relevant deception or mental effect detected.");
+      return availability(false, t("Avail.NoDeceptionEffect", "No combat-relevant deception or mental effect detected."));
     }
   }
   if (action.requiresTumbleThroughOpportunity) {
     if (!hasTumbleThroughOpportunity(context, targetableTargets)) {
-      return availability(false, "No useful path through enemy detected.");
+      return availability(false, t("Avail.NoPathThroughEnemy", "No useful path through enemy detected."));
     }
   }
   if (action.requiresTerrain) {
     if (!hasTerrain(context, action.requiresTerrain)) {
-      return availability(false, `No ${action.requiresTerrain} terrain detected.`);
+      return availability(false, t("Avail.NoTerrain", "No {terrain} terrain detected.", { terrain: action.requiresTerrain }));
     }
   }
   if (action.requiresObstacleInReach) {
     if (!hasObjectInReach(context, profile, ["obstacles", "objects", "hazards", "doors"])) {
-      return availability(false, "No obstacle or object in reach.");
+      return availability(false, t("Avail.NoObstacle", "No obstacle or object in reach."));
     }
   }
   if (action.requiresObjectInReach) {
     if (!hasObjectInReach(context, profile, ["objects"])) {
-      return availability(false, "No object in reach.");
+      return availability(false, t("Avail.NoObject", "No object in reach."));
     }
   }
   if (action.requiresProne) {
     if (!hasCondition(profile, "prone")) {
-      return availability(false, "Actor is not prone.");
+      return availability(false, t("Avail.NotProne", "Actor is not prone."));
     }
   }
   if (action.requiresSickened) {
     if (!hasCondition(profile, "sickened")) {
-      return availability(false, "Actor is not sickened.");
+      return availability(false, t("Avail.NotSickened", "Actor is not sickened."));
     }
   }
   if (action.requiresCover) {
     if (action.slug === "take-cover") {
       if (!hasAdjacentCover(context, profile)) {
-        return availability(false, "No adjacent wall or cover.");
+        return availability(false, t("Avail.NoWallCover", "No adjacent wall or cover."));
       }
     } else if (!hasCoverOrConcealment(profile, context)) {
-      return availability(false, "No cover or concealment detected.");
+      return availability(false, t("Avail.NoCoverConcealment", "No cover or concealment detected."));
     }
   }
   if (action.requiresHiddenOrCover) {
     if (!hasCoverOrConcealment(profile, context) && !hasCondition(profile, "hidden")) {
-      return availability(false, "No hidden state, cover, or concealment detected.");
+      return availability(false, t("Avail.NoHiddenCover", "No hidden state, cover, or concealment detected."));
     }
   }
   if (action.requiresGrabbedOrRestrained) {
     if (![...ESCAPE_CONDITIONS].some((condition) => hasCondition(profile, condition))) {
-      return availability(false, "Actor is not grabbed, restrained, or immobilized.");
+      return availability(false, t("Avail.NotGrabbed", "Actor is not grabbed, restrained, or immobilized."));
     }
   }
   if (action.requiresDyingAlly) {
     if (!allies.some((ally) => hasCondition(ally, "dying"))) {
-      return availability(false, "No dying ally detected.");
+      return availability(false, t("Avail.NoDyingAlly", "No dying ally detected."));
     }
   }
   if (action.requiresDyingOrBleedingAlly) {
     if (!allies.some((ally) => hasCondition(ally, "dying") || hasCondition(ally, "persistent-bleed"))) {
-      return availability(false, "No dying or bleeding ally detected.");
+      return availability(false, t("Avail.NoDyingBleedingAlly", "No dying or bleeding ally detected."));
     }
   }
   if (action.requiresCompanionOrMinion) {
     if (!hasCompanionOrMinion(context, profile)) {
-      return availability(false, "No companion or minion detected.");
+      return availability(false, t("Avail.NoCompanion", "No companion or minion detected."));
     }
   }
   return availability(true, "");
@@ -2401,10 +2422,10 @@ function readMovementAvailability(context, action) {
 
   const profile = contextProfile(context);
   const condition = movementBlockingCondition(profile, action);
-  if (condition) return availability(false, `Actor is ${condition}; move actions are unavailable.`);
+  if (condition) return availability(false, t("Avail.MoveBlocked", "Actor is {condition}; move actions are unavailable.", { condition: pf2eCondition(condition, condition) }));
 
   if (basicMovementBlockedByCollision(context, profile, action)) {
-    return availability(false, "No collision-free movement path.");
+    return availability(false, t("Avail.NoMovePath", "No collision-free movement path."));
   }
 
   return availability(true, "");
@@ -2749,20 +2770,20 @@ export function readActionCost(item) {
 }
 
 function readItemAvailability(item) {
-  if (!item) return { available: false, reason: "Missing item." };
+  if (!item) return { available: false, reason: t("Avail.MissingItem", "Missing item.") };
   if (item.disabled === true || item.system?.disabled === true || item.system?.enabled === false) {
-    return { available: false, reason: "Item is disabled." };
+    return { available: false, reason: t("Avail.ItemDisabled", "Item is disabled.") };
   }
 
   const quantity = Number(systemValue(item.system?.quantity));
   if (item.type === "consumable" && Number.isFinite(quantity) && quantity <= 0) {
-    return { available: false, reason: "Consumable quantity is 0." };
+    return { available: false, reason: t("Avail.ConsumableZero", "Consumable quantity is 0.") };
   }
 
   const usesValue = Number(systemValue(item.system?.uses));
   const usesMax = Number(systemValue(item.system?.uses?.max ?? item.system?.uses?.maximum));
   if (Number.isFinite(usesValue) && (!Number.isFinite(usesMax) || usesMax > 0) && usesValue <= 0) {
-    return { available: false, reason: "No uses remaining." };
+    return { available: false, reason: t("Avail.NoUses", "No uses remaining.") };
   }
 
   const frequencyCurrent = Number(systemValue(
@@ -2771,11 +2792,11 @@ function readItemAvailability(item) {
     ?? item.system?.frequency?.remaining,
   ));
   if (Number.isFinite(frequencyCurrent) && frequencyCurrent <= 0) {
-    return { available: false, reason: "Frequency is spent." };
+    return { available: false, reason: t("Avail.FrequencySpent", "Frequency is spent.") };
   }
 
   if (hasUnevaluatedPredicate(item)) {
-    return { available: false, reason: "Action has unevaluated PF2e predicate." };
+    return { available: false, reason: t("Avail.UnevaluatedPredicate", "Action has unevaluated PF2e predicate.") };
   }
 
   return { available: true, reason: "" };

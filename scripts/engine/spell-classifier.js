@@ -1,3 +1,5 @@
+import { t } from "../i18n.js";
+
 function systemValue(value) {
   if (value && typeof value === "object" && "value" in value) return value.value;
   return value;
@@ -332,7 +334,7 @@ function readUtilityProfile(spell, { controlFacts = null } = {}) {
       role: "sustain-control",
       includes: ["utility", "sustain-control"],
       confidence: "medium",
-      reason: "Sustained spell can keep a control effect active.",
+      reason: t("SpellReason.SustainControl", "Sustained spell can keep a control effect active."),
     };
   }
 
@@ -344,7 +346,7 @@ function readUtilityProfile(spell, { controlFacts = null } = {}) {
       role: "combat-utility",
       includes: ["utility", "combat-utility"],
       confidence: "medium",
-      reason: "Spell has situational combat utility.",
+      reason: t("SpellReason.CombatUtility", "Spell has situational combat utility."),
     };
   }
 
@@ -356,7 +358,7 @@ function readUtilityProfile(spell, { controlFacts = null } = {}) {
       role: "exploration-utility",
       includes: ["utility", "exploration-utility"],
       confidence: "low",
-      reason: "Spell is mostly useful outside combat.",
+      reason: t("SpellReason.Exploration", "Spell is mostly useful outside combat."),
     };
   }
 
@@ -364,7 +366,7 @@ function readUtilityProfile(spell, { controlFacts = null } = {}) {
     role: "combat-utility",
     includes: ["utility", "combat-utility"],
     confidence: "low",
-    reason: "Spell is available but has no recognized high-value combat pattern.",
+    reason: t("SpellReason.NoPattern", "Spell is available but has no recognized high-value combat pattern."),
   };
 }
 
@@ -440,7 +442,7 @@ function classifySpellBase(spell) {
       targetingProfile: { ally: true, self: true },
       damageProfile,
       confidence: "high",
-      reasons: ["Spell can restore Hit Points to an ally."],
+      reasons: [t("SpellReason.Healing", "Spell can restore Hit Points to an ally.")],
     });
   }
 
@@ -451,7 +453,7 @@ function classifySpellBase(spell) {
       saveProfile,
       damageProfile,
       confidence: "high",
-      reasons: ["Area spell damages enemies in a template."],
+      reasons: [t("SpellReason.AreaDamage", "Area spell damages enemies in a template.")],
     });
   }
 
@@ -462,7 +464,7 @@ function classifySpellBase(spell) {
       saveProfile,
       damageProfile,
       confidence: "high",
-      reasons: ["Spell forces a saving throw for damage."],
+      reasons: [t("SpellReason.SaveDamage", "Spell forces a saving throw for damage.")],
     });
   }
 
@@ -473,8 +475,8 @@ function classifySpellBase(spell) {
       damageProfile,
       confidence: hasAttack ? "high" : "medium",
       reasons: [hasAttack
-        ? "Spell attack roll deals damage to one target."
-        : "Spell deals damage to a target."],
+        ? t("SpellReason.AttackDamage", "Spell attack roll deals damage to one target.")
+        : t("SpellReason.Damage", "Spell deals damage to a target.")],
     });
   }
 
@@ -491,10 +493,10 @@ function classifySpellBase(spell) {
       saveProfile,
       confidence: saveProfile || conditionProfile ? "medium" : "high",
       reasons: [saveProfile
-        ? "Spell forces a saving throw to debuff or control the target."
+        ? t("SpellReason.ControlSave", "Spell forces a saving throw to debuff or control the target.")
         : controlFacts
-        ? "Spell changes terrain, visibility, or enemy positioning."
-        : "Spell applies a combat condition."],
+        ? t("SpellReason.ControlTerrain", "Spell changes terrain, visibility, or enemy positioning.")
+        : t("SpellReason.ControlCondition", "Spell applies a combat condition.")],
     });
   }
 
@@ -506,7 +508,7 @@ function classifySpellBase(spell) {
       activityProfile: { ...baseProfile(["stealth-defense"]), ...spellFacts, ...stealthDefense },
       targetingProfile: stealthDefense.ally ? { ally: true, self: true } : { self: true },
       confidence: "medium",
-      reasons: ["Spell improves stealth or makes the target harder to see."],
+      reasons: [t("SpellReason.Stealth", "Spell improves stealth or makes the target harder to see.")],
     });
   }
 
@@ -518,7 +520,7 @@ function classifySpellBase(spell) {
       targetingProfile: { self: true },
       setupFor: defensive ? [] : ["strike", "damage", "spell"],
       confidence: "medium",
-      reasons: [defensive ? "Self-buff spell improves defenses." : "Self-buff spell sets up later actions."],
+      reasons: [defensive ? t("SpellReason.SelfDefense", "Self-buff spell improves defenses.") : t("SpellReason.SelfSetup", "Self-buff spell sets up later actions.")],
     });
   }
 
@@ -529,7 +531,7 @@ function classifySpellBase(spell) {
       targetingProfile: buff.ally ? { ally: true, self: true } : { self: true },
       setupFor: (buff.attackBuff || buff.damageBuff || buff.extraAction) ? ["strike", "damage", "spell"] : [],
       confidence: "medium",
-      reasons: ["Spell grants a beneficial effect to the caster or an ally."],
+      reasons: [t("SpellReason.Buff", "Spell grants a beneficial effect to the caster or an ally.")],
     });
   }
 
@@ -539,7 +541,7 @@ function classifySpellBase(spell) {
       activityProfile: { ...baseProfile(["teleport"]), ...spellFacts, teleport: true },
       targetingProfile: { self: true },
       confidence: "medium",
-      reasons: ["Teleportation spell repositions the caster."],
+      reasons: [t("SpellReason.Teleport", "Teleportation spell repositions the caster.")],
     });
   }
 
@@ -548,7 +550,7 @@ function classifySpellBase(spell) {
       activityProfile: { ...baseProfile(["transformation"]), ...spellFacts, polymorph: traits.includes("polymorph") },
       targetingProfile: { self: true },
       confidence: "medium",
-      reasons: ["Form-changing spell alters the caster's options."],
+      reasons: [t("SpellReason.Transform", "Form-changing spell alters the caster's options.")],
     });
   }
 
@@ -557,7 +559,7 @@ function classifySpellBase(spell) {
       activityProfile: { ...baseProfile(["summon"]), ...spellFacts },
       targetingProfile: { self: true },
       confidence: "medium",
-      reasons: ["Summoning spell adds an ally to the battlefield."],
+      reasons: [t("SpellReason.Summon", "Summoning spell adds an ally to the battlefield.")],
     });
   }
 

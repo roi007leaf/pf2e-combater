@@ -1,3 +1,5 @@
+import { pf2eAreaType, pf2eSave, pf2eTrait, t } from "../i18n.js";
+
 const NOTABLE_TRAITS = [
   "incapacitation",
   "attack",
@@ -8,12 +10,6 @@ const NOTABLE_TRAITS = [
   "linguistic",
   "death",
 ];
-
-function titleCase(value) {
-  return String(value ?? "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 
 function numeric(value) {
   const number = Number(value);
@@ -39,12 +35,12 @@ function pushChip(chips, label, tooltip = "", kind = "") {
 function resolutionChip(action) {
   const dc = numeric(action?.spellDc);
   const save = String(action?.saveProfile?.stat ?? "").trim().toLowerCase();
-  const saveLabel = save ? titleCase(save) : "";
-  const basic = action?.saveProfile?.basic === true ? " basic" : "";
-  if (dc && saveLabel) return `DC ${dc} ${saveLabel}${basic}`;
-  if (dc) return `DC ${dc}`;
-  if (saveLabel) return `${saveLabel} save`;
-  if (action?.activityProfile?.spellAttack === true) return "Spell attack";
+  const saveLabel = save ? pf2eSave(save) : "";
+  const basic = action?.saveProfile?.basic === true ? t("Chip.BasicSuffix", " basic") : "";
+  if (dc && saveLabel) return t("Chip.DCSave", "DC {dc} {save}{basic}", { dc, save: saveLabel, basic });
+  if (dc) return t("Chip.DC", "DC {dc}", { dc });
+  if (saveLabel) return t("Chip.SaveOnly", "{save} save", { save: saveLabel });
+  if (action?.activityProfile?.spellAttack === true) return t("Chip.SpellAttack", "Spell attack");
   return "";
 }
 
@@ -54,19 +50,20 @@ function targetingChip(action) {
   const range = numeric(targeting.maxRange);
   const type = String(targeting.type ?? "").trim();
   if (targeting.area || type) {
+    const typeName = type ? pf2eAreaType(type) : t("Chip.Area", "Area");
     return {
-      label: `${distance ? `${distance}-ft ` : ""}${titleCase(type || "Area")}`,
-      tooltip: range ? `Range ${range} ft` : "",
+      label: distance ? t("Chip.AreaSized", "{distance}-ft {type}", { distance, type: typeName }) : typeName,
+      tooltip: range ? t("Chip.RangeTooltip", "Range {range} ft", { range }) : "",
     };
   }
-  if (range) return { label: `${range} ft`, tooltip: "Range" };
-  if (targeting.self === true) return { label: "Self", tooltip: "Targets self" };
+  if (range) return { label: t("Chip.RangeFt", "{range} ft", { range }), tooltip: t("Chip.Range", "Range") };
+  if (targeting.self === true) return { label: t("Chip.Self", "Self"), tooltip: t("Chip.TargetsSelf", "Targets self") };
   return null;
 }
 
 function durationChip(action) {
   const profile = action?.activityProfile ?? {};
-  if (profile.sustained === true) return "Sustain";
+  if (profile.sustained === true) return t("Chip.Sustain", "Sustain");
   const duration = String(profile.duration ?? "").trim();
   if (!duration || duration.toLowerCase() === "instantaneous") return "";
   return duration;
@@ -78,7 +75,7 @@ function notableTraitChips(action) {
     ...(Array.isArray(action?.item?.system?.traits?.value) ? action.item.system.traits.value : []),
   ].map((trait) => String(trait?.slug ?? trait?.name ?? trait).toLowerCase()));
   if (action?.activityProfile?.incapacitation === true) traits.add("incapacitation");
-  return NOTABLE_TRAITS.filter((trait) => traits.has(trait)).slice(0, 2).map(titleCase);
+  return NOTABLE_TRAITS.filter((trait) => traits.has(trait)).slice(0, 2).map((trait) => pf2eTrait(trait));
 }
 
 export function actionDetailChips(action) {
@@ -86,7 +83,7 @@ export function actionDetailChips(action) {
 
   const chips = [];
   const rank = numeric(action?.rank ?? action?.castRank);
-  pushChip(chips, action?.isCantrip ? "Cantrip" : rank !== null ? `Rank ${rank}` : "", "", "rank");
+  pushChip(chips, action?.isCantrip ? t("Chip.Cantrip", "Cantrip") : rank !== null ? t("Chip.Rank", "Rank {rank}", { rank }) : "", "", "rank");
   pushChip(chips, action?.spellResource?.label, action?.spellResource?.tooltip, "resource");
   pushChip(chips, action?.spellcastingEntryLabel, "", "entry");
   pushChip(chips, resolutionChip(action), "", "resolution");

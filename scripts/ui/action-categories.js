@@ -1,3 +1,5 @@
+import { t } from "../i18n.js";
+
 const CATEGORY_ORDER = [
   { id: "situational", label: "Situational" },
   { id: "attacks", label: "Attacks" },
@@ -11,6 +13,11 @@ const CATEGORY_ORDER = [
   { id: "utility", label: "Utility" },
   { id: "other", label: "Other" },
 ];
+
+// Localized display label for a category, falling back to its English default.
+function categoryLabel(category) {
+  return t(`Category.${category.id}`, category.label);
+}
 
 const CATEGORY_BY_ID = new Map(CATEGORY_ORDER.map((category) => [category.id, category]));
 const MOVEMENT_SLUGS = new Set(["stride", "step", "crawl", "tumble-through", "balance", "climb", "swim", "high-jump", "long-jump"]);
@@ -114,7 +121,7 @@ export function groupActionsByBuilderCategory(actions) {
       const categoryActions = buckets.get(category.id) ?? [];
       return {
         id: category.id,
-        label: category.label,
+        label: categoryLabel(category),
         actions: categoryActions,
         count: categoryActions.length,
         countLabel: String(categoryActions.length),

@@ -1,5 +1,6 @@
 import { combineConfidence } from "./confidence.js";
 import { contextTriggerEvents } from "../rules/event-context.js";
+import { t } from "../i18n.js";
 
 const BASE_ACTIONS = 3;
 const MAX_CANDIDATES = 12;
@@ -54,8 +55,8 @@ function emptyPlan(context) {
     totalCost: 0,
     score: 0,
     confidence: combineConfidence([]),
-    summary: "No recommendation",
-    reason: "No usable combat actions were detected.",
+    summary: t("Plan.NoRecommendation", "No recommendation"),
+    reason: t("Plan.NoUsableActions", "No usable combat actions were detected."),
   };
 }
 
@@ -766,9 +767,9 @@ export function buildTurnPlans(context, candidates) {
           attackIndex: attackCount + 1,
           score: candidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
           reason: [
-            repeatReloadCost > 0 ? `Reloads before firing ${candidate.name}.` : "",
-            penalty > 0 ? `${candidate.reason ?? ""} MAP -${penalty}.`.trim() : candidate.reason,
-            projectedVolley > 0 ? "Volley -2 when fired from the moved-in position." : "",
+            repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: candidate.name }) : "",
+            penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: candidate.reason ?? "", penalty }).trim() : candidate.reason,
+            projectedVolley > 0 ? t("Plan.VolleyMoved", "Volley -2 when fired from the moved-in position.") : "",
           ].filter(Boolean).join(" "),
         }
         : candidate;

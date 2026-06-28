@@ -91,7 +91,8 @@ import { builderActionCategory, groupActionsByBuilderCategory } from "../ui/acti
 import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
-import { handleRetchSocket, requestRetchDecision } from "../rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
+import { requestRetchDc, requestRetchResult, setSocket, shareDraftPlan } from "../socket.js";
 import {
   readSustainedSpellEntries,
   removeSustainedSpellEntries,
@@ -271,13 +272,21 @@ assert.ok(
 );
 assert.ok(panelTemplateSource.includes("data-add-sustain-spell"), "sustained spell section should add a chosen Sustain a Spell step");
 assert.ok(panelSource.includes("_chooseSustainedSpellForStep"), "generic Sustain a Spell execution should ask which spell to sustain");
-// Retch outcome is the GM's call (they know the save DC): a player routes it via requestRetchDecision
-// and only prompts locally as a GM or when no GM is connected.
+// Retch is the GM's call in two phases: the GM sets the DC, the player rolls, then the GM sets the
+// result. A player routes the DC ask via requestRetchDc and the result ask via requestRetchResult,
+// only prompting locally as a GM or when no GM is connected.
 assert.ok(
-  /_confirmRetchResult\([\s\S]*game\?\.user\?\.isGM === true[\s\S]*requestRetchDecision/.test(panelSource),
-  "a player's Retch outcome should be asked of the GM, not decided by the player",
+  /_provideRetchDc\([\s\S]*game\?\.user\?\.isGM === true[\s\S]*requestRetchDc\(/.test(panelSource),
+  "a player's Retch DC should be asked of the GM, not decided by the player",
 );
-assert.ok(mainSource.includes("handleRetchSocket"), "main socket handler should dispatch retch adjudication messages");
+assert.ok(
+  /_confirmRetchResult\([\s\S]*game\?\.user\?\.isGM === true[\s\S]*requestRetchResult\(/.test(panelSource),
+  "a player's Retch result should be ruled by the GM after the roll",
+);
+assert.ok(
+  /socketlib\.ready[\s\S]*registerModule[\s\S]*socket\.register\("promptRetchDc"/.test(mainSource),
+  "main should register Retch adjudication handlers with socketlib",
+);
 assert.ok(mainSource.includes("promptUnsustainedSpellCleanup"), "turn changes should prompt cleanup for unsustained spells");
 for (const oldTabId of ["plan", "alternatives", "debug"]) {
   assert.equal(panelTemplateSource.includes(`data-tab="${oldTabId}"`), false, `panel template should not expose old ${oldTabId} tab`);
@@ -323,11 +332,11 @@ assert.equal(
 );
 assert.equal(panelSource.includes("Execute next"), false, "panel should not expose Execute next state");
 assert.ok(panelSource.includes("_executeDraftStep(instanceId"), "panel should execute an explicit draft step by id");
-assert.ok(panelTemplateSource.includes("Reset execution"), "panel should expose execution reset");
+assert.ok(panelTemplateSource.includes("data-reset-execution"), "panel should expose execution reset");
 // --- Uncounted actions: template (Task 5) ---
 assert.ok(panelTemplateSource.includes("builder.uncounted.hasEntries"), "template should gate the uncounted card");
 assert.ok(panelTemplateSource.includes("combater-uncounted"), "template should render an uncounted card");
-assert.ok(panelTemplateSource.includes("Uncounted actions"), "uncounted card should carry its title");
+assert.ok(panelTemplateSource.includes("PF2E_COMBATER.Panel.UncountedActions"), "uncounted card should carry its (localized) title");
 assert.ok(/data-add-uncounted="\{\{key\}\}"/.test(panelTemplateSource), "each action row should have a second add button for the uncounted list");
 assert.ok(panelSource.includes("executeDraftStep"), "panel should use action executor instead of advisory-only execution");
 assert.ok(panelSource.includes("nextPendingExecutionStep"), "panel should find next executable draft step");
@@ -443,7 +452,7 @@ assert.equal(
 assert.equal(panelTemplateSource.includes("combater-confidence"), false,
   "the vestigial static \"Draft\" mode badge should be gone from the header");
 assert.equal(panelSource.includes("headerMode"), false, "headerMode is removed; no frozen mode label");
-assert.ok(panelTemplateSource.includes("No selected actions"), "panel template should start with empty draft copy");
+assert.ok(panelTemplateSource.includes("PF2E_COMBATER.Panel.NoSelectedActions"), "panel template should start with empty draft copy");
 assert.equal(
   panelSource.includes(": \"No selected actions.\""),
   false,
@@ -505,7 +514,7 @@ assert.ok(
 );
 assert.equal(panelSource.includes("combater is advisory only"), false, "execution should no longer be advisory-only");
 assert.ok(panelSource.includes("readSharedDraftPlan(context)"), "GM panel should read shared player draft plans");
-assert.ok(mainSource.includes("shareDraft"), "main socket listener should receive shared player draft plans");
+assert.ok(mainSource.includes("receiveSharedDraft"), "main should register a handler that receives shared player draft plans");
 assert.ok(panelSource.includes("isPlayerPlan"), "GM header should know when displayed draft is a player plan");
 assert.ok(panelTemplateSource.includes("combater-player-plan-badge"), "GM header should show a visible player-plan badge");
 assert.ok(
@@ -618,7 +627,7 @@ assert.ok(
   "manual execute attempts with missing dependencies should warn instead of executing",
 );
 assert.ok(
-  /_executeDraftStep\(instanceId, event\)\s*\{\s*if \(!this\._canExecuteDraft\(\)\)/.test(panelSource),
+  /_executeDraftStep\(instanceId, event\)[\s\S]*?if \(!this\._canExecuteDraft\(\)\) return;/.test(panelSource),
   "executing a draft step should allow GM execution, not just editing",
 );
 assert.ok(
@@ -634,12 +643,11 @@ assert.ok(
   "automatic player plan sync should mark socket payloads silent",
 );
 assert.ok(
-  mainSource.includes("if (!payload.silent)"),
+  /if \(!payload\??\.silent\)/.test(mainSource),
   "GM should not receive notification spam for automatic plan sync",
 );
 assert.ok(
-  mainSource.includes("writeSharedDraftPlanPayload(payload);\n    scheduleRefresh(\"shared-draft\");")
-  || mainSource.includes("writeSharedDraftPlanPayload(payload);\r\n    scheduleRefresh(\"shared-draft\");"),
+  /writeSharedDraftPlanPayload\(payload\);\s*scheduleRefresh\("shared-draft"\);/.test(mainSource),
   "shared player draft socket payloads should always refresh an open GM panel",
 );
 assert.equal(
@@ -1595,21 +1603,35 @@ try {
   assert.equal(retchResult.status, "done");
   assert.deepEqual(conditionUpdates.at(-1), { slug: "sickened", options: {} });
 
-  // Retch rolls a Fortitude save (not just a dialog); the rolled degree drives the reduction, and a
-  // critical success removes 2 sickened with two revert ops.
+  // Phase 2: given a DC, Retch rolls the Fortitude save against it (the player's roll) and returns a
+  // "retch-result" choice carrying the rolled degree — it does NOT apply yet (the GM rules on it).
   let fortRollCount = 0;
+  let fortRollDc = null;
   const retchSaveActor = {
     decreaseCondition: async (slug, options = {}) => { conditionUpdates.push({ slug, options }); },
     increaseCondition: async (slug, options = {}) => { conditionIncreases.push({ slug, options }); },
-    saves: { fortitude: { roll: async () => { fortRollCount += 1; return { degreeOfSuccess: 3 }; } } },
+    saves: { fortitude: { roll: async ({ dc } = {}) => { fortRollCount += 1; fortRollDc = dc?.value ?? dc ?? null; return { degreeOfSuccess: 3 }; } } },
   };
   const retchSaveContext = { actor: { document: retchSaveActor }, token: { id: "retcher", center: { x: 0, y: 0 } } };
+  const retchRolledResult = await executeDraftStep({
+    context: retchSaveContext,
+    step: { instanceId: "retch-roll-step" },
+    action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+    choices: { dc: 21 },
+  });
+  assert.equal(fortRollCount, 1, "Retch should roll the Fortitude save once a DC is supplied");
+  assert.equal(fortRollDc, 21, "Retch should roll the save against the GM-supplied DC");
+  assert.equal(retchRolledResult.status, "needs-choice");
+  assert.deepEqual(retchRolledResult.choices, ["retch-result"]);
+  assert.equal(retchRolledResult.rolled?.critical, true, "a degree-3 save should surface as a critical success for the GM to rule on");
+
+  // Phase 3: the GM rules a critical success -> remove 2 sickened with two revert ops.
   const retchCritResult = await executeDraftStep({
     context: retchSaveContext,
     step: { instanceId: "retch-crit-step" },
     action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+    choices: { retchSucceeded: true, retchCritical: true },
   });
-  assert.equal(fortRollCount, 1, "Retch should roll a Fortitude save rather than only prompting");
   assert.equal(retchCritResult.status, "done");
   assert.equal(
     retchCritResult.patch.execution.revert.ops.filter((op) => op.kind === "condition" && op.slug === "sickened").length,
@@ -1617,34 +1639,54 @@ try {
     "a critical-success Retch should remove 2 sickened (two revert ops)",
   );
 
-  // With no Fortitude save available (and no preset outcome), Retch falls back to asking for it.
-  const retchNoSaveResult = await executeDraftStep({
-    context: { actor: { document: { decreaseCondition: async () => {} } }, token: { id: "x", center: { x: 0, y: 0 } } },
-    step: { instanceId: "retch-nosave-step" },
+  // Phase 1: without a DC (or preset outcome) Retch does NOT roll blind — it asks the GM for the DC.
+  let blindRollCount = 0;
+  const retchNoDcResult = await executeDraftStep({
+    context: { actor: { document: { decreaseCondition: async () => {}, saves: { fortitude: { roll: async () => { blindRollCount += 1; return { degreeOfSuccess: 3 }; } } } } }, token: { id: "x", center: { x: 0, y: 0 } } },
+    step: { instanceId: "retch-nodc-step" },
     action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
   });
-  assert.equal(retchNoSaveResult.status, "needs-choice");
-  assert.deepEqual(retchNoSaveResult.choices, ["retch-result"]);
+  assert.equal(retchNoDcResult.status, "needs-choice");
+  assert.deepEqual(retchNoDcResult.choices, ["retch-dc"]);
+  assert.equal(blindRollCount, 0, "Retch should not roll the save until a DC is supplied");
 
-  // The Retch outcome (which the player can't judge without the DC) is routed to the GM over the
-  // socket; the GM's reply resolves the player's pending decision. With no GM online it falls back.
-  const prevRetchGame = globalThis.game;
+  // The GM-side prompts settle sensibly with no dialog available (headless): the DC prompt yields
+  // null, and the result prompt mirrors the rolled degree (or no reduction when nothing was rolled).
+  assert.equal(await promptRetchDc({ actorName: "Ezren" }), null, "headless promptRetchDc returns null without a dialog");
+  assert.deepEqual(await promptRetchResult({ rolled: { succeeded: true, critical: true } }), { succeeded: true, critical: true }, "headless promptRetchResult settles to the rolled degree");
+  assert.deepEqual(await promptRetchResult({}), { succeeded: false, critical: false }, "headless promptRetchResult with no roll is no reduction");
+
+  // Retch is routed to the active GM over socketlib (executeAsGM), which runs the registered prompt
+  // on the GM and returns its result. The typed callers in scripts/socket.js wrap that, returning
+  // null when socketlib isn't ready so the panel falls back to a local prompt.
+  assert.equal(await requestRetchDc({ actorName: "Ezren" }), null, "no socketlib → DC request returns null (local fallback)");
+  assert.equal(await requestRetchResult({ actorName: "Ezren" }), null, "no socketlib → result request returns null (local fallback)");
+
+  const socketCalls = [];
+  const sharedDraftCalls = [];
+  setSocket({
+    executeAsGM: async (handler, args) => {
+      socketCalls.push({ handler, args });
+      if (handler === "promptRetchDc") return 18;
+      if (handler === "promptRetchResult") return { succeeded: true, critical: true };
+      return null;
+    },
+    executeForAllGMs: (handler, payload) => { sharedDraftCalls.push({ handler, payload }); },
+  });
   try {
-    globalThis.game = { user: { id: "p1", isGM: false }, users: [{ id: "p1", isGM: false, active: true }], socket: { emit: () => {} } };
-    assert.equal(await requestRetchDecision({ actorName: "Ezren" }), null, "no GM online → retch decision falls back to a local prompt");
+    assert.equal(await requestRetchDc({ actorName: "Ezren" }), 18, "DC request routes to the GM's promptRetchDc and returns its DC");
+    assert.equal(socketCalls.at(-1)?.handler, "promptRetchDc");
+    assert.deepEqual(await requestRetchResult({ actorName: "Ezren", rolled: { succeeded: true, critical: false } }), { succeeded: true, critical: true }, "result request routes to the GM's promptRetchResult");
+    assert.equal(socketCalls.at(-1)?.handler, "promptRetchResult");
 
-    const emitted = [];
-    globalThis.game = {
-      user: { id: "p1", isGM: false },
-      users: [{ id: "p1", isGM: false, active: true }, { id: "gm", isGM: true, active: true }],
-      socket: { emit: (_channel, payload) => emitted.push(payload) },
-    };
-    const decisionPromise = requestRetchDecision({ actorName: "Ezren" });
-    assert.equal(emitted.at(-1)?.type, "retchRequest", "player should ask the GM via the socket, not prompt itself");
-    handleRetchSocket({ type: "retchResult", requestId: emitted.at(-1).requestId, userId: "p1", succeeded: true });
-    assert.equal(await decisionPromise, true, "the GM's reply should resolve the player's retch decision");
+    shareDraftPlan({ type: "shareDraft", actorName: "Ezren" });
+    assert.equal(sharedDraftCalls.at(-1)?.handler, "receiveSharedDraft", "sharing a plan routes to the GMs' receiveSharedDraft handler");
+
+    // A handler that throws (e.g. no GM connected) degrades to null rather than rejecting.
+    setSocket({ executeAsGM: async () => { throw new Error("No GM connected"); }, executeForAllGMs: () => {} });
+    assert.equal(await requestRetchDc({ actorName: "Ezren" }), null, "a socketlib error (no GM) resolves to null so the caller can fall back");
   } finally {
-    globalThis.game = prevRetchGame;
+    setSocket(null);
   }
 
   // Raise a Shield resolves through PF2e's legacy camelCase function (not a slug Action) and
@@ -7542,6 +7584,31 @@ assert.ok(reloadPistol, "a held firearm with a reload value should get a Reload 
 assert.equal(reloadPistol.actionCost, 1);
 assert.equal(reloadPistol.executable, "reload-weapon");
 assert.ok(!readActionSources(weaponActionsContext).some((action) => action.slug && action.slug.startsWith("reload-")), "non-reload weapons should not get a Reload action");
+
+// A reload-0 ammunition weapon (e.g. a bow) reloads as part of firing: still show the Reload step,
+// but as a free action that does not draw from the action budget.
+const bowReloadContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [{ id: "w-bow", name: "Longbow", type: "weapon", uuid: "Actor.x.Item.w-bow", system: { category: "martial", equipped: { carryType: "held", handsHeld: 2 }, usage: { hands: 2 }, reload: { value: "0" }, traits: { value: [] } } }],
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+    profile: {},
+  },
+  profile: {},
+  targets: [],
+};
+const reloadBow = readActionSources(bowReloadContext).find((action) => action.slug === "reload-longbow");
+assert.ok(reloadBow, "a reload-0 ammunition weapon should still show a Reload step");
+assert.equal(reloadBow.actionCost, 0, "a reload-0 Reload should not draw from the action budget");
+assert.equal(reloadBow.actionType, "free");
+assert.equal(reloadBow.executable, "reload-weapon");
 
 const amiriContext = {
   actor: {

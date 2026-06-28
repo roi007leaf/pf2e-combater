@@ -17,6 +17,12 @@
         "type": "system",
         "compatibility": {}
       }
+    ],
+    "requires": [
+      {
+        "id": "socketlib",
+        "type": "module"
+      }
     ]
   },
   "system": [
@@ -24,6 +30,13 @@
   ],
   "esmodules": [
     "scripts/main.js"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
   ],
   "styles": [
     "styles/combater.css"

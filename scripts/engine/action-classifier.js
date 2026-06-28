@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { eventKeysForText } from "../rules/event-context.js";
 
 function textValue(value) {
@@ -364,7 +365,7 @@ function classifySystemActionBase(action, parsedCost) {
         targetingProfile: { enemy: true, reach: true },
         gatingProfile,
         confidence: hasName(action, /\b(?:reactive strike|attack of opportunity)\b/) ? "high" : "medium",
-        reasons: ["Reaction can punish a provoking enemy."],
+        reasons: [t("ActReason.ReactionCanPunishA", "Reaction can punish a provoking enemy.")],
       });
     }
 
@@ -383,7 +384,7 @@ function classifySystemActionBase(action, parsedCost) {
         targetingProfile: { enemy: true, reach: true },
         gatingProfile,
         confidence: "high",
-        reasons: ["Reaction can immediately Swallow Whole a grabbed target."],
+        reasons: [t("ActReason.ReactionCanImmediatelySwallow", "Reaction can immediately Swallow Whole a grabbed target.")],
       });
     }
 
@@ -397,7 +398,7 @@ function classifySystemActionBase(action, parsedCost) {
         targetingProfile: { self: true },
         gatingProfile,
         confidence: hasName(action, /\b(?:shield block|ferocity|nimble dodge)\b/) ? "high" : "medium",
-        reasons: ["Defensive reaction is recognized."],
+        reasons: [t("ActReason.DefensiveReactionIsRecognized", "Defensive reaction is recognized.")],
       });
     }
   }
@@ -430,7 +431,7 @@ function classifySystemActionBase(action, parsedCost) {
         previousActionRequirements: ["non-cantrip-spell"],
       },
       confidence: "high",
-      reasons: ["Free action requires a prior non-cantrip spell before it can enhance a Strike."],
+      reasons: [t("ActReason.FreeActionRequiresA", "Free action requires a prior non-cantrip spell before it can enhance a Strike.")],
     });
   }
 
@@ -441,7 +442,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: acSetupProfile.appliesCondition === "off-guard" ? "high" : "medium",
-      reasons: ["Action can weaken target defenses before a Strike."],
+      reasons: [t("ActReason.ActionCanWeakenTarget", "Action can weaken target defenses before a Strike.")],
     });
   }
 
@@ -454,7 +455,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: hasLocalize(action, "glossary.changeshape") ? "high" : "medium",
-      reasons: ["Change Shape can alter movement, attacks, or disguise state."],
+      reasons: [t("ActReason.ChangeShapeCanAlter", "Change Shape can alter movement, attacks, or disguise state.")],
     });
   }
 
@@ -468,7 +469,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, maxRange: rangeProfile.maxRange ?? 120 },
       gatingProfile,
       confidence: hasLocalize(action, "glossary.throwrock") ? "high" : "medium",
-      reasons: ["Throw Rock is a ranged attack option."],
+      reasons: [t("ActReason.ThrowRockIsA", "Throw Rock is a ranged attack option.")],
     });
   }
 
@@ -483,7 +484,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, reachAfterMove: true, maxRange: rangeProfile.maxRange ?? null },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Aquatic Ambush moves from water into an attack."],
+      reasons: [t("ActReason.AquaticAmbushMovesFrom", "Aquatic Ambush moves from water into an attack.")],
     });
   }
 
@@ -497,7 +498,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
       confidence: hasLocalize(action, "glossary.push") ? "high" : "medium",
-      reasons: ["Push can move a target after a hit."],
+      reasons: [t("ActReason.PushCanMoveA", "Push can move a target after a hit.")],
     });
   }
 
@@ -511,7 +512,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Troop can reform its space."],
+      reasons: [t("ActReason.TroopCanReformIts", "Troop can reform its space.")],
     });
   }
 
@@ -526,7 +527,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Hunt Prey sets up stronger follow-up attacks."],
+      reasons: [t("ActReason.HuntPreySetsUp", "Hunt Prey sets up stronger follow-up attacks.")],
     });
   }
 
@@ -545,7 +546,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Exploit Vulnerability identifies a weakness and sets up stronger attacks."],
+      reasons: [t("ActReason.ExploitVulnerabilityIdentifiesA", "Exploit Vulnerability identifies a weakness and sets up stronger attacks.")],
     });
   }
 
@@ -559,7 +560,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Rage sets up stronger attacks."],
+      reasons: [t("ActReason.RageSetsUpStronger", "Rage sets up stronger attacks.")],
     });
   }
 
@@ -573,7 +574,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Stance sets up this turn's attacks."],
+      reasons: [t("ActReason.StanceSetsUpThis", "Stance sets up this turn's attacks.")],
     });
   }
 
@@ -588,7 +589,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Poisoned weapon can improve the next damaging Strike."],
+      reasons: [t("ActReason.PoisonedWeaponCanImprove", "Poisoned weapon can improve the next damaging Strike.")],
     });
   }
 
@@ -606,7 +607,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["elemental-blast", "damage"],
       gatingProfile,
       confidence: hasName(action, /\b(?:weapon infusion|two-element infusion)\b/) ? "high" : "medium",
-      reasons: ["Infusion modifies the next Elemental Blast."],
+      reasons: [t("ActReason.InfusionModifiesTheNext", "Infusion modifies the next Elemental Blast.")],
     });
   }
 
@@ -621,7 +622,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["spell", "damage", "control"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Reach Spell sets up a longer-range spell."],
+      reasons: [t("ActReason.ReachSpellSetsUp", "Reach Spell sets up a longer-range spell.")],
     });
   }
 
@@ -636,7 +637,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["spell", "damage", "control", "healing"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Quickened Casting sets up an efficient spell this turn."],
+      reasons: [t("ActReason.QuickenedCastingSetsUp", "Quickened Casting sets up an efficient spell this turn.")],
     });
   }
 
@@ -650,7 +651,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["spell", "damage", "control", "healing"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Spellshape action improves the spell cast right after it."],
+      reasons: [t("ActReason.SpellshapeActionImprovesThe", "Spellshape action improves the spell cast right after it.")],
     });
   }
 
@@ -667,7 +668,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Action recovers an expended spell resource."],
+      reasons: [t("ActReason.ActionRecoversAnExpended", "Action recovers an expended spell resource.")],
     });
   }
 
@@ -680,7 +681,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { ally: true, self: true },
       gatingProfile,
       confidence: "high",
-      reasons: ["Battle Medicine can restore Hit Points in combat."],
+      reasons: [t("ActReason.BattleMedicineCanRestore", "Battle Medicine can restore Hit Points in combat.")],
     });
   }
 
@@ -693,7 +694,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { ally: true, self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Action can remove a harmful condition."],
+      reasons: [t("ActReason.ActionCanRemoveA", "Action can remove a harmful condition.")],
     });
   }
 
@@ -703,7 +704,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "high",
-      reasons: ["Raise a Shield improves defense until next turn."],
+      reasons: [t("ActReason.RaiseAShieldImproves", "Raise a Shield improves defense until next turn.")],
     });
   }
 
@@ -718,7 +719,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: "high",
-      reasons: ["Running Reload repositions and reloads for ranged offense."],
+      reasons: [t("ActReason.RunningReloadRepositionsAnd", "Running Reload repositions and reloads for ranged offense.")],
     });
   }
 
@@ -736,7 +737,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: damageProfile ? "high" : "medium",
-      reasons: ["Consumable can restore Hit Points."],
+      reasons: [t("ActReason.ConsumableCanRestoreHit", "Consumable can restore Hit Points.")],
     });
   }
 
@@ -753,7 +754,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: damageProfile ? "high" : "medium",
-      reasons: ["Action can restore Hit Points if its requirement is met."],
+      reasons: [t("ActReason.ActionCanRestoreHit", "Action can restore Hit Points if its requirement is met.")],
     });
   }
 
@@ -773,7 +774,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: "high",
-      reasons: ["Drink Blood punishes a grabbed or helpless target and heals the actor."],
+      reasons: [t("ActReason.DrinkBloodPunishesA", "Drink Blood punishes a grabbed or helpless target and heals the actor.")],
     });
   }
 
@@ -788,7 +789,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
       confidence: hasLocalize(action, "glossary.grab") ? "high" : "medium",
-      reasons: ["Creature can grab a target."],
+      reasons: [t("ActReason.CreatureCanGrabA", "Creature can grab a target.")],
     });
   }
 
@@ -804,7 +805,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: saveProfile && damageProfile ? "high" : "medium",
-      reasons: ["Constrict damages a grabbed target."],
+      reasons: [t("ActReason.ConstrictDamagesAGrabbed", "Constrict damages a grabbed target.")],
     });
   }
 
@@ -821,7 +822,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: "high",
-      reasons: ["Swallow Whole is useful against a grabbed target."],
+      reasons: [t("ActReason.SwallowWholeIsUseful", "Swallow Whole is useful against a grabbed target.")],
     });
   }
 
@@ -841,7 +842,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: saveProfile && damageProfile ? "high" : "medium",
-      reasons: ["Trample moves through enemies and deals damage."],
+      reasons: [t("ActReason.TrampleMovesThroughEnemies", "Trample moves through enemies and deals damage.")],
     });
   }
 
@@ -854,7 +855,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
       confidence: "high",
-      reasons: ["Knockdown can leave target prone."],
+      reasons: [t("ActReason.KnockdownCanLeaveTarget", "Knockdown can leave target prone.")],
     });
   }
 
@@ -868,7 +869,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: damageProfile ? "high" : "medium",
-      reasons: ["Rend rewards repeated hits on one target."],
+      reasons: [t("ActReason.RendRewardsRepeatedHits", "Rend rewards repeated hits on one target.")],
     });
   }
 
@@ -883,7 +884,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: saveProfile || damageProfile ? "high" : "medium",
-      reasons: ["Gaze ability can pressure enemies without a weapon Strike."],
+      reasons: [t("ActReason.GazeAbilityCanPressure", "Gaze ability can pressure enemies without a weapon Strike.")],
     });
   }
 
@@ -902,7 +903,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: "high",
-      reasons: ["Area damage with saving throw is recognized."],
+      reasons: [t("ActReason.AreaDamageWithSaving", "Area damage with saving throw is recognized.")],
     });
   }
 
@@ -914,7 +915,7 @@ function classifySystemActionBase(action, parsedCost) {
       damageProfile,
       gatingProfile,
       confidence: "high",
-      reasons: ["Saving throw damage is recognized."],
+      reasons: [t("ActReason.SavingThrowDamageIs", "Saving throw damage is recognized.")],
     });
   }
 
@@ -925,7 +926,7 @@ function classifySystemActionBase(action, parsedCost) {
       saveProfile,
       gatingProfile,
       confidence: "medium",
-      reasons: ["Saving throw control action is recognized."],
+      reasons: [t("ActReason.SavingThrowControlAction", "Saving throw control action is recognized.")],
     });
   }
 
@@ -941,7 +942,7 @@ function classifySystemActionBase(action, parsedCost) {
       setupFor: (buffProfile.attackBuff || buffProfile.extraAction) ? ["strike", "damage"] : [],
       gatingProfile,
       confidence: "medium",
-      reasons: ["Action grants a beneficial effect to the actor or an ally."],
+      reasons: [t("ActReason.ActionGrantsABeneficial", "Action grants a beneficial effect to the actor or an ally.")],
     });
   }
 
@@ -964,7 +965,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Movement activity is recognized."],
+      reasons: [t("ActReason.MovementActivityIsRecognized", "Movement activity is recognized.")],
     });
   }
 
@@ -974,7 +975,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Teleportation repositions the actor."],
+      reasons: [t("ActReason.TeleportationRepositionsTheActor", "Teleportation repositions the actor.")],
     });
   }
 
@@ -987,7 +988,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Form change alters the actor's options."],
+      reasons: [t("ActReason.FormChangeAltersThe", "Form change alters the actor's options.")],
     });
   }
 
@@ -997,7 +998,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Summons an ally or construct to the battlefield."],
+      reasons: [t("ActReason.SummonsAnAllyOr", "Summons an ally or construct to the battlefield.")],
     });
   }
 
@@ -1007,7 +1008,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { ally: true, self: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Aura affects the actor and nearby allies."],
+      reasons: [t("ActReason.AuraAffectsTheActor", "Aura affects the actor and nearby allies.")],
     });
   }
 
@@ -1021,14 +1022,14 @@ function classifySystemActionBase(action, parsedCost) {
         targetingProfile: { enemy: true, reach: true, ...rangeProfile },
         gatingProfile,
         confidence: "low",
-        reasons: ["Offensive action deals damage."],
+        reasons: [t("ActReason.OffensiveActionDealsDamage", "Offensive action deals damage.")],
       })
       : inferred("control", {
         activityProfile: baseProfile(["control"]),
         targetingProfile: { enemy: true, reach: true, ...rangeProfile },
         gatingProfile,
         confidence: "low",
-        reasons: ["Offensive maneuver pressures a target."],
+        reasons: [t("ActReason.OffensiveManeuverPressuresA", "Offensive maneuver pressures a target.")],
       });
   }
 
@@ -1042,7 +1043,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { self: true },
       gatingProfile,
       confidence: "low",
-      reasons: ["Action is available but has no recognized tactical pattern."],
+      reasons: [t("ActReason.ActionIsAvailableBut", "Action is available but has no recognized tactical pattern.")],
     });
   }
 
@@ -1056,7 +1057,7 @@ function classifySystemActionBase(action, parsedCost) {
       targetingProfile: { enemy: true, reachAfterMove: true },
       gatingProfile,
       confidence: "medium",
-      reasons: ["Move-and-Strike activity is recognized."],
+      reasons: [t("ActReason.MoveAndStrikeActivity", "Move-and-Strike activity is recognized.")],
     });
   }
 
@@ -1074,7 +1075,7 @@ function classifySystemActionBase(action, parsedCost) {
       },
       gatingProfile,
       confidence: mentionsDifferentTargets ? "high" : "medium",
-      reasons: ["Multi-Strike activity is recognized."],
+      reasons: [t("ActReason.MultiStrikeActivityIs", "Multi-Strike activity is recognized.")],
     });
   }
 
@@ -1087,6 +1088,6 @@ function classifySystemActionBase(action, parsedCost) {
     targetingProfile: { enemy: true, reach: true },
     gatingProfile,
     confidence: mentionsFocusedTarget ? "high" : "medium",
-    reasons: ["Strike-based damage activity is recognized."],
+    reasons: [t("ActReason.StrikeBasedDamageActivity", "Strike-based damage activity is recognized.")],
   });
 }

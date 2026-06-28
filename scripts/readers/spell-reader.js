@@ -1,6 +1,7 @@
 import { findCuratedSpell } from "../catalog/spells/index.js";
 import { classifySpell } from "../engine/spell-classifier.js";
 import { parseActionText, slugify } from "./action-reader.js";
+import { t } from "../i18n.js";
 
 function collectionValues(collection) {
   if (!collection) return [];
@@ -227,23 +228,23 @@ function parseActionRange(text) {
 }
 
 function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor, item)) {
-  if (!item) return { available: false, reason: "Missing spell." };
+  if (!item) return { available: false, reason: t("Avail.MissingSpell", "Missing spell.") };
   if (item.disabled === true || item.system?.disabled === true || item.system?.enabled === false) {
-    return { available: false, reason: "Spell is disabled." };
+    return { available: false, reason: t("Avail.SpellDisabled", "Spell is disabled.") };
   }
 
   const hasExplicitLocation = Boolean(spellLocation(item));
   if (hasExplicitLocation && !spellcastingEntryActive(entry)) {
-    return { available: false, reason: "Spell is not assigned to an active spellcasting entry." };
+    return { available: false, reason: t("Avail.SpellNoActiveEntry", "Spell is not assigned to an active spellcasting entry.") };
   }
 
   if (!entry) {
     return isCantrip(item)
       ? { available: true, reason: "" }
-      : { available: false, reason: "No spellcasting entry found." };
+      : { available: false, reason: t("Avail.NoSpellcastingEntry", "No spellcasting entry found.") };
   }
   if (!spellcastingEntryActive(entry)) {
-    return { available: false, reason: "Spellcasting entry is not active." };
+    return { available: false, reason: t("Avail.EntryNotActive", "Spellcasting entry is not active.") };
   }
 
   const preparedType = String(systemValue(entry.system?.prepared) ?? "").toLowerCase();
@@ -269,7 +270,7 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
     return slotAvailable(entry, spellRank(item));
   }
 
-  return { available: false, reason: "Unknown spellcasting preparation type." };
+  return { available: false, reason: t("Avail.UnknownPrepType", "Unknown spellcasting preparation type.") };
 }
 
 function spellcastingEntryActive(entry) {
@@ -459,10 +460,10 @@ function readPreparedSpellResource(entry, spell, rank) {
   return {
     type: "prepared",
     rank,
-    label: `Prepared ${availableMatching}/${matching.length}`,
+    label: t("SpellRes.Prepared", "Prepared {available}/{total}", { available: availableMatching, total: matching.length }),
     tooltip: Number.isFinite(rank)
-      ? `Rank ${rank} prepared slots: ${availableRank}/${prepared.length} unexpended.`
-      : `${availableMatching}/${matching.length} prepared copies unexpended.`,
+      ? t("SpellRes.PreparedTooltipRank", "Rank {rank} prepared slots: {available}/{total} unexpended.", { rank, available: availableRank, total: prepared.length })
+      : t("SpellRes.PreparedTooltip", "{available}/{total} prepared copies unexpended.", { available: availableMatching, total: matching.length }),
     preparedAvailable: availableMatching,
     preparedTotal: matching.length,
     rankAvailable: availableRank,
@@ -477,10 +478,10 @@ function readSlotSpellResource(entry, rank) {
   return {
     type: "spontaneous",
     rank,
-    label: countLabel("Slots", remaining, max),
+    label: countLabel(t("SpellRes.Slots", "Slots"), remaining, max),
     tooltip: Number.isFinite(rank)
-      ? `Rank ${rank} spell slots: ${max !== null ? `${remaining}/${max}` : remaining} left.`
-      : `${max !== null ? `${remaining}/${max}` : remaining} spell slots left.`,
+      ? t("SpellRes.SlotsTooltipRank", "Rank {rank} spell slots: {count} left.", { rank, count: max !== null ? `${remaining}/${max}` : remaining })
+      : t("SpellRes.SlotsTooltip", "{count} spell slots left.", { count: max !== null ? `${remaining}/${max}` : remaining }),
     remaining,
     max,
   };
@@ -492,8 +493,8 @@ function readFocusSpellResource(actor) {
   const max = numericCount(focus?.max) ?? numericCount(focus?.maximum);
   return {
     type: "focus",
-    label: countLabel("Focus", value, max),
-    tooltip: `${max !== null ? `${value}/${max}` : value} focus points left.`,
+    label: countLabel(t("SpellRes.Focus", "Focus"), value, max),
+    tooltip: t("SpellRes.FocusTooltip", "{count} focus points left.", { count: max !== null ? `${value}/${max}` : value }),
     remaining: value,
     max,
   };
@@ -504,8 +505,8 @@ function readUseSpellResource(spell, type) {
   if (!uses) return { type, label: titleCase(type), tooltip: "" };
   return {
     type,
-    label: countLabel("Uses", uses.value, uses.max),
-    tooltip: `${uses.max !== null ? `${uses.value}/${uses.max}` : uses.value} uses left.`,
+    label: countLabel(t("SpellRes.Uses", "Uses"), uses.value, uses.max),
+    tooltip: t("SpellRes.UsesTooltip", "{count} uses left.", { count: uses.max !== null ? `${uses.value}/${uses.max}` : uses.value }),
     remaining: uses.value,
     max: uses.max,
   };
@@ -515,7 +516,7 @@ function readSpellResource(actor, spell, entry) {
   const rank = spellRank(spell);
   const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
   if (isCantrip(spell)) {
-    return { type: "cantrip", rank, label: "No slot", tooltip: "Cantrip does not spend a spell slot." };
+    return { type: "cantrip", rank, label: t("SpellRes.NoSlot", "No slot"), tooltip: t("SpellRes.CantripTooltip", "Cantrip does not spend a spell slot.") };
   }
   if (preparedType === "focus" || isFocusSpell(spell, entry)) return readFocusSpellResource(actor);
   if (preparedType === "prepared") return readPreparedSpellResource(entry, spell, rank);
@@ -553,11 +554,11 @@ function preparedSpellAvailable(entry, spell) {
     if (match && match.expended !== true) return { available: true, reason: "" };
   }
 
-  return { available: false, reason: "Prepared spell is not available or is expended." };
+  return { available: false, reason: t("Avail.PreparedExpended", "Prepared spell is not available or is expended.") };
 }
 
 function slotAvailable(entry, rank) {
-  if (!Number.isFinite(rank)) return { available: false, reason: "Spell rank unavailable." };
+  if (!Number.isFinite(rank)) return { available: false, reason: t("Avail.SpellRankUnavailable", "Spell rank unavailable.") };
   const slot = entry.system?.slots?.[`slot${rank}`];
   const remaining = Number(systemValue(slot?.value ?? slot?.remaining));
   if (Number.isFinite(remaining) && remaining > 0) return { available: true, reason: "" };
@@ -567,7 +568,7 @@ function slotAvailable(entry, rank) {
     return { available: true, reason: "" };
   }
 
-  return { available: false, reason: "No spell slots remaining." };
+  return { available: false, reason: t("Avail.NoSpellSlots", "No spell slots remaining.") };
 }
 
 function spellLocationUses(spell) {
@@ -581,7 +582,7 @@ function innateSpellAvailable(spell) {
   if (Number.isFinite(uses)) {
     return uses > 0
       ? { available: true, reason: "" }
-      : { available: false, reason: "Innate spell has no uses remaining." };
+      : { available: false, reason: t("Avail.InnateNoUses", "Innate spell has no uses remaining.") };
   }
 
   return { available: true, reason: "" };
@@ -592,7 +593,7 @@ function itemSpellAvailable(entry, spell) {
   if (Number.isFinite(uses)) {
     return uses > 0
       ? { available: true, reason: "" }
-      : { available: false, reason: "Item spell has no uses remaining." };
+      : { available: false, reason: t("Avail.ItemSpellNoUses", "Item spell has no uses remaining.") };
   }
 
   return slotAvailable(entry, spellRank(spell));
@@ -602,5 +603,5 @@ function focusAvailable(actor) {
   const focus = actor?.system?.resources?.focus;
   const value = Number(systemValue(focus?.value));
   if (Number.isFinite(value) && value > 0) return { available: true, reason: "" };
-  return { available: false, reason: "No focus points remaining." };
+  return { available: false, reason: t("Avail.NoFocusPoints", "No focus points remaining.") };
 }

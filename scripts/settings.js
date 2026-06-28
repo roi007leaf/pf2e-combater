@@ -12,8 +12,8 @@ const SETTINGS = {
 
 export function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.autoOpen, {
-    name: "Auto-open on turn start",
-    hint: "Open the PF2e Combater panel when a combatant's turn starts.",
+    name: "PF2E_COMBATER.Settings.AutoOpen.Name",
+    hint: "PF2E_COMBATER.Settings.AutoOpen.Hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -21,8 +21,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.compactDefault, {
-    name: "Compact by default",
-    hint: "Open the panel in compact mode before any saved panel state exists.",
+    name: "PF2E_COMBATER.Settings.CompactDefault.Name",
+    hint: "PF2E_COMBATER.Settings.CompactDefault.Hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -30,8 +30,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.rememberPanelPosition, {
-    name: "Remember panel position",
-    hint: "Save the floating panel position on this client.",
+    name: "PF2E_COMBATER.Settings.RememberPanelPosition.Name",
+    hint: "PF2E_COMBATER.Settings.RememberPanelPosition.Hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -39,8 +39,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.enableSpellRecommendations, {
-    name: "Enable spell recommendations",
-    hint: "Include curated spells in recommended full-turn plans.",
+    name: "PF2E_COMBATER.Settings.EnableSpellRecommendations.Name",
+    hint: "PF2E_COMBATER.Settings.EnableSpellRecommendations.Hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -48,8 +48,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.hideUntrainedSkillActions, {
-    name: "Hide untrained skill actions",
-    hint: "Hide skill actions when the combatant is not trained in the required skill.",
+    name: "PF2E_COMBATER.Settings.HideUntrainedSkillActions.Name",
+    hint: "PF2E_COMBATER.Settings.HideUntrainedSkillActions.Hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -57,8 +57,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.includeUnknownCustomActions, {
-    name: "Show unknown custom actions in alternatives",
-    hint: "Show actor actions that PF2e Combater can detect but not tactically score.",
+    name: "PF2E_COMBATER.Settings.IncludeUnknownCustomActions.Name",
+    hint: "PF2E_COMBATER.Settings.IncludeUnknownCustomActions.Hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -66,8 +66,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, SETTINGS.showDebugTab, {
-    name: "Show GM debug tab",
-    hint: "Allow GMs to inspect scoring inputs, rejected actions, and detected actor actions.",
+    name: "PF2E_COMBATER.Settings.ShowDebugTab.Name",
+    hint: "PF2E_COMBATER.Settings.ShowDebugTab.Hint",
     scope: "client",
     config: true,
     type: Boolean,
