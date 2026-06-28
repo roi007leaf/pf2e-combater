@@ -1,5 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { registerSettings, setting, SETTINGS } from "./settings.js";
+import { clearMovementCollisionCache } from "./readers/action-reader.js";
+import { handleRetchSocket } from "./rules/retch-decision.js";
 import { documentRelevantToContext } from "./state/context-relevance.js";
 import {
   captureMovementOrigin,
@@ -281,6 +283,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
 Hooks.once("ready", async () => {
   console.log("PF2e Combater | Ready");
   game.socket?.on?.(`module.${MODULE_ID}`, (payload) => {
+    // Retch adjudication round-trip (player asks, GM answers) is handled on both client roles.
+    if (handleRetchSocket(payload)) return;
     if (payload?.type !== "shareDraft" || game.user?.isGM !== true) return;
     writeSharedDraftPlanPayload(payload);
     scheduleRefresh("shared-draft");
@@ -356,8 +360,15 @@ Hooks.on("updateWorldTime", () => {
 });
 
 Hooks.on("canvasReady", () => {
+  // New scene / re-draw: the cached wall-collision results no longer apply.
+  clearMovementCollisionCache();
   sweepExpiredAreaTemplates().catch((error) => console.warn(`${MODULE_ID} | Area sweep failed`, error));
 });
+
+// The reachable-square sweeps cache wall collisions across rebuilds; any wall edit invalidates them.
+for (const wallHook of ["createWall", "updateWall", "deleteWall"]) {
+  Hooks.on(wallHook, () => clearMovementCollisionCache());
+}
 
 Hooks.on("deleteCombat", (combat) => {
   // A deleted combat's plans are dead weight: drop every draft (local + shared + actor flag) tied
@@ -436,9 +447,17 @@ Hooks.on("targetToken", (user) => {
 // combatant. Selecting a combatant token switches the open panel to it.
 Hooks.on("controlToken", (token, controlled) => {
   if (!controlled || game.user?.isGM !== true || !activePanel) return;
+  // Grabbing a token to drag selects it, firing this hook. Rebuilding the panel for the token it
+  // already shows is the hitch felt at drag-start — skip it. Only a genuine switch to a different
+  // combatant's token needs the rebuild.
+  if (token?.id && token.id === activePanel._context?.token?.id) return;
   const combatant = collectionValues(game.combat?.combatants)
     .find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
-  if (combatant) activePanel.setCombatant?.(combatant, "token-control");
+  if (!combatant) return;
+  // Switch the planned combatant cheaply, then rebuild on the debounce. Rebuilding synchronously
+  // inside this canvas-thread hook is what makes selecting a token feel laggy.
+  activePanel.selectCombatant?.(combatant);
+  scheduleRefresh("token-control");
 });
 
 Hooks.on("updateActor", (actor) => {

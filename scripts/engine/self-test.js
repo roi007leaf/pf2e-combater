@@ -91,6 +91,7 @@ import { builderActionCategory, groupActionsByBuilderCategory } from "../ui/acti
 import { actionDetailChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
+import { handleRetchSocket, requestRetchDecision } from "../rules/retch-decision.js";
 import {
   readSustainedSpellEntries,
   removeSustainedSpellEntries,
@@ -145,8 +146,8 @@ assert.equal(
   "combat-turn refresh should not be skipped while panel is already open and autoOpen is false",
 );
 assert.ok(
-  /Hooks\.on\("controlToken"[\s\S]*?isGM[\s\S]*?setCombatant/.test(mainSource),
-  "GM panel should follow the selected token via the controlToken hook",
+  /Hooks\.on\("controlToken"[\s\S]*?isGM[\s\S]*?selectCombatant[\s\S]*?scheduleRefresh/.test(mainSource),
+  "GM panel should follow the selected token via the controlToken hook, deferring the rebuild to the debounce",
 );
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
 assert.ok(
@@ -270,6 +271,13 @@ assert.ok(
 );
 assert.ok(panelTemplateSource.includes("data-add-sustain-spell"), "sustained spell section should add a chosen Sustain a Spell step");
 assert.ok(panelSource.includes("_chooseSustainedSpellForStep"), "generic Sustain a Spell execution should ask which spell to sustain");
+// Retch outcome is the GM's call (they know the save DC): a player routes it via requestRetchDecision
+// and only prompts locally as a GM or when no GM is connected.
+assert.ok(
+  /_confirmRetchResult\([\s\S]*game\?\.user\?\.isGM === true[\s\S]*requestRetchDecision/.test(panelSource),
+  "a player's Retch outcome should be asked of the GM, not decided by the player",
+);
+assert.ok(mainSource.includes("handleRetchSocket"), "main socket handler should dispatch retch adjudication messages");
 assert.ok(mainSource.includes("promptUnsustainedSpellCleanup"), "turn changes should prompt cleanup for unsustained spells");
 for (const oldTabId of ["plan", "alternatives", "debug"]) {
   assert.equal(panelTemplateSource.includes(`data-tab="${oldTabId}"`), false, `panel template should not expose old ${oldTabId} tab`);
@@ -658,6 +666,13 @@ assert.ok(
 assert.ok(
   /Hooks\.on\("refreshToken"[\s\S]*?isPreview[\s\S]*?return;/.test(mainSource),
   "refreshToken should ignore drag-preview/clone tokens",
+);
+// Grabbing a token to drag selects it (controlToken). Rebuilding the panel for the token it already
+// shows is the drag-start hitch — the hook must skip the rebuild when the controlled token is the
+// one currently displayed.
+assert.ok(
+  /Hooks\.on\("controlToken"[\s\S]*?token\.id === activePanel\._context\?\.token\?\.id\) return;/.test(mainSource),
+  "controlToken should not rebuild the panel for the token it already displays",
 );
 assert.ok(panelSource.includes("hideTarget ? \"\" : decorated.targetLabel"), "panel should support hiding target labels per section");
 assert.equal(
@@ -1379,6 +1394,46 @@ try {
     );
   }
 
+  // A spell that can't be cast (no slot) warns and posts no card — it must NOT roll its damage.
+  let spellSlotAvailable = false;
+  const spellCastActor = {
+    name: "Wizard",
+    itemTypes: {
+      spellcastingEntry: [{
+        id: "entry-1",
+        cast: async () => (spellSlotAvailable ? { id: "spell-card-1", documentName: "ChatMessage" } : undefined),
+      }],
+    },
+  };
+  const spellCastContext = { actor: { document: spellCastActor }, token: { id: "wiz-token", center: { x: 0, y: 0 }, width: 1, height: 1 } };
+  const spellCastAction = {
+    name: "Fireball",
+    source: "spell-prepared",
+    executable: "open-item",
+    spellcastingEntryId: "entry-1",
+    item: { id: "fireball", type: "spell", name: "Fireball" },
+    activityProfile: { spell: true },
+    damageProfile: { formula: "6d6", type: "fire" },
+  };
+  const beforeFailedCast = damageRolls.length;
+  const failedCast = await executeDraftStep({
+    context: spellCastContext,
+    step: { instanceId: "fireball-noslot" },
+    action: spellCastAction,
+  });
+  assert.equal(failedCast.status, "failed", "a spell with no available slot should fail to execute");
+  assert.equal(damageRolls.length, beforeFailedCast, "a spell that can't be cast must not roll its damage");
+
+  spellSlotAvailable = true;
+  const beforeGoodCast = damageRolls.length;
+  const goodCast = await executeDraftStep({
+    context: spellCastContext,
+    step: { instanceId: "fireball-cast" },
+    action: spellCastAction,
+  });
+  assert.equal(goodCast.status, "done", "a spell with an available slot should cast");
+  assert.equal(damageRolls.length, beforeGoodCast + 1, "a successful cast rolls the spell's damage");
+
   // Multiple distinct @Template embeds are surfaced so the player can pick which to place.
   // Both description sources are set so rawDescription concatenates them (doubling matches);
   // the picker must still show each distinct shape only once.
@@ -1540,6 +1595,58 @@ try {
   assert.equal(retchResult.status, "done");
   assert.deepEqual(conditionUpdates.at(-1), { slug: "sickened", options: {} });
 
+  // Retch rolls a Fortitude save (not just a dialog); the rolled degree drives the reduction, and a
+  // critical success removes 2 sickened with two revert ops.
+  let fortRollCount = 0;
+  const retchSaveActor = {
+    decreaseCondition: async (slug, options = {}) => { conditionUpdates.push({ slug, options }); },
+    increaseCondition: async (slug, options = {}) => { conditionIncreases.push({ slug, options }); },
+    saves: { fortitude: { roll: async () => { fortRollCount += 1; return { degreeOfSuccess: 3 }; } } },
+  };
+  const retchSaveContext = { actor: { document: retchSaveActor }, token: { id: "retcher", center: { x: 0, y: 0 } } };
+  const retchCritResult = await executeDraftStep({
+    context: retchSaveContext,
+    step: { instanceId: "retch-crit-step" },
+    action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+  });
+  assert.equal(fortRollCount, 1, "Retch should roll a Fortitude save rather than only prompting");
+  assert.equal(retchCritResult.status, "done");
+  assert.equal(
+    retchCritResult.patch.execution.revert.ops.filter((op) => op.kind === "condition" && op.slug === "sickened").length,
+    2,
+    "a critical-success Retch should remove 2 sickened (two revert ops)",
+  );
+
+  // With no Fortitude save available (and no preset outcome), Retch falls back to asking for it.
+  const retchNoSaveResult = await executeDraftStep({
+    context: { actor: { document: { decreaseCondition: async () => {} } }, token: { id: "x", center: { x: 0, y: 0 } } },
+    step: { instanceId: "retch-nosave-step" },
+    action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
+  });
+  assert.equal(retchNoSaveResult.status, "needs-choice");
+  assert.deepEqual(retchNoSaveResult.choices, ["retch-result"]);
+
+  // The Retch outcome (which the player can't judge without the DC) is routed to the GM over the
+  // socket; the GM's reply resolves the player's pending decision. With no GM online it falls back.
+  const prevRetchGame = globalThis.game;
+  try {
+    globalThis.game = { user: { id: "p1", isGM: false }, users: [{ id: "p1", isGM: false, active: true }], socket: { emit: () => {} } };
+    assert.equal(await requestRetchDecision({ actorName: "Ezren" }), null, "no GM online → retch decision falls back to a local prompt");
+
+    const emitted = [];
+    globalThis.game = {
+      user: { id: "p1", isGM: false },
+      users: [{ id: "p1", isGM: false, active: true }, { id: "gm", isGM: true, active: true }],
+      socket: { emit: (_channel, payload) => emitted.push(payload) },
+    };
+    const decisionPromise = requestRetchDecision({ actorName: "Ezren" });
+    assert.equal(emitted.at(-1)?.type, "retchRequest", "player should ask the GM via the socket, not prompt itself");
+    handleRetchSocket({ type: "retchResult", requestId: emitted.at(-1).requestId, userId: "p1", succeeded: true });
+    assert.equal(await decisionPromise, true, "the GM's reply should resolve the player's retch decision");
+  } finally {
+    globalThis.game = prevRetchGame;
+  }
+
   // Raise a Shield resolves through PF2e's legacy camelCase function (not a slug Action) and
   // needs no target — it should report done, not "PF2e action API is not available".
   const raiseShieldResult = await executeDraftStep({
@@ -1594,6 +1701,20 @@ try {
   const releaseRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "release-weapon-step", execution: releaseResult.patch.execution } });
   assert.equal(releaseRevert.status, "reverted");
   assert.deepEqual(carryChanges.at(-1), { item: "dagger", carryType: "held", handsHeld: 1 }, "reverting Release should restore the held weapon");
+  // Sheathe (1 action) stows a held weapon to its worn slot; revert restores held.
+  const sheatheWeapon = { id: "rapier", name: "Rapier", uuid: "Actor.valeros.Item.rapier", actor: actorDocument, system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } } };
+  createdEffects.set(sheatheWeapon.uuid, sheatheWeapon);
+  const sheatheResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "sheathe-weapon-step" },
+    action: { name: "Sheathe Rapier", slug: "sheathe-rapier", executable: "sheathe-weapon", item: sheatheWeapon },
+  });
+  assert.equal(sheatheResult.status, "done");
+  assert.deepEqual(carryChanges.at(-1), { item: "rapier", carryType: "worn", handsHeld: 0 }, "Sheathe should stow the held weapon");
+  const sheatheRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "sheathe-weapon-step", execution: sheatheResult.patch.execution } });
+  assert.equal(sheatheRevert.status, "reverted");
+  assert.deepEqual(carryChanges.at(-1), { item: "rapier", carryType: "held", handsHeld: 1 }, "reverting Sheathe should restore the held weapon");
+
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
 
@@ -3743,6 +3864,13 @@ assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/
   "auto-fill should store the recommended destination and waypoints for GM NPCs");
 assert.ok(/_autoFillDraft\([\s\S]*strideStepTowardPlannedTarget\(step, atomicSteps, index\)/.test(panelSource),
   "auto-fill should aim a generic stride at the plan's upcoming attack target");
+// Speed guard: auto-fill must reject any stride destination (preset or recommended) the ruler says
+// is beyond the actor's Speed, so it never commits a move past the reachable range.
+assert.ok(panelSource.includes("autoFillStrideOverSpeed"), "auto-fill should clamp stride destinations to the actor's Speed");
+assert.ok(
+  /function autoFillStrideOverSpeed[\s\S]*canvas\?\.grid\?\.measurePath[\s\S]*cost > speed/.test(panelSource),
+  "the Speed clamp should measure with Foundry's ruler and reject over-Speed destinations",
+);
 // Boundary guard: auto-fill drops a negative-scored generic basic move so a redundant in-reach
 // Stride can never be pre-filled, even from a pinned plan variant.
 assert.ok(/_autoFillDraft\([\s\S]*filter\(\(step\) => !isRedundantAutoFillMove\(step\)\)/.test(panelSource),
@@ -7361,6 +7489,12 @@ assert.equal(releaseDagger.executable, "drop-weapon");
 assert.equal(releaseDagger.name, "Release Dagger");
 assert.ok(!weaponSources.some((action) => action.slug === "release-longsword"), "a sheathed weapon should not get a Release");
 assert.ok(!weaponSources.some((action) => action.slug === "draw-dagger"), "a held weapon should not get a Draw");
+const sheatheDagger = weaponSources.find((action) => action.slug === "sheathe-dagger");
+assert.ok(sheatheDagger, "a held weapon should get a Sheathe (1-action) action");
+assert.equal(sheatheDagger.actionCost, 1);
+assert.equal(sheatheDagger.executable, "sheathe-weapon");
+assert.equal(sheatheDagger.name, "Sheathe Dagger");
+assert.ok(!weaponSources.some((action) => action.slug === "sheathe-longsword"), "a sheathed weapon should not get a Sheathe");
 const ownTurnDropProne = weaponSources.find((action) => action.slug === "drop-prone");
 assert.ok(ownTurnDropProne, "Drop Prone should be offered when the actor lacks its own");
 assert.equal(ownTurnDropProne.actionCost, 1);

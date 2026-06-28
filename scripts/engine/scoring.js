@@ -533,7 +533,8 @@ function pathBlocked(from, to) {
   if (!from || !to) return false;
   const walls = globalThis.canvas?.walls;
   if (typeof walls?.checkCollision !== "function") return false;
-  const Ray = globalThis.foundry?.utils?.Ray;
+  // Ray moved to foundry.canvas.geometry.Ray in v13; prefer it so we don't hit the deprecated global.
+  const Ray = globalThis.foundry?.canvas?.geometry?.Ray ?? globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
   if (!Ray) return false;
   const ray = new Ray(from, to);
   return ["sight", "move", "movement"].some((type) => {

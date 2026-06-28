@@ -245,6 +245,23 @@ function pf2eTerrainExtraCost(difficulty, gridDistance, actor) {
   return (difficulty - 1) * gridDistance * terrainMitigationMultiplier(actor, difficulty);
 }
 
+// Per-diagonal cost multiplier for the SCENE's configured diagonal rule, so our reachability matches
+// Foundry's own ruler. Mismatches here (e.g. assuming 5-10-5 on a Euclidean scene) let the BFS pick
+// squares the ruler measures as beyond Speed — the "stride goes further than Speed" bug. Defaults to
+// PF2e's 5-10-5 (ALTERNATING_1) when the rule is unknown (headless/tests).
+function diagonalStepMultiplier(diagonalCount) {
+  const diagonals = globalThis.CONST?.GRID_DIAGONALS;
+  const rule = globalThis.canvas?.grid?.diagonals;
+  if (diagonals) {
+    if (rule === diagonals.EQUIDISTANT) return 1;
+    if (rule === diagonals.RECTILINEAR) return 2;
+    if (rule === diagonals.EXACT || rule === diagonals.APPROXIMATE) return Math.SQRT2;
+    if (rule === diagonals.ALTERNATING_2) return diagonalCount % 2 === 1 ? 2 : 1;
+  }
+  // ALTERNATING_1 (PF2e 5-10-5) and fallback.
+  return diagonalCount % 2 === 1 ? 1 : 2;
+}
+
 function movementStepCost(from, to, options = {}) {
   const gridDistance = numeric(options.gridDistance ?? options.gridSize, 5) || 5;
   let diagonalCount = numeric(options.startingDiagonalCount, 0) || 0;
@@ -253,7 +270,7 @@ function movementStepCost(from, to, options = {}) {
 
   if (isDiagonal) {
     diagonalCount += 1;
-    cost = diagonalCount % 2 === 1 ? gridDistance : gridDistance * 2;
+    cost = gridDistance * diagonalStepMultiplier(diagonalCount);
   }
 
   const difficulty = pf2eTerrainDifficultyAt(to, options);

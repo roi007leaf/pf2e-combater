@@ -55,6 +55,7 @@ import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
 import { canUseFullAggro } from "../rules/aggro.js";
+import { requestRetchDecision } from "../rules/retch-decision.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -311,6 +312,22 @@ function strideImprovesPosition(originCenter, destination, targetCenter) {
   const before = Math.hypot(targetCenter.x - originCenter.x, targetCenter.y - originCenter.y);
   const after = Math.hypot(targetCenter.x - destination.x, targetCenter.y - destination.y);
   return (before - after) >= minGain;
+}
+
+// Final guard: never auto-commit a Stride/Step destination the actor can't actually reach in one
+// move. Whatever produced the square (recommended placement, a composite's attack square), measure
+// it with Foundry's own ruler and reject it if it costs more than the actor's Speed — that's the
+// "stride lands way past max speed" bug. When the ruler is unavailable, trust the upstream bound.
+function autoFillStrideOverSpeed(originCenter, destination, profile) {
+  const measure = globalThis.canvas?.grid?.measurePath;
+  const speed = Number(profile?.speed?.value ?? profile?.speed ?? profile?.landSpeed) || 0;
+  if (!originCenter || !destination || typeof measure !== "function" || speed <= 0) return false;
+  try {
+    const cost = Number(measure([originCenter, destination])?.distance);
+    return Number.isFinite(cost) && cost > speed + 0.01;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function strideStepTowardPlannedTarget(step, atomicSteps, index) {
@@ -862,8 +879,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._searchFocusState = null;
   }
 
-  async setCombatant(combatant, refreshSource = "combatant-selection") {
+  // Switch the planned combatant WITHOUT rebuilding. Selecting a token fires controlToken on the
+  // canvas thread; rebuilding the plan there (buildCandidates + buildTurnPlans) blocks the selection
+  // frame — that's the lag. Callers that select via the canvas set the combatant with this and let
+  // the debounce rebuild a tick later, keeping the click responsive.
+  selectCombatant(combatant) {
     this._selectedCombatant = combatant ?? null;
+  }
+
+  async setCombatant(combatant, refreshSource = "combatant-selection") {
+    this.selectCombatant(combatant);
     await this.refresh(refreshSource);
   }
 
@@ -1447,12 +1472,24 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
       .filter((step) => !(planAppliesProne && AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())));
     const steps = atomicSteps.map((step, index) => {
+      const slug = String(step?.slug ?? "").toLowerCase();
+      const isBasicMove = AUTO_FILL_BASIC_MOVE_SLUGS.has(slug);
+      // Origin for THIS step = where the prior committed strides left the actor (real position for
+      // the first). Computed before any chaining update below so over-Speed checks use the true origin.
+      const moveOrigin = movementContext.token?.plannedCenter ?? movementContext.token?.center;
+      // Keep a pre-set destination (e.g. a composite's attack square) only if the actor can actually
+      // reach it this move — Foundry's ruler is the authority, so an over-Speed square is dropped
+      // rather than auto-committed as an impossible stride.
+      const presetDestination = step?.destination
+        && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, this._context?.profile))
+        ? step.destination
+        : null;
       let draftStep = {
         instanceId: draftStepId(),
         actionKey: this._actionKeyForStep(step),
         actionCost: step?.actionCost ?? step?.cost,
         requiresDestination: requiresDestinationForAction(step),
-        ...(step?.destination ? { destination: step.destination } : {}),
+        ...(presetDestination ? { destination: presetDestination } : {}),
       };
       if (!useAggroTargets) return draftStep;
 
@@ -1472,13 +1509,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
         // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
         // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
-        if (AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase()) && movement?.destination) {
-          const originCenter = movementContext.token?.plannedCenter ?? movementContext.token?.center;
-          if (!strideImprovesPosition(originCenter, movement.destination, autoFillTargetCenter(movementStep))) {
-            return null;
-          }
+        if (isBasicMove && movement?.destination
+          && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
+          return null;
         }
-        if (movement?.destination) {
+        // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
+        // it unset so the GM places a legal one instead of an over-range auto-stride.
+        if (movement?.destination
+          && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
           draftStep = {
             ...draftStep,
             destination: movement.destination,
@@ -2040,10 +2078,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return false;
   }
 
-  async _confirmRetchResult(step, event) {
+  async _askRetchResultLocally() {
     const message = "Did the Retch check reduce sickened?";
     const dialog = globalThis.foundry?.applications?.api?.DialogV2;
-    const succeeded = dialog?.confirm
+    return dialog?.confirm
       ? await dialog.confirm({
         window: { title: "Retch result" },
         content: `<p>${escapeHtml(message)}</p>`,
@@ -2051,6 +2089,21 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         no: { label: "No reduction" },
       })
       : (globalThis.window?.confirm?.(message) ?? false);
+  }
+
+  async _confirmRetchResult(step, event) {
+    let succeeded;
+    if (game?.user?.isGM === true) {
+      // The GM knows the save DC, so they judge the outcome directly.
+      succeeded = await this._askRetchResultLocally();
+    } else {
+      // A player rolled the save but can't know the DC — ask the GM whether it reduced sickened.
+      // Fall back to a local prompt only if no GM is connected to answer.
+      const actorName = this._context?.actor?.name ?? this._context?.combatant?.name ?? "your character";
+      globalThis.ui?.notifications?.info?.("Waiting for the GM to judge your Retch save.");
+      const decision = await requestRetchDecision({ actorName });
+      succeeded = decision === null ? await this._askRetchResultLocally() : decision;
+    }
     const result = await executeDraftStep({
       context: this._contextForDraftStep(step.instanceId) ?? this._context,
       step,

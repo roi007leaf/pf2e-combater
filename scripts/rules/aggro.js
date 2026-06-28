@@ -1,7 +1,50 @@
-const DAMAGE_WORDS = /\b(attack|strike|damage|blast|bolt|fireball|breathe|claw|jaws|fang|stab|shot|arrow|volley)\b/i;
-const HEALING_WORDS = /\b(heal|healing|soothe|lay on hands|battle medicine|stabilize|restore|regenerate)\b/i;
-const DEFENDER_WORDS = /\b(raise a shield|shield block|take cover|intercept|protect|champion|guardian|taunt)\b/i;
-const CONTROL_WORDS = /\b(slow|fear|frighten|stun|paralyze|grapple|grab|trip|restrain|wall|web|command|bane|blind|dazzle)\b/i;
+// Cues used to classify an enemy's kit for GM-NPC aggro targeting. Each is matched against an item's
+// slug, name, traits, and description (see itemText), which is normalized to lowercase with hyphens
+// and underscores turned into spaces — so multi-word PF2e names like "lay-on-hands" match "lay on
+// hands". Word boundaries keep matches whole (e.g. "harm" does not match "harmless").
+function roleCuePattern(words) {
+  return new RegExp(`\\b(${words.join("|")})\\b`, "i");
+}
+
+// Offense: Strikes, damaging spells, martial damage feats, and common monster natural attacks.
+const DAMAGE_WORDS = roleCuePattern([
+  "attack", "strike", "strikes", "damage", "blast", "bolt", "fireball", "breathe", "breath",
+  "rage", "sneak attack", "power attack", "flurry of blows", "flurry", "hunt prey", "hunted shot",
+  "double slice", "twin takedown", "exacting strike", "vicious swing", "spellstrike", "smite",
+  "claw", "claws", "jaws", "fang", "fangs", "bite", "gore", "horn", "tail", "talon", "tusk",
+  "pincer", "tentacle", "stinger", "beak", "hoof", "wing", "slam", "maul", "stab", "shot",
+  "arrow", "volley", "ray", "missile", "barrage", "projectile", "lightning", "scorching",
+  "burning", "searing", "acid", "disintegrate", "harm",
+]);
+
+// Recovery: spells, feats, and items that restore hit points or remove afflictions.
+const HEALING_WORDS = roleCuePattern([
+  "heal", "healing", "soothe", "soothing", "lay on hands", "battle medicine", "treat wounds",
+  "administer first aid", "stabilize", "restore", "restoration", "regenerate", "regeneration",
+  "fast healing", "wholeness of body", "life boost", "vital beacon", "vitality", "field medic",
+  "ward medic", "continual recovery", "robust recovery", "breath of life", "raise dead",
+  "rejuvenate", "revitalize", "mercy", "cleanse",
+]);
+
+// Protection: shields, defensive reactions, and class kits built to tank or guard allies.
+const DEFENDER_WORDS = roleCuePattern([
+  "raise a shield", "shield block", "shield warden", "reactive shield", "shielded", "take cover",
+  "intercept", "interpose", "bodyguard", "protect", "protector", "champion", "guardian",
+  "sentinel", "stalwart", "taunt", "deflect", "bulwark", "endure", "everstand", "stand still",
+  "to the front", "shield ally", "share life", "nimble dodge", "liberating step",
+  "glimpse of redemption", "retributive strike",
+]);
+
+// Control: actions and spells that impose conditions or restrict an enemy's options.
+const CONTROL_WORDS = roleCuePattern([
+  "slow", "slowed", "fear", "frighten", "frightened", "stun", "stunned", "paralyze", "paralyzed",
+  "grapple", "grab", "grabbed", "trip", "knockdown", "restrain", "restrained", "immobilize",
+  "immobilized", "entangle", "wall", "web", "command", "bane", "blind", "blinded", "dazzle",
+  "dazzled", "sicken", "sickened", "nauseate", "demoralize", "feint", "bon mot", "confuse",
+  "confusion", "sleep", "stupefy", "stupefied", "clumsy", "enfeeble", "enfeebled", "drained",
+  "doomed", "fascinate", "hideous laughter", "shove", "reposition", "disarm", "hold person",
+  "petrify", "deafen", "calm emotions", "synesthesia", "create a diversion", "stuck",
+]);
 
 function collectionValues(collection) {
   if (!collection) return [];

@@ -126,6 +126,15 @@ function areaMarker(step) {
   return step?.areaMarker ?? step?.action?.areaMarker ?? null;
 }
 
+// True for spells that place a template (burst/cone/line/emanation), whether or not the area has
+// been positioned yet — they target an area, so the token-target highlight never applies to them.
+function isAreaSpell(step) {
+  const profile = step?.targetingProfile ?? step?.action?.targetingProfile ?? {};
+  return profile.area === true
+    || Boolean(profile.type ?? profile.shape)
+    || (Array.isArray(profile.templates) && profile.templates.length > 0);
+}
+
 function areaShape(step, marker) {
   return String(
     marker?.shape
@@ -166,21 +175,21 @@ function setupShapeStyle(graphics, fill, line, alpha = 0.1) {
   };
 }
 
-function drawRectShape(graphics, x, y, width, height, color = 0xf0b34a) {
-  const stroke = setupShapeStyle(graphics, color, color);
+function drawRectShape(graphics, x, y, width, height, color = 0xf0b34a, alpha = 0.1) {
+  const stroke = setupShapeStyle(graphics, color, color, alpha);
   graphics.drawRect?.(x, y, width, height);
   stroke();
   graphics.drawRect?.(x, y, width, height);
 }
 
-function drawCircleShape(graphics, center, radius, color = 0xf0b34a) {
-  const stroke = setupShapeStyle(graphics, color, color);
+function drawCircleShape(graphics, center, radius, color = 0xf0b34a, alpha = 0.1) {
+  const stroke = setupShapeStyle(graphics, color, color, alpha);
   graphics.drawCircle?.(center.x, center.y, radius);
   stroke();
   graphics.drawCircle?.(center.x, center.y, radius);
 }
 
-function drawLineShape(graphics, center, length, width, rotation, color = 0xf0b34a) {
+function drawLineShape(graphics, center, length, width, rotation, color = 0xf0b34a, alpha = 0.1) {
   const radians = (rotation * Math.PI) / 180;
   const dx = Math.cos(radians);
   const dy = Math.sin(radians);
@@ -191,16 +200,16 @@ function drawLineShape(graphics, center, length, width, rotation, color = 0xf0b3
   const ex = center.x + dx * length;
   const ey = center.y + dy * length;
   const points = [sx + px, sy + py, ex + px, ey + py, ex - px, ey - py, sx - px, sy - py];
-  const stroke = setupShapeStyle(graphics, color, color);
+  const stroke = setupShapeStyle(graphics, color, color, alpha);
   graphics.drawPolygon?.(points);
   stroke();
   graphics.drawPolygon?.(points);
 }
 
-function drawConeShape(graphics, center, radius, angle, rotation, color = 0xf0b34a) {
+function drawConeShape(graphics, center, radius, angle, rotation, color = 0xf0b34a, alpha = 0.1) {
   const start = ((rotation - angle / 2) * Math.PI) / 180;
   const end = ((rotation + angle / 2) * Math.PI) / 180;
-  const stroke = setupShapeStyle(graphics, color, color);
+  const stroke = setupShapeStyle(graphics, color, color, alpha);
   if (typeof graphics.arc === "function") {
     graphics.moveTo?.(center.x, center.y);
     graphics.lineTo?.(center.x + Math.cos(start) * radius, center.y + Math.sin(start) * radius);
@@ -239,14 +248,15 @@ function drawAreaPreview(graphics, step) {
   const width = distancePixels(areaWidth(step, marker));
   const rotation = numeric(marker?.rotation, 0);
 
+  // Outline only (alpha 0) — the dim area fill read as a heavy overlay; the shape ring is enough.
   if (shape === "line") {
-    drawLineShape(graphics, center, distance, width, rotation);
+    drawLineShape(graphics, center, distance, width, rotation, 0xf0b34a, 0);
   } else if (shape === "cone") {
-    drawConeShape(graphics, center, distance, numeric(marker?.angle, 90) || 90, rotation);
+    drawConeShape(graphics, center, distance, numeric(marker?.angle, 90) || 90, rotation, 0xf0b34a, 0);
   } else if (shape === "square" || shape === "cube") {
-    drawRectShape(graphics, center.x - distance / 2, center.y - distance / 2, distance, distance);
+    drawRectShape(graphics, center.x - distance / 2, center.y - distance / 2, distance, distance, 0xf0b34a, 0);
   } else {
-    drawCircleShape(graphics, center, distance);
+    drawCircleShape(graphics, center, distance, 0xf0b34a, 0);
   }
   return true;
 }
@@ -298,6 +308,13 @@ export function showActionPreview(context, step, { skipMovement = false } = {}) 
   // random fallback enemy.
   const isRangedSpell = spellRangeFeet(step) != null;
   if (isRangedSpell) {
+    // An area spell whose template isn't placed yet targets an AREA, not tokens — show only the
+    // range ring (where the template can be dropped), never the green target-highlight dim.
+    if (isAreaSpell(step)) {
+      graphics.destroy?.({ children: true });
+      const ring = showRangeOverlay(context, step);
+      return ring ? { type: "range", ring } : null;
+    }
     const tokens = plannedTargetTokens(context, step);
     if (tokens.length) {
       drawTargetPreview(graphics, tokens);

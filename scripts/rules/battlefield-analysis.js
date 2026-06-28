@@ -48,7 +48,8 @@ function gridReachDistance(left, right, metrics) {
 }
 
 function rayForPoints(from, to) {
-  const Ray = globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
+  // Ray moved to foundry.canvas.geometry.Ray in v13; prefer it so we don't hit the deprecated global.
+  const Ray = globalThis.foundry?.canvas?.geometry?.Ray ?? globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
   return Ray ? new Ray(from, to) : { A: from, B: to };
 }
 

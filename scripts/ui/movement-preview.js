@@ -126,7 +126,8 @@ function scaledPoint(value, scale) {
 }
 
 function rayForPoints(from, to) {
-  const Ray = globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
+  // Ray moved to foundry.canvas.geometry.Ray in v13; prefer it so we don't hit the deprecated global.
+  const Ray = globalThis.foundry?.canvas?.geometry?.Ray ?? globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
   return Ray ? new Ray(from, to) : { A: from, B: to };
 }
 
@@ -1015,6 +1016,23 @@ function drawXMarker(graphics, marker, scale, color = 0xf0eee8) {
   }
 }
 
+// Ring marking where the Stride begins, sized to the actor's footprint (like the destination X), so
+// the overlay reads as "from here to there". `scale` is px-per-foot; pixelSize is px-per-cell.
+function drawOriginMarker(graphics, origin, footprint, scale, color = 0x66c78f) {
+  if (!origin || typeof graphics.drawCircle !== "function") return;
+  const { pixelSize } = previewGridSize();
+  const cells = Math.max(1, Math.min(footprint?.widthCells ?? 1, footprint?.heightCells ?? 1));
+  const radius = (cells * pixelSize) / 2;
+  const x = origin.x * scale;
+  const y = origin.y * scale;
+  graphics.beginFill(0x101418, 0.12);
+  graphics.lineStyle(4, 0x101418, 0.82);
+  graphics.drawCircle(x, y, radius);
+  graphics.lineStyle(2, color, 0.95);
+  graphics.drawCircle(x, y, radius);
+  graphics.endFill();
+}
+
 function drawWaypointIndicators(graphics, waypoints, scale, color) {
   if (typeof graphics.drawCircle !== "function" || !Array.isArray(waypoints)) return;
   let index = 0;
@@ -1229,6 +1247,9 @@ export function showMovementPreview(context, step) {
       drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
     }
   }
+
+  // Circle the Stride's starting square so it's clear where the movement begins.
+  drawOriginMarker(graphics, preview.origin, preview.footprint, scale, preview.movementColor ?? 0x66c78f);
 
   graphics.zIndex = 10_000;
   layer.sortableChildren = true;

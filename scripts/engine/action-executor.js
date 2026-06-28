@@ -850,24 +850,60 @@ function degreeSucceeded(degree) {
   return String(degree).toLowerCase().includes("success");
 }
 
-async function executeRetch({ actor, context, action, event, choices }) {
+function isCriticalSuccessDegree(degree) {
+  if (degree === 3) return true;
+  return String(degree ?? "").toLowerCase().replace(/[\s_-]/g, "") === "criticalsuccess";
+}
+
+// Roll the actor's Fortitude save to chat. PF2e exposes saves as statistics with a roll(); pass a DC
+// when one is known so the card shows the degree, otherwise roll flat (the GM judges it).
+async function rollFortitudeSave(actor, { event, dc } = {}) {
+  const save = actor?.saves?.fortitude ?? actor?.getStatistic?.("fortitude");
+  if (typeof save?.roll !== "function") return null;
+  try {
+    return await save.roll({ event, ...(Number.isFinite(dc) ? { dc: { value: dc } } : {}) });
+  } catch (_error) {
+    return null;
+  }
+}
+
+// Retch is a Fortitude save against the DC of the effect that sickened you (not a PF2e action), so
+// roll the save directly. Success removes 1 sickened, critical success removes 2. When no DC is
+// known the save still rolls to chat; the degree can't be judged automatically, so the panel asks
+// for the outcome.
+async function executeRetch({ actor, action, event, choices }) {
   let succeeded = choices.retchSucceeded;
-  let nativeResult = null;
+  let critical = choices.retchCritical === true;
   if (succeeded === undefined) {
-    nativeResult = await usePf2eAction({ actor, context, action: { ...(action ?? {}), slug: "retch" }, event });
-    succeeded = degreeSucceeded(resultDegree(nativeResult));
+    const dc = numeric(action?.dc ?? action?.difficultyClass ?? choices?.dc);
+    const roll = await rollFortitudeSave(actor, { event, dc: Number.isFinite(dc) ? dc : undefined });
+    const degree = resultDegree(roll);
+    succeeded = degreeSucceeded(degree);
+    critical = isCriticalSuccessDegree(degree);
   }
   if (succeeded === null || succeeded === undefined) {
     return { status: "needs-choice", choices: ["retch-result"], patch: {} };
   }
   if (succeeded !== true) {
-    return { status: "done", patch: executionPatch({}, "done", { result: "Retch failed." }) };
+    return { status: "done", patch: executionPatch({}, "done", { result: "Retch failed; sickened unchanged." }) };
   }
 
-  const reduced = await decreaseCondition(actor, "sickened");
-  return reduced
-    ? { status: "done", patch: executionPatch({}, "done", { result: "Reduced sickened.", revert: revertEnvelope([{ kind: "condition", slug: "sickened" }]) }) }
-    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not reduce sickened." }), error: "Could not reduce sickened." };
+  // Success reduces sickened by 1, critical success by 2; each reduction gets its own revert op.
+  const reduceBy = critical ? 2 : 1;
+  let removed = 0;
+  for (let index = 0; index < reduceBy; index += 1) {
+    if (await decreaseCondition(actor, "sickened")) removed += 1;
+  }
+  if (removed <= 0) {
+    return { status: "failed", patch: executionPatch({}, "failed", { error: "Could not reduce sickened." }), error: "Could not reduce sickened." };
+  }
+  return {
+    status: "done",
+    patch: executionPatch({}, "done", {
+      result: removed >= 2 ? "Reduced sickened by 2." : "Reduced sickened.",
+      revert: revertEnvelope(Array.from({ length: removed }, () => ({ kind: "condition", slug: "sickened" }))),
+    }),
+  };
 }
 
 async function executeDropProne(actor) {
@@ -916,6 +952,16 @@ async function executeDropWeapon({ actor, action }) {
   return changed
     ? { status: "done", patch: executionPatch({}, "done", { result: `Dropped ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not drop the weapon." }), error: "Could not drop the weapon." };
+}
+
+async function executeSheatheWeapon({ actor, action }) {
+  const item = action?.item;
+  if (!item) return { status: "failed", patch: executionPatch({}, "failed", { error: "No weapon to sheathe." }), error: "No weapon to sheathe." };
+  const prior = weaponCarryState(item);
+  const changed = await changeWeaponCarry(actor, item, { carryType: "worn", handsHeld: 0 });
+  return changed
+    ? { status: "done", patch: executionPatch({}, "done", { result: `Sheathed ${item.name ?? "weapon"}.`, revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    : { status: "failed", patch: executionPatch({}, "failed", { error: "Could not sheathe the weapon." }), error: "Could not sheathe the weapon." };
 }
 
 // PF2e has no scriptable reload action (ammo selection happens in the weapon UI), so post a
@@ -1078,11 +1124,15 @@ async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
   const entry = findSpellcastingEntry(actor, action);
   if (typeof entry?.cast === "function") {
-    return entry.cast(item, {
+    const castMessage = await entry.cast(item, {
       event,
       rank: action?.castRank ?? action?.rank,
       slotId: action?.slotId ?? action?.location,
     });
+    // entry.cast posts the spell card and returns it on success; with no available slot/focus it
+    // warns ("cannot cast") and returns nothing. Report the outcome (message kept at `.message`
+    // so revert can still find it) so the caller can skip damage when the cast never happened.
+    return { spellCast: true, message: castMessage ?? null, castFailed: !castMessage };
   }
   if (typeof action?.generatedAction?.use === "function") return action.generatedAction.use({ event });
   if (typeof item?.use === "function") return item.use({ event });
@@ -1612,6 +1662,8 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     result = await executeDrawWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "drop-weapon") {
     result = await executeDropWeapon({ actor, action: resolvedAction });
+  } else if (resolvedAction?.executable === "sheathe-weapon") {
+    result = await executeSheatheWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "reload-weapon") {
     result = await executeReloadWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {
@@ -1621,20 +1673,33 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   } else {
     const slotOp = spellSlotRevertOp(actor, resolvedAction);
     const nativeResult = await executeOpenItem({ actor, action: resolvedAction, event });
-    // Let the action's own chat card commit before rolling damage, so the damage message
-    // always lands after the spell/strike card instead of racing ahead of it.
-    await flushPendingChat();
-    const damageMessageIds = await rollActionDamageMessages({ actor, action: resolvedAction, target });
-    result = {
-      status: "done",
-      patch: executionPatch(patch, "done", {
-        result: nativeResult?.opened ? "Opened action." : "Executed action.",
-        revert: chatActionRevert(nativeResult, resolvedAction, { target, slotOp }),
-      }),
-      nativeResult,
-    };
-    for (const damageMessageId of [...damageMessageIds].reverse()) {
-      result = attachRevertOp(result, { kind: "chat", messageId: damageMessageId });
+    // A spell that can't be cast (no slot / focus point) warns and posts no card. Don't roll its
+    // damage in that case — the cast never happened. (A spell merely opened via the fallback path,
+    // with no spellcasting entry, is not a failed cast and still rolls its @Damage.)
+    if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {
+      const reason = resolvedAction?.unavailableReason || "Spell could not be cast (no slot available).";
+      result = {
+        status: "failed",
+        patch: executionPatch(patch, "failed", { error: reason }),
+        error: reason,
+        nativeResult,
+      };
+    } else {
+      // Let the action's own chat card commit before rolling damage, so the damage message
+      // always lands after the spell/strike card instead of racing ahead of it.
+      await flushPendingChat();
+      const damageMessageIds = await rollActionDamageMessages({ actor, action: resolvedAction, target });
+      result = {
+        status: "done",
+        patch: executionPatch(patch, "done", {
+          result: nativeResult?.opened ? "Opened action." : "Executed action.",
+          revert: chatActionRevert(nativeResult, resolvedAction, { target, slotOp }),
+        }),
+        nativeResult,
+      };
+      for (const damageMessageId of [...damageMessageIds].reverse()) {
+        result = attachRevertOp(result, { kind: "chat", messageId: damageMessageId });
+      }
     }
   }
 

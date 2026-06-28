@@ -151,6 +151,12 @@ function contextAllies(context) {
 }
 
 export function readActionSources(context, spells = []) {
+  // Per-build memos (reachable squares) are keyed by positions fixed for this build; clear them so a
+  // moved token starts fresh. The wall-collision cache persists ACROSS builds and is invalidated only
+  // when the scene/walls change.
+  reachableCentersCache.clear();
+  reachableAttackCentersCache.clear();
+  syncCollisionCacheForScene();
   const actor = contextActor(context);
   const generatedStrikes = readGeneratedStrikes(actor, context);
   return [
@@ -160,6 +166,7 @@ export function readActionSources(context, spells = []) {
     ...readElementalBlastActions(actor, context),
     ...readDrawStrikeActivities(actor, context, generatedStrikes),
     ...readDrawWeaponActions(actor),
+    ...readSheatheWeaponActions(actor),
     ...readReleaseWeaponActions(actor),
     ...readReloadWeaponActions(actor),
     ...readDropProneAction(actor, context),
@@ -840,13 +847,18 @@ function movementGridMetrics() {
 }
 
 function movementRay(from, to) {
-  const Ray = globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
+  // Ray moved to foundry.canvas.geometry.Ray in v13; prefer it so we don't hit the deprecated global.
+  const Ray = globalThis.foundry?.canvas?.geometry?.Ray ?? globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
   return Ray ? new Ray(from, to) : { A: from, B: to };
 }
 
 function wallCollisionBlocked(from, to, types) {
   const walls = globalThis.canvas?.walls;
   if (typeof walls?.checkCollision !== "function") return false;
+  // No walls on the scene means no collision — skip the (expensive) sweep entirely. This is the
+  // common open-battlefield case and removes thousands of checkCollision calls per plan rebuild.
+  // Foundry always exposes placeables as an array, so an explicitly-empty one means "no walls".
+  if (Array.isArray(walls.placeables) && walls.placeables.length === 0) return false;
 
   const ray = movementRay(from, to);
   for (const type of types) {
@@ -867,7 +879,41 @@ function canvasTokenById(id) {
   }) ?? null;
 }
 
-function movementPathBlocked(from, to, token = null) {
+// Wall collision for a fixed grid segment is stable until the walls change, and the same segments
+// are swept on every plan rebuild (each token select / move). These caches persist ACROSS builds —
+// the first rebuild in a walled scene pays for the sweeps, later ones reuse them — and are cleared
+// only when walls or the scene change (see clearMovementCollisionCache, wired in main.js). Moving
+// other tokens never invalidates them: Foundry "move" collision tests walls, not tokens.
+const COLLISION_CACHE_LIMIT = 50000;
+const movementCollisionCache = new Map();
+const attackCollisionCache = new Map();
+
+export function clearMovementCollisionCache() {
+  movementCollisionCache.clear();
+  attackCollisionCache.clear();
+}
+
+// Self-contained safety net so the persistent collision cache can't serve results from a different
+// scene/wall set (a new canvas, scene swap, or walls added/removed) even if the invalidation hooks
+// don't fire (headless, tests). In-place wall *moves* keep this fingerprint stable, so the explicit
+// create/update/deleteWall hooks still matter for those.
+let lastCollisionCanvas;
+let lastCollisionFingerprint;
+function syncCollisionCacheForScene() {
+  const canvas = globalThis.canvas;
+  const fingerprint = `${canvas?.scene?.id ?? ""}|${(canvas?.walls?.placeables ?? []).length}`;
+  if (canvas !== lastCollisionCanvas || fingerprint !== lastCollisionFingerprint) {
+    clearMovementCollisionCache();
+    lastCollisionCanvas = canvas;
+    lastCollisionFingerprint = fingerprint;
+  }
+}
+
+function segmentKey(from, to) {
+  return `${from.x},${from.y}>${to.x},${to.y}`;
+}
+
+function computeMovementPathBlocked(from, to, token) {
   if (typeof token?.checkCollision === "function") {
     try {
       if (token.checkCollision(to, { type: "move", mode: "any", origin: from })) return true;
@@ -880,9 +926,23 @@ function movementPathBlocked(from, to, token = null) {
     || wallSegmentsBlockMovement(from, to);
 }
 
+function movementPathBlocked(from, to, token = null) {
+  const key = `${token?.id ?? token?.document?.id ?? ""}|${segmentKey(from, to)}`;
+  const cached = movementCollisionCache.get(key);
+  if (cached !== undefined) return cached;
+  const blocked = computeMovementPathBlocked(from, to, token);
+  if (movementCollisionCache.size < COLLISION_CACHE_LIMIT) movementCollisionCache.set(key, blocked);
+  return blocked;
+}
+
 function attackPathBlocked(from, to) {
-  return wallCollisionBlocked(from, to, ["sight", "move", "movement"])
+  const key = segmentKey(from, to);
+  const cached = attackCollisionCache.get(key);
+  if (cached !== undefined) return cached;
+  const blocked = wallCollisionBlocked(from, to, ["sight", "move", "movement"])
     || wallSegmentsBlockMovement(from, to);
+  if (attackCollisionCache.size < COLLISION_CACHE_LIMIT) attackCollisionCache.set(key, blocked);
+  return blocked;
 }
 
 function tokenFootprintPixels(value, metrics) {
@@ -986,7 +1046,17 @@ function movementNeighbors(center, metrics) {
   return neighbors;
 }
 
+// Reachable-square BFS depends only on (origin, distance) within one candidate build (the actor,
+// walls and terrain are fixed). The readers run it once per strike per target, so memoize it for the
+// build — collapsing dozens of identical wall-collision sweeps into a couple. Cleared per build in
+// readActionSources. Cached arrays are only ever read (filter/sort/some), never mutated.
+const reachableCentersCache = new Map();
+
 function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
+  const cacheKey = `${movementPointKey(origin)}|${distanceFeet}`;
+  const cached = reachableCentersCache.get(cacheKey);
+  if (cached) return cached;
+
   const cells = Math.floor(distanceFeet / metrics.sceneDistance);
   const maxOffset = cells * metrics.pixelSize;
   const maxDistance = distanceFeet + 0.0001;
@@ -1021,6 +1091,7 @@ function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
     }
   }
 
+  reachableCentersCache.set(cacheKey, centers);
   return centers;
 }
 
@@ -1030,21 +1101,33 @@ function hasMovementCollisionLayer(token = null) {
     || (globalThis.canvas?.walls?.placeables ?? []).some?.(wallBlocksMovement);
 }
 
+// Memoize the perimeter-filtered attack squares per build. For a ranged reach every reachable
+// square passes the reach test and runs an attack-path wall check, and several readers (ranged
+// retreat, skirmish, stride-strike) request the same (origin, distance, reach, target) — without
+// this the same wall sweeps run many times over. Cleared per build alongside the BFS memo.
+const reachableAttackCentersCache = new Map();
+
 function reachableAttackCenters(context, target, distanceFeet, reachFeet) {
-  const collisionToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   const origin = centerPoint(context?.token);
   const targetCenter = centerPoint(target);
   if (!origin || !targetCenter) return [];
 
+  const cacheKey = `${movementPointKey(origin)}|${distanceFeet}|${reachFeet}|${targetKey(target) ?? movementPointKey(targetCenter)}`;
+  const cached = reachableAttackCentersCache.get(cacheKey);
+  if (cached) return cached;
+
+  const collisionToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   const metrics = movementGridMetrics();
   const attackerFootprint = tokenFootprintPixels(context?.token, metrics);
   const targetRectangle = rectangleForCenter(targetCenter, tokenFootprintPixels(target, metrics));
-  return movementReachableCenters(origin, distanceFeet, metrics, collisionToken)
+  const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken)
     .filter((center) => {
       const attackerRectangle = rectangleForCenter(center, attackerFootprint);
       return gridReachDistanceFeet(attackerRectangle, targetRectangle, metrics) <= reachFeet
         && canAttackTargetPerimeter(attackerRectangle, targetRectangle, metrics);
     });
+  reachableAttackCentersCache.set(cacheKey, result);
+  return result;
 }
 
 function canMoveIntoReach(context, target, distanceFeet, reachFeet) {
@@ -1160,6 +1243,32 @@ function readDrawWeaponActions(actor) {
       activityProfile: { includes: ["draw", "interact"], drawsWeapon: true, weaponName: weapon.name },
       targetingProfile: { self: true },
       reasons: [`Draw ${weapon.name} to ready it.`],
+      traits: [],
+      attackTrait: false,
+    };
+  });
+}
+
+// Sheathe (Interact, 1 action) for each held weapon — stows it back into its worn slot.
+function readSheatheWeaponActions(actor) {
+  return readWeaponItems(actor).filter(isHeldWeapon).map((weapon) => {
+    const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+    return {
+      id: `sheathe-weapon-${weapon.id ?? slug}`,
+      name: `Sheathe ${weapon.name}`,
+      slug: `sheathe-${slug}`,
+      actionCost: 1,
+      actionType: "action",
+      source: "system-inferred",
+      confidence: "low",
+      executable: "sheathe-weapon",
+      detected: true,
+      available: true,
+      item: weapon,
+      role: "utility",
+      activityProfile: { includes: ["interact"], sheathesWeapon: true, weaponName: weapon.name },
+      targetingProfile: { self: true },
+      reasons: [`Sheathe ${weapon.name} to stow it.`],
       traits: [],
       attackTrait: false,
     };
