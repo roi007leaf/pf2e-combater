@@ -23,7 +23,8 @@ players plan their own turns.
   action economy — moving into reach, attacking, casting, or repositioning as the situation calls
   for.
 - **Real action sources.** Options are read from the actor itself, not a fixed list:
-  - **Strikes** (melee and ranged), with multiple attack penalty accounted for.
+  - **Strikes** (melee and ranged), with the multiple attack penalty accounted for — and a
+    per-strike MAP button to pin a level when an ability keeps MAP flat across attacks.
   - **Spells** — curated catalog plus inferred classification (damage, save, area, control,
     healing, buff…), respecting slots, focus points, and prepared/spontaneous/innate entries.
   - **Generic & skill actions** (Stride, Step, Demoralize, Trip, Grapple, Recall Knowledge, …),
@@ -46,6 +47,16 @@ players plan their own turns.
 
 - **Movement preview** for strides: the path, reachable squares, the starting square, and the
   landing square — all clamped to the creature's actual Speed and the scene's diagonal rule.
+- **Choose the movement type.** When a creature has more than one Speed, a Stride can travel on
+  **fly, burrow, swim, or climb** — the chosen speed sizes the reachable range and is the movement
+  the token uses on execute (land-only creatures see no extra control).
+- **Vertical movement** for fly and burrow: hold **Shift** and scroll while placing a waypoint to
+  raise or lower its elevation. Each waypoint keeps its own height (so a path can climb, level off,
+  then dive), the elevation is shown on the waypoint, and every leg's vertical distance counts
+  against Speed.
+- **Teleport destinations.** Translocate and other teleports show a **range ring** and let you click
+  the target space; executing casts the spell and repositions the token instantly, and reverting
+  returns it to where it started.
 - **Range and area overlays** when hovering ranged or template spells, so you can see where a spell
   reaches before committing.
 - **Area templates with auto-expiry.** Placing a lingering area (cloud, wall, darkness) creates a
