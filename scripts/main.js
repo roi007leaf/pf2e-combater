@@ -125,7 +125,8 @@ function nextOwnedCombatant(combat = game.combat, user = game.user) {
 
 function panelCombatantForAutomaticOpen() {
   if (game.user?.isGM === true) return selectedTokenCombatant() ?? inlineTurnCombatant(game.combat);
-  return nextOwnedCombatant(game.combat, game.user) ?? inlineTurnCombatant(game.combat);
+  // Players follow their selected token too; fall back to their own combatant, then the active one.
+  return selectedTokenCombatant() ?? nextOwnedCombatant(game.combat, game.user) ?? inlineTurnCombatant(game.combat);
 }
 
 function panelCombatantForTokenTool() {
@@ -426,9 +427,10 @@ Hooks.on("updateCombat", async (combat, changed) => {
   resetMovementPreview();
   if (!setting(SETTINGS.autoOpen) && !activePanel) return;
   if (autoOpenSuppressed && !activePanel) return;
-  // The GM window follows the selected token, so a turn change just refreshes it rather
-  // than jumping to the new active combatant. Players still advance to their next combatant.
-  if (game.user?.isGM === true && activePanel) {
+  // The window follows the selected token (GM and players), so a turn change just refreshes the
+  // open panel rather than jumping to the new active combatant. Only open fresh (to the selected
+  // token, then the user's own combatant) when no panel is up yet.
+  if (activePanel) {
     await activePanel.refresh("combat-turn");
   } else {
     await openCurrent("combat-turn");
@@ -459,10 +461,11 @@ Hooks.on("targetToken", (user) => {
   scheduleRefresh("target-change");
 });
 
-// GM only: the Combater window follows the selected token instead of tracking the active
-// combatant. Selecting a combatant token switches the open panel to it.
+// The Combater window follows the selected token instead of tracking the active combatant — for
+// both the GM and players. Selecting a combatant token switches the open panel to it. (Players can
+// only control tokens they own, so this never exposes a plan they aren't allowed to see.)
 Hooks.on("controlToken", (token, controlled) => {
-  if (!controlled || game.user?.isGM !== true || !activePanel) return;
+  if (!controlled || !activePanel) return;
   // Grabbing a token to drag selects it, firing this hook. Rebuilding the panel for the token it
   // already shows is the hitch felt at drag-start — skip it. Only a genuine switch to a different
   // combatant's token needs the rebuild.

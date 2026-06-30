@@ -8,6 +8,9 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 ### Added
 
+- **"Hide Auto-fill from players" setting (GM).** A world toggle that removes the Auto-fill button
+  for every player so they plan their own turns instead of taking the generic recommendation; the
+  GM keeps Auto-fill. Enforced in the executor too, not just hidden in the UI.
 - **Localization (i18n) support.** All panel text, dialogs, notifications, generated action
   names, and tactical reasons are localized under the `PF2E_COMBATER` namespace with a bundled
   English language file; PF2e proper nouns (traits, saves, conditions, basic action names) reuse
@@ -54,9 +57,11 @@ All notable changes to PF2e Combater are documented here. The format is based on
   strikes, feats, items), with a generic PF2e action icon for image-less actions.
 - Action-cost is now drawn with the **PF2e action-cost icons** (1/2/3 actions, reaction,
   free) instead of plain diamonds.
-- The **GM window now follows the selected token** — selecting a combatant's token shows its
-  plan, and a turn change no longer forces the window to the next NPC. (Players still track
-  their own combatant.)
+- The **window now follows the selected token** for both the GM and players — selecting a
+  combatant's token shows its plan, and a turn change refreshes the open window in place instead
+  of jumping to the active combatant. (Players can only control tokens they own, so this never
+  exposes a plan they aren't allowed to see; with nothing selected it falls back to their own
+  combatant.)
 - A combatant's **execution plan now persists through its whole turn** and is cleared only
   after the turn ends, instead of resetting at the start of each round.
 - **Action damage now rolls after the chat card.** A spell's or strike's own chat message
@@ -75,6 +80,12 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 ### Fixed
 
+- **No more false "Spell could not be cast (no slot available)" warning.** Cast success was read
+  from `entry.cast()`'s return value, but current PF2e resolves it to `undefined` even on a
+  successful cast — so every spell (cantrips and focus spells included, neither of which uses a
+  slot) was flagged as a failed cast. Castability is now checked from the actual resource *before*
+  casting — a focus point (`resources.focus.value`), a remaining spell slot, or none for a
+  cantrip — and a cast is only treated as failed when that resource is genuinely empty.
 - Action damage now lands **reliably** after its spell/strike chat card: the damage message is
   stamped just after the card so the chat log always orders the card first, even when the card's
   creation resolves a tick later.

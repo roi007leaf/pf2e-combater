@@ -171,10 +171,12 @@
       <div class="combater-actions-row">
         {{#if builder}}
           {{#unless builder.readonly}}
+            {{#if showAutoFill}}
             <button type="button" class="combater-header-autofill" data-auto-fill data-tooltip="{{localize "PF2E_COMBATER.Panel.AutoFillTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.AutoFillAria"}}">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
               <span>{{localize "PF2E_COMBATER.Panel.AutoFill"}}</span>
             </button>
+            {{/if}}
           {{/unless}}
         {{/if}}
         <button type="button" class="combater-header-browse {{#if browserOpen}}is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}{{localize "PF2E_COMBATER.Panel.BrowseClose"}}{{else}}{{localize "PF2E_COMBATER.Panel.BrowseOpen"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.BrowseAria"}}" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}">

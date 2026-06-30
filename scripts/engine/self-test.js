@@ -147,8 +147,8 @@ assert.equal(
   "combat-turn refresh should not be skipped while panel is already open and autoOpen is false",
 );
 assert.ok(
-  /Hooks\.on\("controlToken"[\s\S]*?isGM[\s\S]*?selectCombatant[\s\S]*?scheduleRefresh/.test(mainSource),
-  "GM panel should follow the selected token via the controlToken hook, deferring the rebuild to the debounce",
+  /Hooks\.on\("controlToken"[\s\S]*?selectCombatant[\s\S]*?scheduleRefresh/.test(mainSource),
+  "panel should follow the selected token (GM and players) via the controlToken hook, deferring the rebuild to the debounce",
 );
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
 assert.ok(
@@ -166,8 +166,8 @@ assert.ok(
   "turn-end draft clear should run regardless of whether a panel is open",
 );
 assert.ok(
-  /game\.user\?\.isGM === true && activePanel[\s\S]*?refresh\("combat-turn"\)/.test(mainSource),
-  "on turn change the GM panel should refresh in place rather than jump to the active combatant",
+  /if \(activePanel\) \{[\s\S]*?refresh\("combat-turn"\)/.test(mainSource),
+  "on turn change an open panel should refresh in place (follow selected token) rather than jump to the active combatant",
 );
 assert.ok(panelTemplateSource.includes("builder.tabsList"), "panel template should render builder tabs");
 assert.ok(panelTemplateSource.includes("data-tab=\"{{id}}\""), "panel template should expose builder tab switches");
@@ -1402,45 +1402,75 @@ try {
     );
   }
 
-  // A spell that can't be cast (no slot) warns and posts no card — it must NOT roll its damage.
-  let spellSlotAvailable = false;
-  const spellCastActor = {
-    name: "Wizard",
-    itemTypes: {
-      spellcastingEntry: [{
-        id: "entry-1",
-        cast: async () => (spellSlotAvailable ? { id: "spell-card-1", documentName: "ChatMessage" } : undefined),
-      }],
-    },
+  // entry.cast() resolves to undefined even on success in current PF2e and posts the card on a
+  // later tick, so cast success/failure is read from the RESOURCE before casting — never the return
+  // value (which used to flag every spell as a failed cast). A spontaneous slot at 0 = failed cast,
+  // no damage; a remaining slot = cast + damage.
+  const spellCastEntry = {
+    id: "entry-1",
+    system: { prepared: { value: "spontaneous" }, slots: {} },
+    cast: async () => undefined,
   };
+  const spellCastActor = { name: "Wizard", itemTypes: { spellcastingEntry: [spellCastEntry] } };
   const spellCastContext = { actor: { document: spellCastActor }, token: { id: "wiz-token", center: { x: 0, y: 0 }, width: 1, height: 1 } };
   const spellCastAction = {
     name: "Fireball",
-    source: "spell-prepared",
+    source: "spell-spontaneous",
     executable: "open-item",
     spellcastingEntryId: "entry-1",
+    castRank: 3,
     item: { id: "fireball", type: "spell", name: "Fireball" },
     activityProfile: { spell: true },
     damageProfile: { formula: "6d6", type: "fire" },
   };
+
+  spellCastEntry.system.slots = { slot3: { value: 0 } };
   const beforeFailedCast = damageRolls.length;
-  const failedCast = await executeDraftStep({
-    context: spellCastContext,
-    step: { instanceId: "fireball-noslot" },
-    action: spellCastAction,
-  });
-  assert.equal(failedCast.status, "failed", "a spell with no available slot should fail to execute");
+  const failedCast = await executeDraftStep({ context: spellCastContext, step: { instanceId: "fireball-noslot" }, action: spellCastAction });
+  assert.equal(failedCast.status, "failed", "a spell with no remaining slot should fail to execute");
   assert.equal(damageRolls.length, beforeFailedCast, "a spell that can't be cast must not roll its damage");
 
-  spellSlotAvailable = true;
+  spellCastEntry.system.slots = { slot3: { value: 1 } };
   const beforeGoodCast = damageRolls.length;
-  const goodCast = await executeDraftStep({
-    context: spellCastContext,
-    step: { instanceId: "fireball-cast" },
-    action: spellCastAction,
-  });
-  assert.equal(goodCast.status, "done", "a spell with an available slot should cast");
+  const goodCast = await executeDraftStep({ context: spellCastContext, step: { instanceId: "fireball-cast" }, action: spellCastAction });
+  assert.equal(goodCast.status, "done", "a spell with a remaining slot should cast");
   assert.equal(damageRolls.length, beforeGoodCast + 1, "a successful cast rolls the spell's damage");
+
+  // Focus spells use a focus point, not a slot. With a point available, a cast whose entry.cast()
+  // returns nothing must still be a success (this was the false "no slot available" warning); with
+  // no points it fails. Cantrips (no resource) always succeed.
+  const focusEntry = { id: "entry-focus", system: { prepared: { value: "focus" } }, cast: async () => undefined };
+  const focusActor = { name: "Cleric", system: { resources: { focus: { value: 1 } } }, itemTypes: { spellcastingEntry: [focusEntry] } };
+  const focusContext = { actor: { document: focusActor }, token: { id: "cleric-token", center: { x: 0, y: 0 }, width: 1, height: 1 } };
+  const focusAction = {
+    name: "Heal",
+    source: "spell-focus",
+    executable: "open-item",
+    spellcastingEntryId: "entry-focus",
+    item: { id: "heal", type: "spell", name: "Heal" },
+    activityProfile: { spell: true },
+  };
+  const focusCast = await executeDraftStep({ context: focusContext, step: { instanceId: "focus-cast" }, action: focusAction });
+  assert.equal(focusCast.status, "done", "a focus spell with a focus point must cast (not a false 'no slot' failure) even though entry.cast() returns nothing");
+
+  focusActor.system.resources.focus.value = 0;
+  const focusNoPoints = await executeDraftStep({ context: focusContext, step: { instanceId: "focus-empty" }, action: focusAction });
+  assert.equal(focusNoPoints.status, "failed", "a focus spell with no focus points should fail to execute");
+
+  const cantripActor = { name: "Sorcerer", itemTypes: { spellcastingEntry: [{ id: "entry-cantrip", system: { prepared: { value: "spontaneous" }, slots: {} }, cast: async () => undefined }] } };
+  const cantripCast = await executeDraftStep({
+    context: { actor: { document: cantripActor }, token: { id: "sorc-token", center: { x: 0, y: 0 }, width: 1, height: 1 } },
+    step: { instanceId: "cantrip-cast" },
+    action: {
+      name: "Electric Arc",
+      source: "spell-spontaneous",
+      executable: "open-item",
+      spellcastingEntryId: "entry-cantrip",
+      item: { id: "electric-arc", type: "spell", name: "Electric Arc", isCantrip: true },
+      activityProfile: { spell: true },
+    },
+  });
+  assert.equal(cantripCast.status, "done", "a cantrip uses no slot and must always cast");
 
   // Multiple distinct @Template embeds are surfaced so the player can pick which to place.
   // Both description sources are set so rawDescription concatenates them (doubling matches);

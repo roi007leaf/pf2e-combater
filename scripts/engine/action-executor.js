@@ -1125,6 +1125,35 @@ async function executeStrike({ step, action, event, choices }) {
   };
 }
 
+function isCantripSpell(item) {
+  if (item?.isCantrip === true) return true;
+  const traits = item?.system?.traits?.value;
+  return Array.isArray(traits) && traits.includes("cantrip");
+}
+
+// Whether the spell's casting resource is available BEFORE casting. Returns true (castable),
+// false (resource confirmed empty), or null ("can't tell" — cantrip-free innate/scroll/unknown
+// prep — treat as castable and let PF2e be the judge). This replaces reading success from
+// entry.cast()'s return value, which is unreliable (current PF2e resolves it to undefined even on a
+// successful cast) — so cantrips and focus spells, which use no slot, were all flagged as failed.
+function spellCastResourceSufficient(actor, entry, item, action) {
+  if (isCantripSpell(item)) return true;
+  const prepared = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
+  if (prepared === "focus") {
+    const points = numeric(systemValue(actor?.system?.resources?.focus?.value), null);
+    return Number.isFinite(points) ? points > 0 : null;
+  }
+  if (prepared === "spontaneous") {
+    const slotKey = slotKeyForRank(action?.castRank ?? action?.rank);
+    const slot = slotKey ? entry?.system?.slots?.[slotKey] : null;
+    if (!slot) return null;
+    const remaining = numeric(systemValue(slot.value ?? slot.remaining), null);
+    return Number.isFinite(remaining) ? remaining > 0 : null;
+  }
+  // prepared / innate / items / unknown: don't second-guess PF2e — assume castable.
+  return null;
+}
+
 export function findSpellcastingEntry(actor, action) {
   const id = action?.spellcastingEntryId;
   const uuid = action?.spellcastingEntryUuid;
@@ -1139,15 +1168,30 @@ async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
   const entry = findSpellcastingEntry(actor, action);
   if (typeof entry?.cast === "function") {
-    const castMessage = await entry.cast(item, {
-      event,
-      rank: action?.castRank ?? action?.rank,
-      slotId: action?.slotId ?? action?.location,
-    });
-    // entry.cast posts the spell card and returns it on success; with no available slot/focus it
-    // warns ("cannot cast") and returns nothing. Report the outcome (message kept at `.message`
-    // so revert can still find it) so the caller can skip damage when the cast never happened.
-    return { spellCast: true, message: castMessage ?? null, castFailed: !castMessage };
+    // Decide failure from the resource BEFORE casting (false = confirmed empty); never from
+    // entry.cast()'s return value, which is undefined even on success in current PF2e and made
+    // every spell look like a failed cast. PF2e's cast() still consumes the resource and posts the
+    // card; we capture that card (best effort, via the hook) only so revert can delete it.
+    const resourceOk = spellCastResourceSufficient(actor, entry, item, action);
+    const actorId = actor?.id ?? actor?._id ?? null;
+    let castMessage = null;
+    const onCreate = (message) => {
+      if (castMessage) return;
+      const messageActorId = message?.speaker?.actor ?? null;
+      if (!actorId || !messageActorId || messageActorId === actorId) castMessage = message;
+    };
+    const hookId = globalThis.Hooks?.on?.("createChatMessage", onCreate) ?? null;
+    try {
+      const returned = await entry.cast(item, {
+        event,
+        rank: action?.castRank ?? action?.rank,
+        slotId: action?.slotId ?? action?.location,
+      });
+      if (!castMessage && returned && typeof returned === "object") castMessage = returned;
+    } finally {
+      if (hookId != null) globalThis.Hooks?.off?.("createChatMessage", hookId);
+    }
+    return { spellCast: true, message: castMessage, castFailed: resourceOk === false };
   }
   if (typeof action?.generatedAction?.use === "function") return action.generatedAction.use({ event });
   if (typeof item?.use === "function") return item.use({ event });

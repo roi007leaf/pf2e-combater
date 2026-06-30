@@ -25,6 +25,10 @@
         "Name": "Show unknown custom actions in alternatives",
         "Hint": "Show actor actions that PF2e Combater can detect but not tactically score."
       },
+      "HideAutoFillFromPlayers": {
+        "Name": "Hide Auto-fill from players",
+        "Hint": "Remove the Auto-fill button for players so they plan their own turns instead of accepting the generic recommendation. The GM still sees Auto-fill."
+      },
       "ShowDebugTab": {
         "Name": "Show GM debug tab",
         "Hint": "Allow GMs to inspect scoring inputs, rejected actions, and detected actor actions."

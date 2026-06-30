@@ -7,6 +7,7 @@ const SETTINGS = {
   enableSpellRecommendations: "enableSpellRecommendations",
   hideUntrainedSkillActions: "hideUntrainedSkillActions",
   includeUnknownCustomActions: "includeUnknownCustomActions",
+  hideAutoFillFromPlayers: "hideAutoFillFromPlayers",
   showDebugTab: "showDebugTab",
 };
 
@@ -59,6 +60,15 @@ export function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.includeUnknownCustomActions, {
     name: "PF2E_COMBATER.Settings.IncludeUnknownCustomActions.Name",
     hint: "PF2E_COMBATER.Settings.IncludeUnknownCustomActions.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.hideAutoFillFromPlayers, {
+    name: "PF2E_COMBATER.Settings.HideAutoFillFromPlayers.Name",
+    hint: "PF2E_COMBATER.Settings.HideAutoFillFromPlayers.Hint",
     scope: "world",
     config: true,
     type: Boolean,

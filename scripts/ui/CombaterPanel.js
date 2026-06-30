@@ -1022,6 +1022,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _viewContext(context) {
     const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
+    // The GM can hide Auto-fill from players so they plan their own turns rather than taking the
+    // generic recommendation. The GM always keeps it.
+    const showAutoFill = game?.user?.isGM === true || !readSetting(SETTINGS.hideAutoFillFromPlayers, false);
     const autoFill = decoratePlan(this._builder?.autoFill ?? this._plan, 0);
     const draftSteps = this._builder?.draft?.steps ?? [];
 
@@ -1036,6 +1039,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       activeTab: this.activeTab,
       browserOpen: Boolean(this._browser),
       showDebug,
+      showAutoFill,
       hasContext: Boolean(context),
       refreshSource: this.refreshSource,
       debug: {
@@ -1501,6 +1505,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _autoFillDraft() {
     if (!this._canEditDraft()) return;
+    // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
+    if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
     const autoFill = this._builder?.autoFill;
     if (!this._context || !autoFill?.steps?.length) return;
     if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
