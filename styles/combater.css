@@ -414,6 +414,43 @@
   cursor: progress;
 }
 
+.pf2e-combater .combater-chip-target.is-map {
+  color: var(--combater-two);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-chip-tool.combater-map-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-chip-tool.combater-map-cycle.is-pinned {
+  color: var(--combater-two);
+  border-color: var(--combater-two);
+}
+
+.pf2e-combater .combater-map-value {
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
+.pf2e-combater .combater-chip-tool.combater-movement-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+}
+
+.pf2e-combater .combater-movement-value {
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
 .pf2e-combater .combater-chip,
 .pf2e-combater .combater-empty-chip {
   display: inline-flex;

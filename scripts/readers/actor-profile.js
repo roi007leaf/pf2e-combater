@@ -87,6 +87,58 @@ function readSpeed(actor) {
   );
 }
 
+// PF2e creature speed keys (system.movement.speeds) -> the Foundry movement-action a Stride uses
+// when travelling on that speed. "land" is the default walking Stride.
+const MOVEMENT_SPEED_ACTIONS = { land: "walk", fly: "fly", burrow: "burrow", swim: "swim", climb: "climb" };
+
+function movementActionAvailable(action) {
+  const actions = globalThis.CONFIG?.Token?.movement?.actions;
+  return !actions || Object.prototype.hasOwnProperty.call(actions, action);
+}
+
+// The movement types this actor can Stride with, in display order (walking first, then any extra
+// speeds the actor actually has: fly, burrow, swim, climb). Each entry is { action, speed } where
+// `action` is the Foundry movement-action slug and `speed` is that movement's value in feet. Used
+// to offer a per-Stride movement-type picker and to size reachable range by the chosen speed.
+export function actorMovementOptions(actor) {
+  const realActor = actor?.document ?? actor;
+  const speeds = realActor?.system?.movement?.speeds;
+  const seen = new Set();
+  const options = [];
+  const add = (action, speed) => {
+    if (!action || seen.has(action) || !movementActionAvailable(action)) return;
+    seen.add(action);
+    options.push({ action, speed: numericValue(speed, 0) ?? 0 });
+  };
+
+  if (speeds && typeof speeds === "object") {
+    for (const [type, data] of Object.entries(speeds)) {
+      const action = MOVEMENT_SPEED_ACTIONS[type];
+      if (!action || !data) continue;
+      const value = numericValue(data.total ?? data.value ?? data.base, 0) ?? 0;
+      // A non-walking speed only counts when the actor actually has it (value > 0).
+      if (action !== "walk" && !(value > 0)) continue;
+      add(action, value);
+    }
+  }
+
+  // Legacy/compendium actors expose extra speeds under system.attributes.speed.otherSpeeds.
+  const otherSpeeds = realActor?.system?.attributes?.speed?.otherSpeeds;
+  if (Array.isArray(otherSpeeds)) {
+    for (const speed of otherSpeeds) {
+      const action = MOVEMENT_SPEED_ACTIONS[String(speed?.type ?? "").toLowerCase()];
+      const value = numericValue(speed?.total ?? speed?.value, 0) ?? 0;
+      if (action && action !== "walk" && value > 0) add(action, value);
+    }
+  }
+
+  // Walking is always available as the baseline, even on the legacy/compendium data shape.
+  if (!seen.has("walk")) add("walk", readSpeed(realActor));
+
+  options.sort((left, right) => (left.action === "walk" ? -1 : right.action === "walk" ? 1 : 0));
+  return options;
+}
+
 function traitSlug(trait) {
   return String(trait?.slug ?? trait?.name ?? trait ?? "").toLowerCase();
 }

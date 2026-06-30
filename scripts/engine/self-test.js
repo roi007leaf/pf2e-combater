@@ -39,7 +39,7 @@ import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
 import { readActionCost, readActionSources } from "../readers/action-reader.js";
-import { readActorProfile, readEffects } from "../readers/actor-profile.js";
+import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import {
   favoriteKey,
@@ -272,6 +272,32 @@ assert.ok(
 );
 assert.ok(panelTemplateSource.includes("data-add-sustain-spell"), "sustained spell section should add a chosen Sustain a Spell step");
 assert.ok(panelSource.includes("_chooseSustainedSpellForStep"), "generic Sustain a Spell execution should ask which spell to sustain");
+// Draft steps are tagged with their multiple-attack-penalty position so strikes roll the right MAP
+// variant; uncounted attacks continue the plan's running attack count.
+assert.ok(panelSource.includes("injectMapInfo"), "draft steps should be tagged with their multiple-attack-penalty position");
+assert.ok(/injectMapInfo\(rawUncounted, planMap\.attackCount\)/.test(panelSource), "uncounted attacks should continue the plan's MAP count");
+// Players can pin a strike's MAP level per attack (some abilities keep MAP flat across attacks).
+assert.ok(panelSource.includes("_cycleStepMap"), "the panel should let the player cycle a strike's MAP level");
+assert.ok(/mapOverride/.test(panelSource), "a pinned MAP override should feed the per-strike MAP");
+assert.ok(panelTemplateSource.includes("data-cycle-map"), "the panel template should expose a MAP cycle control on strikes");
+// Players can pick which speed a Stride travels on (fly/burrow/swim/climb) when the actor has one.
+assert.ok(panelSource.includes("_cycleStepMovement"), "the panel should let the player cycle a Stride's movement type");
+assert.ok(/movementAction/.test(panelSource), "a pinned movement type should ride on the draft step");
+assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel template should expose a movement-type control on Strides");
+// actorMovementOptions enumerates the actor's Stride speeds: walking first, then only the non-walking
+// speeds the actor actually has, mapping the "land" speed key to the "walk" movement action.
+{
+  const flier = actorMovementOptions({
+    system: { movement: { speeds: {
+      land: { total: 25 }, fly: { total: 60 }, burrow: { total: 0 }, swim: null, travel: { total: 25 },
+    } } },
+  });
+  assert.deepEqual(flier.map((option) => option.action), ["walk", "fly"], "only walking and the actor's real fly speed should be offered");
+  assert.equal(flier[0].speed, 25, "walking option should carry the land speed");
+  assert.equal(flier[1].speed, 60, "fly option should carry the fly speed");
+  const grounded = actorMovementOptions({ system: { attributes: { speed: { value: 30 } } } });
+  assert.deepEqual(grounded.map((option) => option.action), ["walk"], "an actor with only a land speed offers no movement-type choice");
+}
 // Retch is the GM's call in two phases: the GM sets the DC, the player rolls, then the GM sets the
 // result. A player routes the DC ask via requestRetchDc and the result ask via requestRetchResult,
 // only prompting locally as a GM or when no GM is connected.
@@ -567,6 +593,16 @@ assert.ok(
 assert.ok(
   /_addAction\(actionKey\)[\s\S]*upsertDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
   "adding an action should sync updated player plan to GM",
+);
+// A persisted display name keeps a step readable after its action stops being generated (e.g. a
+// drawn weapon no longer offers its Draw action), instead of falling back to the raw action key.
+assert.ok(
+  /_addAction\(actionKey\)[\s\S]*upsertDraftStep\(this\._context, \{[\s\S]*name: action\.name/.test(panelSource),
+  "added plan steps should persist a display name",
+);
+assert.ok(
+  /_addUncountedAction\(actionKey\)[\s\S]*name: action\.name/.test(panelSource),
+  "added uncounted steps should persist a display name",
 );
 assert.ok(
   /_removeDraftStep\(instanceId\)[\s\S]*removeDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
@@ -1472,6 +1508,40 @@ try {
   });
   assert.equal(cantripCast.status, "done", "a cantrip uses no slot and must always cast");
 
+  // Translocate (a teleportation spell) needs a destination like a Stride, then casts and moves the
+  // token to it instantly — no movement animation. With no destination it asks for one first.
+  let teleportUpdate = null;
+  const teleportTokenDoc = { id: "ezren-token", x: 100, y: 100, update: async (data, options) => { teleportUpdate = { data, options }; } };
+  const teleportActor = {
+    name: "Ezren",
+    system: { resources: { focus: { value: 0 } } },
+    itemTypes: { spellcastingEntry: [{ id: "entry-tp", system: { prepared: { value: "spontaneous" }, slots: { slot4: { value: 1 } } }, cast: async () => undefined }] },
+  };
+  const teleportContext = { actor: { document: teleportActor }, token: { id: "ezren-token", center: { x: 100, y: 100 }, width: 1, height: 1, document: teleportTokenDoc } };
+  const teleportAction = {
+    name: "Translocate",
+    source: "spell-spontaneous",
+    executable: "open-item",
+    spellcastingEntryId: "entry-tp",
+    castRank: 4,
+    item: { id: "translocate", type: "spell", name: "Translocate" },
+    activityProfile: { spell: true, teleport: true },
+    targetingProfile: { self: true },
+  };
+  const teleportNoDest = await executeDraftStep({ context: teleportContext, step: { instanceId: "tp-nodest" }, action: teleportAction });
+  assert.equal(teleportNoDest.status, "needs-choice", "a teleport with no destination should ask for one");
+  assert.deepEqual(teleportNoDest.choices, ["destination"]);
+  assert.equal(teleportUpdate, null, "a teleport must not move the token before a destination is chosen");
+
+  const teleportDone = await executeDraftStep({ context: teleportContext, step: { instanceId: "tp-go", destination: { x: 500, y: 300 } }, action: teleportAction });
+  assert.equal(teleportDone.status, "done", "a teleport with a destination casts and resolves");
+  assert.ok(teleportUpdate, "a teleport should reposition the token");
+  assert.equal(teleportUpdate.options?.animate, false, "a teleport should move the token without a movement animation");
+  assert.ok(
+    teleportDone.patch.execution.revert.ops.some((op) => op.kind === "movement"),
+    "reverting a teleport should restore the token's original position",
+  );
+
   // Multiple distinct @Template embeds are surfaced so the player can pick which to place.
   // Both description sources are set so rawDescription concatenates them (doubling matches);
   // the picker must still show each distinct shape only once.
@@ -1497,6 +1567,42 @@ try {
     options: { method: "api", showRuler: true },
   });
   assert.deepEqual(tokenUpdates, [], "execution movement should use Foundry movement API instead of raw document update");
+
+  // A flying Stride to a chosen elevation moves with the fly movement action and applies the
+  // elevation; reverting it later drops the token back to its take-off elevation.
+  const flyMovementResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "fly-move-step", destination: { x: 5, y: 0, elevation: 15 } },
+    action: { name: "Stride", slug: "stride", movementAction: "fly", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(flyMovementResult.status, "done");
+  assert.deepEqual(tokenMoves.at(-1), {
+    waypoint: { x: 2.5, y: -2.5, action: "fly", elevation: 15, explicit: true, checkpoint: true, snapped: true },
+    options: { method: "api", showRuler: true },
+  }, "a fly Stride should move with the fly movement action and apply the chosen elevation");
+
+  // A multi-waypoint flight applies each leg's own elevation, so the token can climb to one height
+  // then settle at another along the path.
+  const flyMultiResult = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "fly-multi-step",
+      destination: { x: 10, y: 0, elevation: 10 },
+      movementPlan: { native: false, waypoints: [{ x: 5, y: 0, elevation: 5 }, { x: 10, y: 0, elevation: 10 }] },
+    },
+    action: { name: "Stride", slug: "stride", movementAction: "fly", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(flyMultiResult.status, "done");
+  assert.deepEqual(
+    tokenMoves.slice(-2).map((entry) => ({
+      x: entry.waypoint.x, y: entry.waypoint.y, elevation: entry.waypoint.elevation, action: entry.waypoint.action,
+    })),
+    [
+      { x: 2.5, y: -2.5, elevation: 5, action: "fly" },
+      { x: 7.5, y: -2.5, elevation: 10, action: "fly" },
+    ],
+    "each waypoint of a flight should move to its own elevation",
+  );
 
   const stepMovementResult = await executeDraftStep({
     context: executionContext,
@@ -1984,6 +2090,39 @@ try {
     undefined,
     "strike roll should rely on the selected target (game.user.targets), not a malformed target param",
   );
+  // Strikes roll the multiple-attack-penalty variant for their position in the plan (variants[0]
+  // full bonus, [1] MAP -5, [2] MAP -10) instead of always rolling at full bonus.
+  globalThis.game.user.targets = new Set([targetToken]);
+  const rolledVariants = [];
+  const mapStrikeAction = {
+    name: "Longsword",
+    slug: "strike",
+    source: "strike",
+    executable: "strike",
+    variants: [
+      { roll: async () => { rolledVariants.push(0); return { documentName: "ChatMessage", id: "v0" }; } },
+      { roll: async () => { rolledVariants.push(1); return { documentName: "ChatMessage", id: "v1" }; } },
+      { roll: async () => { rolledVariants.push(2); return { documentName: "ChatMessage", id: "v2" }; } },
+    ],
+  };
+  const mapStrikeBase = { targetTokenIds: ["target-token"], targetSelection: "manual" };
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-1", attackIndex: 1 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 0, "a 1st-attack strike rolls the full-bonus variant");
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-2", attackIndex: 2 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 1, "a 2nd-attack strike (attackIndex 2) rolls the MAP -5 variant");
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-3", attackIndex: 3 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 2, "a 3rd-attack strike (attackIndex 3) rolls the MAP -10 variant");
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-4", attackIndex: 5 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 2, "attack positions beyond the 3rd clamp to the MAP -10 variant");
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-c", attackIndex: 3 }, action: mapStrikeAction, event: {}, choices: { variantIndex: 0 } });
+  assert.equal(rolledVariants.at(-1), 0, "an explicit variantIndex overrides the position-derived MAP");
+  // A player-pinned MAP level (mapOverride) wins over the position-derived attack index.
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-pin0", attackIndex: 3, mapOverride: 0 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 0, "a pinned MAP 0 overrides a 3rd-attack position");
+  await executeDraftStep({ context: executionContext, step: { ...mapStrikeBase, instanceId: "map-pin2", attackIndex: 1, mapOverride: 2 }, action: mapStrikeAction, event: {} });
+  assert.equal(rolledVariants.at(-1), 2, "a pinned MAP -10 overrides a 1st-attack position");
+  globalThis.game.user.targets = new Set();
+
   const strikeRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "strike-revert-step", execution: strikeResult.patch.execution },
@@ -5054,6 +5193,35 @@ assert.ok(blockedExplicitMovementPreview.destinationPlacement);
 assert.ok(blockedExplicitMovementPreview.destinationMarker);
 assert.match(blockedExplicitMovementPreview.destinationIllegalReason, /movement path/i);
 
+// A teleport (Translocate) gets a range-bounded preview: squares within the spell's range plus the
+// chosen destination, with no stride path. In-range destinations are available; beyond-range aren't.
+const teleportRangePreview = movementPreviewForStep({
+  token: { id: "token-tp", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+}, {
+  slug: "translocate",
+  activityProfile: { teleport: true },
+  targetingProfile: { self: true, maxRange: 30 },
+  destination: { x: 15, y: 0 },
+}, { gridSize: 5, pointVisible: () => true });
+assert.equal(teleportRangePreview.enabled, true);
+assert.equal(teleportRangePreview.teleport, true, "a teleport should get its own range-bounded preview");
+assert.equal(teleportRangePreview.teleportRange, 30, "the teleport range ring should match the spell's range");
+assert.equal(teleportRangePreview.destinationAvailable, true, "an in-range teleport destination is available");
+assert.ok(teleportRangePreview.destinationPlacement, "a teleport should mark the chosen destination");
+
+const farTeleportPreview = movementPreviewForStep({
+  token: { id: "token-tp", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 25 } },
+}, {
+  slug: "translocate",
+  activityProfile: { teleport: true },
+  targetingProfile: { self: true, maxRange: 30 },
+  destination: { x: 50, y: 0 },
+}, { gridSize: 5, pointVisible: () => true });
+assert.equal(farTeleportPreview.destinationAvailable, false, "a teleport beyond the spell's range is unavailable");
+assert.match(farTeleportPreview.destinationIllegalReason, /range/i);
+
 const hiddenExplicitMovementPreview = movementPreviewForStep({
   token: { id: "token-moving", center: { x: 0, y: 0 }, width: 1, height: 1 },
   actor: { profile: { speed: 25 } },
@@ -5600,6 +5768,46 @@ try {
     },
   }]);
   assert.equal(waypointPointerRemoved, true);
+
+  // A flying Stride stamps the target elevation (here just the token's current elevation, since no
+  // scroll happened) onto the chosen destination so the executor can apply it. A walking Stride
+  // never carries an elevation.
+  let verticalPointerHandler = null;
+  globalThis.ui = { notifications: { warn: () => { }, info: () => { } } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "actor-token", width: 1, height: 1, elevation: 10 },
+        actor: { system: { movement: { speeds: { land: { value: 25 }, fly: { value: 30 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => { if (event === "pointerdown") verticalPointerHandler = handler; },
+      off: () => { verticalPointerHandler = null; },
+    },
+  };
+  const verticalDestinations = [];
+  const verticalPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride", movementAction: "fly" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata) => verticalDestinations.push({ destination, metadata }),
+  });
+  assert.ok(verticalPicker);
+  verticalPointerHandler({
+    button: 0,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(verticalDestinations, [{
+    destination: { x: 15, y: 15, elevation: 10 },
+    metadata: { elevation: 10 },
+  }], "a fly Stride should stamp the target elevation onto the destination");
 
   let diagonalCostPointerHandler = null;
   const diagonalCostWarnings = [];
@@ -12608,6 +12816,58 @@ assert.equal(uuidMatchedSpell.spellcastingEntryId, "occult-entry");
 assert.equal(uuidMatchedSpell.available, true);
 assert.equal(uuidMatchedSpell.role, "stealth-defense");
 
+// Divine Font auto-heightens Heal/Harm into the entry's highest-rank slot, so a base-rank-1 Heal's
+// prepared copies live in slot2 (not the empty rank-1 slot). The resource chip must count the slot
+// the spell is actually prepared in, otherwise it reads "Prepared 0/0" despite full font slots.
+const divineFontContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "font-heal",
+          uuid: "Actor.kyra.Item.font-heal",
+          name: "Heal",
+          slug: "heal",
+          system: {
+            slug: "heal",
+            time: { value: "1" },
+            traits: { value: ["healing", "vitality", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "divine-font" },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "divine-font",
+          name: "Divine Font (Healing)",
+          system: {
+            prepared: { value: "prepared" },
+            tradition: { value: "divine" },
+            statistic: { dc: { value: 19 } },
+            slots: {
+              slot1: { value: 0, max: 0, prepared: [] },
+              slot2: { value: 0, max: 4, prepared: [
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+              ] },
+            },
+          },
+        }],
+      },
+    },
+  },
+};
+const fontHeal = readSpellActions(divineFontContext).find((spell) => spell.slug === "heal");
+assert.equal(fontHeal.spellcastingEntryId, "divine-font");
+assert.equal(fontHeal.available, true, "Divine Font heal prepared at a heightened slot should be castable");
+assert.equal(
+  fontHeal.spellResource.label,
+  "Prepared 4/4",
+  "Divine Font heal should report the heightened slot's prepared copies, not the empty base-rank slot",
+);
+assert.equal(fontHeal.spellResource.tooltip, "Rank 2 prepared slots: 4/4 unexpended.");
+
 const stanceClassification = classifySystemAction({
   name: "Dragon Stance",
   system: {
@@ -12720,6 +12980,36 @@ assert.equal(wallOfStoneClassification.role, "control");
 assert.equal(wallOfStoneClassification.activityProfile.wall, true);
 assert.equal(wallOfStoneClassification.activityProfile.terrainControl, true);
 assert.equal(wallOfStoneClassification.activityProfile.lastingDuration, true);
+
+// A teleportation spell classifies as a teleport even when it self-targets ("you"), so it isn't
+// mistaken for a self-buff — and it carries the spell range for the destination picker.
+const translocateClassification = classifySpell({
+  name: "Translocate",
+  system: {
+    traits: { value: ["concentrate", "manipulate", "teleportation"] },
+    level: { value: 4 },
+    range: { value: "120 feet" },
+    target: { value: "you" },
+    description: { value: "<p>You instantly transport yourself from your current space to an unoccupied space within range you can see.</p>" },
+  },
+});
+assert.equal(translocateClassification.role, "mobility");
+assert.equal(translocateClassification.activityProfile.teleport, true, "a teleportation spell classifies as a teleport, not a self-buff");
+assert.equal(translocateClassification.targetingProfile.maxRange, 120, "teleport carries the spell range for the destination picker");
+
+// A numeric range value (no "feet" suffix) must still be read as feet, so the teleport range ring
+// and picker aren't truncated to a default short distance.
+const numericRangeTeleport = classifySpell({
+  name: "Translocate",
+  system: {
+    traits: { value: ["teleportation"] },
+    level: { value: 4 },
+    range: { value: 120 },
+    target: { value: "you" },
+    description: { value: "<p>You instantly transport yourself to a space within range.</p>" },
+  },
+});
+assert.equal(numericRangeTeleport.targetingProfile.maxRange, 120, "a numeric spell range is read as feet");
 const wallControlScore = scoreCandidate({
   ...spellcasterSpellPriorityContext,
   battlefield: {

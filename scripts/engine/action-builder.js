@@ -513,6 +513,10 @@ export function requiresDestinationForAction(action) {
 
   if (action.requiresDestination === true) return true;
 
+  // Teleportation (e.g. Translocate) picks a destination like a Stride, but is delivered instantly
+  // by the executor rather than animated movement.
+  if (action?.activityProfile?.teleport === true) return true;
+
   const slug = String(action?.slug ?? "").toLowerCase();
   const source = String(action?.source ?? "").toLowerCase();
   const role = String(action?.role ?? "").toLowerCase();
@@ -1019,7 +1023,12 @@ function draftStepActionOverride(step, draftStepActions) {
 function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions = null) {
   const key = step?.actionKey ?? step?.key ?? actionBuilderKey(step);
   const resolvedAction = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
-  const action = draftStepActionOverride(step, draftStepActions) ?? resolvedAction;
+  const baseAction = draftStepActionOverride(step, draftStepActions) ?? resolvedAction;
+  // A re-resolved action loses the per-step movement type the player pinned (fly/burrow/...). Carry
+  // it back onto the action so the destination picker, executor, and cost engine all Stride on the
+  // chosen speed rather than reverting to walking.
+  const movementAction = typeof step?.movementAction === "string" ? step.movementAction : null;
+  const action = baseAction && movementAction ? { ...baseAction, movementAction } : baseAction;
   const stale = !action;
   const missingDestination = requiresDestinationForAction(action) && !step?.destination;
   const unavailableWarning = action?.availabilityWarning || (action?.available === false ? actionUnavailableReason(action) : "");

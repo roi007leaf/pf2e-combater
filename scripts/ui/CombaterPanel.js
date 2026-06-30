@@ -26,7 +26,7 @@ import {
 import { revertDraftExecution, revertDraftStep } from "../engine/action-revert.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
-import { bestTurnPlan, buildTurnPlans } from "../engine/planner.js";
+import { attacksTowardMap, bestTurnPlan, buildTurnPlans, isAttackAction, mapPenalty } from "../engine/planner.js";
 import { readActionFavorites, toggleActionFavorite } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import {
@@ -53,6 +53,7 @@ import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
 import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
+import { actorMovementOptions } from "../readers/actor-profile.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
 import { canUseFullAggro } from "../rules/aggro.js";
 import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
@@ -129,10 +130,12 @@ function actorHasNonGmOwner(actor) {
   return users.some((user) => ownershipLevelValue(ownership[user.id]) >= ownerLevel);
 }
 
+// A "player's actor" is one a non-GM user actually owns — not every character sheet. An NPC-type or
+// unowned character (e.g. a GM-run NPC ally) is the GM's to plan, so we only treat genuinely
+// player-owned actors as player plans.
 function isPlayerControlledActor(actor) {
   const document = actor?.document ?? actor;
   if (!document) return false;
-  if (String(document.type ?? "").toLowerCase() === "character") return true;
   return actorHasNonGmOwner(document);
 }
 
@@ -519,7 +522,37 @@ function decorateAction(action, options = {}) {
   };
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null } = {}) {
+// The movement-action a draft step currently Strides with. Defaults to walking; a player can pin a
+// different movement type (fly/burrow/swim/climb) per step, stored as `movementAction`.
+function stepMovementAction(step) {
+  const raw = String(step?.movementAction ?? step?.action?.movementAction ?? "").toLowerCase();
+  if (raw && raw !== "step") return raw;
+  const slug = String(step?.slug ?? step?.action?.slug ?? "").toLowerCase();
+  if (slug === "crawl") return "crawl";
+  return "walk";
+}
+
+function movementActionLabel(action) {
+  switch (action) {
+    case "fly": return t("Movement.Fly", "Fly");
+    case "burrow": return t("Movement.Burrow", "Burrow");
+    case "swim": return t("Movement.Swim", "Swim");
+    case "climb": return t("Movement.Climb", "Climb");
+    default: return t("Movement.Walk", "Walk");
+  }
+}
+
+// A speed-based Stride lets the player pick which speed to travel on. Move-and-strike activities
+// auto-plot their movement (no destination prompt), and Step/Crawl are fixed 5-ft moves, so neither
+// offers a movement-type choice.
+function isSpeedBasedMovementStep(action) {
+  if (!action || action?.activityProfile?.teleport === true) return false;
+  if (!requiresDestinationForAction(action)) return false;
+  const slug = String(action?.slug ?? action?.action?.slug ?? "").toLowerCase();
+  return slug !== "step" && slug !== "crawl";
+}
+
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null, movementOptions = [] } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
@@ -547,6 +580,25 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
   const canShowExecuteStep = canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
+  // Per-strike multiple-attack-penalty control: shows the current MAP and lets the owner cycle it
+  // (auto -> 0 -> -5 -> -10 -> auto) for abilities that keep MAP flat across attacks.
+  const isAttackStep = Number.isFinite(step?.attackIndex);
+  const mapPenaltyValue = Number(step?.mapPenalty) || 0;
+  const mapToolLabel = mapPenaltyValue > 0
+    ? t("Panel.MapValue", "MAP -{penalty}", { penalty: mapPenaltyValue })
+    : t("Panel.MapFull", "MAP 0");
+  const mapPinned = step?.mapPinned === true;
+  const mapToolTip = mapPinned
+    ? t("Panel.MapPinned", "MAP pinned to {label}. Click to cycle.", { label: mapToolLabel })
+    : t("Panel.MapAuto", "MAP auto ({label}). Click to pin.", { label: mapToolLabel });
+  // Per-Stride movement-type control: lets the owner travel on a non-walking speed (fly/burrow/swim/
+  // climb) when the actor has one, sizing the reachable range to that speed. Only shown when the
+  // actor actually has more than one movement type to choose from.
+  const movementAction = stepMovementAction(step);
+  const movementToolLabel = movementActionLabel(movementAction);
+  const canCycleMovement = isSpeedBasedMovementStep(action ?? step)
+    && canRunStep && !isExecutionDone && movementOptions.length > 1;
+  const movementToolTip = t("Panel.MovementCycle", "Stride on {label} Speed. Click to change.", { label: movementToolLabel });
   return {
     ...display,
     ...step,
@@ -576,6 +628,13 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
       : (executionBlocked ? (readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing.")) : t("Panel.ExecuteStep", "Execute this step")),
     awaitingGm: isAwaitingGm,
     awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM…"),
+    canCycleMap: isAttackStep && canRunStep && !isExecutionDone,
+    mapToolLabel,
+    mapToolTip,
+    mapPinned,
+    canCycleMovement,
+    movementToolLabel,
+    movementToolTip,
     canMoveStepUp: canEditStepOrder && index > 0,
     canMoveStepDown: canEditStepOrder && index < total - 1,
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
@@ -687,7 +746,35 @@ function sustainedSpellDraftFields(entry) {
   };
 }
 
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null } = {}) {
+// Tag each attack step with its multiple-attack-penalty level by position in the sequence, so the
+// 2nd/3rd strike rolls (and displays) at the right MAP rather than always at full bonus. Continues
+// the running attack count from `startCount` and returns the updated count for the next list. The
+// penalty is written onto the step and its action for the display label; `attackIndex` (1-based)
+// drives the variant the executor rolls.
+function injectMapInfo(steps, startCount = 0) {
+  let attackCount = startCount;
+  const tagged = (Array.isArray(steps) ? steps : []).map((step) => {
+    const action = step?.action ?? step;
+    if (!isAttackAction(action)) return step;
+    const autoLevel = Math.min(2, attackCount); // position-derived MAP level: 0, 1, 2
+    attackCount += attacksTowardMap(action);
+    // A player can pin a specific MAP level per strike (0 / -5 / -10); some abilities keep MAP flat
+    // across consecutive attacks, so the auto position isn't always right. `mapOverride` null = auto.
+    const override = Number.isFinite(step?.mapOverride) ? Math.max(0, Math.min(2, step.mapOverride)) : null;
+    const level = override ?? autoLevel;
+    const penalty = mapPenalty(action, level);
+    return {
+      ...step,
+      attackIndex: level + 1,
+      mapPenalty: penalty,
+      mapPinned: override !== null,
+      action: step?.action ? { ...step.action, mapPenalty: penalty } : step?.action,
+    };
+  });
+  return { steps: tagged, attackCount };
+}
+
+function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [] } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
   const isPlayerPlan = builder.draft?.shared === true;
@@ -696,13 +783,15 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   const sharedDraftUserName = String(builder.draft?.userName ?? "").trim();
   const rawSteps = builder.draft?.steps ?? [];
   const reorderLocked = rawSteps.some((step) => executionStatus(step) !== "pending");
-  const rawDraftSteps = rawSteps
+  const planMap = injectMapInfo(rawSteps, 0);
+  const rawDraftSteps = planMap.steps
     .map((step, index) => decorateDraftStep(step, index, {
       readonly: draftReadonly,
       gmExecute: gmCanRunPlayerPlan,
       total: rawSteps.length,
       reorderLocked,
       awaitingGm,
+      movementOptions,
     }));
   const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
   const draftSteps = rawDraftSteps.map((step) => ({
@@ -713,12 +802,15 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   const sustainedEntries = decoratedSustainedSpells(sustainedSpells, { readonly: draftReadonly });
   const rawUncounted = builder.draft?.uncounted ?? [];
   const uncountedReorderLocked = rawUncounted.some((step) => executionStatus(step) !== "pending");
-  const rawUncountedSteps = rawUncounted.map((step, index) => decorateDraftStep(step, index, {
+  // Uncounted attacks come after the plan in the turn, so their MAP continues the plan's count.
+  const uncountedMap = injectMapInfo(rawUncounted, planMap.attackCount);
+  const rawUncountedSteps = uncountedMap.steps.map((step, index) => decorateDraftStep(step, index, {
     readonly: draftReadonly,
     gmExecute: gmCanRunPlayerPlan,
     total: rawUncounted.length,
     reorderLocked: uncountedReorderLocked,
     awaitingGm,
+    movementOptions,
   }));
   const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
   const uncountedEntries = rawUncountedSteps.map((step) => ({
@@ -965,6 +1057,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       this._plan = null;
       this._builder = null;
       this._planningContext = null;
+      this._movementOptions = [];
       return this._viewContext(null);
     }
 
@@ -1014,7 +1107,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       favorites,
     });
     const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm });
+    this._movementOptions = actorMovementOptions(this._actorForMovement(context));
+    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm, movementOptions: this._movementOptions });
     this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
 
     return this._viewContext(context);
@@ -1080,6 +1174,20 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const button of element.querySelectorAll("[data-remove-draft-step]")) {
       button.addEventListener("click", () => this._removeDraftStep(button.dataset.removeDraftStep));
+    }
+
+    for (const button of element.querySelectorAll("[data-cycle-map]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._cycleStepMap(button.dataset.cycleMap);
+      });
+    }
+
+    for (const button of element.querySelectorAll("[data-cycle-movement]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._cycleStepMovement(button.dataset.cycleMovement);
+      });
     }
 
     for (const button of element.querySelectorAll("[data-move-draft-step]")) {
@@ -1405,6 +1513,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     upsertDraftStep(this._context, {
       actionKey: action.key,
+      // Persist a display name so the step still reads correctly if its action stops being
+      // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+      name: action.name,
       actionCost: action.actionCost ?? action.cost,
       requiresDestination: requiresDestinationForAction(action),
     });
@@ -1422,6 +1533,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await this._persistActiveDraftStep({
       instanceId: draftStepId(),
       actionKey: action.key,
+      // Persist a display name so the step still reads correctly if its action stops being
+      // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+      name: action.name,
       actionCost: action.actionCost ?? action.cost,
       requiresDestination: requiresDestinationForAction(action),
     }, "uncounted");
@@ -1477,6 +1591,62 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!moveDraftStep(this._context, instanceId, direction, listKey)) return;
     await this._syncDraftToGM();
     clearActionPreview();
+    await this.render({ force: true });
+  }
+
+  // Cycle a strike's multiple-attack-penalty level: auto -> MAP 0 -> -5 -> -10 -> auto. The chosen
+  // level is pinned on the step (mapOverride) and overrides the position-derived default, for
+  // abilities that keep MAP flat across consecutive attacks.
+  async _cycleStepMap(instanceId) {
+    if (!this._canExecuteDraft()) return;
+    if (!this._context || !instanceId) return;
+    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
+    if (!step) return;
+    const current = Number.isFinite(step.mapOverride) ? step.mapOverride : null;
+    const next = current == null ? 0 : current >= 2 ? null : current + 1;
+    await this._persistActiveDraftStep({ ...step, mapOverride: next });
+    await this._syncDraftToGM();
+    await this.render({ force: true });
+  }
+
+  // The live PF2e actor for the planning combatant, used to read its movement speeds. Prefers the
+  // canvas token's actor (freshest derived data) and falls back to the context summary's document.
+  _actorForMovement(context) {
+    const ids = [
+      context?.token?.id,
+      context?.token?.uuid,
+      context?.combatant?.tokenId,
+      context?.combatant?.token?.id,
+    ].filter(Boolean);
+    // Scan placeables (canvas.tokens.get isn't reliable across versions) for the live token's actor,
+    // which carries the prepared movement speeds; fall back to the context summary's actor document.
+    for (const token of globalThis.canvas?.tokens?.placeables ?? []) {
+      const document = token?.document ?? token;
+      const matches = ids.some((id) => token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id);
+      if (matches && token?.actor) return token.actor;
+    }
+    return context?.actor?.document ?? context?.actor ?? null;
+  }
+
+  // Cycle a Stride's movement type through the actor's available speeds (walk -> fly -> burrow ->
+  // ...-> walk). The chosen movement-action is pinned on the step (and its action) so the executor
+  // travels on that speed and the destination picker sizes the reachable range to it.
+  async _cycleStepMovement(instanceId) {
+    if (!this._canExecuteDraft()) return;
+    if (!this._context || !instanceId) return;
+    const options = Array.isArray(this._movementOptions) ? this._movementOptions : [];
+    if (options.length <= 1) return;
+    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
+    if (!step) return;
+    const current = stepMovementAction(step);
+    const index = Math.max(0, options.findIndex((option) => option.action === current));
+    const next = options[(index + 1) % options.length].action;
+    await this._persistActiveDraftStep({
+      ...step,
+      movementAction: next,
+      action: step.action ? { ...step.action, movementAction: next } : step.action,
+    });
+    await this._syncDraftToGM();
     await this.render({ force: true });
   }
 
@@ -1542,6 +1712,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       let draftStep = {
         instanceId: draftStepId(),
         actionKey: this._actionKeyForStep(step),
+        // Persist a display name so the step still reads correctly if its action stops being
+        // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+        name: step?.name ?? step?.action?.name,
         actionCost: step?.actionCost ?? step?.cost,
         requiresDestination: requiresDestinationForAction(step),
         ...(presetDestination ? { destination: presetDestination } : {}),
@@ -1677,6 +1850,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...(step.action ?? step),
       ...(preview?.destination ? { destination: preview.destination } : {}),
       ...(preview?.movementPlan ? { movementPlan: preview.movementPlan } : {}),
+      // Pending elevation (Shift+scroll before a destination is committed) so the readout and
+      // shrinking reachable range still update.
+      ...(Number.isFinite(preview?.elevation) ? { plannedElevation: preview.elevation } : {}),
       requiresDestination: true,
     });
     return true;
@@ -1716,6 +1892,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           preview: {
             destination,
             movementPlan: metadata.movementPlan ?? null,
+            elevation: metadata.elevation,
           },
         };
         this._showDestinationPickerPreview(instanceId);
@@ -2105,6 +2282,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         return;
       }
 
+      // Drop the canvas overlay (stride path/range hover) up front so it disappears the instant the
+      // step runs, instead of lingering through the awaited move animation and the re-render after it.
+      clearActionPreview();
       const result = await executeDraftStep({
         context: this._contextForDraftStep(step.instanceId) ?? this._context,
         step,

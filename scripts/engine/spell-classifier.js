@@ -151,7 +151,11 @@ function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
 }
 
 function readRangeProfile(spell) {
-  const raw = String(systemValue(spell?.system?.range) ?? "").trim().toLowerCase();
+  const value = systemValue(spell?.system?.range);
+  // Newer data models store range as a plain number of feet; older ones use a string ("120 feet").
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return { maxRange: value };
+
+  const raw = String(value ?? "").trim().toLowerCase();
   if (!raw) return {};
   if (raw.includes("touch")) return { maxRange: 5 };
   if (raw.includes("self")) return { self: true };
@@ -160,6 +164,12 @@ function readRangeProfile(spell) {
   const match = raw.match(/(\d+)\s*(?:feet|ft|foot)/);
   if (match) {
     const distance = Number(match[1]);
+    if (Number.isFinite(distance) && distance > 0) return { maxRange: distance };
+  }
+  // A bare number with no unit ("120") still means feet for a spell range.
+  const bare = raw.match(/^(\d+)$/);
+  if (bare) {
+    const distance = Number(bare[1]);
     if (Number.isFinite(distance) && distance > 0) return { maxRange: distance };
   }
   return {};
@@ -500,6 +510,17 @@ function classifySpellBase(spell) {
     });
   }
 
+  // A teleportation spell repositions the caster to a chosen space — detect it before the self-buff
+  // branches so a self-targeted teleport (e.g. Translocate) isn't misread as a buff/setup.
+  if (traits.includes("teleportation") || /\bteleport/.test(spellText(spell))) {
+    return inferred("mobility", {
+      activityProfile: { ...baseProfile(["teleport"]), ...spellFacts, teleport: true },
+      targetingProfile: { self: true, ...rangeProfile },
+      confidence: "medium",
+      reasons: [t("SpellReason.Teleport", "Teleportation spell repositions the caster.")],
+    });
+  }
+
   const selfOnly = targetsSelfOnly(spell, rangeProfile);
   const stealthDefense = readStealthDefenseProfile(spell);
 
@@ -536,15 +557,6 @@ function classifySpellBase(spell) {
   }
 
   const text = spellText(spell);
-  if (traits.includes("teleportation") || /\bteleport/.test(text)) {
-    return inferred("mobility", {
-      activityProfile: { ...baseProfile(["teleport"]), ...spellFacts, teleport: true },
-      targetingProfile: { self: true },
-      confidence: "medium",
-      reasons: [t("SpellReason.Teleport", "Teleportation spell repositions the caster.")],
-    });
-  }
-
   if (traits.includes("polymorph") || traits.includes("morph")) {
     return inferred("transformation", {
       activityProfile: { ...baseProfile(["transformation"]), ...spellFacts, polymorph: traits.includes("polymorph") },

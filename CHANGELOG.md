@@ -8,6 +8,29 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 ### Added
 
+- **Teleport spells place a destination.** Teleportation spells (e.g. Translocate) now prompt for a
+  destination like a Stride — pick the space (bounded by the **spell's range**, not movement speed),
+  and executing casts the spell (spending its slot/focus) and moves the token there **instantly, with
+  no movement animation**. Reverting the step undoes the teleport along with the chat card and spent
+  slot.
+- **Strikes apply the multiple attack penalty.** A strike now rolls the PF2e variant matching its
+  position in the turn — full bonus for the first attack, MAP −5/−4 for the second, MAP −10/−8 for
+  the third and beyond — instead of always rolling at full bonus. The penalty is derived from the
+  plan order (manual or auto-filled, plan steps then uncounted).
+- **Per-strike MAP control.** Each strike has a MAP button that cycles its penalty
+  (auto → MAP 0 → −5 → −10 → auto), letting you pin a level for abilities that keep MAP flat across
+  consecutive attacks. A pinned level overrides the position-derived default for that strike.
+- **Per-Stride movement type.** When the acting creature has more than one Speed, a Stride shows a
+  movement-type button that cycles through its available speeds (walk → fly → burrow → swim →
+  climb). The chosen speed sizes the reachable range when picking a destination and is the movement
+  the token uses when the step executes; creatures with only a land Speed see no extra control.
+- **Vertical movement for fly & burrow.** When Striding on a fly or burrow Speed, hold **Shift** and
+  scroll while picking a destination to raise or lower the elevation of the waypoint you're placing
+  (plain scroll still zooms the canvas). Shift-click a waypoint, scroll to set its height, then place
+  the next waypoint (or double-click to finalize) to lock it in — each waypoint keeps its own height,
+  so a path can climb, level off, then dive. Every leg's vertical distance counts against Speed (so
+  the reachable area shrinks as you climb), the elevation is shown on the waypoint, the token follows
+  those heights on execute, and reverting unwinds them.
 - **"Hide Auto-fill from players" setting (GM).** A world toggle that removes the Auto-fill button
   for every player so they plan their own turns instead of taking the generic recommendation; the
   GM keeps Auto-fill. Enforced in the executor too, not just hidden in the UI.
@@ -80,6 +103,24 @@ All notable changes to PF2e Combater are documented here. The format is based on
 
 ### Fixed
 
+- **Teleport destination picking now shows an overlay, and revert works.** Picking a teleport
+  destination (e.g. Translocate) drew nothing — the preview only handled stride-type movement — so
+  there was no indication of range and no marker for the chosen space. Teleports now show a **range
+  ring** at the spell's actual range plus a destination marker. (The ring replaces a per-square grid
+  that was capped at the nearest ~48 squares, which made a long range like 120 ft look far shorter.)
+  Spell ranges given as a bare number are read correctly too. Revert also captures the take-off
+  position **before** the spell is cast, so even a teleport that repositions the token itself can be
+  undone back to where it started.
+- **Executing a Stride no longer lags.** Validating the move at execution reused the hover-preview
+  code, which flood-fills the entire remaining reachable area (a BFS with per-cell wall-collision
+  checks) and runs an A* path search — work only the on-canvas overlay needs. Execution now does a
+  cheap legality check (path/range + visibility) and lets Foundry's move API arbitrate collisions,
+  so the token moves immediately on click. The canvas overlay (stride path/range) is also cleared the
+  instant the step runs, rather than lingering through the move animation and the re-render after it.
+- **Executed steps keep their name when the action stops being available.** A draft step stored
+  only its action key and re-resolved the name each render; after drawing a weapon (which removes
+  the now-pointless Draw action) the step had nothing to resolve and showed its raw key (e.g.
+  `draw-weapon-Kf9Fu…`). Steps now persist a display name so they stay readable after execution.
 - **No more false "Spell could not be cast (no slot available)" warning.** Cast success was read
   from `entry.cast()`'s return value, but current PF2e resolves it to `undefined` even on a
   successful cast — so every spell (cantrips and focus spells included, neither of which uses a
@@ -89,6 +130,9 @@ All notable changes to PF2e Combater are documented here. The format is based on
 - Action damage now lands **reliably** after its spell/strike chat card: the damage message is
   stamped just after the card so the chat log always orders the card first, even when the card's
   creation resolves a tick later.
+- **GM "player plan" view now keys off ownership, not the character type.** A combatant was treated
+  as a player's plan whenever its actor was a `character`, so GM-run character NPCs/allies were
+  wrongly made read-only. It now counts only actors a non-GM user actually owns.
 
 ### Dependencies
 

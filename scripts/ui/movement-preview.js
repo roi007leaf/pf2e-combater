@@ -96,9 +96,42 @@ function profileSpeed(context) {
   return numeric(speed, 25) || 25;
 }
 
-function movementDistanceFeet(context, step) {
+// The Speed (feet) the previewed Stride travels on. A non-walking movement type (fly/burrow/swim/
+// climb) uses that creature speed; everything else falls back to the land Speed from the profile.
+function movementSpeedFeet(context, step, collisionToken) {
+  const movementAction = pf2eMovementActionForStep(step);
+  if (movementAction && !["walk", "step", "crawl"].includes(movementAction)) {
+    const speed = collisionToken?.actor?.system?.movement?.speeds?.[movementAction];
+    const value = numeric(speed?.total ?? speed?.value ?? speed?.base, NaN);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return profileSpeed(context);
+}
+
+// Signed elevation change to the chosen destination (positive = climbing), or 0 when the step has
+// no vertical target.
+function verticalElevationDelta(step, collisionToken) {
+  // The live pending elevation (what Shift+scroll is dialing in for the next point) wins so the
+  // start-token readout tracks the wheel even while a waypoint path is already laid down; fall back
+  // to the committed destination's elevation when there's no active pick (e.g. execution preview).
+  const target = numeric(step?.plannedElevation ?? step?.destination?.elevation, NaN);
+  if (!Number.isFinite(target)) return 0;
+  const origin = numeric(collisionToken?.document?.elevation, 0) || 0;
+  return target - origin;
+}
+
+// Feet of Speed consumed by climbing/descending to the chosen elevation (vertical Strides only).
+function verticalMovementFeet(step, collisionToken) {
+  return Math.abs(verticalElevationDelta(step, collisionToken));
+}
+
+function movementDistanceFeet(context, step, collisionToken) {
   if (step?.slug === "crawl" || step?.slug === "step") return 5;
-  if (step?.slug === "stride" || step?.slug === "stand-stride") return profileSpeed(context);
+  if (step?.slug === "stride" || step?.slug === "stand-stride") {
+    // Vertical movement eats into the horizontal range: the higher you climb, the less Speed remains
+    // to travel across the ground, so the reachable squares shrink accordingly.
+    return Math.max(0, movementSpeedFeet(context, step, collisionToken) - verticalMovementFeet(step, collisionToken));
+  }
   return 0;
 }
 
@@ -406,6 +439,8 @@ function explicitDestination(step) {
   const x = numeric(step?.destination?.x, NaN);
   const y = numeric(step?.destination?.y, NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const elevation = numeric(step?.destination?.elevation, NaN);
+  if (Number.isFinite(elevation)) return { x, y, elevation };
   return { x, y };
 }
 
@@ -448,9 +483,17 @@ function samePoint(left, right) {
   return !!left && !!right && left.x === right.x && left.y === right.y;
 }
 
+// Keep each waypoint's own elevation alongside its x/y so the preview can label per-leg heights.
+function directPointWithElevation(value) {
+  const base = directPoint(value);
+  if (!base) return null;
+  const elevation = numeric(value?.elevation, NaN);
+  return Number.isFinite(elevation) ? { ...base, elevation } : base;
+}
+
 function explicitWaypointCenters(step, destinationCenter) {
   const waypoints = Array.isArray(step?.movementPlan?.waypoints)
-    ? step.movementPlan.waypoints.map((waypoint) => directPoint(waypoint)).filter(Boolean)
+    ? step.movementPlan.waypoints.map((waypoint) => directPointWithElevation(waypoint)).filter(Boolean)
     : [];
   if (!waypoints.length) return null;
   if (destinationCenter && !samePoint(waypoints.at(-1), destinationCenter)) waypoints.push(destinationCenter);
@@ -781,6 +824,25 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       ? validateWaypointPath(origin, waypointCenters, distanceFeet, gridSize, options)
       : { available: false, reason: t("Move.NotVisible", "Destination is not visible.") };
     const destinationAvailable = destinationVisible && waypointValidation.available === true;
+    // Execution only needs to know whether the destination is legal — skip the expensive flood-fill
+    // of the remaining reachable area (and its markers/labels), which exists purely for the hover
+    // overlay. Validating the waypoint path above is cheap; the BFS is what made executing a Stride lag.
+    if (options.validateOnly) {
+      return {
+        enabled: true,
+        slug: step.slug,
+        explicitDestination: true,
+        origin,
+        distanceFeet,
+        footprint,
+        destinationCenter,
+        destinationPlacement,
+        destinationMarker,
+        destinationAvailable,
+        destinationIllegalReason: destinationAvailable ? "" : waypointValidation.reason,
+        movementColor: color,
+      };
+    }
     const remainingDistanceFeet = destinationAvailable
       ? Math.max(0, distanceFeet - waypointValidation.cost)
       : 0;
@@ -824,6 +886,29 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       recommendedMarker: destinationAvailable ? destinationMarker : null,
       movementColor: color,
       segmentLabels,
+    };
+  }
+
+  // Execution: skip the A* path search and just check range + visibility — Foundry's move API is the
+  // final collision arbiter (it reports "Movement was prevented" if a wall blocks the way).
+  if (options.validateOnly) {
+    const withinRange = movementSegmentCost(origin, destinationCenter, gridSize, 0, options).cost <= distanceFeet;
+    const available = destinationVisible && withinRange;
+    return {
+      enabled: true,
+      slug: step.slug,
+      explicitDestination: true,
+      origin,
+      distanceFeet,
+      footprint,
+      destinationCenter,
+      destinationPlacement,
+      destinationMarker,
+      destinationAvailable: available,
+      destinationIllegalReason: available
+        ? ""
+        : (destinationVisible ? t("Move.BeyondRangeDest", "Destination is beyond movement range.") : t("Move.NotVisible", "Destination is not visible.")),
+      movementColor: color,
     };
   }
 
@@ -872,6 +957,54 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   };
 }
 
+function teleportRangeFeet(step) {
+  return numeric(
+    step?.targetingProfile?.maxRange ?? step?.maxRange ?? step?.range?.max ?? step?.action?.targetingProfile?.maxRange,
+    NaN,
+  );
+}
+
+// A teleport (e.g. Translocate) reaches any space within the spell's range, ignoring terrain and the
+// movement path. Rather than a filled grid (a 120-ft range covers hundreds of squares — too many to
+// draw, and the per-square cap made it look far shorter than it is), the preview is a range ring
+// marking the boundary plus the chosen destination.
+function teleportPreview(step, origin, footprint, gridSize, options = {}) {
+  const color = movementColor();
+  const range = teleportRangeFeet(step);
+  const hasRange = Number.isFinite(range) && range > 0;
+  const inRange = (center) => !hasRange
+    || movementSegmentCost(origin, center, gridSize, 0, options).cost <= range;
+
+  const destinationCenter = explicitDestination(step);
+  const destinationVisible = destinationCenter ? pointVisible(destinationCenter, options) : false;
+  const destinationPlacement = destinationCenter && destinationVisible
+    ? placementForCenter(destinationCenter, footprint, gridSize)
+    : null;
+  const destinationAvailable = destinationCenter ? destinationVisible && inRange(destinationCenter) : null;
+
+  return {
+    enabled: true,
+    slug: step.slug,
+    teleport: true,
+    teleportRange: hasRange ? range : null,
+    explicitDestination: Boolean(destinationCenter),
+    origin,
+    footprint,
+    distanceFeet: hasRange ? range : 0,
+    destinationCenter: destinationCenter ?? null,
+    destinationPlacement,
+    destinationMarker: xMarkerForPlacement(destinationPlacement),
+    destinationAvailable,
+    destinationIllegalReason: destinationAvailable === false
+      ? (destinationVisible ? t("Move.BeyondSpellRange", "Destination is beyond the spell's range.") : t("Move.NotVisible", "Destination is not visible."))
+      : "",
+    reachableCenters: [],
+    reachableMarkers: [],
+    reachableMarkerColor: color,
+    movementColor: color,
+  };
+}
+
 export function movementPreviewForStep(context, step, options = {}) {
   const gridSize = numeric(options.gridSize, 5) || 5;
   const movementOptions = {
@@ -880,6 +1013,14 @@ export function movementPreviewForStep(context, step, options = {}) {
     movementAction: options.movementAction ?? pf2eMovementActionForStep(step),
     collisionToken: options.collisionToken ?? canvasTokenById(context?.token?.id ?? context?.token?.uuid),
   };
+
+  // A teleport picks a destination like a Stride but reaches by range, not a path — show its own
+  // range-bounded preview rather than the (empty) stride preview for its non-movement slug.
+  if (step?.activityProfile?.teleport === true || step?.action?.activityProfile?.teleport === true) {
+    const teleportOrigin = point(context?.token);
+    if (!teleportOrigin) return { enabled: false };
+    return teleportPreview(step, teleportOrigin, tokenFootprint(context?.token), gridSize, movementOptions);
+  }
 
   if (isStrideStrikeStep(step)) {
     const path = step?.activityProfile?.retreatAfterStrike === true
@@ -893,10 +1034,13 @@ export function movementPreviewForStep(context, step, options = {}) {
   const origin = point(context?.token);
   if (!origin) return { enabled: false };
 
-  const distanceFeet = movementDistanceFeet(context, step);
+  const collisionToken = movementOptions.collisionToken;
+  const distanceFeet = movementDistanceFeet(context, step, collisionToken);
+  const elevationDelta = verticalElevationDelta(step, collisionToken);
+  const originElevation = numeric(collisionToken?.document?.elevation, 0) || 0;
   const footprint = tokenFootprint(context?.token);
   const explicitPreview = explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, movementOptions);
-  if (explicitPreview) return explicitPreview;
+  if (explicitPreview) return { ...explicitPreview, elevationDelta, originElevation };
 
   const color = movementColor();
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
@@ -909,6 +1053,8 @@ export function movementPreviewForStep(context, step, options = {}) {
     slug: step.slug,
     origin,
     distanceFeet,
+    elevationDelta,
+    originElevation,
     footprint,
     reachableCenters: centers,
     reachablePlacements: placements,
@@ -1034,6 +1180,46 @@ function drawOriginMarker(graphics, origin, footprint, scale, color = 0x66c78f) 
   graphics.endFill();
 }
 
+// Label text for a point sitting at `elevation` (absolute feet) — the elevation itself, marked ▲/▼
+// for above/below the start. Returns null when the point is at the start elevation (unchanged), so
+// only points whose height actually changed get tagged.
+function elevationLabelText(elevation, originElevation) {
+  const origin = numeric(originElevation, 0) || 0;
+  const value = numeric(elevation, NaN);
+  if (!Number.isFinite(value) || value === origin) return null;
+  return value > origin
+    ? t("Move.ElevationUp", "▲ {feet} ft", { feet: value })
+    : t("Move.ElevationDown", "▼ {feet} ft", { feet: value });
+}
+
+function elevationLabelStyle(elevation, originElevation, fontSize) {
+  const above = (numeric(elevation, 0) || 0) > (numeric(originElevation, 0) || 0);
+  return {
+    fontFamily: "Signika, sans-serif",
+    fontSize,
+    fontWeight: "700",
+    fill: above ? "#8fd0f0" : "#f0b88f",
+    stroke: "#101418",
+    strokeThickness: Math.max(3, Math.round(fontSize * 0.24)),
+  };
+}
+
+// Floating readout above the point being placed, showing the elevation it will sit at (the value
+// itself, not the increment) so the player sees where the vertical Stride lands as they scroll.
+function drawElevationLabel(graphics, anchor, elevation, originElevation, footprint, scale) {
+  if (!anchor || typeof graphics.addChild !== "function") return;
+  const text = elevationLabelText(elevation, originElevation);
+  if (!text) return;
+  const fontSize = Math.round(Math.max(16, Math.min(28, scale * 0.9)));
+  const label = createTextLabel(text, elevationLabelStyle(elevation, originElevation, fontSize));
+  if (!label) return;
+  const { pixelSize } = previewGridSize();
+  const cells = Math.max(1, Math.min(footprint?.widthCells ?? 1, footprint?.heightCells ?? 1));
+  const offset = (cells * pixelSize) / 2 + fontSize;
+  setLabelPosition(label, anchor.x * scale, anchor.y * scale - offset);
+  graphics.addChild(label);
+}
+
 function drawWaypointIndicators(graphics, waypoints, scale, color) {
   if (typeof graphics.drawCircle !== "function" || !Array.isArray(waypoints)) return;
   let index = 0;
@@ -1044,6 +1230,21 @@ function drawWaypointIndicators(graphics, waypoints, scale, color) {
     graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
     graphics.lineStyle(radius, color, 0.96);
     graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
+  }
+}
+
+// A small readout beside each waypoint that sits at a changed elevation, showing the elevation it
+// rests at (the value itself) so a path that climbs, levels off, then dives is legible per leg.
+function drawWaypointElevationLabels(graphics, waypoints, originElevation, scale) {
+  if (typeof graphics.addChild !== "function" || !Array.isArray(waypoints)) return;
+  const fontSize = Math.round(Math.max(13, Math.min(22, scale * 0.7)));
+  for (const waypoint of waypoints) {
+    const text = elevationLabelText(waypoint?.elevation, originElevation);
+    if (!text) continue;
+    const label = createTextLabel(text, elevationLabelStyle(waypoint.elevation, originElevation, fontSize));
+    if (!label) continue;
+    setLabelPosition(label, waypoint.x * scale, waypoint.y * scale - (fontSize + 12));
+    graphics.addChild(label);
   }
 }
 
@@ -1087,7 +1288,7 @@ function drawSegmentLabels(graphics, labels, scale) {
   }
 }
 
-function drawStridePath(graphics, origin, stridePath, scale) {
+function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0) {
   let from = origin;
   for (const waypoint of stridePath) {
     const trail = waypoint.trail?.length ? waypoint.trail : [waypoint.center];
@@ -1108,6 +1309,9 @@ function drawStridePath(graphics, origin, stridePath, scale) {
     drawPlacement(graphics, waypoint.placement, scale, waypoint.color, 0.05, waypoint.color, 0.96, 3);
     drawXMarker(graphics, waypoint.marker, scale, waypoint.color);
     drawWaypointIndicators(graphics, waypoint.waypoints, scale, waypoint.color);
+    // Label intermediate waypoints with their own heights; the final point (destination) is labelled
+    // by the live readout above, so drop it here to avoid a doubled tag.
+    drawWaypointElevationLabels(graphics, waypoint.waypoints?.slice(0, -1), originElevation, scale);
     drawSegmentLabels(graphics, waypoint.segmentLabels, scale);
   }
 }
@@ -1230,8 +1434,27 @@ export function showMovementPreview(context, step) {
   if (!preview.enabled) return null;
 
   const graphics = new PIXI.Graphics();
-  if (preview.stridePath?.length) {
-    drawStridePath(graphics, preview.origin, preview.stridePath, scale);
+  if (preview.teleport) {
+    // Range ring marking how far the teleport reaches, plus the chosen destination X (red if out of range).
+    const ringColor = preview.movementColor ?? 0x66c78f;
+    if (Number.isFinite(preview.teleportRange) && preview.teleportRange > 0 && typeof graphics.drawCircle === "function") {
+      const cx = preview.origin.x * scale;
+      const cy = preview.origin.y * scale;
+      const radius = preview.teleportRange * scale;
+      graphics.beginFill(ringColor, 0.04);
+      graphics.lineStyle(6, 0x101418, 0.6);
+      graphics.drawCircle(cx, cy, radius);
+      graphics.lineStyle(3, ringColor, 0.9);
+      graphics.drawCircle(cx, cy, radius);
+      graphics.endFill();
+    }
+    if (preview.destinationPlacement) {
+      const color = preview.destinationAvailable === false ? 0xc94f4f : (preview.movementColor ?? 0xe0b35a);
+      drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.06, color, 1, 3);
+      drawXMarker(graphics, preview.destinationMarker, scale, color);
+    }
+  } else if (preview.stridePath?.length) {
+    drawStridePath(graphics, preview.origin, preview.stridePath, scale, preview.originElevation);
     const markerColor = preview.reachableMarkerColor ?? preview.movementColor ?? 0x66c78f;
     for (const marker of preview.reachableMarkers ?? []) {
       drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
@@ -1251,6 +1474,11 @@ export function showMovementPreview(context, step) {
 
   // Circle the Stride's starting square so it's clear where the movement begins.
   drawOriginMarker(graphics, preview.origin, preview.footprint, scale, preview.movementColor ?? 0x66c78f);
+  // Pin the live readout to the point being placed (destination), showing the elevation it lands at.
+  const pendingElevation = Number.isFinite(preview.elevationDelta)
+    ? (Number(preview.originElevation) || 0) + preview.elevationDelta
+    : NaN;
+  drawElevationLabel(graphics, preview.destinationCenter ?? preview.origin, pendingElevation, preview.originElevation, preview.footprint, scale);
 
   graphics.zIndex = 10_000;
   layer.sortableChildren = true;

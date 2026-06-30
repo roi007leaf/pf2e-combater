@@ -10,13 +10,15 @@ import {
 import { t } from "../i18n.js";
 
 async function moveTokenTo(document, point) {
+  // Restore elevation alongside x/y so reverting a vertical Stride (fly/burrow) also undoes the climb.
+  const elevation = Number.isFinite(Number(point?.elevation)) ? { elevation: Number(point.elevation) } : {};
   if (typeof document.update === "function") {
-    await document.update({ x: point.x, y: point.y });
+    await document.update({ x: point.x, y: point.y, ...elevation });
     return;
   }
   if (typeof document.move === "function") {
     await document.move(
-      { x: point.x, y: point.y, action: "walk", explicit: true, checkpoint: true, snapped: true },
+      { x: point.x, y: point.y, ...elevation, action: "walk", explicit: true, checkpoint: true, snapped: true },
       { method: "api" },
     );
     return;

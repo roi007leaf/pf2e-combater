@@ -236,6 +236,47 @@ function addPointerHandler(handler, allowPointerEvent = isPrimaryPointerEvent) {
   return addDomPointerHandler(handler, allowPointerEvent) ?? addStagePointerHandler(handler);
 }
 
+// Vertical movement (fly/burrow) lets the player raise/lower the target elevation while picking by
+// holding Shift and scrolling. We capture the wheel in the capture phase on the canvas's ancestors so
+// we can intercept it before Foundry's own zoom handler runs; the picker's handler decides whether
+// to consume it (Shift held) or let it fall through to the normal canvas zoom.
+function addWheelHandler(handler) {
+  const cleanups = [];
+  for (const target of pointerTargets()) {
+    if (typeof target?.addEventListener !== "function") continue;
+    const onWheel = (event) => {
+      // The listener is attached to several capture targets (window/document/canvas), so one wheel
+      // tick reaches it multiple times — process the event once, or elevation jumps several steps.
+      if (event.__pf2eCombaterWheelHandled) return;
+      if (!eventTargetsCanvas(event)) return;
+      event.__pf2eCombaterWheelHandled = true;
+      handler(event);
+    };
+    target.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    cleanups.push(() => target.removeEventListener?.("wheel", onWheel, { capture: true }));
+  }
+  if (!cleanups.length) return null;
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
+}
+
+// The two PF2e Speeds that move through three dimensions, so the picker offers a vertical control.
+function verticalMovementForAction(action) {
+  return ["fly", "burrow"].includes(movementActionForAction(action));
+}
+
+function tokenElevation(token) {
+  return numeric(token?.document?.elevation ?? token?.elevation) ?? 0;
+}
+
+function eventWheelDelta(event) {
+  const delta = numeric(event?.deltaY ?? event?.nativeEvent?.deltaY ?? event?.originalEvent?.deltaY) ?? 0;
+  if (delta < 0) return 1;
+  if (delta > 0) return -1;
+  return 0;
+}
+
 function isPrimaryPointerEvent(event) {
   const button = eventButton(event);
   return button === undefined || button === null || button === 0;
@@ -301,9 +342,33 @@ function movementActionAllowed(action) {
   return !actions || Object.prototype.hasOwnProperty.call(actions, action);
 }
 
+// The actor's speed (feet) for a given movement-action key, read from the prepared PF2e creature
+// speeds (system.movement.speeds, keyed by type; "walk" maps to "land"). Returns null when the
+// actor has no such speed so the caller can fall back to the land speed.
+function typedMovementSpeed(token, movementAction) {
+  const speeds = token?.actor?.system?.movement?.speeds;
+  if (!speeds || typeof speeds !== "object") return null;
+  const type = movementAction === "walk" ? "land" : movementAction;
+  const entry = speeds[type];
+  const value = numeric(entry?.total ?? entry?.value ?? entry?.base);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function actorSpeed(context, token, action) {
   const slug = actionSlug(action);
   if (slug === "crawl" || slug === "step") return 5;
+
+  // Teleportation (e.g. Translocate) is bounded by the spell's range, not movement speed. Fall back
+  // to a large allowance when the range can't be read so it never blocks on speed.
+  if (action?.activityProfile?.teleport === true) {
+    const range = numeric(action?.targetingProfile?.maxRange ?? action?.maxRange ?? action?.range?.max);
+    return Number.isFinite(range) && range > 0 ? range : 1000;
+  }
+
+  // A Stride travelling on a non-walking speed (fly/burrow/swim/climb) reaches as far as that
+  // speed allows, not the land Speed. The chosen movement type rides on the step/action.
+  const typed = typedMovementSpeed(token, movementActionForAction(action));
+  if (typed !== null) return typed;
 
   const tokenSpeeds = token?.actor?.system?.movement?.speeds;
   const profile = context?.actor?.profile ?? context?.profile ?? {};
@@ -405,18 +470,40 @@ function waypointPathCost(origin, waypoints, options = {}) {
   return cost;
 }
 
-function movementPlanForWaypoints(context, action, token, waypoints) {
-  const cleanWaypoints = waypoints.map((waypoint) => ({ x: waypoint.x, y: waypoint.y }));
+// Total feet of vertical travel along origin -> wp1 -> wp2 -> ..., where each waypoint carries its
+// own target elevation (so a path can climb, level off, then descend). Waypoints without an
+// elevation hold the previous height.
+function verticalPathCost(waypoints, originElevation = 0) {
+  let cost = 0;
+  let previous = numeric(originElevation) ?? 0;
+  for (const waypoint of waypoints) {
+    const elevation = numeric(waypoint?.elevation);
+    const next = elevation === null ? previous : elevation;
+    cost += Math.abs(next - previous);
+    previous = next;
+  }
+  return cost;
+}
+
+function movementPlanForWaypoints(context, action, token, waypoints, { originElevation = 0 } = {}) {
+  // Preserve each waypoint's own elevation so the executor can climb/descend per leg.
+  const cleanWaypoints = waypoints.map((waypoint) => {
+    const elevation = numeric(waypoint?.elevation);
+    return elevation === null ? { x: waypoint.x, y: waypoint.y } : { x: waypoint.x, y: waypoint.y, elevation };
+  });
   const maxCost = actorSpeed(context, token, action);
   const movementAction = movementActionForAction(action);
+  const horizontalCost = waypointPathCost(tokenCenter(context, token), cleanWaypoints, {
+    actor: token?.actor ?? context?.actor,
+    collisionToken: token,
+    movementAction,
+  });
   return {
     native: false,
     waypoints: cleanWaypoints,
-    cost: waypointPathCost(tokenCenter(context, token), cleanWaypoints, {
-      actor: token?.actor ?? context?.actor,
-      collisionToken: token,
-      movementAction,
-    }),
+    // Flying/burrowing up or down counts toward Speed: every foot of elevation change along the path
+    // costs a foot of movement, added on top of the horizontal distance.
+    cost: horizontalCost + verticalPathCost(cleanWaypoints, originElevation),
     maxCost,
   };
 }
@@ -531,8 +618,25 @@ export function chooseDestination({
   }
 
   const token = canvasTokenById(tokenId(context));
+  const vertical = verticalMovementForAction(action);
+  const originElevation = vertical ? tokenElevation(token) : 0;
+  // Working elevation: the height of the active (last-placed) waypoint, or — before any waypoint —
+  // the height the first placed point will take. Shift+scroll moves it; a freshly placed waypoint
+  // starts from it (carrying the previous waypoint's height) and becomes the new active one.
+  let pendingElevation = originElevation;
   let handled = false;
   let waypoints = [];
+
+  // Stamp the working elevation onto a freshly placed point so it flows to persistence/execution.
+  const withElevation = (destination) =>
+    vertical && destination ? { ...destination, elevation: pendingElevation } : destination;
+  const planForWaypoints = (points) =>
+    movementPlanForWaypoints(context, action, token, points, { originElevation });
+  const previewMetadata = (points) => ({
+    ...(points.length ? { movementPlan: planForWaypoints(points) } : {}),
+    ...(vertical ? { elevation: pendingElevation } : {}),
+  });
+
   const allowPickerPointerEvent = (event) =>
     isPrimaryPointerEvent(event) || (enableWaypoints && eventShiftKey(event) && eventButton(event) === 2);
   const handler = (event) => {
@@ -545,17 +649,16 @@ export function chooseDestination({
     try {
       if (waypointRemove) {
         waypoints = waypoints.slice(0, -1);
+        // Resume from the new tip's height so further scrolls/placements continue from there.
+        if (vertical) pendingElevation = numeric(waypoints.at(-1)?.elevation) ?? originElevation;
         const destination = waypoints.at(-1) ?? null;
-        const metadata = destination
-          ? { movementPlan: movementPlanForWaypoints(context, action, token, waypoints) }
-          : {};
-        onPreview?.(destination, metadata);
+        onPreview?.(destination, destination ? previewMetadata(waypoints) : {});
         return;
       }
 
       const rawPoint = eventCanvasPoint(event);
       if (!rawPoint) return;
-      const destination = snappedCenter(rawPoint);
+      const destination = withElevation(snappedCenter(rawPoint));
       const waypointPick = enableWaypoints && eventShiftKey(event);
       const waypointFinalize = waypointPick && eventClickCount(event) >= 2;
       const candidateWaypoints = enableWaypoints
@@ -564,14 +667,19 @@ export function chooseDestination({
           : [...waypoints, destination]
         : [];
       const candidateMovementPlan = enableWaypoints
-        ? movementPlanForWaypoints(context, action, token, candidateWaypoints)
+        ? planForWaypoints(candidateWaypoints)
         : null;
-      const metadata = candidateMovementPlan && (waypointPick || waypointFinalize || waypoints.length)
-        ? { movementPlan: candidateMovementPlan }
-        : {};
+      const metadata = {
+        ...(candidateMovementPlan && (waypointPick || waypointFinalize || waypoints.length)
+          ? { movementPlan: candidateMovementPlan }
+          : {}),
+        ...(vertical ? { elevation: pendingElevation } : {}),
+      };
 
       if (candidateMovementPlan && candidateMovementPlan.cost > candidateMovementPlan.maxCost) {
-        globalThis.ui?.notifications?.warn?.(t("Move.BeyondRangeDest", "Destination is beyond movement range."));
+        globalThis.ui?.notifications?.warn?.(action?.activityProfile?.teleport === true
+          ? t("Move.BeyondSpellRange", "Destination is beyond the spell's range.")
+          : t("Move.BeyondRangeDest", "Destination is beyond movement range."));
         return;
       }
 
@@ -590,7 +698,41 @@ export function chooseDestination({
 
   const cleanup = addPointerHandler(handler, allowPickerPointerEvent);
   if (!cleanup) return null;
-  activeCleanup = cleanup;
+
+  // Shift+scroll adjusts the elevation of the active (last-placed) waypoint in place, in one-grid-step
+  // increments while flying/burrowing. Placing the next waypoint (or double-clicking to finalize)
+  // locks that height; the next waypoint then starts from it and becomes the one the wheel edits.
+  // Before any waypoint is placed, the wheel sets the first point's height, previewed at the cursor.
+  const wheelCleanup = vertical
+    ? addWheelHandler((event) => {
+      // Plain scroll keeps zooming the canvas; only Shift+scroll adjusts the flight/burrow elevation.
+      if (!eventShiftKey(event)) return;
+      suppressPointerEvent(event);
+      const step = eventWheelDelta(event);
+      if (!step) return;
+      pendingElevation += step * gridDistance();
+      if (waypoints.length) {
+        // Edit the active waypoint's height directly so the readout sits on it; earlier waypoints
+        // stay locked at the heights they were placed at.
+        waypoints[waypoints.length - 1] = { ...waypoints[waypoints.length - 1], elevation: pendingElevation };
+        onPreview?.(waypoints.at(-1), previewMetadata(waypoints));
+        return;
+      }
+      const rawPoint = point(globalThis.canvas?.mousePosition);
+      const hover = rawPoint ? withElevation(snappedCenter(rawPoint)) : null;
+      onPreview?.(hover, previewMetadata(waypoints));
+    })
+    : null;
+
+  activeCleanup = () => {
+    cleanup();
+    wheelCleanup?.();
+  };
   activeOnCancel = typeof onCancel === "function" ? onCancel : null;
+  if (vertical) {
+    globalThis.ui?.notifications?.info?.(
+      t("Picker.VerticalHint", "Hold Shift and scroll to set elevation (currently {feet} ft).", { feet: originElevation }),
+    );
+  }
   return { cancel: cancelDestinationPicker };
 }

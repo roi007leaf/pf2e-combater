@@ -448,26 +448,58 @@ function countLabel(prefix, value, max = null) {
   return max !== null ? `${prefix} ${value}/${max}` : `${prefix} ${value}`;
 }
 
-function readPreparedSpellResource(entry, spell, rank) {
-  const slot = slotForRank(entry, rank);
-  const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
+function slotRankNumber(slotKey) {
+  const rank = Number(String(slotKey).replace(/^slot/, ""));
+  return Number.isFinite(rank) ? rank : null;
+}
+
+// Find every slot this spell is currently prepared in. A prepared copy does not always sit in the
+// spell's base-rank slot: Divine Font auto-heightens Heal/Harm into the entry's highest-rank slot,
+// so a base-rank-1 Heal lives only in slot2/slot3. Reading just the base-rank slot reported
+// "Prepared 0/0" for those copies. Returns the matching prepared entries per slot, by rank.
+function entryPreparedSlotMatches(entry, spell) {
+  const slots = entry?.system?.slots ?? {};
   const spellIds = new Set(spellIdentityValues(spell));
-  const matching = prepared.filter((preparedSpell) =>
-    preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
+  const matches = [];
+  for (const [slotKey, slot] of Object.entries(slots)) {
+    const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
+    if (!prepared.length) continue;
+    const matching = prepared.filter((preparedSpell) =>
+      preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
+    );
+    if (!matching.length) continue;
+    matches.push({ rank: slotRankNumber(slotKey), prepared, matching });
+  }
+  return matches;
+}
+
+function readPreparedSpellResource(entry, spell, rank) {
+  const matches = entryPreparedSlotMatches(entry, spell);
+  // No prepared copy anywhere: keep reporting the base-rank slot so the chip still reads 0/0.
+  const slots = matches.length ? matches : [{ rank, prepared: slotForRank(entry, rank)?.prepared ?? [], matching: [] }];
+
+  const availableMatching = slots.reduce(
+    (count, slot) => count + slot.matching.filter((preparedSpell) => preparedSpell?.expended !== true).length, 0,
   );
-  const availableMatching = matching.filter((preparedSpell) => preparedSpell?.expended !== true).length;
-  const availableRank = prepared.filter((preparedSpell) => preparedSpell?.expended !== true).length;
+  const totalMatching = slots.reduce((count, slot) => count + slot.matching.length, 0);
+  // Report the highest rank the spell is prepared at (Divine Font heightens to the top slot).
+  const reportRank = slots.reduce(
+    (best, slot) => (slot.rank !== null && (best === null || slot.rank > best) ? slot.rank : best), null,
+  ) ?? rank;
+  const rankSlot = slots.find((slot) => slot.rank === reportRank) ?? slots[slots.length - 1];
+  const availableRank = rankSlot.prepared.filter((preparedSpell) => preparedSpell?.expended !== true).length;
+
   return {
     type: "prepared",
-    rank,
-    label: t("SpellRes.Prepared", "Prepared {available}/{total}", { available: availableMatching, total: matching.length }),
-    tooltip: Number.isFinite(rank)
-      ? t("SpellRes.PreparedTooltipRank", "Rank {rank} prepared slots: {available}/{total} unexpended.", { rank, available: availableRank, total: prepared.length })
-      : t("SpellRes.PreparedTooltip", "{available}/{total} prepared copies unexpended.", { available: availableMatching, total: matching.length }),
+    rank: reportRank,
+    label: t("SpellRes.Prepared", "Prepared {available}/{total}", { available: availableMatching, total: totalMatching }),
+    tooltip: Number.isFinite(reportRank)
+      ? t("SpellRes.PreparedTooltipRank", "Rank {rank} prepared slots: {available}/{total} unexpended.", { rank: reportRank, available: availableRank, total: rankSlot.prepared.length })
+      : t("SpellRes.PreparedTooltip", "{available}/{total} prepared copies unexpended.", { available: availableMatching, total: totalMatching }),
     preparedAvailable: availableMatching,
-    preparedTotal: matching.length,
+    preparedTotal: totalMatching,
     rankAvailable: availableRank,
-    rankTotal: prepared.length,
+    rankTotal: rankSlot.prepared.length,
   };
 }
 

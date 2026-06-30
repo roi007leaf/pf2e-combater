@@ -81,7 +81,12 @@
       "SustainLabel": "Sustain: {name}",
       "UnknownAction": "Unknown action",
       "ExecuteStep": "Execute this step",
-      "AwaitingGm": "Waiting for the GM…"
+      "AwaitingGm": "Waiting for the GM…",
+      "MapValue": "MAP -{penalty}",
+      "MapFull": "MAP 0",
+      "MapPinned": "MAP pinned to {label}. Click to cycle (auto / 0 / -5 / -10).",
+      "MapAuto": "MAP auto ({label}). Click to pin a value.",
+      "MovementCycle": "Stride on {label} Speed. Click to change."
     },
     "Browser": {
       "TabsAria": "PF2e Combater action costs",
@@ -179,11 +184,21 @@
       "CleanupKeep": "Keep all",
       "CleanupConfirmList": "Remove unsustained spells: {names}?"
     },
+    "Movement": {
+      "Walk": "Walk",
+      "Fly": "Fly",
+      "Burrow": "Burrow",
+      "Swim": "Swim",
+      "Climb": "Climb"
+    },
     "Move": {
       "NotVisible": "Destination is not visible.",
       "NoPath": "No collision-free movement path to destination.",
       "BeyondRange": "Waypoint path is beyond movement range.",
-      "BeyondRangeDest": "Destination is beyond movement range."
+      "BeyondRangeDest": "Destination is beyond movement range.",
+      "BeyondSpellRange": "Destination is beyond the spell's range.",
+      "ElevationUp": "▲ {feet} ft",
+      "ElevationDown": "▼ {feet} ft"
     },
     "Revert": {
       "CouldNotRevert": "Could not revert {kind}: {error}",
@@ -320,6 +335,7 @@
       "NoTokenDocument": "Token document is not available.",
       "StartedMovement": "Started planned movement.",
       "MovedToken": "Moved token.",
+      "Teleported": "Teleported to the chosen space.",
       "RemovedProne": "Removed prone.",
       "CouldNotRemoveProne": "Could not remove prone.",
       "RetchFailed": "Retch failed; sickened unchanged.",
@@ -832,7 +848,8 @@
       "AreaFailed": "Area template preview failed.",
       "RulerFailedReason": "Destination ruler failed: {error}",
       "RulerFailed": "Destination ruler failed.",
-      "NoDestinationInPlan": "Movement plan did not include a destination."
+      "NoDestinationInPlan": "Movement plan did not include a destination.",
+      "VerticalHint": "Hold Shift and scroll to set elevation (currently {feet} ft)."
     },
     "Aggro": {
       "FinisherTarget": "Target is close to being removed.",

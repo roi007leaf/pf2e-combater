@@ -213,7 +213,7 @@ function projectedVolleyPenalty(candidate, steps) {
   return projected <= volley ? 10 : 0;
 }
 
-function isAttackAction(candidate) {
+export function isAttackAction(candidate) {
   return candidate.source === "strike"
     || candidate.activityProfile?.includesStrike === true
     || candidate.attackTrait === true
@@ -486,7 +486,7 @@ function isRepeatableAttackAction(candidate) {
   return candidate.source === "strike";
 }
 
-function mapPenalty(candidate, attackIndex) {
+export function mapPenalty(candidate, attackIndex) {
   if (!isAttackAction(candidate)) return 0;
   if (attackIndex <= 0) return 0;
   const agile = hasAgileTrait(candidate);
@@ -498,7 +498,7 @@ function mapPenalty(candidate, attackIndex) {
 // How many attacks this action advances the multiple attack penalty by. Most
 // attacks advance it by 1, but some activities count as several (e.g. Focused
 // Assault "counts as a number of attacks equal to the number of heads") or none.
-function attacksTowardMap(candidate) {
+export function attacksTowardMap(candidate) {
   if (!isAttackAction(candidate)) return 0;
   const value = candidate.activityProfile?.mapAttacks;
   if (value === "variable") return 3;

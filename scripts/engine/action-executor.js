@@ -20,7 +20,10 @@ function systemValue(value) {
 function point(value) {
   const x = numeric(value?.x);
   const y = numeric(value?.y);
-  return x === null || y === null ? null : { x, y };
+  if (x === null || y === null) return null;
+  // Preserve a vertical-movement target elevation when present so it survives down to the move call.
+  const elevation = numeric(value?.elevation);
+  return elevation === null ? { x, y } : { x, y, elevation };
 }
 
 function collectionValues(collection) {
@@ -540,6 +543,8 @@ function toScenePoint(value, scale) {
   return {
     x: center.x / divisor,
     y: center.y / divisor,
+    // Elevation is in scene feet, not pixels, so it passes through unscaled.
+    ...(center.elevation === undefined ? {} : { elevation: center.elevation }),
   };
 }
 
@@ -590,6 +595,8 @@ function movementValidationPreview(context, action, destination, movementPlan = 
   }, {
     gridSize: gridDistance(),
     collisionScale: scale,
+    // Execution just needs the legality verdict, not the hover overlay's reachable-area flood-fill.
+    validateOnly: true,
   });
 }
 
@@ -644,29 +651,35 @@ function canMoveOnCurrentTurn(context, token) {
 function tokenWaypointForDestination(destination, token, context, action) {
   const size = gridSize();
   const footprint = tokenFootprint(token, context);
+  const elevation = numeric(destination?.elevation);
   return {
     x: destination.x - (footprint.width * size) / 2,
     y: destination.y - (footprint.height * size) / 2,
     action: movementActionForAction(action),
+    // A vertical Stride (fly/burrow) ends at the chosen elevation; flat moves leave it untouched.
+    ...(elevation === null ? {} : { elevation }),
     explicit: true,
     checkpoint: true,
     snapped: true,
   };
 }
 
-// Current top-left of the token, captured before a move so revert can reposition it.
+// Current top-left of the token, captured before a move so revert can reposition it. Elevation is
+// captured too so reverting a vertical Stride drops the token back to where it took off.
 function movementOrigin(token, document, context) {
+  const elevation = numeric(document?.elevation ?? token?.document?.elevation ?? context?.token?.elevation);
+  const withElevation = (origin) => (origin && elevation !== null ? { ...origin, elevation } : origin);
   const docX = numeric(document?.x);
   const docY = numeric(document?.y);
-  if (docX !== null && docY !== null) return { x: docX, y: docY };
+  if (docX !== null && docY !== null) return withElevation({ x: docX, y: docY });
   const center = point(token?.center) ?? point(context?.token?.center);
   if (!center) return null;
   const size = gridSize();
   const footprint = tokenFootprint(token, context);
-  return {
+  return withElevation({
     x: center.x - (footprint.width * size) / 2,
     y: center.y - (footprint.height * size) / 2,
-  };
+  });
 }
 
 function samePoint(left, right) {
@@ -692,7 +705,10 @@ function movementPathPoints({ origin, destination, movementPlan, token, context,
   if (!centers.length) return [origin];
   const tail = centers.map((center) => {
     const waypoint = tokenWaypointForDestination(center, token, context, action);
-    return { x: waypoint.x, y: waypoint.y };
+    // Keep each leg's elevation so reverting a multi-height flight retraces those heights.
+    return waypoint.elevation === undefined
+      ? { x: waypoint.x, y: waypoint.y }
+      : { x: waypoint.x, y: waypoint.y, elevation: waypoint.elevation };
   });
   return [origin, ...tail];
 }
@@ -1091,9 +1107,19 @@ async function executePf2eAction({ actor, context, step, action, event, choices 
   };
 }
 
-function strikeVariant(action, choices) {
+// Which PF2e strike variant to roll: 0 = full bonus, 1 = MAP -5/-4, 2 = MAP -10/-8. Honors an
+// explicit choices.variantIndex, otherwise derives it from the step's attack position in the plan
+// (attackIndex, 1-based) so the 2nd/3rd attack of a turn isn't rolled at full bonus.
+function strikeVariantIndex(step, action, choices) {
+  if (Number.isFinite(choices?.variantIndex)) return Math.max(0, Math.min(2, choices.variantIndex));
+  // A player-pinned MAP level takes precedence over the position-derived one.
+  if (Number.isFinite(step?.mapOverride)) return Math.max(0, Math.min(2, step.mapOverride));
+  const attackIndex = numeric(step?.attackIndex ?? action?.attackIndex, null);
+  return Number.isFinite(attackIndex) && attackIndex > 1 ? Math.min(2, attackIndex - 1) : 0;
+}
+
+function strikeVariant(action, index) {
   const variants = Array.isArray(action?.variants) ? action.variants : [];
-  const index = Math.max(0, numeric(choices.variantIndex, 0) || 0);
   return variants[index] ?? null;
 }
 
@@ -1102,7 +1128,7 @@ async function executeStrike({ step, action, event, choices }) {
   if (!target) return { status: "needs-choice", choices: ["target"], patch: {} };
   setTarget(target.token);
 
-  const variant = strikeVariant(action, choices);
+  const variant = strikeVariant(action, strikeVariantIndex(step, action, choices));
   const roller = variant?.roll ?? action?.strike?.roll ?? action?.attack ?? action?.roll;
   if (typeof roller !== "function") {
     return {
@@ -1669,6 +1695,79 @@ function areaTemplatePersists(action) {
   return profile.sustained === true || profile.lastingDuration === true;
 }
 
+// A teleportation action (e.g. Translocate) picks a destination like a Stride but is delivered
+// instantly — it casts the spell and repositions the token with no movement animation.
+function isTeleportAction(action) {
+  return action?.activityProfile?.teleport === true;
+}
+
+// Place the token at the destination instantly (no movement animation). `origin` is captured by the
+// caller BEFORE the spell is cast — some teleport spells reposition the token themselves, and reading
+// the origin afterwards would record the destination, leaving revert with nothing to undo. Returns a
+// movement revert op so undoing the step returns the token to where it teleported from.
+async function teleportTokenTo(context, action, destination, origin) {
+  const token = canvasTokenById(tokenId(context));
+  const document = token?.document ?? context?.combatant?.token ?? context?.token?.document;
+  if (!document) return null;
+  const moveTokenId = targetTokenId(token) ?? tokenId(context);
+  const waypoint = tokenWaypointForDestination(destination, token, context, action);
+  if (waypoint && typeof document.update === "function") {
+    const elevation = numeric(waypoint.elevation);
+    await document.update(
+      { x: waypoint.x, y: waypoint.y, ...(elevation === null ? {} : { elevation }) },
+      { animate: false },
+    );
+  }
+  return origin && moveTokenId ? { kind: "movement", tokenId: moveTokenId, origin } : null;
+}
+
+// Cast the teleportation spell (posts the card, spends the slot/focus) and then move the token to
+// the chosen destination instantly. Reverting undoes the teleport, the chat card, and the slot.
+async function executeTeleport({ context, step, action, event, choices, patch = {} }) {
+  const destination = destinationFromStep(step, choices);
+  if (!destination) return { status: "needs-choice", choices: ["destination"], patch: {} };
+
+  const actor = actorDocument(context);
+  // Capture the take-off position BEFORE casting — a teleport spell may move the token itself, and
+  // reading the origin afterwards would record the destination, so revert would no-op.
+  const teleportToken = canvasTokenById(tokenId(context));
+  const teleportOrigin = movementOrigin(teleportToken, teleportToken?.document ?? context?.combatant?.token ?? context?.token?.document, context);
+  const slotOp = spellSlotRevertOp(actor, action);
+  const nativeResult = await executeOpenItem({ actor, action, event });
+  if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {
+    const reason = action?.unavailableReason || t("Exec.SpellNoSlot", "Spell could not be cast (no slot available).");
+    return {
+      status: "failed",
+      patch: executionPatch({ ...patch, destination }, "failed", { error: reason }),
+      error: reason,
+      nativeResult,
+    };
+  }
+
+  const teleportOp = await teleportTokenTo(context, action, destination, teleportOrigin);
+  await flushPendingChat();
+  const cardTimestamp = Number(nativeResult?.message?.timestamp);
+  const damageMessageIds = await rollActionDamageMessages({
+    actor,
+    action,
+    target: null,
+    after: Number.isFinite(cardTimestamp) ? cardTimestamp : null,
+  });
+  let result = {
+    status: "done",
+    patch: executionPatch({ ...patch, destination }, "done", {
+      result: t("Exec.Teleported", "Teleported to the chosen space."),
+      revert: chatActionRevert(nativeResult, action, { slotOp }),
+    }),
+    nativeResult,
+  };
+  for (const damageMessageId of [...damageMessageIds].reverse()) {
+    result = attachRevertOp(result, { kind: "chat", messageId: damageMessageId });
+  }
+  if (teleportOp) result = attachRevertOp(result, teleportOp);
+  return result;
+}
+
 export async function executeDraftStep({ context, step, action = step?.action ?? step, event = null, choices = {} } = {}) {
   if (!step || !action) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoActionSelected", "No action selected.") }), error: t("Exec.NoActionSelected", "No action selected.") };
 
@@ -1712,7 +1811,9 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   }
 
   let result;
-  if (requiresDestinationForAction(resolvedAction)) {
+  if (isTeleportAction(resolvedAction)) {
+    result = await executeTeleport({ context, step, action: resolvedAction, event, choices, patch });
+  } else if (requiresDestinationForAction(resolvedAction)) {
     result = await executeMovement({ context, step, action: resolvedAction, choices });
   } else if (slug === "stand") {
     result = await executeStand(actor);
