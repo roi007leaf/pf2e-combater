@@ -14,6 +14,10 @@ players plan their own turns.
 
 ---
 
+<img width="852" height="926" alt="image" src="https://github.com/user-attachments/assets/a226ba6d-b0d7-449e-88bf-36047c8b7ab7" />
+<img width="1533" height="773" alt="image" src="https://github.com/user-attachments/assets/52a8f8d5-f4ba-44dd-b82e-15b656a99270" />
+
+
 ## ✨ What it does
 
 - **Turn planner panel.** A floating window for the active combatant showing a draft plan, the
