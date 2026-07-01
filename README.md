@@ -164,7 +164,7 @@ auto-fill):
 
 | Factor | Effect on score |
 | --- | --- |
-| Base value (by source) | see the source table below |
+| Base value (by source) | see the source table above |
 | Strike is in range/reach | **+24** |
 | Strike damage (your own weapon) | `min(avg damage × 2, 40)` |
 | 🔒 Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
