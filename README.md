@@ -79,6 +79,46 @@ players plan their own turns.
 
 ---
 
+## 🧠 How Auto-fill decides
+
+> **No AI, no LLM, no cloud.** Auto-fill is 100% deterministic, rules-based math that runs entirely
+> in your browser. Nothing is sent anywhere, it works offline, and the same board always produces the
+> same plan. It reads the PF2e rules and the battlefield — it doesn't "ask a model."
+
+Auto-fill isn't a fixed script — it **scores every action the creature can take, then searches for the
+best combination that fits the turn.** Two stages:
+
+### 1. Score each action
+
+Every option starts from a base value by how confidently it's understood (curated spell > strike >
+generic action), then gets adjusted for the actual situation:
+
+- **Disqualified outright** (never suggested) when there's no valid target, the target is out of
+  range, the target is *immune* to the effect, or the action would be redundant (a buff the target
+  already has, an aura that's already up, an untrained skill).
+- **Rewarded** for expected impact: a Strike that's in range and hits hard, damage that lands on a
+  **weakness**, a save spell weighed by the target's *actual* save odds against your DC (crit-fail
+  through success are each probability-weighted), and hitting the **most valuable enemy** (low HP,
+  healer, caster, whoever's threatening you in melee).
+- **Penalized** for waste: repositioning to a target already in reach, firing a volley weapon
+  point-blank, or re-applying a buff someone already has.
+
+### 2. Build the turn
+
+- Works out your real **action budget** — 3 actions, minus Slowed / Stunned / already-spent, plus one
+  if you're Quickened.
+- Explores legal combinations of the highest-scoring actions and throws out the nonsensical ones:
+  two moves in a row, Drop Prone → Stride, a Step you don't need because the attack already reaches,
+  more than two Strikes, or using a Quickened action on something other than Strike/Stride.
+- Accounts for the **multiple attack penalty** as attacks stack up, and prefers plans that **use your
+  whole turn** rather than leaving actions on the table.
+- Orders the result sensibly — setup before payoff (Demoralize/Feint first, Stand before you move).
+
+The highest-scoring plan is what lands in the panel. It's always a **suggestion** — every step is
+editable, and **Browse** lets you build the turn by hand instead.
+
+---
+
 ## ✅ Requirements
 
 - Foundry VTT **v14**
