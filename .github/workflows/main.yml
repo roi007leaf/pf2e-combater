@@ -155,6 +155,7 @@ jobs:
              ./module.zip                        \
             `# The files that will be included.` \
             module.json                          \
+            lang/                                \
             README.md                            \
             CHANGELOG.md                         \
             LICENSE                              \
