@@ -132,12 +132,31 @@ That splits the scoring into two honest modes:
 
 ### The numbers, roughly
 
-Scores are plain integers. A few of the actual values the engine uses (🔒 = **GM-only**, skipped for
-player auto-fill):
+**Every** action the creature has lands in exactly one "source" bucket, and the bucket sets the
+starting score. The bucket reflects *how confidently Combater understands the action*, not how good it
+is — it's just a small tie-breaking prior. The situational math below (a Strike in range is already
+`+24`, damage adds up to `+40`, etc.) easily overturns it, and a great-fit action from a low bucket
+beats a poor-fit one from a high bucket every time.
+
+| Source bucket | Base | What falls here |
+| --- | --- | --- |
+| `spell-curated` | **50** | A spell in the hand-tuned catalog (known role, targeting, save profile). |
+| `custom-curated` | **48** | An actor-specific action Combater recognizes (a class feature/impulse). |
+| `strike` | **46** | Any weapon or unarmed Strike read off the actor. |
+| `system-inferred` | **44** | A non-spell action recognized by pattern (feats, system actions). |
+| `spell-inferred` | **44** | A spell auto-classified by pattern (damage / save / area / buff / heal…). |
+| `generic` | **42** | The basic actions — Stride, Step, Demoralize, Trip, Grapple, Seek… |
+| *(anything else)* | **20** | The fallback: a spell that couldn't be classified at all (`spell-unknown`) or any action with an unrecognized source. Still offered, just ranked cautiously. |
+
+So there's no spell or action that gets *ignored* — unrecognized ones simply start at **20** and rise
+or fall on their situational fit like everything else.
+
+Beyond the base, a few of the actual values the engine uses (🔒 = **GM-only**, skipped for player
+auto-fill):
 
 | Factor | Effect on score |
 | --- | --- |
-| Base value (by source) | curated spell **50**, custom action **48**, Strike **46**, inferred **44**, generic **42** |
+| Base value (by source) | see the source table below |
 | Strike is in range/reach | **+24** |
 | Strike damage (your own weapon) | `min(avg damage × 2, 40)` |
 | 🔒 Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
