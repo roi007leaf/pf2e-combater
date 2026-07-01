@@ -66,7 +66,6 @@ import {
   shouldDisplaySharedDraft,
 } from "../state/draft-plans.js";
 import * as draftPlanState from "../state/draft-plans.js";
-import { coverageForItems } from "../dev/coverage.js";
 import { coveredClassSlugs } from "../rules/class-tactics.js";
 import { KNOWN_SUBCLASS_SLUGS } from "../rules/class-tactics-data/index.js";
 import { displayStepEntries } from "../ui/display-steps.js";
@@ -8653,6 +8652,22 @@ assert.equal(burningJetClassification.role, "mobility");
 assert.equal(burningJetClassification.activityProfile.fixedDistance, 40);
 assert.equal(burningJetClassification.activityProfile.safeMovement, true);
 
+// Crawling Fire summons a creature that Strides via Sustain ("you can have the crawling fire Stride
+// up to 40 feet") — that's the minion moving, not the actor. It must NOT be classified as the actor's
+// own movement, or it gets wrongly move-gated (e.g. disabled while the actor is prone).
+const crawlingFireClassification = classifySystemAction({
+  name: "Crawling Fire",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    traits: { value: ["fire", "impulse", "manipulate", "primal"] },
+    description: {
+      value: "<p>You mimic the motions of a beast, and it becomes real, appearing in an unoccupied space within 30 feet. The creation lasts until the end of your next turn, but you can Sustain it up to 1 minute. Each time you Sustain it, you can have the crawling fire Stride up to 40 feet.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.notEqual(crawlingFireClassification.role, "mobility", "Crawling Fire's Stride belongs to the summoned creature, not the actor");
+
 const blazingWaveClassification = classifySystemAction({
   name: "Blazing Wave",
   system: {
@@ -15116,63 +15131,8 @@ assert.ok(
   `PC plan should use an inferred spell or feat, got ${spellcasterPlan.summary}`,
 );
 
-const qualityCoverage = coverageForItems([{
-  name: "Cryptic Clue",
-  type: "spell",
-  system: {
-    time: { value: "2" },
-    traits: { value: [] },
-    level: { value: 1 },
-    description: { value: "<p>You gain a cryptic clue.</p>" },
-  },
-}, {
-  name: "Unclear Tactic",
-  type: "action",
-  system: {
-    actionType: { value: "action" },
-    actions: { value: 1 },
-    traits: { value: [] },
-    description: { value: "<p>You perform an unclear tactical option.</p>" },
-  },
-}, {
-  name: "Seek",
-  type: "action",
-  system: {
-    slug: "seek",
-    actionType: { value: "action" },
-    actions: { value: 1 },
-    traits: { value: ["concentrate", "secret"] },
-    description: { value: "<p>You scan an area.</p>" },
-  },
-}]);
-assert.equal(qualityCoverage.quality.lowConfidenceCount, 2);
-assert.equal(qualityCoverage.quality.utilityFallbackCount, 2);
-assert.equal(qualityCoverage.quality.likelyMisclassifiedBuffCount, 1);
-assert.equal(qualityCoverage.quality.likelyWrongCount, 1);
-assert.equal(qualityCoverage.quality.eventOnlyCount, 0);
-assert.equal(qualityCoverage.quality.weakCoverageCount, 3);
-assert.equal(qualityCoverage.quality.strongCoverageCount, 0);
-assert.equal(qualityCoverage.effectiveCoveragePct, 0);
-assert.equal(qualityCoverage.lowConfidence.some((entry) => entry.name === "Cryptic Clue"), true);
-assert.equal(qualityCoverage.utilityFallbacks.some((entry) => entry.name === "Seek"), true);
-assert.equal(qualityCoverage.likelyMisclassifiedBuffs[0].name, "Cryptic Clue");
-assert.equal(Array.isArray(qualityCoverage.auditBuckets.unknown), true);
-assert.equal(qualityCoverage.auditBuckets.likelyWrong[0].name, "Cryptic Clue");
-
-const eventCoverage = coverageForItems([{
-  name: "Reactive Strike",
-  type: "action",
-  system: {
-    actionType: { value: "reaction" },
-    actions: { value: null },
-    category: "offensive",
-    description: {
-      value: "<p><strong>Trigger</strong> A creature within reach uses a manipulate action. The monster makes a melee Strike.</p>",
-    },
-  },
-}]);
-assert.equal(eventCoverage.quality.eventOnlyCount, 1);
-assert.equal(eventCoverage.auditBuckets.eventOnly[0].name, "Reactive Strike");
+// Coverage-diagnostic tests removed alongside scripts/dev/coverage.js (commit b4be343). The
+// classifier they exercised is still covered by the buildCandidates / scoreCandidate tests above.
 
 const playerUnsafeReasonScore = scoreCandidate({
   isGM: false,

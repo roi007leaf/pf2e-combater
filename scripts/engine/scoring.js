@@ -299,6 +299,17 @@ function isAttackLikeAction(action, role) {
     || isOffensiveRole(role);
 }
 
+// Actions that resolve with an ATTACK ROLL (Strikes, spell attacks, Athletics maneuvers). Prone's
+// -2 circumstance penalty applies to attack rolls only — NOT to save-based spells/actions, so this
+// deliberately excludes save-damage/area roles even though they're "offensive".
+function makesAttackRoll(action) {
+  return action?.source === "strike"
+    || action?.attackTrait === true
+    || action?.activityProfile?.includesStrike === true
+    || action?.activityProfile?.spellAttack === true
+    || actionTraitSlugs(action).includes("attack");
+}
+
 function isAreaAction(action, role) {
   const type = String(action?.targetingProfile?.type ?? "").toLowerCase();
   return role === "area-damage"
@@ -1663,6 +1674,15 @@ export function scoreCandidate(context, action) {
       score -= 10;
       reasons.push(t("ScoreReason.VolleyPenalty", "Volley weapon takes a -2 penalty within {range} ft.", { range: volley }));
     }
+  }
+
+  // Prone imposes a -2 circumstance penalty on your attack rolls (Strikes, spell attacks, Athletics
+  // maneuvers). Dock attack-roll actions so the planner leans toward Standing first when it can spare
+  // the action. Applies per attack, so it also correctly favors Stand over multiple prone Strikes.
+  // (Weighted like other -2 penalties here: ~3 points per point of attack penalty.)
+  if (makesAttackRoll(action) && hasCondition(profile, "prone")) {
+    score -= 6;
+    reasons.push(t("ScoreReason.ProneAttackPenalty", "Attacking while prone takes a -2 circumstance penalty."));
   }
 
   if (["step", "stride", "stand-stride"].includes(action.slug) && action.source === "generic" && target) {

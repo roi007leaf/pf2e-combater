@@ -946,9 +946,18 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
+  // Some impulses/summons describe a SEPARATE creature moving ("you can have the crawling fire Stride
+  // up to 40 feet"), not the actor. That Stride is the minion's (done via Sustain), so it must not be
+  // read as the actor's own movement — otherwise the whole action gets move-gated (e.g. shown as
+  // unavailable while the actor is prone). Only exclude prose-detected movement; the "move" trait
+  // stays authoritative for real move actions.
+  const directsOtherToMove =
+    /\b(?:have|lets?|allow|command|order|direct|cause|make)\s+(?:the|your|its?|their|them|him|her|a|an)\s+[^.]{0,40}?\b(?:strides?|steps?|flies?|fly|burrows?|swims?|climbs?|moves?|leaps?)\b/.test(text);
+  const actorMovesInProse =
+    /\bstrides? twice\b|\bstrides? up to\b|\bmoves? up to\b|\bleaps? up to\b|\bjumps? up to\b|\bflies? up to\b|\bflies? twice\b|\bburrows? twice\b/.test(text);
   if (!mentionsStrike && (
     traits.includes("move")
-    || /\bstrides? twice\b|\bstrides? up to\b|\bmoves? up to\b|\bleaps? up to\b|\bjumps? up to\b|\bflies? up to\b|\bflies? twice\b|\bburrows? twice\b/.test(text)
+    || (actorMovesInProse && !directsOtherToMove)
   )) {
     const strideCount = /\bhalf (?:its|his|her|their|the) speed\b/.test(text)
       ? 0.5

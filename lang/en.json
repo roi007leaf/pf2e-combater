@@ -550,6 +550,7 @@
       "TargetIsOutOf": "Target is out of range.",
       "AverageDamage": "Average damage about {amount}.",
       "VolleyPenalty": "Volley weapon takes a -2 penalty within {range} ft.",
+      "ProneAttackPenalty": "Attacking while prone takes a -2 circumstance penalty.",
       "TargetAlreadyInReach": "Target already in reach; repositioning is low priority.",
       "ClosesDistanceTowardThe": "Closes distance toward the target.",
       "ActorIsNotProne": "Actor is not prone.",

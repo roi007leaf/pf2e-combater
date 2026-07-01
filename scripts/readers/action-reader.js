@@ -2087,19 +2087,31 @@ function readActorItemActions(actor, context) {
   });
 }
 
+// Strip Foundry enrichment (@UUID[...]{Leap}, @Damage[...], @Check[...]{Reflex}) down to readable
+// text so anything we surface never shows raw @UUID markup. Keeps the {Label} when there is one.
+function stripEnrichment(value) {
+  return String(value ?? "")
+    .replace(/@[A-Za-z]+\[[^\]]*\]\{([^}]*)\}/g, "$1")
+    .replace(/@[A-Za-z]+\[[^\]]*\]/g, "")
+    .replace(/@[A-Za-z]+\{([^}]*)\}/g, "$1");
+}
+
 function readTrigger(item) {
   const explicit = systemValue(item?.system?.trigger ?? item?.trigger);
-  if (explicit) return normalizeWhitespace(explicit);
+  if (explicit) return normalizeWhitespace(stripEnrichment(explicit));
 
-  const html = [
-    descriptionHtml(item),
-    systemValue(item?.description),
-  ].filter(Boolean).join(" ");
+  // One source only: item.system.description and item.description are the same content, and joining
+  // them duplicated the whole block into any extracted trigger.
+  const html = descriptionHtml(item) || String(systemValue(item?.description) ?? "");
+
   const triggerMatch = html.match(/<strong>\s*Trigger\s*<\/strong>\s*([^<]+)/i);
-  if (triggerMatch?.[1]) return normalizeWhitespace(triggerMatch[1]);
+  if (triggerMatch?.[1]) return normalizeWhitespace(stripEnrichment(triggerMatch[1]));
 
-  const text = htmlToText(html);
-  const textMatch = text.match(/\bTrigger\b\s+(.+?)(?:\s+Requirements\b|\s+Frequency\b|\s+Effect\b|$)/i);
+  // Plain-text fallback: require "Trigger" to be a real label — capitalized and at a boundary (start
+  // or after a period/newline), stopping at the next section or sentence end. Without this a stray
+  // mid-sentence "...doesn't trigger reactions..." matched and swallowed the entire description.
+  const text = stripEnrichment(htmlToText(html));
+  const textMatch = text.match(/(?:^|[.\n]\s+)Trigger\s+(.+?)(?:\s+Requirements\b|\s+Frequency\b|\s+Effect\b|\.|$)/);
   return textMatch?.[1] ? normalizeWhitespace(textMatch[1]) : "";
 }
 
