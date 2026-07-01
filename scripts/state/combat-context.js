@@ -157,6 +157,20 @@ function measureDistance(fromToken, toToken) {
   if (!fromToken || !toToken) return Infinity;
   if (fromToken === toToken) return 0;
 
+  // Foundry/PF2e's token.distanceTo is size-aware (edge-to-edge): an adjacent Large creature reads
+  // 5 ft, not the ~10 ft a center-to-center measurement gives. Prefer it; the footprint math below
+  // is only a fallback for environments without the placeable API (e.g. offline tests).
+  const from = fromToken?.object ?? fromToken;
+  const to = toToken?.object ?? toToken;
+  if (typeof from?.distanceTo === "function" && to) {
+    try {
+      const distance = from.distanceTo(to);
+      if (Number.isFinite(distance)) return distance;
+    } catch (_error) {
+      // fall through to the footprint estimate
+    }
+  }
+
   const fromCenters = tokenFootprintCenters(fromToken);
   const toCenters = tokenFootprintCenters(toToken);
   let shortest = Infinity;

@@ -569,6 +569,23 @@ assert.ok(
   panelSource.includes("isPlayerControlledActor"),
   "panel should detect player-controlled actors before allowing GM draft edits",
 );
+// Regression: an absent player's owned character used to lock the GM out of Auto-fill/execute
+// forever, because ownership is a static document flag with no regard for whether that owner is
+// actually connected. The GM should get full plan/execute rights once every owning player is
+// offline — the same rights they already have for any NPC they run.
+assert.ok(
+  /user\s*&&\s*user\.isGM\s*!==\s*true\s*&&\s*user\.active\s*===\s*true/.test(panelSource),
+  "player-owner detection should require the owning user to be currently connected (user.active), not just hold a static ownership flag",
+);
+// Regression (edge case): sharedDraftKnown gets stamped for the rest of the encounter the moment a
+// player ever shares any draft (even an empty one), so a stale shared draft from earlier in the
+// session must not re-lock an absent player's actor read-only. The mirror/lock branch has to require
+// gmViewingPlayerPlan directly, not just useSharedDraft, so it falls through to the GM's own editable
+// local draft once the player disconnects.
+assert.ok(
+  /const activeDraft = \(gmViewingPlayerPlan && useSharedDraft\)/.test(panelSource),
+  "shared-draft readonly mirroring must require the player to be actively online, not just a known shared draft",
+);
 assert.ok(
   /this\._builder\.readonly = .*gmViewingPlayerPlan/.test(panelSource),
   "GM PC view should mark builder readonly",
@@ -4375,6 +4392,47 @@ assert.equal(proneStride.unavailableReason, "Actor is prone; move actions are un
 
 const uprightSources = readActionSources(fighterContext);
 assert.equal(uprightSources.find((action) => action.slug === "stand").available, false);
+
+// Regression: a Large creature was picking its weaker 2d10 ranged beam over its harder-hitting 2d12
+// melee Pincer against an ADJACENT target. Two causes — (1) distance for a Large token now uses
+// token.distanceTo (adjacent = 5 ft, not center-to-center 10 ft), and (2) the strike damage bonus no
+// longer caps into a tie, so higher dice win. Here we lock in cause (2) at the scoring seam.
+const dualStrikeContext = (distance) => {
+  const target = { id: "petal", name: "Petal", distance, attackTargetable: true, center: { x: 0, y: 0 }, token: { center: { x: 0, y: 0 } } };
+  const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
+  return {
+    actor: { document: { itemTypes: {}, system: { traits: { size: { value: "lg" } }, actions: [
+      { type: "strike", name: "Pincer", label: "Pincer", item: meleeItem("2d12+12", "piercing", ["magical"]), traits: [], weaponTraits: [], variants: [] },
+      { type: "strike", name: "Energy Beam", label: "Energy Beam", item: meleeItem("2d10+10", "fire", ["fire", "magical"], { increment: null, max: 60 }), traits: [], weaponTraits: [], variants: [] },
+    ] } } },
+    battlefield: { allies: [], enemies: [target], targets: [target] },
+    targets: [target],
+  };
+};
+const adjacentDualCtx = dualStrikeContext(5);
+const adjacentStrikes = readActionSources(adjacentDualCtx).filter((a) => a.source === "strike");
+const adjacentPincer = adjacentStrikes.find((a) => a.name === "Pincer");
+const adjacentBeam = adjacentStrikes.find((a) => a.name === "Energy Beam");
+assert.equal(adjacentPincer.range.max, 5, "a melee Strike with no reach trait reaches 5 ft");
+assert.ok(scoreCandidate(adjacentDualCtx, adjacentPincer).score > scoreCandidate(adjacentDualCtx, adjacentBeam).score,
+  "the harder-hitting in-reach melee Pincer beats the weaker ranged beam against an adjacent target");
+
+// Regression: cause (3) of the same bug. PF2e injects a synthetic RitualSpellcasting entry into
+// EVERY actor's `spellcasting.collections`, spellcaster or not (ActorSpellcasting#prepareDataFromItems
+// always appends `new RitualSpellcasting(this)`). hasSpellcastingCapability used to treat any non-empty
+// `spellcasting.collections` as "this actor casts spells", which was true for 100% of actors — so
+// every melee Strike on every non-caster creature that also had any other Strike ate an incorrect
+// -18 "prefer spell options" penalty. Only actual spell/spellcastingEntry items should count.
+const phantomRitualContext = dualStrikeContext(5);
+phantomRitualContext.actor.document.spellcasting = { collections: new Map([["rituals", {}]]), entries: [] };
+const phantomStrikes = readActionSources(phantomRitualContext).filter((a) => a.source === "strike");
+const phantomPincer = phantomStrikes.find((a) => a.name === "Pincer");
+const phantomScore = scoreCandidate(phantomRitualContext, phantomPincer);
+assert.equal(
+  phantomScore.reasons.some((reason) => /lower priority than spell options/i.test(reason)),
+  false,
+  "a non-spellcaster's melee Strike must not be penalized just because of PF2e's built-in ritual-casting placeholder",
+);
 
 const scoredStand = scoreCandidate(proneMeleeContext, proneStand);
 assert.ok(scoredStand.score > 70);

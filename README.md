@@ -80,6 +80,9 @@ players plan their own turns.
 
 - Players plan and execute their own combatant; the GM window follows the **selected token**.
 - Players can **share** their draft with the GM, who can execute it on their behalf if they go AFK.
+- If a player is **not currently connected** (e.g. their PC is being run by the GM for the session),
+  the GM gets full Auto-fill/edit/execute rights on that character — same as any NPC. The read-only
+  "mirror the player's live plan" mode only applies while the owning player is actually online.
 
 ---
 

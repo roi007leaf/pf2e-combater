@@ -210,10 +210,13 @@ function hasSpellcastingCapability(context) {
   const actor = contextActorDocument(context);
   if (!actor) return false;
 
+  // NOTE: actor.spellcasting.collections/.entries are NOT reliable signals here. PF2e injects a
+  // synthetic RitualSpellcasting entry into every actor's spellcasting collections regardless of
+  // whether it has any real spells (see ActorSpellcasting#prepareDataFromItems), so `.collections`
+  // is non-empty for every creature in the game. Only the actual spell/spellcastingEntry items (or
+  // the equivalent structural data) indicate real spellcasting.
   if (collectionValues(actor?.itemTypes?.spell).length > 0) return true;
   if (collectionValues(actor?.itemTypes?.spellcastingEntry).length > 0) return true;
-  if (collectionValues(actor?.spellcasting?.collections).length > 0) return true;
-  if (collectionValues(actor?.spellcasting?.entries).length > 0) return true;
   if (collectionValues(actor?.system?.spellcasting?.entries).length > 0) return true;
 
   return collectionValues(actor?.items).some((item) =>
@@ -1224,7 +1227,11 @@ function baseScore(action) {
 }
 
 function strikeDamageScore(averageDamage) {
-  return Math.min(averageDamage * 2, 40);
+  // Capped main term keeps a single Strike from dominating cross-role comparisons. The small
+  // uncapped tiebreaker then keeps strike-vs-strike ordering monotonic once both cap out, so a
+  // harder-hitting weapon still wins — e.g. a 2d12+12 Pincer (avg 25) beats a 2d10+10 beam (avg 21)
+  // at the same range instead of tying at the 40 ceiling.
+  return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
 }
 
 function defaultReason(action) {

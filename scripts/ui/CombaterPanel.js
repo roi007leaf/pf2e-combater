@@ -116,11 +116,14 @@ function ownershipLevelValue(level) {
   return Number(levels[String(level ?? "").toUpperCase()] ?? 0) || 0;
 }
 
-function actorHasNonGmOwner(actor) {
+// Only a currently-connected owner counts. An absent player's owned character is the GM's to plan
+// and execute for that session — there's no live player turn to defer to, so it should behave like
+// any other actor the GM runs (e.g. an NPC ally) rather than lock the GM out of Auto-fill/execute.
+function actorHasActiveNonGmOwner(actor) {
   const document = actor?.document ?? actor;
   if (!document) return false;
   const ownerLevel = ownershipLevelValue(globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
-  const users = collectionValues(globalThis.game?.users).filter((user) => user && user.isGM !== true);
+  const users = collectionValues(globalThis.game?.users).filter((user) => user && user.isGM !== true && user.active === true);
 
   if (typeof document.testUserPermission === "function") {
     return users.some((user) => document.testUserPermission(user, ownerLevel));
@@ -130,13 +133,13 @@ function actorHasNonGmOwner(actor) {
   return users.some((user) => ownershipLevelValue(ownership[user.id]) >= ownerLevel);
 }
 
-// A "player's actor" is one a non-GM user actually owns — not every character sheet. An NPC-type or
-// unowned character (e.g. a GM-run NPC ally) is the GM's to plan, so we only treat genuinely
-// player-owned actors as player plans.
+// A "player's actor" is one a non-GM user actually owns AND is currently online to play. An NPC-type
+// actor, an unowned character (e.g. a GM-run NPC ally), or a character whose only owners are all
+// offline is the GM's to plan, so we only treat genuinely player-piloted actors as player plans.
 function isPlayerControlledActor(actor) {
   const document = actor?.document ?? actor;
   if (!document) return false;
-  return actorHasNonGmOwner(document);
+  return actorHasActiveNonGmOwner(document);
 }
 
 function titleCase(value) {
@@ -1070,7 +1073,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // on their behalf. The draft stays read-only for editing, but execution/revert is permitted and
     // writes back to the shared draft rather than the GM's local one.
     this._gmExecuteMode = gmViewingPlayerPlan && useSharedDraft;
-    const activeDraft = useSharedDraft
+    // Mirroring/locking to the shared draft only makes sense while the player is actively online —
+    // otherwise a stale shared draft from earlier in the session (even an empty one; any draft the
+    // player ever shared stamps sharedDraftKnown for the rest of the encounter) would keep an absent
+    // player's actor stuck read-only forever. Once they're offline, fall through to the GM's own
+    // editable local draft — the same one any other actor the GM runs already uses.
+    const activeDraft = (gmViewingPlayerPlan && useSharedDraft)
       ? { ...sharedDraft, readonly: true, shared: true }
       : gmViewingPlayerPlan
         ? { steps: [], readonly: true, shared: true, userName: "" }
