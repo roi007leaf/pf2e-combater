@@ -114,6 +114,60 @@ generic action), then gets adjusted for the actual situation:
   whole turn** rather than leaving actions on the table.
 - Orders the result sensibly — setup before payoff (Demoralize/Feint first, Stand before you move).
 
+### The numbers, roughly
+
+Scores are plain integers. A few of the actual values the engine uses:
+
+| Factor | Effect on score |
+| --- | --- |
+| Base value (by source) | curated spell **50**, custom action **48**, Strike **46**, inferred **44**, generic **42** |
+| Strike is in range/reach | **+24** |
+| Strike damage | `min(avg damage × 2, 40)` |
+| Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
+| Target **resistance** | `−min(resistance × 3, 35)` |
+| Target **immunity** | **−70** (effectively removes it) |
+| Multiple attack penalty (2nd / 3rd attack) | `−15 / −30` (agile: `−12 / −24`) |
+| Stand up while prone | **+18**, `+22` if an enemy is in melee |
+| Stride/Step that actually closes distance | Stride `+8`, Step `+4` |
+| Move toward a target already in reach | forced to **−10** (won't pad the turn) |
+| Volley weapon fired inside its volley range | **−10** |
+| Leftover unused action | `−1` each (nudges toward a full turn) |
+
+Hard limits: max **2** Strike steps per plan, an action budget of **3** (± Slowed / Stunned /
+Quickened), and a Quickened action may only be a Strike or Stride.
+
+### Worked examples
+
+**"Swing twice, or hit and run?"** — Fighter with a non-agile weapon (avg 11 damage), one goblin in
+reach, three actions.
+
+- Strike #1 ≈ `46 + 24 + 22` = **92**
+- Strike #2 = `92 − 15` (MAP) = **77**
+- A third Strike is blocked (2-Strike cap), so the last action goes to the next-best legal option —
+  Raise a Shield, Demoralize the goblin, or Stride to a second enemy.
+- Result: **Strike → Strike → Demoralize**, not three flailing swings.
+
+**"Which damage type?"** — Kineticist facing a creature with **fire weakness 5**.
+
+- Fire blast: `+min(5 × 4, 45)` = **+20**
+- Cold blast (no weakness): **+0** → the fire blast is picked. If the creature were fire-*immune*,
+  the fire blast takes **−70** and drops out of consideration entirely.
+
+**"Is the save spell worth it?"** — Fireball (basic Reflex). The engine rolls the target's save
+against your spell DC across all 20 die faces and weights the outcomes:
+`multiplier = P(crit fail) × 2 + P(fail) × 1 + P(success) × 0.5`. A weak-save target pushes the
+multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-save target drags it
+below a plain Strike, so the planner just swings instead.
+
+**"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
+martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded
+ally under fire nudges it up a further `+14`.
+
+**"Don't waste the spare action."** — Enemy already in reach with one action to spare: a generic
+Stride toward it is forced to **−10**, which is worse than the `−1` for simply leaving the action
+unused — so the planner leaves it empty rather than tack on a pointless move. (Still addable by hand
+in **Browse**.)
+
 The highest-scoring plan is what lands in the panel. It's always a **suggestion** — every step is
 editable, and **Browse** lets you build the turn by hand instead.
 
