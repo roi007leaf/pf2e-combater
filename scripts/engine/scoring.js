@@ -459,13 +459,14 @@ function spellDc(action, profile) {
   );
 }
 
-function saveOutcomeChance(dc, saveDc) {
-  if (!Number.isFinite(dc) || !Number.isFinite(saveDc)) return null;
-  const saveMod = saveDc - 10;
+// PF2e degree-of-success distribution for a d20 + rollBonus against dc: beat by 10 = crit success,
+// meet = success, miss by 10 = crit failure; a nat 20/1 shifts one degree up/down. Each face is 5%.
+function degreeDistribution(rollBonus, dc) {
+  if (!Number.isFinite(rollBonus) || !Number.isFinite(dc)) return null;
   const outcomes = { criticalFailure: 0, failure: 0, success: 0, criticalSuccess: 0 };
 
   for (let roll = 1; roll <= 20; roll += 1) {
-    const total = roll + saveMod;
+    const total = roll + rollBonus;
     let degree = total >= dc + 10 ? 3 : total >= dc ? 2 : total <= dc - 10 ? 0 : 1;
     if (roll === 20) degree = Math.min(3, degree + 1);
     if (roll === 1) degree = Math.max(0, degree - 1);
@@ -479,12 +480,42 @@ function saveOutcomeChance(dc, saveDc) {
   return outcomes;
 }
 
+// A save distribution is the target rolling its save (modifier ≈ saveDc − 10) against the spell dc.
+function saveOutcomeChance(dc, saveDc) {
+  if (!Number.isFinite(dc) || !Number.isFinite(saveDc)) return null;
+  return degreeDistribution(saveDc - 10, dc);
+}
+
+// Incapacitation: a spell/effect with this trait lets a target of more than twice the spell's rank
+// treat its save as one degree better — which usually turns a hard-control spell into a near-whiff.
+function incapacitationApplies(action, target) {
+  if (!actionTraitSlugs(action).includes("incapacitation")) return false;
+  const doc = targetActorDocument(target);
+  const level = Number(target?.level ?? doc?.system?.details?.level?.value);
+  const rank = Number(action?.castRank ?? action?.rank ?? action?.spellRank);
+  if (!Number.isFinite(level) || !Number.isFinite(rank) || rank <= 0) return false;
+  return level > rank * 2;
+}
+
+// Shift every outcome one degree toward the saver's success (crit-fail→fail, …, success→crit success).
+function upgradeSaveDegree(odds) {
+  return {
+    criticalFailure: 0,
+    failure: odds.criticalFailure,
+    success: odds.failure,
+    criticalSuccess: odds.success + odds.criticalSuccess,
+  };
+}
+
 function saveExpectedMultiplier(action, target, profile) {
   const stat = action?.saveProfile?.stat;
   const dc = spellDc(action, profile);
   const saveDc = targetDc(target, stat);
-  const odds = saveOutcomeChance(dc, saveDc);
-  if (!odds) return null;
+  const baseOdds = saveOutcomeChance(dc, saveDc);
+  if (!baseOdds) return null;
+
+  const incapacitated = incapacitationApplies(action, target);
+  const odds = incapacitated ? upgradeSaveDegree(baseOdds) : baseOdds;
 
   if (action?.saveProfile?.basic) {
     return {
@@ -492,6 +523,7 @@ function saveExpectedMultiplier(action, target, profile) {
       odds,
       dc,
       saveDc,
+      incapacitated,
     };
   }
 
@@ -500,6 +532,7 @@ function saveExpectedMultiplier(action, target, profile) {
     odds,
     dc,
     saveDc,
+    incapacitated,
   };
 }
 
@@ -513,9 +546,12 @@ function saveScoreDelta(context, action, target, profile) {
     const average = damageAverage(action);
     const multiplierDelta = Math.round((expected.multiplier - 0.7) * 34);
     const damageDelta = Number.isFinite(average) ? Math.round(Math.min(36, average * expected.multiplier * 0.7)) : 0;
+    const label = expected.incapacitated
+      ? `${titleCase(action.saveProfile.stat)} DC ${saveDc} vs spell DC ${expected.dc} (incapacitation: target resists a degree better).`
+      : `${titleCase(action.saveProfile.stat)} DC ${saveDc} vs spell DC ${expected.dc}.`;
     return {
       scoreDelta: multiplierDelta + damageDelta,
-      label: `${titleCase(action.saveProfile.stat)} DC ${saveDc} vs spell DC ${expected.dc}.`,
+      label,
       multiplier: expected.multiplier,
     };
   }
@@ -1322,13 +1358,6 @@ function targetDc(target, dcSlug) {
   );
 }
 
-function successChance(mod, dc) {
-  const needed = dc - mod;
-  if (needed <= 1) return 0.95;
-  if (needed > 20) return 0.05;
-  return Math.max(0.05, Math.min(0.95, (21 - needed) / 20));
-}
-
 function skillCheckScore(profile, target, action) {
   if (!action.skill) return null;
 
@@ -1337,8 +1366,14 @@ function skillCheckScore(profile, target, action) {
   const dc = targetDc(target, dcSlug);
   if (!skill || !Number.isFinite(dc)) return null;
 
-  const chance = successChance(skill.mod, dc);
-  let scoreDelta = Math.round((chance - 0.5) * 40);
+  const odds = degreeDistribution(skill.mod, dc);
+  if (!odds) return null;
+  const chance = odds.success + odds.criticalSuccess;
+  // Weight by degree rather than a flat success chance: many skill actions land a bigger effect on a
+  // critical success (frightened 2 from Demoralize, longer flat-footed from Feint), and a critical
+  // failure carries its own cost — mirrors how saves are scored above.
+  const effectiveness = odds.criticalSuccess * 1.5 + odds.success - odds.criticalFailure * 0.5;
+  let scoreDelta = Math.round((effectiveness - 0.5) * 40);
   const reasons = [`${titleCase(action.skill)} ${signed(skill.mod)} vs ${titleCase(dcSlug)} DC ${dc}.`];
 
   if (skill.rank === 0) {

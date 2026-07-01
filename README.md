@@ -175,7 +175,8 @@ auto-fill):
 | 🔒 Target **resistance** | `−min(resistance × 3, 35)` |
 | 🔒 Target **immunity** | **−70** (effectively removes it) |
 | 🔒 Save spell vs target's save DC | expected-damage multiplier (see below) |
-| 🔒 Skill action vs target's defense DC | success-odds delta `round((chance − 0.5) × 40)` — your skill **modifier** vs the target's Will/Reflex/Fort/Perception DC (Demoralize→Will, Trip/Disarm/Tumble Through→Reflex, Grapple/Shove/Reposition→Fort, Feint/Create a Diversion→Perception) |
+| 🔒 Skill action vs target's defense DC | **degree-of-success** delta from your skill **modifier** vs the target's Will/Reflex/Fort/Perception DC (Demoralize→Will, Trip/Disarm/Tumble Through→Reflex, Grapple/Shove/Reposition→Fort, Feint/Create a Diversion→Perception). A likely **critical** success is worth extra (crit Demoralize = frightened 2, etc.); a likely crit failure costs. |
+| 🔒 Incapacitation spell vs a much higher-level target | resistance modeled — a target of more than **twice the spell's rank** saves one degree better, so hard control (Slow, Paralyze…) is scored down against over-leveled foes |
 | 🔒 Poor skill odds (< 35% success) | `−4` |
 | Untrained (proficiency rank 0) in the skill | `−6`, and the action is hidden entirely if *Hide untrained skill actions* is on |
 | Untrained Athletics for a melee maneuver (own skill) | `−80` (PC) / `−42` (NPC), `−110` for a primary spellcaster; low Athletics (mod < 5) `−12` |
@@ -205,18 +206,19 @@ Everything above scores *actions*. The **aggro engine** answers the other half �
 at — and it's **GM-only, for the NPCs a GM runs**. When a player auto-fills, aggro contributes
 **nothing** (it would require reading party members' kits), so this whole layer is skipped.
 
-For each possible target, the engine builds an **aggro profile** by reading that creature's kit — its
-slugs, names, traits, and spell/feat/action descriptions — and matching them against role cue-words.
-Each role a target fills adds to its priority:
+For each possible target, the engine builds an **aggro profile** by reading that creature's kit — the
+slugs, names, and traits of its spells, feats, and actions (identity fields only, not the rules prose,
+so a description that merely *mentions* a condition doesn't trip a false match) — and matching them
+against role cue-words. Each role a target fills adds to its priority:
 
 | Target role | Priority | How it's detected |
 | --- | --- | --- |
-| **Finisher target** — nearly down | `+24` (`+34` at ≤ 20% HP) | HP ≤ 35%, or **dying** / **wounded** |
+| **Finisher target** — nearly down | `+24` (`+34` at ≤ 20% HP) | HP ≤ 35%, or **dying** (not the *wounded* counter, which can sit on a full-HP creature) |
 | **Immediate threat** — in your face | `+10` (`+18` at ≤ 5 ft) | within 10 ft |
 | **Healer** | `+42` | kit has heal / lay on hands / battle medicine / restore… |
 | **Controller** | `+26` | kit has slow / fear / grapple / wall / command… |
 | **Caster** | `+18` + `2 per spell` (max `+12`) | has spells or a spellcasting entry |
-| **Main attacker** | `+18` + `3 per weapon` (max `+12`) | weapons, or attack/Strike/rage/breath cues |
+| **Main attacker** | `+8`, scaled by stacked offense (`+3` per weapon, `+4` per damage feat/impulse/spell, capped) | so a glass-cannon striker outranks a one-weapon mook, instead of everyone with a weapon reading the same |
 | **Main defender** | `+18` | AC a clear margin **above the average of the other targets** in the fight (whoever's hardest to hit *here*), or shield/guardian/intercept cues |
 
 Then the target's priority is **weighted by the action you'd use on it**, so the engine spends the
@@ -261,7 +263,7 @@ multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-s
 below a plain Strike. For a **player**, this whole comparison is skipped — the save spell is scored on
 its base value alone.
 
-**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize (Intimidation) on two PCs. Against a PC with **Will DC 18** and an Intimidation **+9**, needed roll is `18 − 9 = 9`, so success ≈ 60% → `round((0.60 − 0.5) × 40)` = **+4**. Against a **Will DC 24** PC the odds drop under 35% → the base delta goes negative *and* takes a further `−4`, so the NPC leans toward the softer target. If the NPC were **untrained** in Intimidation it also eats `−6` (or is hidden outright). Proficiency **rank** and skill **modifier** both feed this — rank gates/penalizes, the modifier drives the odds. For a **player**, the target's DC is never read, so a skill action is ranked on its base value and own conditions only.
+**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize (Intimidation) on two PCs. The engine rolls the Intimidation modifier against each PC's **Will DC** across all 20 die faces and weights the **degrees of success** — a critical success (frightened 2) counts extra, a critical failure counts against it. Against a low-Will PC that means frequent successes and the occasional crit, so Demoralize scores well; against a high-Will PC it slides toward failure and the NPC leans on the softer target. An **untrained** NPC also eats `−6` (or the action is hidden outright). Proficiency **rank** and skill **modifier** both feed this — rank gates/penalizes, the modifier drives the odds. For a **player**, the target's DC is never read, so a skill action is ranked on its base value and own conditions only.
 
 **"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
 martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded

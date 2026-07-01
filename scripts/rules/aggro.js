@@ -94,6 +94,9 @@ function allItems(actor) {
   return [...typed, ...fallback];
 }
 
+// Cue-match against the item's identity — slug, name, label, role, traits — but NOT its description
+// prose. A rules paragraph like "you are not frightened" would otherwise trip the fear/control cues;
+// identity fields are far more reliable and PF2e names/traits are already descriptive.
 function itemText(item) {
   const traits = collectionValues(item?.system?.traits?.value ?? item?.traits)
     .map((trait) => trait?.slug ?? trait?.name ?? trait)
@@ -105,15 +108,19 @@ function itemText(item) {
     item?.label,
     item?.role,
     traits,
-    item?.system?.description?.value,
   ].filter(Boolean).join(" "));
 }
 
+function itemsOfTypes(actor, types) {
+  return types ? types.flatMap((type) => itemTypes(actor, type)) : allItems(actor);
+}
+
 function hasItemMatching(actor, pattern, types = null) {
-  const items = types
-    ? types.flatMap((type) => itemTypes(actor, type))
-    : allItems(actor);
-  return items.some((item) => pattern.test(itemText(item)));
+  return itemsOfTypes(actor, types).some((item) => pattern.test(itemText(item)));
+}
+
+function countItemsMatching(actor, pattern, types = null) {
+  return itemsOfTypes(actor, types).filter((item) => pattern.test(itemText(item))).length;
 }
 
 function spellCount(actor) {
@@ -188,7 +195,27 @@ function addRole(profile, role, value, reason) {
   if (reason) profile.reasons.push(reason);
 }
 
+// aggroProfile runs per candidate action × per target and regex-scans every item on the target, so
+// it's recomputed many times per auto-fill. Memoize by (context, target): both are stable within a
+// scoring pass, and the WeakMap lets stale contexts get collected once the pass is done.
+const aggroProfileCache = new WeakMap();
+
 export function aggroProfile(context, target) {
+  if (context && typeof context === "object" && target && typeof target === "object") {
+    let perTarget = aggroProfileCache.get(context);
+    if (!perTarget) {
+      perTarget = new WeakMap();
+      aggroProfileCache.set(context, perTarget);
+    }
+    if (perTarget.has(target)) return perTarget.get(target);
+    const computed = computeAggroProfile(context, target);
+    perTarget.set(target, computed);
+    return computed;
+  }
+  return computeAggroProfile(context, target);
+}
+
+function computeAggroProfile(context, target) {
   const full = canUseFullAggro(context);
   const actor = actorDocument(target);
   const profile = {
@@ -200,8 +227,11 @@ export function aggroProfile(context, target) {
     gmOnly: full,
   };
 
+  // "Close to being removed" means low HP or actively dying — not merely wounded. The wounded
+  // condition is a persistent counter that can sit on a full-HP creature after it's been healed,
+  // so it doesn't imply the target is near death.
   const hp = hpPercent(target);
-  if (hp <= 0.35 || hasCondition(target, "dying") || hasCondition(target, "wounded")) {
+  if (hp <= 0.35 || hasCondition(target, "dying")) {
     addRole(profile, "finisher-target", hp <= 0.2 ? 34 : 24, t("Aggro.FinisherTarget", "Target is close to being removed."));
   }
 
@@ -227,9 +257,15 @@ export function aggroProfile(context, target) {
     addRole(profile, "controller", 26, t("Aggro.Controller", "Target can control the fight."));
   }
 
+  // Almost every creature has a weapon, so a flat "has offense" bonus flags everyone and tells the
+  // NPC nothing. Scale it by how much offense the target actually stacks — extra weapons plus damage
+  // feats/impulses/spells (Rage, Power Attack, Flurry, Sneak Attack, damaging cantrips…) — so a
+  // glass-cannon striker reads as a bigger threat than a one-weapon mook.
   const weapons = itemTypes(actor, "weapon");
-  if (weapons.length > 0 || hasItemMatching(actor, DAMAGE_WORDS, ["spell", "action", "feat", "feature"])) {
-    addRole(profile, "main-attacker", 18 + Math.min(12, weapons.length * 3), t("Aggro.MainAttacker", "Target has meaningful offense."));
+  const damageAbilities = countItemsMatching(actor, DAMAGE_WORDS, ["spell", "action", "feat", "feature"]);
+  if (weapons.length > 0 || damageAbilities > 0) {
+    const offense = Math.min(20, weapons.length * 3 + damageAbilities * 4);
+    addRole(profile, "main-attacker", 8 + offense, t("Aggro.MainAttacker", "Target has meaningful offense."));
   }
 
   if (hasDefensiveArmor(context, target, actor) || hasItemMatching(actor, DEFENDER_WORDS, ["action", "feat", "feature", "armor", "weapon"])) {

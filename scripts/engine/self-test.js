@@ -4092,6 +4092,118 @@ const relSoloContext = {
 assert.equal(aggroProfile(relSoloContext, relTank).roles.includes("main-defender"), false,
   "a lone target has no party to look tanky against");
 
+// finisher-target keys on low HP or actively dying — NOT the wounded counter, which can sit on a
+// fully-healed creature.
+const woundedFullHpTarget = {
+  id: "wounded-full", name: "Recovered Knight", distance: 30, hpPercent: 1,
+  attackTargetable: true, conditions: { slugs: ["wounded"], values: { wounded: 1 } },
+  actor: { document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 50, max: 50 } } } } },
+};
+const dyingTarget = {
+  id: "dying", name: "Fallen Scout", distance: 30, hpPercent: 1,
+  attackTargetable: true, conditions: { slugs: ["dying"], values: { dying: 1 } },
+  actor: { document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 50, max: 50 } } } } },
+};
+assert.equal(aggroProfile(npcAggroContext, woundedFullHpTarget).roles.includes("finisher-target"), false,
+  "a full-HP wounded creature is not a finisher target");
+assert.equal(aggroProfile(npcAggroContext, dyingTarget).roles.includes("finisher-target"), true,
+  "a dying creature is a finisher target");
+
+// Incapacitation: a hard-control spell is worth much less against a target of more than twice its
+// rank (it resists a degree better), and the reason is surfaced.
+const incapSpell = {
+  id: "slow", name: "Slow", slug: "slow", source: "spell-inferred", actionCost: 2, role: "control",
+  castRank: 2, traits: ["incapacitation"], targetingProfile: { enemy: true, maxRange: 60 },
+  saveProfile: { stat: "will" },
+};
+const incapContext = (targetLevel) => ({
+  isGM: true,
+  profile: { actorType: "npc", spellDc: 30, hpPercent: 1, conditions: { slugs: [], values: {} }, skills: {} },
+  actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
+  token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
+  targets: [],
+  battlefield: { targets: [], allies: [], enemies: [{
+    id: "foe", name: "Foe", level: targetLevel, distance: 30, hpPercent: 1, attackTargetable: true,
+    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+    actor: { document: { type: "character", itemTypes: {},
+      system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
+  }] },
+});
+const incapVsLow = scoreCandidate(incapContext(3), incapSpell);
+const incapVsHigh = scoreCandidate(incapContext(20), incapSpell);
+assert.ok(incapVsHigh.score < incapVsLow.score,
+  "an incapacitation spell scores lower against a target more than twice its rank");
+assert.ok(incapVsHigh.reasons.some((reason) => /incapacitation/i.test(reason)),
+  "the incapacitation degrade is surfaced in the reasons");
+
+// Skill checks are weighted by degree of success, so a near-guaranteed critical Demoralize is worth
+// far more than a barely-succeeding one — a wider gap than a flat success chance would give.
+const skillDemoralize = {
+  id: "demoralize", name: "Demoralize", slug: "demoralize", source: "generic", actionCost: 1,
+  role: "debuff", skill: "intimidation", targetingProfile: { enemy: true, maxRange: 30 },
+};
+const skillContext = (intimidationMod) => ({
+  isGM: true,
+  profile: { actorType: "npc", hpPercent: 1, conditions: { slugs: [], values: {} },
+    skills: { intimidation: { mod: intimidationMod, rank: 2 } } },
+  actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
+  token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
+  targets: [],
+  battlefield: { targets: [], allies: [], enemies: [{
+    id: "foe", name: "Foe", distance: 20, hpPercent: 1, attackTargetable: true,
+    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+    perception: { dc: 20 },
+    actor: { document: { type: "character", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
+  }] },
+});
+const critDemoralize = scoreCandidate(skillContext(40), skillDemoralize);
+const evenDemoralize = scoreCandidate(skillContext(10), skillDemoralize);
+assert.ok(critDemoralize.score - evenDemoralize.score > 25,
+  "degree-of-success weighting rewards a crit-heavy skill check well beyond a flat success chance");
+
+// Role cues ignore description prose: an ability that only mentions conditions in its text (e.g.
+// "immune to fear") must not be misread as a controller.
+const prosyTarget = {
+  id: "prosy", name: "Stoic", distance: 30, hpPercent: 1, ac: 18, attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: { document: { type: "npc",
+    itemTypes: { spell: [], spellcastingEntry: [], weapon: [],
+      action: [{ slug: "steady-nerves", name: "Steady Nerves",
+        system: { traits: { value: [] }, description: { value: "This creature cannot be slowed, frightened, or stunned." } } }] },
+    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 18 } } } } },
+};
+assert.equal(aggroProfile(npcAggroContext, prosyTarget).roles.includes("controller"), false,
+  "control words in description prose no longer flag a controller");
+
+// main-attacker scales with actual offense — a feat-stacked, multi-weapon striker outranks a mook.
+const mookTarget = {
+  id: "mook", name: "Mook", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: { document: { type: "npc",
+    itemTypes: { action: [], feat: [], spell: [], spellcastingEntry: [],
+      weapon: [{ name: "Club", system: { traits: { value: [] } } }] },
+    system: { attributes: { hp: { value: 20, max: 20 }, ac: { value: 16 } } } } },
+};
+const strikerTarget = {
+  id: "striker", name: "Blademaster", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: { document: { type: "npc",
+    itemTypes: { action: [], spell: [], spellcastingEntry: [],
+      feat: [
+        { slug: "power-attack", name: "Power Attack", system: { traits: { value: [] } } },
+        { slug: "sneak-attack", name: "Sneak Attack", system: { traits: { value: [] } } },
+      ],
+      weapon: [
+        { name: "Sword", system: { traits: { value: [] } } },
+        { name: "Dagger", system: { traits: { value: [] } } },
+      ] },
+    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 16 } } } } },
+};
+assert.ok(
+  aggroProfile(npcAggroContext, strikerTarget).roleScores["main-attacker"]
+    > aggroProfile(npcAggroContext, mookTarget).roleScores["main-attacker"],
+  "a feat-stacked, multi-weapon striker reads as a bigger attacker than a one-weapon mook");
+
 // Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
 assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "npc" } }), true, "GM + NPC enables aggro target picking");
 assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "character" } }), false, "GM + PC does not pick aggro targets");
