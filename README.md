@@ -81,6 +81,14 @@ players plan their own turns.
 
 ## 🧠 How Auto-fill decides
 
+> **🚧 Work in progress.** The **Auto-fill planner** and the **GM aggro/target-picking engine** are
+> actively evolving. The exact scores, weights, and heuristics below are current-but-not-final and
+> *will* change as they're tuned — treat the numbers as illustrative, not a contract. Feedback,
+> disagreements, and "it picked a weird turn here" reports are genuinely wanted: please
+> [open an issue](https://github.com/roi007leaf/pf2e-combater/issues) with the situation.
+
+<!-- -->
+
 > **No AI, no LLM, no cloud.** Auto-fill is 100% deterministic, rules-based math that runs entirely
 > in your browser. Nothing is sent anywhere, it works offline, and the same board always produces the
 > same plan. It reads the PF2e rules and the battlefield — it doesn't "ask a model."
