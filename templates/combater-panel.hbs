@@ -301,7 +301,7 @@
                     {{/if}}
                     {{/if}}
                     {{#if canRevertStep}}
-                      <button type="button" class="combater-chip-tool" data-revert-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Revert"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RevertAria" name=name}}"><i class="fa-solid fa-rotate-left"></i></button>
+                      <button type="button" class="combater-chip-tool combater-step-run is-revert" data-revert-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Revert"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RevertAria" name=name}}"><i class="fa-solid fa-rotate-left"></i></button>
                     {{/if}}
                     {{#unless readonly}}
                       <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveAria" name=name}}"><i class="fa-solid fa-xmark"></i></button>
