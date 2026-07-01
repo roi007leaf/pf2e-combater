@@ -96,10 +96,11 @@ generic action), then gets adjusted for the actual situation:
 - **Disqualified outright** (never suggested) when there's no valid target, the target is out of
   range, the target is *immune* to the effect, or the action would be redundant (a buff the target
   already has, an aura that's already up, an untrained skill).
-- **Rewarded** for expected impact: a Strike that's in range and hits hard, damage that lands on a
-  **weakness**, a save spell weighed by the target's *actual* save odds against your DC (crit-fail
-  through success are each probability-weighted), and hitting the **most valuable enemy** (low HP,
-  healer, caster, whoever's threatening you in melee).
+- **Rewarded** for expected impact: a Strike that's in range and hits hard, and — *for the NPCs a GM
+  runs* — damage that lands on a **weakness**, a save spell weighed by the target's *actual* save odds
+  against the DC, and hitting the **most valuable target** (low HP, healer, caster, whoever's
+  threatening it). Players never get those hidden-knowledge factors — see
+  [No metagaming](#no-metagaming-players-never-see-hidden-enemy-stats) below.
 - **Penalized** for waste: repositioning to a target already in reach, firing a volley weapon
   point-blank, or re-applying a buff someone already has.
 
@@ -114,18 +115,35 @@ generic action), then gets adjusted for the actual situation:
   whole turn** rather than leaving actions on the table.
 - Orders the result sensibly — setup before payoff (Demoralize/Feint first, Stand before you move).
 
+### No metagaming: players never see hidden enemy stats
+
+> Everything that depends on **hidden knowledge** — a target's weaknesses, resistances, immunities,
+> save DCs, AC, skill DCs, hidden traits, and "which PC is the juiciest target" — is **GM-only**. When
+> a player auto-fills, the enemy's defensive data is never even loaded, so none of those factors touch
+> the score, and any explanation text that would leak them is stripped out too.
+
+That splits the scoring into two honest modes:
+
+- **Player auto-fill** ranks actions on what the player legitimately knows: the action's base value,
+  whether the target is in range, the player's **own** average damage, the multiple attack penalty,
+  movement, action economy, and the player's own conditions.
+- **GM auto-fill** (for the NPCs the GM runs) adds the full defense-aware math below — the GM already
+  knows their monsters' stats, so there's no metagaming.
+
 ### The numbers, roughly
 
-Scores are plain integers. A few of the actual values the engine uses:
+Scores are plain integers. A few of the actual values the engine uses (🔒 = **GM-only**, skipped for
+player auto-fill):
 
 | Factor | Effect on score |
 | --- | --- |
 | Base value (by source) | curated spell **50**, custom action **48**, Strike **46**, inferred **44**, generic **42** |
 | Strike is in range/reach | **+24** |
-| Strike damage | `min(avg damage × 2, 40)` |
-| Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
-| Target **resistance** | `−min(resistance × 3, 35)` |
-| Target **immunity** | **−70** (effectively removes it) |
+| Strike damage (your own weapon) | `min(avg damage × 2, 40)` |
+| 🔒 Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
+| 🔒 Target **resistance** | `−min(resistance × 3, 35)` |
+| 🔒 Target **immunity** | **−70** (effectively removes it) |
+| 🔒 Save spell vs target's save DC | expected-damage multiplier (see below) |
 | Multiple attack penalty (2nd / 3rd attack) | `−15 / −30` (agile: `−12 / −24`) |
 | Stand up while prone | **+18**, `+22` if an enemy is in melee |
 | Stride/Step that actually closes distance | Stride `+8`, Step `+4` |
@@ -147,21 +165,27 @@ reach, three actions.
   Raise a Shield, Demoralize the goblin, or Stride to a second enemy.
 - Result: **Strike → Strike → Demoralize**, not three flailing swings.
 
-**"Which damage type?"** — Kineticist facing a creature with **fire weakness 5**.
+**"Which damage type?"** 🔒 *(GM-run NPC)* — an enemy caster with both a fire and a cold spell,
+targeting a PC with **fire weakness 5**.
 
-- Fire blast: `+min(5 × 4, 45)` = **+20**
-- Cold blast (no weakness): **+0** → the fire blast is picked. If the creature were fire-*immune*,
-  the fire blast takes **−70** and drops out of consideration entirely.
+- Fire spell: `+min(5 × 4, 45)` = **+20**
+- Cold spell (no weakness): **+0** → the fire spell is picked. If the PC were fire-*immune*, the fire
+  spell takes **−70** and drops out of consideration entirely.
+- When that **PC** plans their own turn, they get no such adjustment against enemies — the planner
+  never reads a foe's weaknesses for a player.
 
-**"Is the save spell worth it?"** — Fireball (basic Reflex). The engine rolls the target's save
-against your spell DC across all 20 die faces and weights the outcomes:
+**"Is the save spell worth it?"** 🔒 *(GM-run NPC)* — an enemy caster's Fireball (basic Reflex) at a
+PC. The engine rolls the PC's save against the spell DC across all 20 die faces and weights the
+outcomes:
 `multiplier = P(crit fail) × 2 + P(fail) × 1 + P(success) × 0.5`. A weak-save target pushes the
 multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-save target drags it
-below a plain Strike, so the planner just swings instead.
+below a plain Strike. For a **player**, this whole comparison is skipped — the save spell is scored on
+its base value alone.
 
 **"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
 martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded
-ally under fire nudges it up a further `+14`.
+ally under fire nudges it up a further `+14`. (This one works for players too — it reads *ally* class
+and buff state, not hidden enemy stats.)
 
 **"Don't waste the spare action."** — Enemy already in reach with one action to spare: a generic
 Stride toward it is forced to **−10**, which is worse than the `−1` for simply leaving the action
