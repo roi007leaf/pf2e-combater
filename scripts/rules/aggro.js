@@ -154,6 +154,23 @@ function numericAc(target, actor) {
   return Number.isFinite(ac) ? ac : null;
 }
 
+function creatureLevel(target, actor) {
+  const level = Number(target?.level ?? actor?.system?.details?.level?.value ?? actor?.level);
+  return Number.isFinite(level) ? level : null;
+}
+
+// A dedicated defender isn't "AC ≥ 24" — that's just a level-6 creature. PF2e's moderate AC
+// benchmark tracks ~15 + 1.5·level (Building Creatures), and the High track sits ~+2 above it.
+// So flag a target as a defender only when its AC clears the moderate benchmark for its level by
+// a clear margin. With no level available, fall back to the old flat guess.
+function hasDefensiveArmor(target, actor) {
+  const ac = numericAc(target, actor);
+  if (!Number.isFinite(ac)) return false;
+  const level = creatureLevel(target, actor);
+  if (level === null) return ac >= 24;
+  return ac >= 15 + 1.5 * level + 3;
+}
+
 function addRole(profile, role, value, reason) {
   profile.score += value;
   profile.roles.push(role);
@@ -205,8 +222,7 @@ export function aggroProfile(context, target) {
     addRole(profile, "main-attacker", 18 + Math.min(12, weapons.length * 3), t("Aggro.MainAttacker", "Target has meaningful offense."));
   }
 
-  const ac = numericAc(target, actor);
-  if ((Number.isFinite(ac) && ac >= 24) || hasItemMatching(actor, DEFENDER_WORDS, ["action", "feat", "feature", "armor", "weapon"])) {
+  if (hasDefensiveArmor(target, actor) || hasItemMatching(actor, DEFENDER_WORDS, ["action", "feat", "feature", "armor", "weapon"])) {
     addRole(profile, "main-defender", 18, t("Aggro.MainDefender", "Target is built to defend or block."));
   }
 
