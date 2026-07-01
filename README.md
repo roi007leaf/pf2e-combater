@@ -175,7 +175,17 @@ auto-fill):
 | 🔒 Target **resistance** | `−min(resistance × 3, 35)` |
 | 🔒 Target **immunity** | **−70** (effectively removes it) |
 | 🔒 Save spell vs target's save DC | expected-damage multiplier (see below) |
+| 🔒 Skill action vs target's defense DC | success-odds delta `round((chance − 0.5) × 40)` — your skill **modifier** vs the target's Will/Reflex/Fort/Perception DC (Demoralize→Will, Trip/Disarm/Tumble Through→Reflex, Grapple/Shove/Reposition→Fort, Feint/Create a Diversion→Perception) |
+| 🔒 Poor skill odds (< 35% success) | `−4` |
+| Untrained (proficiency rank 0) in the skill | `−6`, and the action is hidden entirely if *Hide untrained skill actions* is on |
+| Untrained Athletics for a melee maneuver (own skill) | `−80` (PC) / `−42` (NPC), `−110` for a primary spellcaster; low Athletics (mod < 5) `−12` |
 | Multiple attack penalty (2nd / 3rd attack) | `−15 / −30` (agile: `−12 / −24`) |
+| Heal when you or an ally is **injured** (< 50% HP) | `+34`; if nobody is hurt, `−10` (don't waste the spell) |
+| Area spell hits **multiple** enemies | `+34 + 18 per enemy`; a single enemy in the blast `+14`; **no** enemy in it `−28` |
+| An **ally** caught in your area | `−18 each`; a clean placement that hits 2+ enemies and no allies `+8` |
+| 🔒 Debuff spell on an enemy | `+20` |
+| Setup that enables a follow-up (Feint, Recall, etc.) | `+20`, or `+28` if it specifically sets up **precision damage** (sneak attack) |
+| Draw a weapon then Strike | `+82` if nothing else is in reach, `+18` if an in-hand Strike is already available, `−40` if still out of range after drawing |
 | Stand up while prone | **+18**, `+22` if an enemy is in melee |
 | Stride/Step that actually closes distance | Stride `+8`, Step `+4` |
 | Move toward a target already in reach | forced to **−10** (won't pad the turn) |
@@ -184,6 +194,44 @@ auto-fill):
 
 Hard limits: max **2** Strike steps per plan, an action budget of **3** (± Slowed / Stunned /
 Quickened), and a Quickened action may only be a Strike or Stride.
+
+**When the actor is hurt** (own HP < 50%), self-preservation factors climb — healing, defensive, and
+retreat options gain extra weight — so a badly wounded creature is nudged toward staying alive rather
+than trading blows.
+
+### 🎯 The aggro engine: which target is worth hitting 🔒
+
+Everything above scores *actions*. The **aggro engine** answers the other half — *who* to point them
+at — and it's **GM-only, for the NPCs a GM runs**. When a player auto-fills, aggro contributes
+**nothing** (it would require reading party members' kits), so this whole layer is skipped.
+
+For each possible target, the engine builds an **aggro profile** by reading that creature's kit — its
+slugs, names, traits, and spell/feat/action descriptions — and matching them against role cue-words.
+Each role a target fills adds to its priority:
+
+| Target role | Priority | How it's detected |
+| --- | --- | --- |
+| **Finisher target** — nearly down | `+24` (`+34` at ≤ 20% HP) | HP ≤ 35%, or **dying** / **wounded** |
+| **Immediate threat** — in your face | `+10` (`+18` at ≤ 5 ft) | within 10 ft |
+| **Healer** | `+42` | kit has heal / lay on hands / battle medicine / restore… |
+| **Controller** | `+26` | kit has slow / fear / grapple / wall / command… |
+| **Caster** | `+18` + `2 per spell` (max `+12`) | has spells or a spellcasting entry |
+| **Main attacker** | `+18` + `3 per weapon` (max `+12`) | weapons, or attack/Strike/rage/breath cues |
+| **Main defender** | `+18` | AC ≥ 24, or shield/guardian/intercept cues |
+
+Then the target's priority is **weighted by the action you'd use on it**, so the engine spends the
+*right tool* on the *right enemy*:
+
+- **Caster / controller** → control, debuff, and grab actions are worth **~1.7–1.8×**, plain damage
+  only **~0.8×** — shut the dangerous ones down rather than chip their HP.
+- **Finisher target** → control/debuff **×4**, everything else **×1.15** — lock in the kill.
+- **Main defender (the tank)** → almost everything is **discouraged** (`×−0.45`), only control
+  `×0.35` — don't waste swings on the wall built to eat them.
+- **Immediate threat** → a mild damper (`×0.65`) so the NPC isn't tunnel-visioned on whoever's
+  adjacent.
+
+The finisher and immediate-threat cues need no hidden data, but because the whole layer only runs for
+**GM-controlled NPCs**, players never see or benefit from any of it.
 
 ### Worked examples
 
@@ -213,10 +261,29 @@ multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-s
 below a plain Strike. For a **player**, this whole comparison is skipped — the save spell is scored on
 its base value alone.
 
+**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize (Intimidation) on two PCs. Against a PC with **Will DC 18** and an Intimidation **+9**, needed roll is `18 − 9 = 9`, so success ≈ 60% → `round((0.60 − 0.5) × 40)` = **+4**. Against a **Will DC 24** PC the odds drop under 35% → the base delta goes negative *and* takes a further `−4`, so the NPC leans toward the softer target. If the NPC were **untrained** in Intimidation it also eats `−6` (or is hidden outright). Proficiency **rank** and skill **modifier** both feed this — rank gates/penalizes, the modifier drives the odds. For a **player**, the target's DC is never read, so a skill action is ranked on its base value and own conditions only.
+
 **"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
 martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded
 ally under fire nudges it up a further `+14`. (This one works for players too — it reads *ally* class
 and buff state, not hidden enemy stats.)
+
+**"Heal now, or keep swinging?"** — a cleric with a Heal spell. If nobody is below half HP, the Heal
+takes `−10` and a Strike wins. The moment the cleric *or* an ally drops under 50%, Heal gains `+34` and
+jumps ahead — and if a party member is **dying**, the healing role is prioritized outright. (Reads
+*ally* HP, not hidden enemy stats, so it works for players too.)
+
+**"Fireball placement."** 🔒 *(GM-run NPC)* — a caster's Fireball. Two PCs clustered with no allies
+nearby: `34 + 18 × 2` = **+70**, plus the Reflex-save math. Drag the same blast so it also clips an
+NPC ally: each ally in the radius is `−18`, quickly dropping it below a single-target spell — so the
+engine prefers the clean placement.
+
+**"Who do I hit?"** 🔒 *(GM-run NPC)* — a monster faces a fighter (AC 26, sword) and an enemy cleric
+(spells, a Heal). The cleric profiles as **healer + caster** (`42 + ~20`), the fighter as
+**main-defender + main-attacker**. A damaging Strike aimed at the cleric keeps most of that priority,
+but aimed at the tank it's *multiplied by −0.45* — so the engine steers the attack at the healer. Had
+the monster a **Slow** spell, it'd weight even harder toward the caster (control ×1.8). Whenever a PC
+drops to dying, that PC lights up as a **finisher target** and jumps the queue.
 
 **"Don't waste the spare action."** — Enemy already in reach with one action to spare: a generic
 Stride toward it is forced to **−10**, which is worse than the `−1` for simply leaving the action
