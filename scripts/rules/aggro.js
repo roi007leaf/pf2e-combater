@@ -159,16 +159,28 @@ function creatureLevel(target, actor) {
   return Number.isFinite(level) ? level : null;
 }
 
-// A dedicated defender isn't "AC ≥ 24" — that's just a level-6 creature. PF2e's moderate AC
-// benchmark tracks ~15 + 1.5·level (Building Creatures), and the High track sits ~+2 above it.
-// So flag a target as a defender only when its AC clears the moderate benchmark for its level by
-// a clear margin. With no level available, fall back to the old flat guess.
+// A dedicated defender isn't "AC ≥ 24" — that's just a level-6 creature. AC climbs with level, so
+// the threshold has to as well. These are PF2e's "High" creature-AC benchmarks by level (GM Core,
+// Building Creatures, Table 2-5) — the "comparable to a PC fighter" line. A target at or above its
+// own level's High AC reads as notably hard to hit, i.e. a defender the NPC shouldn't waste swings on.
+const HIGH_AC_BY_LEVEL = {
+  "-1": 15, 0: 16, 1: 16, 2: 18, 3: 19, 4: 21, 5: 22, 6: 24, 7: 25, 8: 27, 9: 28, 10: 30, 11: 31,
+  12: 33, 13: 34, 14: 36, 15: 37, 16: 39, 17: 40, 18: 42, 19: 43, 20: 45, 21: 46, 22: 48, 23: 49, 24: 51,
+};
+
+function highAcForLevel(level) {
+  const clamped = Math.max(-1, Math.min(24, Math.round(level)));
+  return HIGH_AC_BY_LEVEL[clamped];
+}
+
+// With no level available we can't judge AC against a benchmark, so fall back to the defensive-kit
+// cues alone rather than guessing off a bare number.
 function hasDefensiveArmor(target, actor) {
   const ac = numericAc(target, actor);
   if (!Number.isFinite(ac)) return false;
   const level = creatureLevel(target, actor);
-  if (level === null) return ac >= 24;
-  return ac >= 15 + 1.5 * level + 3;
+  if (level === null) return false;
+  return ac >= highAcForLevel(level);
 }
 
 function addRole(profile, role, value, reason) {

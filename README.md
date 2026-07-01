@@ -217,7 +217,7 @@ Each role a target fills adds to its priority:
 | **Controller** | `+26` | kit has slow / fear / grapple / wall / command… |
 | **Caster** | `+18` + `2 per spell` (max `+12`) | has spells or a spellcasting entry |
 | **Main attacker** | `+18` + `3 per weapon` (max `+12`) | weapons, or attack/Strike/rage/breath cues |
-| **Main defender** | `+18` | AC well above its **level's** benchmark (≈ `15 + 1.5 × level + 3`), or shield/guardian/intercept cues |
+| **Main defender** | `+18` | AC at/above its **level's High benchmark** (PF2e Building Creatures — e.g. 16 @ lvl 1, 24 @ lvl 6, 42 @ lvl 18), or shield/guardian/intercept cues |
 
 Then the target's priority is **weighted by the action you'd use on it**, so the engine spends the
 *right tool* on the *right enemy*:

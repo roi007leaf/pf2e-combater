@@ -4062,14 +4062,14 @@ assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
 // Main-defender detection is level-relative: AC 24 is only tanky for a low-level creature.
 // A high-level brute whose AC merely tracks its level must NOT read as a defender...
 const aggroHighLevelBrute = {
-  id: "brute", name: "Ancient Brute", distance: 20, hpPercent: 1, ac: 30,
+  id: "brute", name: "Ancient Brute", distance: 20, hpPercent: 1, ac: 40,
   attackTargetable: true, conditions: { slugs: [], values: {} },
   actor: { document: { type: "npc",
     itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
-    system: { details: { level: { value: 18 } }, attributes: { hp: { value: 300, max: 300 }, ac: { value: 30 } } } } },
+    system: { details: { level: { value: 18 } }, attributes: { hp: { value: 300, max: 300 }, ac: { value: 40 } } } } },
 };
 assert.equal(aggroProfile(npcAggroContext, aggroHighLevelBrute).roles.includes("main-defender"), false,
-  "AC 30 at level 18 is not defensive for its level");
+  "AC 40 at level 18 is below the High benchmark (42) — not a defender");
 // ...while a modestly-AC'd low-level tank that clears its benchmark should.
 const aggroLowLevelTank = {
   id: "squire", name: "Armored Squire", distance: 20, hpPercent: 1, ac: 22,
@@ -4079,7 +4079,7 @@ const aggroLowLevelTank = {
     system: { details: { level: { value: 2 } }, attributes: { hp: { value: 30, max: 30 }, ac: { value: 22 } } } } },
 };
 assert.equal(aggroProfile(npcAggroContext, aggroLowLevelTank).roles.includes("main-defender"), true,
-  "AC 22 at level 2 clears the defender benchmark");
+  "AC 22 at level 2 clears the High benchmark (18) — a defender");
 
 // Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
 assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "npc" } }), true, "GM + NPC enables aggro target picking");
