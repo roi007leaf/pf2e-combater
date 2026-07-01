@@ -4059,27 +4059,38 @@ const npcAggroShot = scoreCandidate(npcAggroContext, {
 });
 assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
 
-// Main-defender detection is level-relative: AC 24 is only tanky for a low-level creature.
-// A high-level brute whose AC merely tracks its level must NOT read as a defender...
-const aggroHighLevelBrute = {
-  id: "brute", name: "Ancient Brute", distance: 20, hpPercent: 1, ac: 40,
+// Main-defender detection is relative to the other targets in the fight, not an absolute AC number.
+// The same AC can be "the tank" or "the squishy" depending on who else is on the field.
+const relAggroTarget = (id, name, ac) => ({
+  id, name, distance: 20, hpPercent: 1, ac,
   attackTargetable: true, conditions: { slugs: [], values: {} },
   actor: { document: { type: "npc",
     itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
-    system: { details: { level: { value: 18 } }, attributes: { hp: { value: 300, max: 300 }, ac: { value: 40 } } } } },
+    system: { attributes: { hp: { value: 30, max: 30 }, ac: { value: ac } } } } },
+});
+const relTank = relAggroTarget("tank", "Steel Wall", 24);
+const relStriker = relAggroTarget("striker", "Duelist", 18);
+const relMage = relAggroTarget("mage", "Sorcerer", 16);
+const relPartyContext = {
+  ...npcAggroContext,
+  targets: [relTank, relStriker, relMage],
+  battlefield: { targets: [relTank, relStriker, relMage], enemies: [relTank, relStriker, relMage], allies: [] },
 };
-assert.equal(aggroProfile(npcAggroContext, aggroHighLevelBrute).roles.includes("main-defender"), false,
-  "AC 40 at level 18 is below the High benchmark (42) — not a defender");
-// ...while a modestly-AC'd low-level tank that clears its benchmark should.
-const aggroLowLevelTank = {
-  id: "squire", name: "Armored Squire", distance: 20, hpPercent: 1, ac: 22,
-  attackTargetable: true, conditions: { slugs: [], values: {} },
-  actor: { document: { type: "npc",
-    itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
-    system: { details: { level: { value: 2 } }, attributes: { hp: { value: 30, max: 30 }, ac: { value: 22 } } } } },
+// Party mean AC ≈ 19.3; only the AC-24 target clears mean + margin.
+assert.equal(aggroProfile(relPartyContext, relTank).roles.includes("main-defender"), true,
+  "highest-AC target in the party reads as the defender");
+assert.equal(aggroProfile(relPartyContext, relStriker).roles.includes("main-defender"), false,
+  "mid-AC target is not the defender");
+assert.equal(aggroProfile(relPartyContext, relMage).roles.includes("main-defender"), false,
+  "low-AC target is not the defender");
+// With no peers to compare against, AC alone can't flag a defender (kit cues still can elsewhere).
+const relSoloContext = {
+  ...npcAggroContext,
+  targets: [relTank],
+  battlefield: { targets: [relTank], enemies: [relTank], allies: [] },
 };
-assert.equal(aggroProfile(npcAggroContext, aggroLowLevelTank).roles.includes("main-defender"), true,
-  "AC 22 at level 2 clears the High benchmark (18) — a defender");
+assert.equal(aggroProfile(relSoloContext, relTank).roles.includes("main-defender"), false,
+  "a lone target has no party to look tanky against");
 
 // Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
 assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "npc" } }), true, "GM + NPC enables aggro target picking");
