@@ -1,0 +1,1167 @@
+# PF2e Combater - Classifier Coverage Report
+
+Generated from all local PF2e system Item packs (25 packs).
+
+Packs read: actionspf2e=719, ancestries=50, ancestryfeatures=94, backgrounds=514, classes=27, classfeatures=843, familiar-abilities=112, feats-srd=7207, heritages=373, spells-srd=1810, bestiary-effects=649, boons-and-curses=247, conditionitems=43, campaign-effects=91, equipment-effects=688, other-effects=53, feat-effects=825, pathfinder-society-boons=157, spell-effects=509, equipment-srd=5646, deities=513, bestiary-ability-glossary-srd=55, bestiary-family-ability-glossary=539, adventure-specific-actions=181, kingmaker-features=140
+
+## Summary
+
+- Total items: **22085**
+- Active (combat-usable) actions: **5744**
+- Classified: **5558** (97%)
+- Effective strong coverage: **3895** (68%)
+- Weak classified coverage: **1663**
+- Unknown (active but unclassified): **186**
+
+## Quality audit buckets
+
+- Strong classified: **3895**
+- Weak classified: **1663**
+- Low-confidence classified: **1071**
+- Utility/generic fallback classified: **711**
+- Likely buff/support but classified elsewhere: **796**
+- Likely wrong classified: **796**
+- Event-only / trigger-only classified: **872**
+
+## Classified by role
+
+- `control`: 1090
+- `buff`: 705
+- `utility`: 656
+- `damage`: 582
+- `defense`: 484
+- `setup`: 369
+- `area-damage`: 357
+- `save-damage`: 338
+- `combat-utility`: 165
+- `reaction-attack`: 159
+- `mobility-attack`: 148
+- `healing`: 138
+- `mobility`: 113
+- `transformation`: 58
+- `summon`: 42
+- `generic`: 31
+- `multiattack`: 31
+- `stealth-defense`: 27
+- `exploration-utility`: 24
+- `self-healing`: 13
+- `drain`: 8
+- `debuff`: 7
+- `grab`: 7
+- `resource-recovery`: 5
+- `combat-buff`: 1
+
+## Unknown - trait families (count >= 3, biggest fix leverage)
+
+- `archetype`: 49
+- `fortune`: 26
+- `magical`: 19
+- `concentrate`: 18
+- `consumable`: 18
+- `talisman`: 18
+- `skill`: 9
+- `rogue`: 9
+- `mythic`: 7
+- `auditory`: 7
+- `occult`: 6
+- `investigator`: 5
+- `druid`: 5
+- `monk`: 5
+- `general`: 5
+- `manipulate`: 4
+- `catfolk`: 4
+- `sorcerer`: 4
+- `swashbuckler`: 3
+- `fighter`: 3
+- `human`: 3
+- `primal`: 3
+- `witch`: 3
+- `illusion`: 3
+- `divine`: 3
+
+### Unknown - likely buff/support (need a buff role)
+
+- Mutagenic Flashback
+- Catharsis
+- After You
+- Ride On
+- Even the Odds
+- Brightness Seeker
+- Reassuring Presence
+- Never Tire
+- Impose Order
+- Quick Shape
+- Siphon Power
+- Commitment to Valor
+- Intuitive Illusions
+- Fountain of Secrets
+- Aura Expertise
+- Attunement Shift
+- Desperate Prayer
+- Instinctive Support
+- Lose Your Chains
+- Quick Root
+- Kreighton's Cognitive Crossover
+- Watch and Learn
+- Eat Fortune
+- Effortless Concentration
+- Absorb Toxin
+- Rouse the Dreaming Relic
+- Elven Persistence
+- Gathering Moss
+- Blood Rising
+- Harmonic Wayfinder
+- Esoteric Wayfinder
+- Snapleaf
+- Reflecting Shard (Greater)
+- Reflecting Shard
+- Costar
+- Fey Luck
+
+
+### Quality - low confidence classified
+
+- Pick a Lock [(none)] -> `utility`
+- Share Senses [summoner] -> `utility`
+- Sustain [(none)] -> `utility`
+- Recenter [(none)] -> `control`
+- Wait For It... [commander] -> `control`
+- Winged Leap [(none)] -> `control`
+- Protective Screen [commander] -> `control`
+- Elemental Blast [kineticist] -> `damage`
+- Convocation of Greed [(none)] -> `control`
+- Offer Story [(none)] -> `control`
+- Armor Up! [(none)] -> `utility`
+- Twist Design [(none)] -> `utility`
+- Transform Ammunition [(none)] -> `control`
+- Living Fortification [gunslinger] -> `control`
+- Affix a Fulu [(none)] -> `utility`
+- Binding Vow [(none)] -> `control`
+- Stop [(none)] -> `utility`
+- Automaton Aim [(none)] -> `control`
+- Fade Into Daydreams [psychic] -> `utility`
+- Marathon Dash [(none)] -> `control`
+- Dismiss [(none)] -> `utility`
+- Venom Draw [(none)] -> `control`
+- Objection [(none)] -> `control`
+- A Quick Glimpse Beyond [(none)] -> `control`
+- Passage of Lines [commander] -> `control`
+- Entreat Pact [(none)] -> `control`
+- Bestial Clarity [(none)] -> `control`
+- Reactive Falsehood [(none)] -> `control`
+- Channel Draconic Essence [(none)] -> `control`
+- The Bigger They Are [commander] -> `control`
+- Steel Your Resolve [(none)] -> `control`
+- Request [(none)] -> `utility`
+- Swarm Forth [(none)] -> `control`
+- Perform [(none)] -> `utility`
+- Call Gun [(none)] -> `utility`
+- Shadows in the Moonlight [commander] -> `control`
+- Ten Paces [gunslinger] -> `control`
+- Raise the Walls [(none)] -> `control`
+- One Moment till Glory [(none)] -> `control`
+- Manifest Realm [(none)] -> `control`
+- Verdant Rest [(none)] -> `control`
+- No Scar but This [(none)] -> `damage`
+- Manifest Soulforged Armament [(none)] -> `utility`
+- Collect Spirit Remnant [(none)] -> `utility`
+- Prove Peace [(none)] -> `utility`
+- Race the Skies [(none)] -> `control`
+- Raise the Horde [(none)] -> `control`
+- Warding Shift [(none)] -> `utility`
+- Create Familiar Fulu [(none)] -> `utility`
+- Piranha Assault [commander] -> `damage`
+- Reload! [commander] -> `control`
+- Aegis of Envy [(none)] -> `control`
+- Wyrm's Breath [(none)] -> `control`
+- Slip and Sizzle [commander] -> `damage`
+- Cycle Elemental Stance [(none)] -> `utility`
+- Feed the Masses [(none)] -> `control`
+- Activate Resonant Reflection [(none)] -> `utility`
+- Lucky Break [(none)] -> `control`
+- Fortify Focus [(none)] -> `utility`
+- My Legend Must Be Told [(none)] -> `control`
+- Unravel the Future [(none)] -> `control`
+- Defensive Retreat [commander] -> `control`
+- Into the Fray [gunslinger] -> `control`
+- Accept Echo [(none)] -> `control`
+- Liberate Self [(none)] -> `control`
+- Threatening Approach [(none)] -> `control`
+- Tell Me More [(none)] -> `utility`
+- Command a Construct [(none)] -> `utility`
+- Indomitable Act [(none)] -> `control`
+- Break the Sun's Legs [(none)] -> `control`
+- Chaotic Destiny [(none)] -> `control`
+- Hunt the Razer's Pawn [(none)] -> `control`
+- Alley-Oop [commander] -> `control`
+- Flash of Memory [(none)] -> `control`
+- Quick-Tempered [barbarian] -> `control`
+- Mountaineering Training [commander] -> `control`
+- Disable a Device [(none)] -> `utility`
+- Dampening Harmonics [(none)] -> `control`
+- Ready [(none)] -> `utility`
+- Encouraging Words [(none)] -> `damage`
+- Tap Ley Line [(none)] -> `utility`
+- Harvest Heartsliver [(none)] -> `control`
+- Primal Roar [(none)] -> `control`
+- Recall Under Pressure [(none)] -> `control`
+- Coughing Dragon [(none)] -> `control`
+- Weaponsight [(none)] -> `control`
+- Pacifying Infusion [(none)] -> `control`
+- Mark for Death [(none)] -> `damage`
+- Puncture Flesh [(none)] -> `damage`
+- True Shapeshift [(none)] -> `control`
+- Interact [(none)] -> `utility`
+- Conceal an Object [(none)] -> `utility`
+- Engineer's Efficiency [(none)] -> `control`
+- Forced Pact [(none)] -> `damage`
+- Grim Swagger [gunslinger] -> `control`
+- Draw From the Pages [(none)] -> `control`
+- Shed the Mortal Skin [(none)] -> `control`
+- Change Tradition Focus [(none)] -> `utility`
+- Point Out [(none)] -> `utility`
+- Spasm of the Berserker [(none)] -> `control`
+- Bear Allies' Burdens [(none)] -> `control`
+- Set Explosives [(none)] -> `control`
+- Shake It Off [(none)] -> `control`
+- Jumping Jenny [(none)] -> `control`
+- Lay Down Arms [(none)] -> `control`
+- Anchor [(none)] -> `control`
+- Dragon Breath (Dragon Form) [(none)] -> `damage`
+- Shielding Wave [(none)] -> `control`
+- Take Control [(none)] -> `utility`
+- Naval Training [commander] -> `control`
+- Familiar Focus [(none)] -> `utility`
+- Shadow Projection [(none)] -> `utility`
+- Lightning Armillary [(none)] -> `utility`
+- Ghost Wrangler [barbarian] -> `utility`
+- Spirit's Absolution [(none)] -> `damage`
+- Form Lock [monk] -> `control`
+- Drag Down [(none)] -> `utility`
+- Shattering Spellstrike [magus] -> `damage`
+- Steal Essence [rogue] -> `utility`
+- Invented Vulnerability [(none)] -> `utility`
+- Eclectic Obsession [(none)] -> `utility`
+- Hydraulic Maneuvers [(none)] -> `utility`
+- Eternal Memories [(none)] -> `utility`
+- All the Time in the World [investigator] -> `utility`
+- Do You Know Who I Am? [(none)] -> `damage`
+- Doctor's Visitation [(none)] -> `utility`
+- Ocean's Balm [kineticist] -> `damage`
+- Spell Tinker [wizard] -> `utility`
+- Seek Injustice [(none)] -> `utility`
+- Start the Festival! [(none)] -> `damage`
+- March the Mines [(none)] -> `utility`
+- Radiant Circuitry [(none)] -> `utility`
+- Manifold Conduit [(none)] -> `utility`
+- Dalang's Ally [(none)] -> `utility`
+- Incredible Recollection [(none)] -> `utility`
+- You Can't Keep Us Down [(none)] -> `control`
+- Prayer-Touched Weapon [cleric] -> `damage`
+- Summon Mythic Power [(none)] -> `utility`
+- Sand Snatcher [kineticist] -> `utility`
+- Faithful Stride [champion] -> `utility`
+- Clear as Air [kineticist] -> `utility`
+- Musical Summons [bard] -> `utility`
+- Distracting Performance [(none)] -> `utility`
+- Mounting Leap [(none)] -> `utility`
+- Cantorian Rejuvenation [(none)] -> `damage`
+- Herald's Weapon [(none)] -> `utility`
+- Barrier of Boreal Frost [kineticist] -> `utility`
+- Dirty Trick [(none)] -> `control`
+- Beastmaster's Call [(none)] -> `utility`
+- Reveal True Name [(none)] -> `utility`
+- Lunging Spellstrike [magus] -> `utility`
+- Lightning Swap [exemplar] -> `utility`
+- Dead Reckoning [(none)] -> `utility`
+- No Cause for Alarm [(none)] -> `utility`
+- Declare Anathema [(none)] -> `utility`
+- Memory of Skill [(none)] -> `utility`
+- Left-Hand Blood [(none)] -> `damage`
+- Pass Through [(none)] -> `utility`
+- We've Met Before [(none)] -> `utility`
+- Breath of the Dragon (Dragonblood) [(none)] -> `utility`
+- Friendly Nudge [(none)] -> `utility`
+- Call the Swarm [(none)] -> `damage`
+- Liberate Soul [(none)] -> `utility`
+- Wing Step [(none)] -> `utility`
+- Emergency Medical Assistance [(none)] -> `utility`
+- Banner Twirl [commander] -> `utility`
+- Lassoing Lash [(none)] -> `control`
+- Fane's Escape [(none)] -> `utility`
+- Spike Skin [kineticist] -> `control`
+- Helt's Spelldance [bard] -> `utility`
+- Legendary Negotiation [(none)] -> `utility`
+- Rallying Banner [commander] -> `damage`
+- Wrath of the Hold [(none)] -> `damage`
+- Juggle [(none)] -> `utility`
+- Battle Assessment [rogue] -> `utility`
+- Soul Well [(none)] -> `utility`
+- Ghostly Grasp (Deviant) [(none)] -> `utility`
+- Stepping Stones [kineticist] -> `utility`
+- Deific Font [(none)] -> `utility`
+- Crossbow Ace [ranger] -> `utility`
+- Plum Deluge [alchemist] -> `utility`
+- Collapse Armor [inventor] -> `utility`
+- Eclectic Sword Mastery [(none)] -> `utility`
+- Channel the Godmind [(none)] -> `utility`
+- Infused with Belkzen's Might [(none)] -> `utility`
+- Fortify Shield [(none)] -> `utility`
+- Sleeper Hold [monk] -> `utility`
+- In the Horde's Grip [(none)] -> `damage`
+- Elemental Artillery [kineticist] -> `damage`
+- Take Wing [(none)] -> `utility`
+- Whirling Grindstone [kineticist] -> `damage`
+- Light Paws [(none)] -> `utility`
+- Superimpose Time Duplicates [(none)] -> `utility`
+- Extraplanar Haze [(none)] -> `utility`
+- Topple The Titans [exemplar] -> `utility`
+- Feed the Void [(none)] -> `damage`
+- Watcher on the Wall [(none)] -> `utility`
+- Quaking Stomp [barbarian] -> `utility`
+- Gunpowder Gauntlet [(none)] -> `utility`
+- Inhale, Exhale! [(none)] -> `utility`
+
+
+### Quality - utility/generic fallbacks
+
+- Recall Knowledge [(none)] -> `generic`
+- Sense Motive [(none)] -> `generic`
+- Tumble Through [(none)] -> `generic`
+- Pick a Lock [(none)] -> `utility`
+- High Jump [(none)] -> `generic`
+- Demoralize [(none)] -> `generic`
+- Share Senses [summoner] -> `utility`
+- Sustain [(none)] -> `utility`
+- Shove [(none)] -> `generic`
+- Armor Up! [(none)] -> `utility`
+- Twist Design [(none)] -> `utility`
+- Affix a Fulu [(none)] -> `utility`
+- Stop [(none)] -> `utility`
+- Fade Into Daydreams [psychic] -> `utility`
+- Dismiss [(none)] -> `utility`
+- Stride [(none)] -> `generic`
+- Seek [(none)] -> `generic`
+- Request [(none)] -> `utility`
+- Disarm [(none)] -> `generic`
+- Perform [(none)] -> `utility`
+- Call Gun [(none)] -> `utility`
+- Create a Diversion [(none)] -> `generic`
+- Long Jump [(none)] -> `generic`
+- Manifest Soulforged Armament [(none)] -> `utility`
+- Collect Spirit Remnant [(none)] -> `utility`
+- Balance [(none)] -> `generic`
+- Administer First Aid [(none)] -> `generic`
+- Prove Peace [(none)] -> `utility`
+- Warding Shift [(none)] -> `utility`
+- Create Familiar Fulu [(none)] -> `utility`
+- Stand [(none)] -> `generic`
+- Cycle Elemental Stance [(none)] -> `utility`
+- Grapple [(none)] -> `generic`
+- Activate Resonant Reflection [(none)] -> `utility`
+- Feint [(none)] -> `generic`
+- Steal [(none)] -> `generic`
+- Fortify Focus [(none)] -> `utility`
+- Force Open [(none)] -> `generic`
+- Escape [(none)] -> `generic`
+- Crawl [(none)] -> `generic`
+- Step [(none)] -> `generic`
+- Sneak [(none)] -> `generic`
+- Tell Me More [(none)] -> `utility`
+- Command a Construct [(none)] -> `utility`
+- Hide [(none)] -> `generic`
+- Swim [(none)] -> `generic`
+- Disable a Device [(none)] -> `utility`
+- Ready [(none)] -> `utility`
+- Trip [(none)] -> `generic`
+- Tap Ley Line [(none)] -> `utility`
+- Palm an Object [(none)] -> `generic`
+- Reposition [(none)] -> `generic`
+- Climb [(none)] -> `generic`
+- Interact [(none)] -> `utility`
+- Command an Animal [(none)] -> `generic`
+- Conceal an Object [(none)] -> `utility`
+- Change Tradition Focus [(none)] -> `utility`
+- Point Out [(none)] -> `utility`
+- Take Cover [(none)] -> `generic`
+- Raise a Shield [(none)] -> `generic`
+- Take Control [(none)] -> `utility`
+- Familiar Focus [(none)] -> `utility`
+- Shadow Projection [(none)] -> `utility`
+- Lightning Armillary [(none)] -> `utility`
+- Ghost Wrangler [barbarian] -> `utility`
+- Drag Down [(none)] -> `utility`
+- Steal Essence [rogue] -> `utility`
+- Invented Vulnerability [(none)] -> `utility`
+- Eclectic Obsession [(none)] -> `utility`
+- Hydraulic Maneuvers [(none)] -> `utility`
+- Eternal Memories [(none)] -> `utility`
+- All the Time in the World [investigator] -> `utility`
+- Doctor's Visitation [(none)] -> `utility`
+- Spell Tinker [wizard] -> `utility`
+- Seek Injustice [(none)] -> `utility`
+- March the Mines [(none)] -> `utility`
+- Radiant Circuitry [(none)] -> `utility`
+- Manifold Conduit [(none)] -> `utility`
+- Dalang's Ally [(none)] -> `utility`
+- Incredible Recollection [(none)] -> `utility`
+- Summon Mythic Power [(none)] -> `utility`
+- Sand Snatcher [kineticist] -> `utility`
+- Faithful Stride [champion] -> `utility`
+- Clear as Air [kineticist] -> `utility`
+- Musical Summons [bard] -> `utility`
+- Distracting Performance [(none)] -> `utility`
+- Mounting Leap [(none)] -> `utility`
+- Herald's Weapon [(none)] -> `utility`
+- Barrier of Boreal Frost [kineticist] -> `utility`
+- Beastmaster's Call [(none)] -> `utility`
+- Reveal True Name [(none)] -> `utility`
+- Lunging Spellstrike [magus] -> `utility`
+- Lightning Swap [exemplar] -> `utility`
+- Dead Reckoning [(none)] -> `utility`
+- No Cause for Alarm [(none)] -> `utility`
+- Declare Anathema [(none)] -> `utility`
+- Memory of Skill [(none)] -> `utility`
+- Pass Through [(none)] -> `utility`
+- We've Met Before [(none)] -> `utility`
+- Breath of the Dragon (Dragonblood) [(none)] -> `utility`
+- Friendly Nudge [(none)] -> `utility`
+- Liberate Soul [(none)] -> `utility`
+- Wing Step [(none)] -> `utility`
+- Emergency Medical Assistance [(none)] -> `utility`
+- Banner Twirl [commander] -> `utility`
+- Fane's Escape [(none)] -> `utility`
+- Helt's Spelldance [bard] -> `utility`
+- Legendary Negotiation [(none)] -> `utility`
+- Juggle [(none)] -> `utility`
+- Battle Assessment [rogue] -> `utility`
+- Soul Well [(none)] -> `utility`
+- Ghostly Grasp (Deviant) [(none)] -> `utility`
+- Stepping Stones [kineticist] -> `utility`
+- Deific Font [(none)] -> `utility`
+- Crossbow Ace [ranger] -> `utility`
+- Plum Deluge [alchemist] -> `utility`
+- Collapse Armor [inventor] -> `utility`
+- Eclectic Sword Mastery [(none)] -> `utility`
+- Channel the Godmind [(none)] -> `utility`
+- Infused with Belkzen's Might [(none)] -> `utility`
+- Fortify Shield [(none)] -> `utility`
+- Sleeper Hold [monk] -> `utility`
+- Take Wing [(none)] -> `utility`
+- Light Paws [(none)] -> `utility`
+- Superimpose Time Duplicates [(none)] -> `utility`
+- Extraplanar Haze [(none)] -> `utility`
+- Topple The Titans [exemplar] -> `utility`
+- Watcher on the Wall [(none)] -> `utility`
+- Quaking Stomp [barbarian] -> `utility`
+- Gunpowder Gauntlet [(none)] -> `utility`
+- Inhale, Exhale! [(none)] -> `utility`
+- Burrowing Shot [(none)] -> `utility`
+- Quick Mount [(none)] -> `utility`
+- Slurp Up [(none)] -> `utility`
+- Blade of the Heart [(none)] -> `utility`
+- Jotun's Grasp [(none)] -> `utility`
+- Improvise Admixture [alchemist] -> `utility`
+- Share Tincture [investigator] -> `utility`
+- Skin Split [(none)] -> `utility`
+- Skim Scroll [(none)] -> `utility`
+- Silent Step [(none)] -> `utility`
+- General's Gambit [(none)] -> `utility`
+- Wing Bounce [(none)] -> `utility`
+- Terrifying Howl [barbarian] -> `utility`
+- Denounce Tyranny [(none)] -> `utility`
+- Dire Growth [(none)] -> `utility`
+- Crusader's Masquerade [(none)] -> `utility`
+- Unnerving Expansion [(none)] -> `utility`
+- Eidetic Memorization [(none)] -> `utility`
+- Dream Guise [psychic] -> `utility`
+- Vow of Mortal Defiance [exemplar] -> `utility`
+- Well of Potential [(none)] -> `utility`
+- Ostentatious Reload [gunslinger] -> `utility`
+- Impenetrable Fog [kineticist] -> `utility`
+- Timeline-Splitting Spell [(none)] -> `utility`
+- Gnaw [(none)] -> `utility`
+- Recharging Transference [(none)] -> `utility`
+- Freeze It! [(none)] -> `utility`
+- Guiding Words [(none)] -> `utility`
+- Giant's Lunge [barbarian] -> `utility`
+- Reveal Hidden Self [(none)] -> `utility`
+- Eternal Torch [kineticist] -> `utility`
+- Perfect Dive [(none)] -> `utility`
+- Perfect Distraction [rogue] -> `utility`
+- Precious Ammunition [(none)] -> `utility`
+- Ranged Disarm [(none)] -> `utility`
+- Benefactor's Wings [(none)] -> `utility`
+- Energized Font [(none)] -> `utility`
+- Deadeye [gunslinger] -> `utility`
+- Forestall Curse [oracle] -> `utility`
+- Kinetic Activation [kineticist] -> `utility`
+- Dispelling Spellstrike [magus] -> `utility`
+- Shadow Sight [(none)] -> `utility`
+- Head of the Night Parade [bard] -> `utility`
+- Mythic Refocus [(none)] -> `utility`
+- Nightwave Springing Reload [gunslinger] -> `utility`
+- Tripkee Glide [(none)] -> `utility`
+- Dig Quickly [(none)] -> `utility`
+- Familiar's Eyes [witch] -> `utility`
+- Tempo Duelist [(none)] -> `utility`
+- Goblin Song [(none)] -> `utility`
+- Recollect Studies [(none)] -> `utility`
+- Frighten Undead [(none)] -> `utility`
+- Phantom Visage [(none)] -> `utility`
+- Grow Tool [(none)] -> `utility`
+- Shrink Down [summoner] -> `utility`
+- Banish Falsehoods of Flesh [animist] -> `utility`
+- Flashforge [kineticist] -> `utility`
+- Extinguish Light [(none)] -> `utility`
+- Emissary of Peace [(none)] -> `utility`
+- Majestic Proclamation [(none)] -> `utility`
+- Two Truths [(none)] -> `utility`
+- Inventive Offensive [(none)] -> `utility`
+- Make Do [(none)] -> `utility`
+- Flickering Twirl [(none)] -> `utility`
+- Crystal Luminescence [(none)] -> `utility`
+- Lead the Way [(none)] -> `utility`
+- Flamboyant Leap [swashbuckler] -> `utility`
+- Soaring Flight [(none)] -> `utility`
+- Chain Infusion [kineticist] -> `utility`
+
+
+### Quality - likely buff/support misclassified
+
+- Furious Strike [(none)] -> `damage`
+- Dancing Dodge [(none)] -> `reaction-attack`
+- Drink Blood [(none)] -> `drain`
+- Taunt [guardian] -> `debuff`
+- Daydream Trance [(none)] -> `control`
+- Brandish the Gorgon's Gaze [(none)] -> `control`
+- Wait For It... [commander] -> `control`
+- Winged Leap [(none)] -> `control`
+- Protective Screen [commander] -> `control`
+- Pop, Drop, and Lock [commander] -> `multiattack`
+- Convocation of Greed [(none)] -> `control`
+- Offer Story [(none)] -> `control`
+- Only You and I [(none)] -> `save-damage`
+- Living Fortification [gunslinger] -> `control`
+- Affix a Fulu [(none)] -> `utility`
+- Binding Vow [(none)] -> `control`
+- Siegebreaker [gunslinger] -> `mobility-attack`
+- Rage [barbarian] -> `combat-buff`
+- Bestial Clarity [(none)] -> `control`
+- Reactive Falsehood [(none)] -> `control`
+- Elemental Burst [(none)] -> `area-damage`
+- Channel Draconic Essence [(none)] -> `control`
+- The Bigger They Are [commander] -> `control`
+- Retributive Strike [champion] -> `reaction-attack`
+- Ten Paces [gunslinger] -> `control`
+- Executioner's Volley [commander] -> `control`
+- Harvest Blood [(none)] -> `damage`
+- Direct Follower [(none)] -> `mobility-attack`
+- Hunt Runelord [(none)] -> `damage`
+- Raise the Walls [(none)] -> `control`
+- One Moment till Glory [(none)] -> `control`
+- Drain Life [(none)] -> `control`
+- Gluttonous Feast [(none)] -> `save-damage`
+- Feral Swing [(none)] -> `control`
+- Manifest Soulforged Armament [(none)] -> `utility`
+- Starlit Transformation [(none)] -> `damage`
+- Raise Neck [(none)] -> `damage`
+- Race the Skies [(none)] -> `control`
+- Create Familiar Fulu [(none)] -> `utility`
+- Break Them Down [gunslinger] -> `damage`
+- Aegis of Envy [(none)] -> `control`
+- Slip and Sizzle [commander] -> `damage`
+- Bounce Away [(none)] -> `reaction-attack`
+- Rearrange Bones [(none)] -> `damage`
+- Spellstrike [(none)] -> `damage`
+- Lucky Break [(none)] -> `control`
+- Unravel the Future [(none)] -> `control`
+- Avert Gaze [(none)] -> `control`
+- Accept Echo [(none)] -> `control`
+- Breath Weapon [(none)] -> `control`
+- Command a Construct [(none)] -> `utility`
+- Blazing Conflagration [(none)] -> `area-damage`
+- Break the Sun's Legs [(none)] -> `control`
+- Glimpse Vulnerability [(none)] -> `damage`
+- Hunt the Razer's Pawn [(none)] -> `control`
+- Patron's Claim [(none)] -> `save-damage`
+- Break Free [(none)] -> `mobility-attack`
+- Mountaineering Training [commander] -> `control`
+- A Challenge for Heroes [(none)] -> `damage`
+- Dampening Harmonics [(none)] -> `control`
+- Ultimatum of Liberation [(none)] -> `control`
+- Beast's Charge [(none)] -> `mobility-attack`
+- Enter Spirit Trance [(none)] -> `damage`
+- Selfish Shield [champion] -> `reaction-attack`
+- Skirt the Underworld [(none)] -> `control`
+- Timely Dodge [(none)] -> `reaction-attack`
+- Tap Ley Line [(none)] -> `utility`
+- Disarming Interception [(none)] -> `reaction-attack`
+- Recall Under Pressure [(none)] -> `control`
+- Ringing Challenge [(none)] -> `area-damage`
+- Soaring Flight [(none)] -> `transformation`
+- Coughing Dragon [(none)] -> `control`
+- Pacifying Infusion [(none)] -> `control`
+- Mark for Death [(none)] -> `damage`
+- Puncture Flesh [(none)] -> `damage`
+- Bless Ally [(none)] -> `control`
+- Clear a Path [gunslinger] -> `damage`
+- Insta-Ballista [commander] -> `mobility-attack`
+- Pointed Question [investigator] -> `debuff`
+- Anchor [(none)] -> `control`
+- Shielding Wave [(none)] -> `control`
+- Corpse Crenellation [commander] -> `mobility-attack`
+- Naval Training [commander] -> `control`
+- Ghost Wrangler [barbarian] -> `utility`
+- Retaliating Rescue [guardian] -> `mobility-attack`
+- Sailfish Strike [(none)] -> `reaction-attack`
+- Ivy Playhouse Strike [(none)] -> `damage`
+- Bullseye [rogue] -> `damage`
+- Invented Vulnerability [(none)] -> `utility`
+- Eclectic Obsession [(none)] -> `utility`
+- Dodge Away [(none)] -> `reaction-attack`
+- Magus's Analysis [magus] -> `damage`
+- Defensive Advance [champion] -> `mobility-attack`
+- Do You Know Who I Am? [(none)] -> `damage`
+- To War! [(none)] -> `control`
+- Ocean's Balm [kineticist] -> `damage`
+- Sever Space [fighter] -> `control`
+- March the Mines [(none)] -> `utility`
+- Manifold Conduit [(none)] -> `utility`
+- Cautious Word [(none)] -> `damage`
+- Decree of Execution [(none)] -> `save-damage`
+- Deliberate Death [(none)] -> `reaction-attack`
+- Channel Divine Spark [(none)] -> `mobility-attack`
+- Guiding Shot [commander] -> `damage`
+- Everstand Strike [champion] -> `damage`
+- Not So Fast! [guardian] -> `reaction-attack`
+- Invoke the Elements [(none)] -> `save-damage`
+- Disarming Twist [fighter] -> `damage`
+- Piercing Doom [(none)] -> `damage`
+- Masked Casting [(none)] -> `control`
+- You Can't Hide From Us [(none)] -> `mobility-attack`
+- Whispers of Weakness [oracle] -> `debuff`
+- Cantorian Rejuvenation [(none)] -> `damage`
+- Herald's Weapon [(none)] -> `utility`
+- Combat Assessment [commander] -> `damage`
+- Arc of Destruction [(none)] -> `reaction-attack`
+- Beastmaster's Call [(none)] -> `utility`
+- Duelist's Challenge [(none)] -> `damage`
+- Zombie Horde [(none)] -> `damage`
+- Equitable Defense [(none)] -> `reaction-attack`
+- Lightning Swap [exemplar] -> `utility`
+- Pounding Leap [(none)] -> `mobility-attack`
+- Borrow Time [(none)] -> `mobility-attack`
+- Hit the Dirt! [gunslinger] -> `reaction-attack`
+- Death Roll [(none)] -> `damage`
+- Instructive Strike [thaumaturge] -> `damage`
+- Hungry Blade [(none)] -> `damage`
+- Rearing Display [(none)] -> `damage`
+- Furnace Form [kineticist] -> `transformation`
+- Cut From the Air [fighter] -> `reaction-attack`
+- Declare Anathema [(none)] -> `utility`
+- Roll the Bones of Fate [oracle] -> `control`
+- Annihilating Swing [barbarian] -> `damage`
+- Memory of Skill [(none)] -> `utility`
+- Invoke Movement [(none)] -> `transformation`
+- Yamaraj's Grandeur [(none)] -> `area-damage`
+- Turn the Wheel of Seasons [kineticist] -> `save-damage`
+- We've Met Before [(none)] -> `utility`
+- Revitalizing Finisher [swashbuckler] -> `damage`
+- Burning Demand [kineticist] -> `save-damage`
+- Rallying Cry [(none)] -> `mobility-attack`
+- Exacting Strike [fighter] -> `damage`
+- Grit and Tenacity [gunslinger] -> `control`
+- Commitment to Liberty [(none)] -> `damage`
+- Spiritual Strike [(none)] -> `damage`
+- Consume Energy [(none)] -> `reaction-attack`
+- Spike Skin [kineticist] -> `control`
+- Guiding Finish [fighter] -> `mobility-attack`
+- Repel Assault [(none)] -> `reaction-attack`
+- Writhing Runelord Weapon [(none)] -> `mobility-attack`
+- Rallying Banner [commander] -> `damage`
+- Silent Sting [(none)] -> `reaction-attack`
+- Juggle [(none)] -> `utility`
+- Inspiring Resilience [bard] -> `control`
+- Opportune Trickster [(none)] -> `reaction-attack`
+- Death Dive [(none)] -> `damage`
+- Solidarity [(none)] -> `self-healing`
+- Conductive Sphere [kineticist] -> `save-damage`
+- Push Back the Dead! [(none)] -> `control`
+- Divide and Conquer [(none)] -> `mobility-attack`
+- Profane Bargain [(none)] -> `damage`
+- Deific Font [(none)] -> `utility`
+- Lesson of the Broken Wing [(none)] -> `damage`
+- Storming Gaze [(none)] -> `save-damage`
+- Incredible Aim [fighter] -> `damage`
+- Tidal Wave [(none)] -> `mobility-attack`
+- Channel the Godmind [(none)] -> `utility`
+- Fortify Shield [(none)] -> `utility`
+- Bone Swarm [(none)] -> `save-damage`
+- Rip and Tear [barbarian] -> `damage`
+- Invoke Offense [(none)] -> `transformation`
+- Take Wing [(none)] -> `utility`
+- Preternatural Parry [magus] -> `reaction-attack`
+- Feed the Void [(none)] -> `damage`
+- Exploit Opening [(none)] -> `reaction-attack`
+- Bat Form [(none)] -> `transformation`
+- Wings of Air [(none)] -> `transformation`
+- Spell Swipe [magus] -> `damage`
+- Redirecting Draft [(none)] -> `reaction-attack`
+- Hunter's Aim [ranger] -> `damage`
+- Engine of Destruction [inventor] -> `mobility-attack`
+- Imprison Foe [(none)] -> `control`
+- Relinquish Control [animist] -> `mobility-attack`
+- Form of the Bat [(none)] -> `transformation`
+- Dual-Handed Assault [fighter] -> `mobility-attack`
+- Infiltrator's Blitz [(none)] -> `mobility`
+- Planar Sidestep [(none)] -> `reaction-attack`
+- Shoulder Check [guardian] -> `damage`
+- Shielded Attrition [guardian] -> `mobility`
+- Shadowplay [(none)] -> `damage`
+- Cover Fire [gunslinger] -> `damage`
+- Vessel's Form [(none)] -> `damage`
+- Convocation of Earth and Moon [(none)] -> `control`
+- Loose Cannon [(none)] -> `control`
+- Noble Sacrifice [(none)] -> `reaction-attack`
+- Blessed Sentinel [(none)] -> `damage`
+- Watchful Gaze [(none)] -> `control`
+- Subjugation [(none)] -> `control`
+- Animalistic Brutality [barbarian] -> `transformation`
+- Scatter Blast [gunslinger] -> `control`
+
+
+### Quality - likely wrong classified
+
+- Furious Strike [(none)] -> `damage`
+- Dancing Dodge [(none)] -> `reaction-attack`
+- Drink Blood [(none)] -> `drain`
+- Taunt [guardian] -> `debuff`
+- Daydream Trance [(none)] -> `control`
+- Brandish the Gorgon's Gaze [(none)] -> `control`
+- Wait For It... [commander] -> `control`
+- Winged Leap [(none)] -> `control`
+- Protective Screen [commander] -> `control`
+- Pop, Drop, and Lock [commander] -> `multiattack`
+- Convocation of Greed [(none)] -> `control`
+- Offer Story [(none)] -> `control`
+- Only You and I [(none)] -> `save-damage`
+- Living Fortification [gunslinger] -> `control`
+- Affix a Fulu [(none)] -> `utility`
+- Binding Vow [(none)] -> `control`
+- Siegebreaker [gunslinger] -> `mobility-attack`
+- Rage [barbarian] -> `combat-buff`
+- Bestial Clarity [(none)] -> `control`
+- Reactive Falsehood [(none)] -> `control`
+- Elemental Burst [(none)] -> `area-damage`
+- Channel Draconic Essence [(none)] -> `control`
+- The Bigger They Are [commander] -> `control`
+- Retributive Strike [champion] -> `reaction-attack`
+- Ten Paces [gunslinger] -> `control`
+- Executioner's Volley [commander] -> `control`
+- Harvest Blood [(none)] -> `damage`
+- Direct Follower [(none)] -> `mobility-attack`
+- Hunt Runelord [(none)] -> `damage`
+- Raise the Walls [(none)] -> `control`
+- One Moment till Glory [(none)] -> `control`
+- Drain Life [(none)] -> `control`
+- Gluttonous Feast [(none)] -> `save-damage`
+- Feral Swing [(none)] -> `control`
+- Manifest Soulforged Armament [(none)] -> `utility`
+- Starlit Transformation [(none)] -> `damage`
+- Raise Neck [(none)] -> `damage`
+- Race the Skies [(none)] -> `control`
+- Create Familiar Fulu [(none)] -> `utility`
+- Break Them Down [gunslinger] -> `damage`
+- Aegis of Envy [(none)] -> `control`
+- Slip and Sizzle [commander] -> `damage`
+- Bounce Away [(none)] -> `reaction-attack`
+- Rearrange Bones [(none)] -> `damage`
+- Spellstrike [(none)] -> `damage`
+- Lucky Break [(none)] -> `control`
+- Unravel the Future [(none)] -> `control`
+- Avert Gaze [(none)] -> `control`
+- Accept Echo [(none)] -> `control`
+- Breath Weapon [(none)] -> `control`
+- Command a Construct [(none)] -> `utility`
+- Blazing Conflagration [(none)] -> `area-damage`
+- Break the Sun's Legs [(none)] -> `control`
+- Glimpse Vulnerability [(none)] -> `damage`
+- Hunt the Razer's Pawn [(none)] -> `control`
+- Patron's Claim [(none)] -> `save-damage`
+- Break Free [(none)] -> `mobility-attack`
+- Mountaineering Training [commander] -> `control`
+- A Challenge for Heroes [(none)] -> `damage`
+- Dampening Harmonics [(none)] -> `control`
+- Ultimatum of Liberation [(none)] -> `control`
+- Beast's Charge [(none)] -> `mobility-attack`
+- Enter Spirit Trance [(none)] -> `damage`
+- Selfish Shield [champion] -> `reaction-attack`
+- Skirt the Underworld [(none)] -> `control`
+- Timely Dodge [(none)] -> `reaction-attack`
+- Tap Ley Line [(none)] -> `utility`
+- Disarming Interception [(none)] -> `reaction-attack`
+- Recall Under Pressure [(none)] -> `control`
+- Ringing Challenge [(none)] -> `area-damage`
+- Soaring Flight [(none)] -> `transformation`
+- Coughing Dragon [(none)] -> `control`
+- Pacifying Infusion [(none)] -> `control`
+- Mark for Death [(none)] -> `damage`
+- Puncture Flesh [(none)] -> `damage`
+- Bless Ally [(none)] -> `control`
+- Clear a Path [gunslinger] -> `damage`
+- Insta-Ballista [commander] -> `mobility-attack`
+- Pointed Question [investigator] -> `debuff`
+- Anchor [(none)] -> `control`
+- Shielding Wave [(none)] -> `control`
+- Corpse Crenellation [commander] -> `mobility-attack`
+- Naval Training [commander] -> `control`
+- Ghost Wrangler [barbarian] -> `utility`
+- Retaliating Rescue [guardian] -> `mobility-attack`
+- Sailfish Strike [(none)] -> `reaction-attack`
+- Ivy Playhouse Strike [(none)] -> `damage`
+- Bullseye [rogue] -> `damage`
+- Invented Vulnerability [(none)] -> `utility`
+- Eclectic Obsession [(none)] -> `utility`
+- Dodge Away [(none)] -> `reaction-attack`
+- Magus's Analysis [magus] -> `damage`
+- Defensive Advance [champion] -> `mobility-attack`
+- Do You Know Who I Am? [(none)] -> `damage`
+- To War! [(none)] -> `control`
+- Ocean's Balm [kineticist] -> `damage`
+- Sever Space [fighter] -> `control`
+- March the Mines [(none)] -> `utility`
+- Manifold Conduit [(none)] -> `utility`
+- Cautious Word [(none)] -> `damage`
+- Decree of Execution [(none)] -> `save-damage`
+- Deliberate Death [(none)] -> `reaction-attack`
+- Channel Divine Spark [(none)] -> `mobility-attack`
+- Guiding Shot [commander] -> `damage`
+- Everstand Strike [champion] -> `damage`
+- Not So Fast! [guardian] -> `reaction-attack`
+- Invoke the Elements [(none)] -> `save-damage`
+- Disarming Twist [fighter] -> `damage`
+- Piercing Doom [(none)] -> `damage`
+- Masked Casting [(none)] -> `control`
+- You Can't Hide From Us [(none)] -> `mobility-attack`
+- Whispers of Weakness [oracle] -> `debuff`
+- Cantorian Rejuvenation [(none)] -> `damage`
+- Herald's Weapon [(none)] -> `utility`
+- Combat Assessment [commander] -> `damage`
+- Arc of Destruction [(none)] -> `reaction-attack`
+- Beastmaster's Call [(none)] -> `utility`
+- Duelist's Challenge [(none)] -> `damage`
+- Zombie Horde [(none)] -> `damage`
+- Equitable Defense [(none)] -> `reaction-attack`
+- Lightning Swap [exemplar] -> `utility`
+- Pounding Leap [(none)] -> `mobility-attack`
+- Borrow Time [(none)] -> `mobility-attack`
+- Hit the Dirt! [gunslinger] -> `reaction-attack`
+- Death Roll [(none)] -> `damage`
+- Instructive Strike [thaumaturge] -> `damage`
+- Hungry Blade [(none)] -> `damage`
+- Rearing Display [(none)] -> `damage`
+- Furnace Form [kineticist] -> `transformation`
+- Cut From the Air [fighter] -> `reaction-attack`
+- Declare Anathema [(none)] -> `utility`
+- Roll the Bones of Fate [oracle] -> `control`
+- Annihilating Swing [barbarian] -> `damage`
+- Memory of Skill [(none)] -> `utility`
+- Invoke Movement [(none)] -> `transformation`
+- Yamaraj's Grandeur [(none)] -> `area-damage`
+- Turn the Wheel of Seasons [kineticist] -> `save-damage`
+- We've Met Before [(none)] -> `utility`
+- Revitalizing Finisher [swashbuckler] -> `damage`
+- Burning Demand [kineticist] -> `save-damage`
+- Rallying Cry [(none)] -> `mobility-attack`
+- Exacting Strike [fighter] -> `damage`
+- Grit and Tenacity [gunslinger] -> `control`
+- Commitment to Liberty [(none)] -> `damage`
+- Spiritual Strike [(none)] -> `damage`
+- Consume Energy [(none)] -> `reaction-attack`
+- Spike Skin [kineticist] -> `control`
+- Guiding Finish [fighter] -> `mobility-attack`
+- Repel Assault [(none)] -> `reaction-attack`
+- Writhing Runelord Weapon [(none)] -> `mobility-attack`
+- Rallying Banner [commander] -> `damage`
+- Silent Sting [(none)] -> `reaction-attack`
+- Juggle [(none)] -> `utility`
+- Inspiring Resilience [bard] -> `control`
+- Opportune Trickster [(none)] -> `reaction-attack`
+- Death Dive [(none)] -> `damage`
+- Solidarity [(none)] -> `self-healing`
+- Conductive Sphere [kineticist] -> `save-damage`
+- Push Back the Dead! [(none)] -> `control`
+- Divide and Conquer [(none)] -> `mobility-attack`
+- Profane Bargain [(none)] -> `damage`
+- Deific Font [(none)] -> `utility`
+- Lesson of the Broken Wing [(none)] -> `damage`
+- Storming Gaze [(none)] -> `save-damage`
+- Incredible Aim [fighter] -> `damage`
+- Tidal Wave [(none)] -> `mobility-attack`
+- Channel the Godmind [(none)] -> `utility`
+- Fortify Shield [(none)] -> `utility`
+- Bone Swarm [(none)] -> `save-damage`
+- Rip and Tear [barbarian] -> `damage`
+- Invoke Offense [(none)] -> `transformation`
+- Take Wing [(none)] -> `utility`
+- Preternatural Parry [magus] -> `reaction-attack`
+- Feed the Void [(none)] -> `damage`
+- Exploit Opening [(none)] -> `reaction-attack`
+- Bat Form [(none)] -> `transformation`
+- Wings of Air [(none)] -> `transformation`
+- Spell Swipe [magus] -> `damage`
+- Redirecting Draft [(none)] -> `reaction-attack`
+- Hunter's Aim [ranger] -> `damage`
+- Engine of Destruction [inventor] -> `mobility-attack`
+- Imprison Foe [(none)] -> `control`
+- Relinquish Control [animist] -> `mobility-attack`
+- Form of the Bat [(none)] -> `transformation`
+- Dual-Handed Assault [fighter] -> `mobility-attack`
+- Infiltrator's Blitz [(none)] -> `mobility`
+- Planar Sidestep [(none)] -> `reaction-attack`
+- Shoulder Check [guardian] -> `damage`
+- Shielded Attrition [guardian] -> `mobility`
+- Shadowplay [(none)] -> `damage`
+- Cover Fire [gunslinger] -> `damage`
+- Vessel's Form [(none)] -> `damage`
+- Convocation of Earth and Moon [(none)] -> `control`
+- Loose Cannon [(none)] -> `control`
+- Noble Sacrifice [(none)] -> `reaction-attack`
+- Blessed Sentinel [(none)] -> `damage`
+- Watchful Gaze [(none)] -> `control`
+- Subjugation [(none)] -> `control`
+- Animalistic Brutality [barbarian] -> `transformation`
+- Scatter Blast [gunslinger] -> `control`
+
+
+### Quality - event-only / trigger-only classified
+
+- Dazzle Seeker [(none)] -> `defense`
+- Intercession Spell [(none)] -> `defense`
+- Restore the Moment [(none)] -> `reaction-attack`
+- Deceptive Sidestep [(none)] -> `reaction-attack`
+- Dancing Dodge [(none)] -> `reaction-attack`
+- Once Bitten [(none)] -> `reaction-attack`
+- Bend Time [(none)] -> `buff`
+- Devour Ambient Magic [(none)] -> `defense`
+- Grab an Edge [(none)] -> `defense`
+- Defend Life [(none)] -> `reaction-attack`
+- Entity's Resurgence [(none)] -> `defense`
+- Protective Screen [commander] -> `control`
+- Mighty Rage [barbarian] -> `setup`
+- Warding Sign [(none)] -> `defense`
+- Call on Ancient Blood [(none)] -> `defense`
+- Transform Ammunition [(none)] -> `control`
+- Living Fortification [gunslinger] -> `control`
+- Siegebreaker [gunslinger] -> `mobility-attack`
+- Delay [(none)] -> `defense`
+- Invoke Celestial Privilege [(none)] -> `defense`
+- Objection [(none)] -> `control`
+- A Quick Glimpse Beyond [(none)] -> `control`
+- Entreat Pact [(none)] -> `control`
+- Bestial Clarity [(none)] -> `control`
+- Reactive Falsehood [(none)] -> `control`
+- Mirror-Trickery [(none)] -> `reaction-attack`
+- Spring the Trap [gunslinger] -> `defense`
+- Recall Ammunition [(none)] -> `reaction-attack`
+- Ten Paces [gunslinger] -> `control`
+- Opportune Riposte [swashbuckler] -> `reaction-attack`
+- Harrow the Fiend [(none)] -> `defense`
+- Upstage [(none)] -> `defense`
+- Rampaging Ferocity [(none)] -> `defense`
+- Stellar Misfortune [(none)] -> `defense`
+- Spiritual Aid [(none)] -> `defense`
+- Aid [(none)] -> `defense`
+- Mist Blending [(none)] -> `defense`
+- Flash of Grandeur [champion] -> `defense`
+- Life Block [(none)] -> `reaction-attack`
+- Slayer's Identification [(none)] -> `buff`
+- Drain Realm [(none)] -> `defense`
+- Reactive Strike [(none)] -> `reaction-attack`
+- Tactical Retreat [(none)] -> `defense`
+- Unwavering Resilience [(none)] -> `defense`
+- Dutiful Retaliation [(none)] -> `reaction-attack`
+- Share Life [(none)] -> `defense`
+- Wish for Luck [(none)] -> `defense`
+- Resist Elf Magic [(none)] -> `defense`
+- Bounce Away [(none)] -> `reaction-attack`
+- Amulet's Abeyance [thaumaturge] -> `defense`
+- Master Strike [rogue] -> `defense`
+- Lucky Break [(none)] -> `control`
+- Absorb into the Aegis [(none)] -> `defense`
+- Spirit's Mercy [(none)] -> `defense`
+- My Legend Must Be Told [(none)] -> `control`
+- Energy Shot [(none)] -> `defense`
+- Bullying Press [(none)] -> `reaction-attack`
+- One Shot, One Kill [gunslinger] -> `defense`
+- Fire in the Hole [(none)] -> `defense`
+- Invigorating Fear [(none)] -> `defense`
+- Into the Fray [gunslinger] -> `control`
+- Wind Them Up [gunslinger] -> `damage`
+- Sever Conduit [(none)] -> `defense`
+- Foresight [(none)] -> `defense`
+- Indomitable Act [(none)] -> `control`
+- Resist Magic [(none)] -> `defense`
+- Plummeting Roll [(none)] -> `defense`
+- Shatter Glass [(none)] -> `reaction-attack`
+- Drifter's Wake [gunslinger] -> `mobility-attack`
+- Chaotic Destiny [(none)] -> `control`
+- Sorshen's Devotion [(none)] -> `self-healing`
+- Overload Vision [(none)] -> `defense`
+- Inspired Stratagem [(none)] -> `defense`
+- Dragon's Protection [(none)] -> `defense`
+- Blizzard Evasion [(none)] -> `defense`
+- Quick-Tempered [barbarian] -> `control`
+- Banshee Cry [(none)] -> `defense`
+- Salt Wound [(none)] -> `reaction-attack`
+- Pistolero's Retort [gunslinger] -> `reaction-attack`
+- Opportunistic Accusation [(none)] -> `defense`
+- Share Death's Promises [(none)] -> `defense`
+- Disable a Device [(none)] -> `utility`
+- Redistribute [(none)] -> `reaction-attack`
+- Swift Choreography [(none)] -> `setup`
+- Ready [(none)] -> `utility`
+- Implement's Interruption [thaumaturge] -> `reaction-attack`
+- Find Fault [(none)] -> `defense`
+- Avoid Dire Fate [(none)] -> `defense`
+- Selfish Shield [champion] -> `reaction-attack`
+- Empty Vessel [(none)] -> `defense`
+- Sidestep Through Time [(none)] -> `defense`
+- Fated Not to Die [(none)] -> `defense`
+- Timely Dodge [(none)] -> `reaction-attack`
+- Harvest Heartsliver [(none)] -> `control`
+- Draconic Salvation [(none)] -> `defense`
+- Fight with Fear [(none)] -> `defense`
+- Psychic Defense [(none)] -> `defense`
+- Final Spite [(none)] -> `reaction-attack`
+- Restorative Teleportation [(none)] -> `defense`
+- Disarming Interception [(none)] -> `reaction-attack`
+- Tap the Past [(none)] -> `defense`
+- Makes Me Stronger [(none)] -> `defense`
+- Toxic Skin [(none)] -> `defense`
+- That's My Number [(none)] -> `defense`
+- Trench Digging [(none)] -> `defense`
+- Recall Under Pressure [(none)] -> `control`
+- Call Upon the Brightness [(none)] -> `defense`
+- Unleash Realm [(none)] -> `defense`
+- Wicked Thorns [(none)] -> `reaction-attack`
+- Barbed Quills [(none)] -> `reaction-attack`
+- Puncture Flesh [(none)] -> `damage`
+- Smoke Blending [(none)] -> `defense`
+- Speed of Arms [(none)] -> `reaction-attack`
+- Arrest a Fall [(none)] -> `defense`
+- Destructive Vengeance [champion] -> `reaction-attack`
+- Runelord's Response [(none)] -> `defense`
+- Divert Lightning [(none)] -> `defense`
+- Inured to Death [(none)] -> `defense`
+- Chassis Deflection [(none)] -> `defense`
+- Sense Weakness [(none)] -> `reaction-attack`
+- Ring Bell [thaumaturge] -> `reaction-attack`
+- Mystic Aegis [(none)] -> `defense`
+- Set Free [(none)] -> `defense`
+- Prophecy's Pawn [(none)] -> `defense`
+- Shake It Off [(none)] -> `control`
+- I Defy You! [(none)] -> `defense`
+- Release [(none)] -> `damage`
+- Mythic Echo [(none)] -> `defense`
+- Erupting Spurs [(none)] -> `defense`
+- Dueling Counter [(none)] -> `defense`
+- Path of the Tempest [(none)] -> `buff`
+- Retaliating Rescue [guardian] -> `mobility-attack`
+- Sailfish Strike [(none)] -> `reaction-attack`
+- Vengeful Strike [barbarian] -> `reaction-attack`
+- Tut-Tut [(none)] -> `defense`
+- Dodge Away [(none)] -> `reaction-attack`
+- Cellular Reconstruction [(none)] -> `buff`
+- You're an Embarrassment! [(none)] -> `buff`
+- Turn Away Misfortune [thaumaturge] -> `defense`
+- Aggressive Block [fighter] -> `defense`
+- Coven Spell [witch] -> `defense`
+- Flashing Shield [(none)] -> `defense`
+- Revivification Protocol [(none)] -> `defense`
+- Call From Death's Door [(none)] -> `defense`
+- Target of Opportunity [(none)] -> `reaction-attack`
+- Stay Down! [rogue] -> `defense`
+- Opportune Throw [(none)] -> `reaction-attack`
+- Premonition of Clarity [cleric] -> `buff`
+- Cautious Word [(none)] -> `damage`
+- Consume Power [kineticist] -> `defense`
+- Prayer-Touched Weapon [cleric] -> `damage`
+- Deliberate Death [(none)] -> `reaction-attack`
+- Guardian Ghosts [(none)] -> `reaction-attack`
+- Body of Air [kineticist] -> `defense`
+- It's Not Over [(none)] -> `defense`
+- Reactive Dismissal [summoner] -> `defense`
+- Distant Waterbird's Poise [magus] -> `defense`
+- Jealous Grip [(none)] -> `reaction-attack`
+- Stone Bones [(none)] -> `defense`
+- Turn Back the Clock [(none)] -> `buff`
+- Opportune Opening [(none)] -> `reaction-attack`
+- Towering Transformation [barbarian] -> `defense`
+- Not So Fast! [guardian] -> `reaction-attack`
+- Histrionic Injury [(none)] -> `reaction-attack`
+- Feed on Pain [(none)] -> `defense`
+- Reactive Transformation [druid] -> `defense`
+- Tail Guard [(none)] -> `reaction-attack`
+- Empowered Onslaught [(none)] -> `defense`
+- Heaven's Step Offense [(none)] -> `reaction-attack`
+- Masked Casting [(none)] -> `control`
+- Eidolon's Opportunity [summoner] -> `reaction-attack`
+- Bleak Humorist [(none)] -> `defense`
+- Sidestep [rogue] -> `reaction-attack`
+- Arc of Destruction [(none)] -> `reaction-attack`
+- Space-Time Shift [(none)] -> `mobility`
+- Caretaker's Restoration [(none)] -> `defense`
+- Elude Trouble [(none)] -> `defense`
+- Myth Hunter [(none)] -> `defense`
+- Unstable Redundancies [inventor] -> `buff`
+- Equitable Defense [(none)] -> `reaction-attack`
+- Borrow Time [(none)] -> `mobility-attack`
+- Counter Element [kineticist] -> `defense`
+- Hit the Dirt! [gunslinger] -> `reaction-attack`
+- Fiery Retort [druid] -> `defense`
+- Align Qi [monk] -> `defense`
+- Cut From the Air [fighter] -> `reaction-attack`
+- Clinch Strike [(none)] -> `reaction-attack`
+- Belay That! [(none)] -> `reaction-attack`
+- Protective Cycle [(none)] -> `defense`
+- Mythic Counterspell [(none)] -> `buff`
+- Archaeologist's Warning [(none)] -> `buff`
+- Leverage Anguish [(none)] -> `defense`
+- Mental Static [psychic] -> `defense`
+- Self Destruct [(none)] -> `defense`
+- Pass Through [(none)] -> `utility`
+- Feline Dance [(none)] -> `control`
+- Topple Foe [(none)] -> `reaction-attack`
+- Volcanic Escape [kineticist] -> `defense`
+- Heroic Defiance [(none)] -> `defense`
+- Roll with it (Kingmaker) [ranger] -> `defense`
+
+
+### Unknown - grouped by class
+
+- **(none)** (136): Catharsis, Conduct Energy, Enlightenment in Adversity, Rewrite Fate, Spread Realm, Fey's Fortune, Name Drop, Call to Axis, Reclaim Destiny, Elucidation, Rebel's Map, Define “Report”, Rapid Manifestation, Smooth Hover, Reset the Past, Vacate Vision, Spy's Countermeasures, Energize Bite, Counter Curse, Ride On, Repeat Lesson, Inspirit Hazard, Recognize Threat, Call to Battle, Hop Up, Shoving Sweep, Cat's Luck, Brightness Seeker, Bonds of Death, Reassuring Presence, Preserve the Horde, Unkillable, Never Tire, Rolling White Bottle Form, Impose Order, Guided Hover, Quick Shape, Courteous Comeback, Shadow Blending, Maneuvering Spell ...
+- **rogue** (7): Hidden Paragon, Tactical Entry, Enduring Debilitation, Swift Elusion, Reactive Pursuit, Cognitive Loophole, Shove Down
+- **investigator** (5): Expeditious Inspection, Just as Planned, Sense the Unseen, Trickster's Ace, Suspect of Opportunity
+- **druid** (4): Toppling Transformation, Misty Transformation, Too Much to Swallow, Instinctive Support
+- **monk** (4): Swift River, Lightning Qi, Lessons of Flux, Qi Center
+- **swashbuckler** (3): After You, Even the Odds, Get Used to Disappointment
+- **fighter** (3): Blade Brake, Master of Many Styles, Opening Stance
+- **sorcerer** (3): Tenacious Blood Magic, Blood Rising, Spell Relay
+- **alchemist** (2): Mutagenic Flashback, Merciful Elixir
+- **commander** (2): Adaptive Stratagem, Rapid Assessment
+- **witch** (2): Counterspell (Prepared), Siphon Power
+- **champion** (2): Desperate Prayer, Retributive Focus
+- **kineticist** (2): Effortless Impulse, Imperious Aura
+- **bard** (2): Accompany, Effortless Concentration
+- **psychic** (1): Counter Thought
+- **ranger** (1): Warden's Reload
+- **inventor** (1): No! No! I Created You!
+- **barbarian** (1): Spiritual Guides
+- **cleric** (1): Spellshape Channel
+- **animist** (1): Cycle of Souls
+- **oracle** (1): Scapegoat Parallel Self
+- **thaumaturge** (1): Intensify Investiture
+- **exemplar** (1): Rapid Spark
+
