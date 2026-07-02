@@ -8777,6 +8777,26 @@ assert.equal(potionClassification.role, "healing");
 assert.equal(potionClassification.activityProfile.consumable, true);
 assert.equal(potionClassification.activityProfile.interactDraw, true);
 
+const giantCentipedeVenom = {
+  id: "giant-centipede-venom",
+  name: "Giant Centipede Venom",
+  type: "consumable",
+  system: {
+    slug: "giant-centipede-venom",
+    category: "poison",
+    traits: { value: ["consumable", "poison"] },
+    description: {
+      value: "<p>Giant centipede venom causes severe muscle stiffness.</p><hr><p><strong>Activate</strong> <span class=\"action-glyph\">2</span> (manipulate)</p><p><strong>Saving Throw</strong> @Check[fortitude|dc:17]</p><p><strong>Maximum Duration</strong> 6 rounds</p><p><strong>Stage 1</strong> @Damage[1d4[poison]] and clumsy 1 (1 round)</p>",
+    },
+  },
+};
+const venomClassification = classifySystemAction(giantCentipedeVenom, { actionCost: 2 });
+assert.equal(
+  venomClassification?.role,
+  "setup",
+  "an apply-poison consumable activates the poison onto a weapon; the save only fires on a later Strike, so it must not classify as an instant save-damage attack",
+);
+
 const potionContext = {
   ...fighterContext,
   profile: {

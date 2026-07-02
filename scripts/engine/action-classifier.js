@@ -1077,6 +1077,17 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
+  if (isConsumable(action, traits) && actionCategory(action) === "poison") {
+    return inferred("setup", {
+      activityProfile: withTargetConditionRequirement(baseProfile(["setup"]), targetConditionRequirement),
+      targetingProfile: { self: true },
+      setupFor: ["strike", "damage"],
+      gatingProfile,
+      confidence: "high",
+      reasons: [t("ActReason.PoisonSetsUpA", "Applying this poison sets up a stronger follow-up Strike.")],
+    });
+  }
+
   if (saveProfile && damageProfile && offensive) {
     return inferred("save-damage", {
       activityProfile: withTargetConditionRequirement(baseProfile(["damage"]), targetConditionRequirement),
