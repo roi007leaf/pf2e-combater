@@ -10389,6 +10389,117 @@ assert.equal(
   "an undetected target should still be fully excluded by the existing canAttackTarget gate, not merely discounted like a hidden one",
 );
 
+const outOfRangeControlCandidate = {
+  id: "out-of-range-control",
+  name: "Overwhelming Presence",
+  slug: "overwhelming-presence",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "control",
+  targetingProfile: { enemy: true, maxRange: 30 },
+  activityProfile: { spell: true },
+};
+const outOfRangeControlScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 60 }],
+}, outOfRangeControlCandidate);
+assert.equal(
+  outOfRangeControlScored.suggestedTarget,
+  null,
+  "an offensive-role action with no enemy inside its own range must show no target at all, not the caster itself",
+);
+assert.ok(
+  !outOfRangeControlScored.reasons.some((reason) => reason.includes("Ogre")),
+  "reasons must not describe acting on an enemy the action can't actually reach",
+);
+
+const inRangeControlScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 20 }],
+}, outOfRangeControlCandidate);
+assert.equal(inRangeControlScored.suggestedTarget?.name, "Ogre");
+
+const selfOnlyBuffCandidate = {
+  id: "self-rage",
+  name: "Rage",
+  slug: "rage",
+  actionCost: 1,
+  source: "custom-curated",
+  role: "combat-buff",
+  targetingProfile: null,
+  activityProfile: {},
+};
+const selfOnlyBuffScored = scoreCandidate(fighterContext, selfOnlyBuffCandidate);
+assert.equal(
+  selfOnlyBuffScored.suggestedTarget?.name,
+  fighterContext.actor.name,
+  "a self-only buff with no enemy-targeting profile must still resolve to the actor itself, even though fighterContext.targets is non-empty — this is the regression guard for the fix above",
+);
+
+const outOfRangeCuratedDamageCandidate = {
+  id: "tooth-tug",
+  name: "Tooth Tug",
+  slug: "tooth-tug",
+  actionCost: 1,
+  source: "custom-curated",
+  role: "damage",
+  targetingProfile: { enemy: true, maxRange: 15 },
+  activityProfile: { averageDamage: 6 },
+};
+const outOfRangeCuratedDamageScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 60 }],
+}, outOfRangeCuratedDamageCandidate);
+assert.ok(
+  !outOfRangeCuratedDamageScored.reasons.some((reason) => reason.includes("can damage")),
+  "the curated damage-role bonus must not fire when nothing is in range, even indirectly via a stale target",
+);
+
+const outOfRangeSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "system-far-control",
+          name: "System Far Control",
+          slug: "system-far-control",
+          system: {
+            slug: "system-far-control",
+            time: { value: "2" },
+            traits: { value: ["mental"] },
+            level: { value: 3 },
+            range: { value: "30 feet" },
+            defense: { save: { statistic: "will", basic: false } },
+            location: { value: "entry-1" },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "entry-1",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: { slot3: { value: 1 } },
+          },
+        }],
+      },
+    },
+  },
+  targets: [{ id: "far-target", name: "Ogre", distance: 60, hpPercent: 1, conditions: [], saves: { will: 5 }, ac: 19 }],
+};
+const outOfRangeSpell = readSpellActions(outOfRangeSpellContext).find((spell) => spell.slug === "system-far-control");
+assert.equal(
+  outOfRangeSpell.available,
+  false,
+  "a spell whose only possible target is farther than its own range must not be marked available",
+);
+assert.equal(outOfRangeSpell.unavailableReason, "No target within 30 feet.");
+
+const inRangeSpellContext = {
+  ...outOfRangeSpellContext,
+  targets: [{ ...outOfRangeSpellContext.targets[0], distance: 25 }],
+};
+const inRangeSpell = readSpellActions(inRangeSpellContext).find((spell) => spell.slug === "system-far-control");
+assert.equal(inRangeSpell.available, true);
+
 const rangedDropProneScored = scoreCandidate({
   ...fighterContext,
   profile: { ...fighterContext.profile, equippedRangedWeapon: true },

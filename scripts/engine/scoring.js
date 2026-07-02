@@ -837,7 +837,7 @@ function bestTargetForAction(context, action, role) {
         offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
       )[0];
     }
-    return canAttackTarget(target) && canAffectTarget(context, action, target) ? target : (enemyValues[0] ?? null);
+    return inRange(action, target) && canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
   }
 
   if (needsTargetableEnemy) {
@@ -1508,8 +1508,18 @@ function suggestedTargetFor(context, action, role, preferredTarget = firstTarget
     return actorTarget(context);
   }
 
+  // An unset role means the action hasn't been classified into any of the branches above at
+  // all (common for generic system actions like Demoralize's bare test fixtures) — preserve
+  // the historical permissive behavior for it. Only an explicit, recognized-but-unhandled role
+  // (e.g. combat-buff) is treated as confidently NOT wanting an enemy.
+  const seeksEnemy = role === undefined
+    || needsTargetableEnemy
+    || isOffensiveRole(role)
+    || isAttackLikeAction(action, role)
+    || action?.targetingProfile?.enemy === true;
+  if (!seeksEnemy) return actorTarget(context);
   if (target && inRange(action, target)) return targetRef(target, "enemy");
-  return actorTarget(context);
+  return null;
 }
 
 function attackCenter(action) {
@@ -1955,7 +1965,7 @@ export function scoreCandidate(context, action) {
     }
   }
 
-  if (isCurated(action) && (role === "damage" || role === "weapon-strike") && target && !action.activityProfile?.drawsWeapon) {
+  if (isCurated(action) && (role === "damage" || role === "weapon-strike") && target && inRange(action, target) && !action.activityProfile?.drawsWeapon) {
     const average = damageAverage(action);
     score += Number.isFinite(average) ? 18 + Math.min(28, Math.round(average * 1.2)) : 18;
     reasons.push(t("ScoreReason.CanDamage", "{action} can damage {target}.", { action: action.name, target: target.name }));

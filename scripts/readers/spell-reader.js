@@ -1,7 +1,7 @@
 import { findCuratedSpell } from "../catalog/spells/index.js";
 import { heightenedSpellForRank, spellBaseRank, spellNameForRank } from "../engine/spell-heightening.js";
 import { classifySpell } from "../engine/spell-classifier.js";
-import { bestReadyStrikeAverageDamage, parseActionText, slugify } from "./action-reader.js";
+import { bestReadyStrikeAverageDamage, hasEnemyWithinRange, parseActionText, slugify } from "./action-reader.js";
 import { t } from "../i18n.js";
 
 function collectionValues(collection) {
@@ -55,6 +55,8 @@ export function readSpellActions(context) {
           tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
         }
       }
+      const maxRange = Number(tactic?.targetingProfile?.maxRange ?? tactic?.targetingProfile?.range);
+      const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
       const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
       const parsedTime = readSpellActionCost(effectiveItem);
       const actionCosts = curated?.actionCost !== undefined
@@ -77,8 +79,8 @@ export function readSpellActions(context) {
         confidence: tactic?.confidence ?? "low",
         executable: tactic?.executable ?? "open-item",
         detected: true,
-        available: parsedTime.combat && actionCost !== Infinity && spellAvailability.available,
-        unavailableReason: spellAvailability.reason,
+        available: parsedTime.combat && actionCost !== Infinity && spellAvailability.available && enemyInRange,
+        unavailableReason: enemyInRange ? spellAvailability.reason : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange }),
         item,
         effectiveItem,
         curated,

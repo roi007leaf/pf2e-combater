@@ -259,6 +259,12 @@ function contextEnemies(context) {
   return context?.enemies ?? context?.battlefield?.enemies ?? contextTargets(context);
 }
 
+export function hasEnemyWithinRange(context, maxRange) {
+  if (!Number.isFinite(maxRange)) return true;
+  const pool = [...contextTargets(context), ...contextEnemies(context)];
+  return pool.some((target) => (target?.distance ?? Infinity) <= maxRange);
+}
+
 function contextAllies(context) {
   return context?.allies ?? context?.battlefield?.allies ?? [];
 }
