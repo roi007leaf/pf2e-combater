@@ -1263,7 +1263,7 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
-  if (mentionsStride) {
+  if (mentionsStride && !mentionsDifferentTargets) {
     return inferred("mobility-attack", {
       activityProfile: {
         includes: ["stride", "strike"],
