@@ -271,6 +271,16 @@ function readMapAttacks(text) {
   return null;
 }
 
+function readDistinctStrikeCount(text) {
+  let match = text.match(/\b(\d+|one|two|three|four|five|six)\s+different\s+(?:creatures?|targets?|enem(?:y|ies)|foes?)\b/i);
+  if (!match) match = text.match(/\bup to\s+(\d+|one|two|three|four|five|six)\s+times\b/i);
+  if (!match) match = text.match(/\b(\d+|one|two|three|four|five|six)\b(?:\s+\S+){0,3}\s+strikes?\b/i);
+  if (!match) return 2;
+  const raw = match[1].toLowerCase();
+  const count = MAP_WORD_NUMBERS[raw] ?? Number(raw);
+  return Math.min(6, Math.max(2, count));
+}
+
 function readAcSetupProfile(text) {
   const appliesOffGuard = /\boff[- ]guard\b|\bflat-footed\b/.test(text);
   const appliesAcPenalty = /\b(?:ac|armor class|defenses?)\b.{0,50}\bpenalty\b|\bpenalty\b.{0,50}\b(?:ac|armor class|defenses?)\b/.test(text);
@@ -547,7 +557,7 @@ function classifySystemActionBase(action, parsedCost) {
   }
 
   const mentionsStride = /\bstrides?\b|\bsteps?\b|\bmoves?\b|\bleaps?\b|\bjumps?\b|\bbounds?\b|\bsprings?\b/.test(text);
-  const mentionsDifferentTargets = /\bdifferent targets?\b|\bseparate targets?\b|\beach against\b/.test(text);
+  const mentionsDifferentTargets = /\bdifferent targets?\b|\bseparate targets?\b|\beach against\b|\bdifferent creatures?\b|\bseparate creatures?\b|\bdifferent enem(?:y|ies)\b|\bseparate enem(?:y|ies)\b|\bdifferent foes?\b|\bseparate foes?\b/.test(text);
   const mentionsMultipleStrikes = /\b(?:two|three|\d+)\b.{0,30}\bstrikes?\b|\bup to\b.{0,30}\bstrikes?\b|\bnumber of strikes?\b/.test(text);
   const mentionsDelayedMap = /multiple attack penalty.*(?:doesn.t|does not|doesn’t) increase|map.*(?:doesn.t|does not|doesn’t) increase/.test(text);
   const mapAttacks = readMapAttacks(text);
@@ -1282,12 +1292,14 @@ function classifySystemActionBase(action, parsedCost) {
   }
 
   if (mentionsDifferentTargets || mentionsMultipleStrikes) {
+    const distinctStrikeCount = mentionsDifferentTargets ? readDistinctStrikeCount(text) : null;
     return inferred("multiattack", {
       activityProfile: {
         ...baseAttackProfile(),
         multiStrike: true,
         delayedMap: mentionsDelayedMap,
         ...(mapAttacks !== null ? { mapAttacks } : {}),
+        ...(distinctStrikeCount ? { includes: Array(distinctStrikeCount).fill("strike"), requiresDistinctTargets: true, distinctStrikeCount } : {}),
       },
       targetingProfile: {
         enemy: true,

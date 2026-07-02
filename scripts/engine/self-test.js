@@ -17205,4 +17205,89 @@ const strideGenericMultiStrikeShaped = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(strideGenericMultiStrikeShaped.role, "mobility-attack", "a Stride ability with generic multi-strike language but no distinct-target phrasing is still classified as mobility-attack under the shipped (narrower) condition");
 
+const doubleAttackAction = {
+  name: "Double Attack",
+  slug: "double-attack",
+  system: {
+    description: {
+      value: "The creature makes two Strikes with two different arms or tentacles, each limb targeting a different creature. Double Attack counts as two attacks toward the creature's multiple attack penalty, but the penalty doesn't increase until after both attacks are made.",
+    },
+    traits: { value: [] },
+    time: { value: "1" },
+  },
+};
+const doubleAttackClassified = classifySystemAction(doubleAttackAction);
+assert.equal(doubleAttackClassified.role, "multiattack");
+assert.equal(doubleAttackClassified.activityProfile.requiresDistinctTargets, true);
+assert.equal(doubleAttackClassified.activityProfile.distinctStrikeCount, 2);
+assert.deepEqual(doubleAttackClassified.activityProfile.includes, ["strike", "strike"]);
+assert.equal(doubleAttackClassified.activityProfile.mapAttacks, 2, "the pre-existing MAP-count field must still be read from 'counts as two attacks' unchanged");
+
+const bladestormAction = {
+  name: "Bladestorm",
+  slug: "bladestorm",
+  system: {
+    description: {
+      value: "The marilith makes up to six longsword Strikes, each against a different target. These attacks count toward the marilith's multiple attack penalty, but the multiple attack penalty doesn't increase until after all the attacks.",
+    },
+    traits: { value: [] },
+    time: { value: "1" },
+  },
+};
+const bladestormClassified = classifySystemAction(bladestormAction);
+assert.equal(bladestormClassified.activityProfile.requiresDistinctTargets, true);
+assert.equal(bladestormClassified.activityProfile.distinctStrikeCount, 6, "Bladestorm makes six Strikes, not two — the count must come from its own text, not a hardcoded default");
+assert.equal(bladestormClassified.activityProfile.mapAttacks, undefined, "Bladestorm never says 'counts as N attacks' — mapAttacks must stay unset, distinctStrikeCount is a separate signal");
+
+const buckingFrenzyAction = {
+  name: "Bucking Frenzy",
+  slug: "bucking-frenzy",
+  system: {
+    description: {
+      value: "The war pig transforms any fear it feels into fury before kicking wildly. The war pig then makes hoof Strikes against up to three different foes within its reach.",
+    },
+    traits: { value: [] },
+    time: { value: "1" },
+  },
+};
+const buckingFrenzyClassified = classifySystemAction(buckingFrenzyAction);
+assert.equal(buckingFrenzyClassified.role, "multiattack", "'different foes' must be recognized, not just 'different targets'");
+assert.equal(buckingFrenzyClassified.activityProfile.distinctStrikeCount, 3);
+
+const genericMultiStrikeAction = {
+  name: "Triple Snap",
+  slug: "triple-snap",
+  system: {
+    description: {
+      value: "The creature makes three Strikes. Triple Snap counts as three attacks toward the creature's multiple attack penalty.",
+    },
+    traits: { value: [] },
+    time: { value: "1" },
+  },
+};
+const genericMultiStrikeClassified = classifySystemAction(genericMultiStrikeAction);
+assert.equal(
+  genericMultiStrikeClassified.activityProfile.requiresDistinctTargets,
+  undefined,
+  "an ordinary multi-strike with no different-creature requirement must not be flagged for distinct targets",
+);
+assert.deepEqual(
+  genericMultiStrikeClassified.activityProfile.includes,
+  ["strike"],
+  "an ordinary multi-strike keeps the existing single 'strike' marker — only different-creature abilities repeat it",
+);
+
+const suddenChargeStillSafe = classifySystemAction({
+  name: "Sudden Charge",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: { value: "You Stride twice. If you end this movement within reach of at least one enemy, you can make a melee Strike against that enemy." },
+    traits: { value: [] },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(suddenChargeStillSafe.role, "mobility-attack");
+assert.equal(suddenChargeStillSafe.activityProfile.requiresDistinctTargets, undefined);
+
 console.log("PF2e Combater self-test passed");
