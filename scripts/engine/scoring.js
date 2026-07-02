@@ -855,6 +855,20 @@ function bestTargetForAction(context, action, role) {
   return target;
 }
 
+function distinctTargetsFor(context, action, role) {
+  const count = Number.isFinite(action.activityProfile?.distinctStrikeCount) ? action.activityProfile.distinctStrikeCount : 2;
+  const max = maxRange(action);
+  const reachable = attackableEnemies(context)
+    .filter((enemy) => !Number.isFinite(max) || max === Infinity || (enemy?.distance ?? Infinity) <= max)
+    .toSorted((left, right) => offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left));
+
+  if (!reachable.length) return [];
+
+  const picked = [];
+  for (let i = 0; i < count; i += 1) picked.push(reachable[i % reachable.length]);
+  return picked;
+}
+
 function hpPercent(entity) {
   const nested = Number(entity?.hp?.percent);
   if (Number.isFinite(nested)) return nested;
@@ -1589,6 +1603,9 @@ export function scoreCandidate(context, action) {
   }
 
   const target = bestTargetForAction(context, action, role);
+  const distinctTargets = action.activityProfile?.requiresDistinctTargets
+    ? distinctTargetsFor(context, action, role)
+    : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
   const reasons = [...(action.reasons ?? [])];
   const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
@@ -2475,7 +2492,12 @@ export function scoreCandidate(context, action) {
     suggestedTarget,
     reason: reasons[0] ?? defaultReason(action),
     reasons,
-    activityProfile: { ...action.activityProfile, areaPlacementCenter, areaPlacementAimPoint },
+    activityProfile: {
+      ...action.activityProfile,
+      areaPlacementCenter,
+      areaPlacementAimPoint,
+      ...(distinctTargets ? { distinctTargets } : {}),
+    },
   }, {
     isGM: canUseTargetDefenses(context),
     fallbackReason: defaultReason(action),

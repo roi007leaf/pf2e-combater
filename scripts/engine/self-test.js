@@ -17290,4 +17290,72 @@ const suddenChargeStillSafe = classifySystemAction({
 assert.equal(suddenChargeStillSafe.role, "mobility-attack");
 assert.equal(suddenChargeStillSafe.activityProfile.requiresDistinctTargets, undefined);
 
+const doubleAttackCandidate = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  targetingProfile: { enemy: true },
+  activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, mapAttacks: 2, requiresDistinctTargets: true, distinctStrikeCount: 2 },
+};
+const twoEnemiesContext = {
+  ...fighterContext,
+  targets: [
+    { ...fighterContext.targets[0], id: "enemy-a", name: "Ogre", distance: 5 },
+    { ...fighterContext.targets[0], id: "enemy-b", name: "Goblin", distance: 5, hpPercent: 0.3 },
+  ],
+};
+const twoEnemiesScored = scoreCandidate(twoEnemiesContext, doubleAttackCandidate);
+assert.equal(twoEnemiesScored.activityProfile.distinctTargets.length, 2);
+assert.notEqual(
+  twoEnemiesScored.activityProfile.distinctTargets[0].name,
+  twoEnemiesScored.activityProfile.distinctTargets[1].name,
+  "with two enemies in reach, Double Attack's two attacks must resolve to two different creatures",
+);
+
+const oneEnemyContext = {
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], id: "enemy-a", name: "Ogre", distance: 5 }],
+};
+const oneEnemyScored = scoreCandidate(oneEnemyContext, doubleAttackCandidate);
+assert.equal(oneEnemyScored.activityProfile.distinctTargets.length, 2);
+assert.equal(
+  oneEnemyScored.activityProfile.distinctTargets[0].name,
+  oneEnemyScored.activityProfile.distinctTargets[1].name,
+  "with only one enemy in reach, both of Double Attack's attacks fall back to that same creature",
+);
+
+const bladestormCandidate = {
+  id: "marilith-bladestorm",
+  name: "Bladestorm",
+  slug: "bladestorm",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  targetingProfile: { enemy: true },
+  activityProfile: { includes: Array(6).fill("strike"), includesStrike: true, multiStrike: true, requiresDistinctTargets: true, distinctStrikeCount: 6 },
+};
+const threeEnemiesContext = {
+  ...fighterContext,
+  targets: [
+    { ...fighterContext.targets[0], id: "enemy-a", name: "Ogre", distance: 5 },
+    { ...fighterContext.targets[0], id: "enemy-b", name: "Goblin", distance: 5, hpPercent: 0.3 },
+    { ...fighterContext.targets[0], id: "enemy-c", name: "Kobold", distance: 5, hpPercent: 0.6 },
+  ],
+};
+const bladestormScored = scoreCandidate(threeEnemiesContext, bladestormCandidate);
+assert.equal(bladestormScored.activityProfile.distinctTargets.length, 6, "Bladestorm must produce 6 target slots even though only 3 enemies exist");
+const distinctNamesInBladestorm = new Set(bladestormScored.activityProfile.distinctTargets.map((t) => t.name));
+assert.equal(distinctNamesInBladestorm.size, 3, "with only 3 enemies in reach, Bladestorm's 6 slots must cycle through all 3, not repeat just the top pick 6 times");
+
+const ordinaryStrikeCandidate = { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } };
+const ordinaryStrikeScored = scoreCandidate(twoEnemiesContext, ordinaryStrikeCandidate);
+assert.equal(
+  ordinaryStrikeScored.activityProfile?.distinctTargets,
+  undefined,
+  "an ordinary single-target action must not gain a distinctTargets list",
+);
+
 console.log("PF2e Combater self-test passed");
