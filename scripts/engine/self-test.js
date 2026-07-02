@@ -17391,4 +17391,57 @@ assert.equal(
   "an ordinary single-target action must not gain a distinctTargets list",
 );
 
+const distinctTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
+const distinctTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
+const doubleAttackForBuilder = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  activityProfile: {
+    includes: ["strike", "strike"],
+    includesStrike: true,
+    multiStrike: true,
+    mapAttacks: 2,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 2,
+    distinctTargets: [distinctTargetA, distinctTargetB],
+  },
+};
+const expandedAtoms = builderAtomicActionsForStep(doubleAttackForBuilder);
+assert.equal(expandedAtoms.length, 2, "Double Attack must expand into 2 atomic Strike steps");
+assert.equal(expandedAtoms[0].preferredTarget?.name, "Ogre");
+assert.equal(expandedAtoms[1].preferredTarget?.name, "Goblin");
+assert.equal(expandedAtoms[0].slug, "strike");
+assert.equal(expandedAtoms[1].slug, "strike");
+
+const bladestormForBuilder = {
+  id: "marilith-bladestorm",
+  name: "Bladestorm",
+  slug: "bladestorm",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  activityProfile: {
+    includes: Array(6).fill("strike"),
+    includesStrike: true,
+    multiStrike: true,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 6,
+    distinctTargets: [distinctTargetA, distinctTargetB, distinctTargetA, distinctTargetB, distinctTargetA, distinctTargetB],
+  },
+};
+const bladestormAtoms = builderAtomicActionsForStep(bladestormForBuilder);
+assert.equal(bladestormAtoms.length, 6, "Bladestorm must expand into all 6 atomic Strike steps, not just 2");
+assert.equal(bladestormAtoms[5].preferredTarget?.name, "Goblin");
+
+const fallbackDoubleAttack = {
+  ...doubleAttackForBuilder,
+  activityProfile: { ...doubleAttackForBuilder.activityProfile, distinctTargets: undefined },
+};
+const fallbackAtoms = builderAtomicActionsForStep(fallbackDoubleAttack);
+assert.equal(fallbackAtoms.length, 1, "with no distinctTargets computed, the action is not force-expanded into guesses");
+
 console.log("PF2e Combater self-test passed");

@@ -325,13 +325,13 @@ function isCompositeAtomicAction(action) {
   const includes = actionIncludedParts(action);
   const hasAtomicPart = [...COMPOSITE_ATOMIC_PARTS].some((part) => includes.has(part));
   const includesStrike = action.activityProfile?.includesStrike === true || includes.has("strike");
-  return name.includes(" -> ") && (
+  return action.activityProfile?.requiresDistinctTargets === true || (name.includes(" -> ") && (
     (hasAtomicPart && includesStrike)
     || (includes.has("stand") && includes.has("stride"))
     || (action.activityProfile?.drawsWeapon === true && includesStrike)
     || action.activityProfile?.retreatBeforeStrike === true
     || action.activityProfile?.retreatAfterStrike === true
-  );
+  ));
 }
 
 function compositeStrikeActionKey(action) {
@@ -381,7 +381,7 @@ function atomicMovementAction(part) {
   };
 }
 
-function atomicStrikeAction(action) {
+function atomicStrikeAction(action, targetOverride) {
   const leafName = stripCompositePrefix(actionName(action));
   return {
     ...action,
@@ -390,6 +390,7 @@ function atomicStrikeAction(action) {
     slug: "strike",
     actionCost: 1,
     cost: 1,
+    ...(targetOverride ? { preferredTarget: targetOverride, suggestedTarget: targetOverride } : {}),
     activityProfile: {
       ...(action.activityProfile ?? {}),
       includes: ["strike"],
@@ -465,11 +466,19 @@ export function builderAtomicActionsForStep(action) {
   const parts = actionIncludedPartsList(action);
   if (!parts.length) return [action];
 
+  const distinctTargets = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.distinctTargets : null;
+  if (action.activityProfile?.requiresDistinctTargets && !distinctTargets?.length) return action ? [action] : [];
+
+  let strikeOccurrence = 0;
   return parts.flatMap((part) => {
     const normalized = String(part).toLowerCase();
     if (["crawl", "stand", "step", "stride"].includes(normalized)) return atomicMovementAction(normalized) ?? [];
     if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
-    if (normalized === "strike") return [atomicStrikeAction(action)];
+    if (normalized === "strike") {
+      const targetOverride = distinctTargets ? distinctTargets[strikeOccurrence] : undefined;
+      strikeOccurrence += 1;
+      return [atomicStrikeAction(action, targetOverride)];
+    }
     return [];
   });
 }
