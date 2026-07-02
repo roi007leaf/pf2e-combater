@@ -1102,6 +1102,25 @@ function rectangleForCenter(center, footprint) {
   };
 }
 
+function rectanglesOverlap(left, right) {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
+function centerOccupiedByOtherToken(context, center, footprint) {
+  const candidateRectangle = rectangleForCenter(center, footprint);
+  const others = [...contextAllies(context), ...contextEnemies(context)];
+  return others.some((other) => {
+    const otherCenter = centerPoint(other);
+    if (!otherCenter) return false;
+    const metrics = movementGridMetrics();
+    const otherRectangle = rectangleForCenter(otherCenter, tokenFootprintPixels(other, metrics));
+    return rectanglesOverlap(candidateRectangle, otherRectangle);
+  });
+}
+
 function rectangleDistanceFeet(left, right, metrics) {
   const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
   const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
@@ -1190,7 +1209,7 @@ function movementNeighbors(center, metrics) {
 // readActionSources. Cached arrays are only ever read (filter/sort/some), never mutated.
 const reachableCentersCache = new Map();
 
-function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
+function movementReachableCenters(origin, distanceFeet, metrics, token = null, context = null) {
   const cacheKey = `${movementPointKey(origin)}|${distanceFeet}`;
   const cached = reachableCentersCache.get(cacheKey);
   if (cached) return cached;
@@ -1229,8 +1248,10 @@ function movementReachableCenters(origin, distanceFeet, metrics, token = null) {
     }
   }
 
-  reachableCentersCache.set(cacheKey, centers);
-  return centers;
+  const footprint = tokenFootprintPixels(token ?? context?.token, metrics);
+  const filtered = context ? centers.filter((center) => !centerOccupiedByOtherToken(context, center, footprint)) : centers;
+  reachableCentersCache.set(cacheKey, filtered);
+  return filtered;
 }
 
 function hasMovementCollisionLayer(token = null) {
@@ -1258,7 +1279,7 @@ function reachableAttackCenters(context, target, distanceFeet, reachFeet) {
   const metrics = movementGridMetrics();
   const attackerFootprint = tokenFootprintPixels(context?.token, metrics);
   const targetRectangle = rectangleForCenter(targetCenter, tokenFootprintPixels(target, metrics));
-  const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken)
+  const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken, context)
     .filter((center) => {
       const attackerRectangle = rectangleForCenter(center, attackerFootprint);
       return gridReachDistanceFeet(attackerRectangle, targetRectangle, metrics) <= reachFeet
@@ -1294,7 +1315,7 @@ function canReturnToOrigin(context, fromCenter, distanceFeet) {
   const collisionToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   const metrics = movementGridMetrics();
   const originKey = movementPointKey(origin);
-  return movementReachableCenters(fromCenter, distanceFeet, metrics, collisionToken)
+  return movementReachableCenters(fromCenter, distanceFeet, metrics, collisionToken, context)
     .some((center) => movementPointKey(center) === originKey);
 }
 
@@ -2562,7 +2583,7 @@ function basicMovementBlockedByCollision(context, profile, action) {
   const distance = ["crawl", "step"].includes(slug) ? 5 : movementRange(profile);
   const metrics = movementGridMetrics();
   const collisionToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
-  return !movementReachableCenters(origin, distance, metrics, collisionToken).length;
+  return !movementReachableCenters(origin, distance, metrics, collisionToken, context).length;
 }
 
 function readMovementAvailability(context, action) {

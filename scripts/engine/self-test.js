@@ -10458,6 +10458,66 @@ assert.equal(computeAreaMarker(burstMarkerContext, noPlacementAction), null);
 const nonAreaAction = { id: "strike", name: "Strike", slug: "strike", role: "damage", source: "strike" };
 assert.equal(computeAreaMarker(burstMarkerContext, nonAreaAction), null);
 
+// movementReachableCenters (the shared BFS behind the Stride-into-reach composite, among other
+// callers) must never land a destination on a square another creature already occupies.
+// gridReachDistanceFeet clamps overlap to 0, so a fully-overlapping destination previously read as
+// an ordinary adjacent square and slipped through reachableAttackCenters' reach filter. Exercised
+// through readActionSources' "stride-strike-claw" composite (movementReachableCenters and
+// reachableAttackCenters are both private to action-reader.js) since its
+// activityProfile.attackCenter is the nearest exported, observable proof of which square the BFS
+// actually picked.
+//
+// The blocker is placed in battlefield.allies, not battlefield.enemies: compareTacticalCenters'
+// tie-break (in battlefield-analysis.js) weighs threatCountAtCenter, which only counts enemies. An
+// enemy blocker would confound the test, since the "best" square could shift merely because it now
+// has more nearby enemy threats -- independent of the occupancy bug this test targets. An ally
+// blocker isolates the occupancy effect cleanly.
+const occupancyBaseContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          slug: "claw", type: "strike", label: "Claw",
+          visible: true, ready: true, canAttack: true,
+          item: { id: "claw", system: { traits: { value: [] } } },
+          roll: () => null,
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  token: { id: "active-token", center: { x: 0, y: 0 } },
+  profile: { speed: 25, reach: 5, conditions: { slugs: [], values: {} }, skills: {} },
+  battlefield: {
+    enemies: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+    targets: [{ id: "amiri", name: "Amiri", distance: 30, token: { center: { x: 30, y: 0 } } }],
+  },
+  targets: undefined,
+};
+const occupancyClearComposite = readActionSources(occupancyBaseContext).find((a) => a.slug === "stride-strike-claw");
+assert.ok(occupancyClearComposite, "expected a Stride -> Claw composite when nothing blocks the destination");
+const occupancyBestSquare = occupancyClearComposite.activityProfile.attackCenter;
+assert.ok(occupancyBestSquare, "expected an attackCenter on the clear composite");
+
+const occupancyBlockedContext = {
+  ...occupancyBaseContext,
+  battlefield: {
+    allies: [
+      { id: "ally-blocker", name: "Ally Blocker", distance: 25, token: { center: occupancyBestSquare, width: 1, height: 1 } },
+    ],
+    enemies: occupancyBaseContext.battlefield.enemies,
+    targets: occupancyBaseContext.battlefield.targets,
+  },
+};
+const occupancyBlockedComposite = readActionSources(occupancyBlockedContext).find((a) => a.slug === "stride-strike-claw");
+assert.ok(occupancyBlockedComposite, "expected an alternate legal Stride -> Claw composite even with the best square occupied");
+assert.notDeepEqual(
+  occupancyBlockedComposite.activityProfile.attackCenter,
+  occupancyBestSquare,
+  "attackCenter must not land on a square another creature already occupies",
+);
+
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",
   name: "Strike",
