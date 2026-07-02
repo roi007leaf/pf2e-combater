@@ -10354,11 +10354,13 @@ const closeFeint = scoreCandidate({
 });
 assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
-// Feint's real catalog entry (scripts/catalog/generic-actions.js) carries role: "setup" with no
-// targetingProfile.enemy flag, so suggestedTargetFor's "setup" branch resolves it to the actor —
-// this matches real production Feint's behavior (confirmed independent of this fixture), not a
-// consequence of the role===undefined escape-hatch removal.
-assert.equal(closeFeint.suggestedTarget.name, fighterContext.actor.name);
+// KNOWN BUG (not caused by this task, predates it — confirmed present at commit d8c6b578):
+// Feint's real catalog entry (generic-actions.js, role: "setup", requiresEnemyInReach: true,
+// targetDefense: "perception") has no targetingProfile field, so suggestedTargetFor's
+// role==="setup" branch (scoring.js) falls through to actorTarget() instead of resolving
+// the enemy, regardless of range/reachability. This assertion documents the CORRECT expected
+// behavior and is expected to fail until that's fixed in a separate task.
+assert.equal(closeFeint.suggestedTarget.name, "Ogre");
 
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",
