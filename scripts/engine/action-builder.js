@@ -1,5 +1,6 @@
 import { confidenceLabel } from "./confidence.js";
 import { actionBudget } from "./planner.js";
+import { requiresAreaMarkerForAction } from "./action-executor.js";
 import { pf2eActionName, t } from "../i18n.js";
 
 export const ACTION_BUILDER_TABS = [
@@ -563,6 +564,92 @@ function numericPoint(value) {
 
 function targetCenter(target) {
   return numericPoint(target?.center) ?? numericPoint(target?.token?.center);
+}
+
+// Caster's own live center point, read fresh from context rather than any stale
+// scoring-time value — mirrors the token-center convention used elsewhere in the engine
+// layer (e.g. action-executor.js's `point(token?.center) ?? point(context?.token?.center)`).
+function casterCenter(context) {
+  return numericPoint(context?.token?.center);
+}
+
+function numericOr(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function areaMarkerDistance(action) {
+  return numericOr(action?.targetingProfile?.distance ?? action?.targetingProfile?.radius, 5);
+}
+
+function areaMarkerWidth(action) {
+  return numericOr(action?.targetingProfile?.width, 5);
+}
+
+function areaMarkerLabel(shape, distance) {
+  return `${shape.charAt(0).toUpperCase()}${shape.slice(1)} ${distance} ft`;
+}
+
+// Turns a scored action's areaPlacementCenter/areaPlacementAimPoint (scoring.js) into a
+// full marker object shaped like area-picker.js's initialAreaMarker output, so a computed
+// marker behaves identically to a manually-placed one everywhere downstream. Pure and
+// canvas-free beyond reading context.token's own position. Returns null when the action
+// isn't area-shaped or when there's no valid placement to offer (caller falls back to
+// manual placement).
+export function computeAreaMarker(context, action) {
+  if (!requiresAreaMarkerForAction(action)) return null;
+
+  const type = String(action?.targetingProfile?.type ?? "").toLowerCase();
+  const activityProfile = action?.activityProfile ?? {};
+  const distance = areaMarkerDistance(action);
+  const width = areaMarkerWidth(action);
+  const originTokenId = context?.token?.id ?? context?.token?.uuid ?? null;
+
+  if (type === "emanation") {
+    const center = casterCenter(context);
+    if (!center) return null;
+    return {
+      shape: "emanation",
+      center,
+      distance,
+      width,
+      rotation: 0,
+      originTokenId,
+      label: areaMarkerLabel("emanation", distance),
+    };
+  }
+
+  if (type === "burst") {
+    const center = numericPoint(activityProfile.areaPlacementCenter);
+    if (!center) return null;
+    return {
+      shape: "burst",
+      center,
+      distance,
+      width,
+      rotation: 0,
+      originTokenId,
+      label: areaMarkerLabel("burst", distance),
+    };
+  }
+
+  if (type === "cone" || type === "line") {
+    const aimPoint = numericPoint(activityProfile.areaPlacementAimPoint);
+    const origin = casterCenter(context);
+    if (!aimPoint || !origin) return null;
+    const rotation = Math.round((Math.atan2(aimPoint.y - origin.y, aimPoint.x - origin.x) * 180) / Math.PI);
+    return {
+      shape: type,
+      center: origin,
+      distance,
+      width,
+      rotation,
+      originTokenId,
+      label: areaMarkerLabel(type, distance),
+    };
+  }
+
+  return null;
 }
 
 function gridCellCount(value) {

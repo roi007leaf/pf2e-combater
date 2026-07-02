@@ -8,6 +8,7 @@ import {
   actionBuilderKey,
   builderAtomicActionsForStep,
   buildActionBuilderModel,
+  computeAreaMarker,
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
@@ -10424,6 +10425,38 @@ const lineDamageScored = scoreCandidate({
 }, lineDamageCandidate);
 assert.equal(lineDamageScored.activityProfile.areaPlacementCenter, null);
 assert.deepEqual(lineDamageScored.activityProfile.areaPlacementAimPoint, { x: 0, y: 75 });
+
+const burstMarkerAction = {
+  id: "overwhelming-blast",
+  name: "Overwhelming Blast",
+  slug: "overwhelming-blast",
+  role: "area-damage",
+  curated: { role: "area-damage" },
+  targetingProfile: { type: "burst", distance: 20, enemy: true, area: true },
+  activityProfile: { spell: true, areaPlacementCenter: { x: 100, y: 0 }, areaPlacementAimPoint: null },
+};
+const burstMarkerContext = { ...fighterContext, token: { center: { x: 0, y: 0 } } };
+const burstMarker = computeAreaMarker(burstMarkerContext, burstMarkerAction);
+assert.deepEqual(burstMarker?.center, { x: 100, y: 0 });
+
+const lineMarkerAction = {
+  id: "far-lance",
+  name: "Far Lance",
+  slug: "far-lance",
+  role: "area-damage",
+  curated: { role: "area-damage" },
+  targetingProfile: { type: "line", distance: 30, enemy: true, area: true },
+  activityProfile: { spell: true, areaPlacementCenter: null, areaPlacementAimPoint: { x: 0, y: 100 } },
+};
+const lineMarker = computeAreaMarker(burstMarkerContext, lineMarkerAction);
+assert.deepEqual(lineMarker?.center, { x: 0, y: 0 });
+assert.equal(lineMarker?.rotation, 90);
+
+const noPlacementAction = { ...burstMarkerAction, activityProfile: { spell: true, areaPlacementCenter: null, areaPlacementAimPoint: null } };
+assert.equal(computeAreaMarker(burstMarkerContext, noPlacementAction), null);
+
+const nonAreaAction = { id: "strike", name: "Strike", slug: "strike", role: "damage", source: "strike" };
+assert.equal(computeAreaMarker(burstMarkerContext, nonAreaAction), null);
 
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",
