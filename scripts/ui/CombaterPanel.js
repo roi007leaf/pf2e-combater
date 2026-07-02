@@ -5,6 +5,7 @@ import {
   actionBuilderKey,
   ACTION_BUILDER_TABS,
   builderAtomicActionsForStep,
+  computeAreaMarker,
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
@@ -1788,6 +1789,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, this._context?.profile))
         ? step.destination
         : null;
+      const presetAreaMarker = !step?.areaMarker ? computeAreaMarker(this._context, step) : null;
       let draftStep = {
         instanceId: draftStepId(),
         actionKey: this._actionKeyForStep(step),
@@ -1797,6 +1799,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         actionCost: step?.actionCost ?? step?.cost,
         requiresDestination: requiresDestinationForAction(step),
         ...(presetDestination ? { destination: presetDestination } : {}),
+        ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
       };
       if (!useAggroTargets) return draftStep;
 
