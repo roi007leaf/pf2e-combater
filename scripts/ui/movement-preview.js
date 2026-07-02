@@ -36,6 +36,35 @@ function tokenFootprint(value) {
   };
 }
 
+function contextAllies(context) {
+  return context?.allies ?? context?.battlefield?.allies ?? [];
+}
+
+function contextEnemies(context) {
+  return context?.enemies ?? context?.battlefield?.enemies ?? [];
+}
+
+function rectanglesOverlap(left, right) {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
+// Mirrors action-reader.js's centerOccupiedByOtherToken for the scoring engine's BFS
+// (movementReachableCenters), but reuses this file's own {widthCells, heightCells} -> pixel-rect
+// conversion (placementForCenter) instead of action-reader.js's tokenFootprintPixels convention.
+function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
+  const candidatePlacement = placementForCenter(center, footprint, gridSize);
+  const others = [...contextAllies(context), ...contextEnemies(context)];
+  return others.some((other) => {
+    const otherCenter = point(other);
+    if (!otherCenter) return false;
+    const otherPlacement = placementForCenter(otherCenter, tokenFootprint(other), gridSize);
+    return rectanglesOverlap(candidatePlacement, otherPlacement);
+  });
+}
+
 function targetIdentity(value) {
   return value?.id
     ?? value?.uuid
@@ -361,7 +390,13 @@ function reachableMovementCenters(origin, distanceFeet, gridSize, options = {}) 
     }
   }
 
-  return centers;
+  // Post-filter (applied once after the BFS completes, mirroring action-reader.js's
+  // movementReachableCenters) rather than rejecting occupied squares mid-expansion: this only
+  // excludes occupied squares from being offered as a landing destination, it does not stop a
+  // route from passing through an occupied square to reach a square beyond it.
+  if (!options.context) return centers;
+  const footprint = tokenFootprint(options.collisionToken ?? options.context?.token);
+  return centers.filter((center) => !centerOccupiedByOtherToken(options.context, center, footprint, gridSize));
 }
 
 function pointKey(point) {
@@ -1012,6 +1047,7 @@ export function movementPreviewForStep(context, step, options = {}) {
     actor: options.actor ?? context?.actor ?? context?.token?.actor,
     movementAction: options.movementAction ?? pf2eMovementActionForStep(step),
     collisionToken: options.collisionToken ?? canvasTokenById(context?.token?.id ?? context?.token?.uuid),
+    context: options.context ?? context,
   };
 
   // A teleport picks a destination like a Stride but reaches by range, not a path — show its own

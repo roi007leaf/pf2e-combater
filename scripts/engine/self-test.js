@@ -10518,6 +10518,47 @@ assert.notDeepEqual(
   "attackCenter must not land on a square another creature already occupies",
 );
 
+// reachableMovementCenters (the BFS behind the interactive movement-preview overlay in
+// movement-preview.js) has the same missing-occupancy-check gap as the scoring engine's
+// movementReachableCenters above, in a structurally parallel but separately implemented BFS.
+// Unlike the composite-attackCenter proof above, this file computes raw reachable squares for
+// DISPLAY, not a scored/tie-broken "best" square, so the assertion checks the raw reachableCenters
+// list directly for the blocked square's absence -- that list isn't run through this file's
+// recommendedPlacement sort/tie-break at all, so it can't be confounded by a scoring mechanism
+// steering the result away from the blocker for unrelated reasons the way a "best pick" could be.
+const movementOccupancyBaseContext = {
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+};
+const movementOccupancyBlockerSquare = { x: 10, y: 0 };
+const movementOccupancyClearPreview = movementPreviewForStep(movementOccupancyBaseContext, { slug: "stride" }, { gridSize: 5 });
+assert.ok(
+  movementOccupancyClearPreview.reachableCenters.some((center) => center.x === movementOccupancyBlockerSquare.x && center.y === movementOccupancyBlockerSquare.y),
+  "sanity: (10,0) should be reachable with nothing blocking it",
+);
+
+const movementOccupancyBlockedContext = {
+  ...movementOccupancyBaseContext,
+  battlefield: {
+    enemies: [{ id: "movement-blocker", name: "Movement Blocker", token: { center: movementOccupancyBlockerSquare, width: 1, height: 1 } }],
+  },
+};
+const movementOccupancyBlockedPreview = movementPreviewForStep(movementOccupancyBlockedContext, { slug: "stride" }, { gridSize: 5 });
+assert.equal(
+  movementOccupancyBlockedPreview.reachableCenters.some((center) => center.x === movementOccupancyBlockerSquare.x && center.y === movementOccupancyBlockerSquare.y),
+  false,
+  "reachableCenters must not include a square occupied by another battlefield creature",
+);
+
+// Scope check: occupancy only excludes a square as a LANDING destination -- it must not block a
+// route from passing through an occupied square to reach a square beyond it.
+const movementOccupancyBeyondSquare = { x: 20, y: 0 };
+assert.ok(
+  movementOccupancyBlockedPreview.reachableCenters.some((center) => center.x === movementOccupancyBeyondSquare.x && center.y === movementOccupancyBeyondSquare.y),
+  "a square beyond the blocker must still be reachable; occupancy must not block pass-through",
+);
+
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",
   name: "Strike",
