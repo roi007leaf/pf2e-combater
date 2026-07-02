@@ -122,6 +122,42 @@ function plannedTargetTokens(context, step) {
   return inferredToken ? [inferredToken] : [];
 }
 
+function resolvedTargetType(step) {
+  return step?.suggestedTarget?.type
+    ?? step?.action?.suggestedTarget?.type
+    ?? null;
+}
+
+// Deliberately stricter than plannedTargetTokens: no fallback to targetingProfile
+// preferredTargetId/Name matching or "first enemy in the list" guessing. Only resolves a
+// token when the action's own scored suggestedTarget says "enemy" AND a real canvas token
+// backs it up — a blind guess here is exactly what made a self-targeted action highlight a
+// random enemy before this feature got disabled entirely.
+function enemyTargetTokens(context, step) {
+  if (resolvedTargetType(step) !== "enemy") return [];
+
+  const ids = [
+    ...(Array.isArray(step?.targetTokenIds) ? step.targetTokenIds : []),
+    ...(Array.isArray(step?.action?.targetTokenIds) ? step.action.targetTokenIds : []),
+  ];
+  const tokens = ids.map(canvasTokenById).filter(Boolean);
+  if (tokens.length) return tokens;
+
+  const directTargets = [
+    step?.suggestedTarget,
+    step?.preferredTarget,
+    step?.target,
+    step?.action?.suggestedTarget,
+    step?.action?.preferredTarget,
+    step?.action?.target,
+  ].filter(Boolean);
+  for (const target of directTargets) {
+    const token = targetTokenFromValue(target);
+    if (token) return [token];
+  }
+  return [];
+}
+
 function areaMarker(step) {
   return step?.areaMarker ?? step?.action?.areaMarker ?? null;
 }
@@ -302,10 +338,7 @@ export function showActionPreview(context, step, { skipMovement = false } = {}) 
     return mountGraphics(graphics) ? { type: "area", marker: areaMarker(step) } : null;
   }
 
-  // Only ranged spells get a hover preview (target highlight + range ring) as placement guidance.
-  // Strikes and general actions — including self-targeted ones like Drop Prone — draw NOTHING:
-  // the green target overlay was scene noise, and for self/no-target actions it highlighted a
-  // random fallback enemy.
+  // Ranged spells get a hover preview (target highlight + range ring) as placement guidance.
   const isRangedSpell = spellRangeFeet(step) != null;
   if (isRangedSpell) {
     // An area spell whose template isn't placed yet targets an AREA, not tokens — show only the
@@ -324,6 +357,17 @@ export function showActionPreview(context, step, { skipMovement = false } = {}) 
     graphics.destroy?.({ children: true });
     const ring = showRangeOverlay(context, step);
     return ring ? { type: "range", ring } : null;
+  }
+
+  // Strikes and other non-spell actions: highlight the resolved target only when the action's
+  // own scoring says it targets an enemy (suggestedTarget.type === "enemy"). Self-targeted
+  // actions (Drop Prone, Raise a Shield) and ally-targeted ones (heals) never reach this — that
+  // gate is what keeps this from repeating the old "random fallback enemy" bug.
+  const enemyTokens = enemyTargetTokens(context, step);
+  if (enemyTokens.length) {
+    drawTargetPreview(graphics, enemyTokens);
+    clearRangeOverlay();
+    return mountGraphics(graphics) ? { type: "target", tokens: enemyTokens } : null;
   }
 
   graphics.destroy?.({ children: true });

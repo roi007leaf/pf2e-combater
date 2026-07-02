@@ -7715,19 +7715,52 @@ try {
       }],
     },
   };
-  // Strikes / general actions (non-spell) draw NO hover overlay — the green target box/line was
-  // scene noise (and self-targeted actions like Drop Prone highlighted a random fallback enemy).
+  // Strikes / general actions (non-spell) highlight their resolved target ONLY when scoring
+  // marked it an enemy target (suggestedTarget.type === "enemy") — that gate is what stops a
+  // self-targeted action's actorTarget() from ever reaching the highlight path.
   actionPreviewCalls.length = 0;
   const strikePreview = showActionPreview({
     token: { id: "actor-token" },
   }, {
     name: "Strike",
     slug: "strike",
+    suggestedTarget: { type: "enemy", id: "target-token", name: "Ogre" },
     targetTokenIds: ["target-token"],
   });
-  assert.equal(strikePreview, null, "a strike hover should draw no green target overlay");
+  assert.equal(strikePreview.type, "target", "a strike hover with an enemy suggestedTarget should draw the target overlay");
+  assert.ok(actionPreviewCalls.some((call) =>
+    call.type === "drawRect" && call.x === 150 && call.y === 125 && call.width === 100 && call.height === 50),
+    "a strike hover should frame the resolved enemy token's footprint");
+
+  // Self-targeted actions (Drop Prone, Raise a Shield) resolve suggestedTarget.type === "self" —
+  // this must never draw a highlight, even when targetTokenIds is (incorrectly) populated. This
+  // is the regression guard for the bug that got the whole feature disabled originally: a blind
+  // fallback used to highlight a random enemy for exactly this case.
+  actionPreviewCalls.length = 0;
+  const selfActionPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Drop Prone",
+    slug: "drop-prone",
+    suggestedTarget: { type: "self", id: "actor-token", name: "Self" },
+    targetTokenIds: ["target-token"],
+  });
+  assert.equal(selfActionPreview, null, "a self-targeted action hover should draw no overlay");
   assert.equal(actionPreviewCalls.some((call) => call.type === "drawRect"), false,
-    "a strike hover should not draw a target box");
+    "a self-targeted action hover should not draw a target box");
+
+  // A step with no suggestedTarget at all (legacy/ambiguous shape) must not draw a highlight
+  // just because targetTokenIds happens to be populated — the gate requires an explicit
+  // "enemy" type, not merely the presence of a token id.
+  actionPreviewCalls.length = 0;
+  const untypedActionPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Mystery Action",
+    slug: "mystery-action",
+    targetTokenIds: ["target-token"],
+  });
+  assert.equal(untypedActionPreview, null, "an action hover with no typed suggestedTarget should draw no overlay");
 
   // Ranged spells keep the target highlight + range ring as placement guidance.
   actionPreviewCalls.length = 0;
