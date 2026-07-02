@@ -13,6 +13,9 @@ players plan their own turns.
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf)
 
 ---
+<img width="1712" height="1115" alt="image" src="https://github.com/user-attachments/assets/24d3aecb-0fe5-4b94-bd71-024ba41555f6" />
+<img width="1907" height="1022" alt="image" src="https://github.com/user-attachments/assets/2a7b22aa-0ec2-472b-9865-8d74b55802ed" />
+<img width="1886" height="1108" alt="image" src="https://github.com/user-attachments/assets/d310dd82-6024-4693-b6f9-3e62a27f2a9f" />
 <img width="747" height="381" alt="image" src="https://github.com/user-attachments/assets/15ec9258-a9f0-4884-aed2-fcf4e05088d6" />
 <img width="852" height="926" alt="image" src="https://github.com/user-attachments/assets/a226ba6d-b0d7-449e-88bf-36047c8b7ab7" />
 <img width="1533" height="773" alt="image" src="https://github.com/user-attachments/assets/52a8f8d5-f4ba-44dd-b82e-15b656a99270" />
