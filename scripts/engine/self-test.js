@@ -17508,4 +17508,44 @@ const strideStrikeAtoms = builderAtomicActionsForStep(strideStrikeComposite);
 assert.equal(strideStrikeAtoms.length, 2);
 assert.equal(strideStrikeAtoms[1].actionCost, 1, "an ordinary (non-distinct-target) composite's Strike atom must keep its existing hardcoded cost of 1, unaffected by this fix");
 
+const identityFixTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
+const identityFixTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
+const doubleAttackForIdentityFix = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  activityProfile: {
+    includes: ["strike", "strike"],
+    includesStrike: true,
+    multiStrike: true,
+    mapAttacks: 2,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 2,
+    distinctTargets: [identityFixTargetA, identityFixTargetB],
+  },
+};
+const identityFixAtoms = builderAtomicActionsForStep(doubleAttackForIdentityFix);
+assert.equal(identityFixAtoms.length, 2);
+assert.equal(identityFixAtoms[0].slug, "double-attack", "a distinct-target atom must carry the original ability's own slug, not the generic 'strike', so the panel resolves it back to the right ability instead of an unrelated real Strike candidate");
+assert.equal(identityFixAtoms[1].slug, "double-attack");
+assert.equal(identityFixAtoms[0].executable, "open-item", "executable must still be inherited unchanged from the original action, since it (not slug) is what execution actually dispatches on");
+assert.equal(identityFixAtoms[0].activityProfile.includesStrike, true, "includesStrike must stay true regardless of the slug change, since readiness/movement checks read this field, not slug");
+
+const strideStrikeCompositeForIdentityFix = {
+  id: "stride-strike-composite",
+  name: "Stride -> Strike",
+  slug: "stride-strike-composite",
+  actionCost: 2,
+  source: "generated-composite",
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+};
+const strideStrikeIdentityAtoms = builderAtomicActionsForStep(strideStrikeCompositeForIdentityFix);
+assert.equal(strideStrikeIdentityAtoms.length, 2);
+assert.equal(strideStrikeIdentityAtoms[1].slug, "strike", "an ordinary (non-distinct-target) composite's Strike atom must keep the existing generic 'strike' slug, unaffected by this fix");
+
 console.log("PF2e Combater self-test passed");

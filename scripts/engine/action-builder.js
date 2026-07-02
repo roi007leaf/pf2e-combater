@@ -384,11 +384,12 @@ function atomicMovementAction(part) {
 function atomicStrikeAction(action, targetOverride, costOverride) {
   const leafName = stripCompositePrefix(actionName(action));
   const cost = Number.isFinite(costOverride) ? costOverride : 1;
+  const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
   return {
     ...action,
     id: compositeStrikeActionKey(action),
     name: leafName,
-    slug: "strike",
+    slug: distinctTargetSlug || "strike",
     actionCost: cost,
     cost,
     ...(targetOverride ? { preferredTarget: targetOverride, suggestedTarget: targetOverride } : {}),
