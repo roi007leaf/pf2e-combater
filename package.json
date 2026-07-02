@@ -17,10 +17,10 @@
   "homepage": "https://github.com/roi007leaf/pf2e-combater#readme",
   "description": "",
   "scripts": {
-    "test": "jest --maxWorkers=50%",
-    "test:watch": "jest --maxWorkers=50% --watch",
-    "test:coverage": "jest --coverage --maxWorkers=50%",
-    "test:ci": "jest --ci --coverage --watchAll=false --maxWorkers=50%",
+    "test": "node scripts/engine/self-test.js",
+    "test:watch": "node scripts/engine/self-test.js",
+    "test:coverage": "node scripts/engine/self-test.js",
+    "test:ci": "node scripts/engine/self-test.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -30,18 +30,13 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.3",
-    "@babel/preset-env": "^7.28.3",
     "@eslint/js": "^9.35.0",
-    "babel-jest": "^29.7.0",
-    "cross-env": "^7.0.3",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.3.0",
     "husky": "^9.1.7",
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "classic-level": "^3.0.0"
   }
 }
