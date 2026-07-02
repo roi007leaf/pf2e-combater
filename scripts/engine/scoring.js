@@ -8,6 +8,7 @@ import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
 import { pf2eSave, t } from "../i18n.js";
+import { bestReadyStrike } from "../readers/action-reader.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
 const ELEMENT_DAMAGE_FALLBACKS = {
@@ -1606,6 +1607,9 @@ export function scoreCandidate(context, action) {
   const distinctTargets = action.activityProfile?.requiresDistinctTargets
     ? distinctTargetsFor(context, action, role)
     : null;
+  const backingStrike = action.activityProfile?.requiresDistinctTargets
+    ? bestReadyStrike(contextActorDocument(context), context)
+    : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
   const reasons = [...(action.reasons ?? [])];
   const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
@@ -2497,6 +2501,7 @@ export function scoreCandidate(context, action) {
       areaPlacementCenter,
       areaPlacementAimPoint,
       ...(distinctTargets ? { distinctTargets } : {}),
+      ...(backingStrike ? { backingStrike } : {}),
     },
   }, {
     isGM: canUseTargetDefenses(context),

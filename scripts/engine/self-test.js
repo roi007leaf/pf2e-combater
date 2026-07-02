@@ -17586,4 +17586,39 @@ assert.equal(strongerOfTwo?.name, "Bite", "with two real Strikes available, the 
 const noStrikeActor = { system: { actions: [] } };
 assert.equal(bestReadyStrike(noStrikeActor, {}), null, "an actor with no real Strikes returns null, not a thrown error");
 
+const backingStrikeActorDoc = {
+  system: {
+    actions: [{
+      slug: "arm", label: "Arm", name: "Arm", type: "strike", visible: true, ready: true, canAttack: true,
+      item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "2d8", damageType: "bludgeoning" } } } },
+    }],
+  },
+};
+const doubleAttackForBackingStrike = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  targetingProfile: { enemy: true },
+  activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, mapAttacks: 2, requiresDistinctTargets: true, distinctStrikeCount: 2 },
+};
+const backingStrikeContext = {
+  ...fighterContext,
+  actor: { ...fighterContext.actor, document: backingStrikeActorDoc },
+  targets: [
+    { ...fighterContext.targets[0], id: "enemy-a", name: "Ogre", distance: 5 },
+    { ...fighterContext.targets[0], id: "enemy-b", name: "Goblin", distance: 5, hpPercent: 0.3 },
+  ],
+};
+const backingStrikeScored = scoreCandidate(backingStrikeContext, doubleAttackForBackingStrike);
+assert.equal(backingStrikeScored.activityProfile.backingStrike?.name, "Arm", "a requiresDistinctTargets action must be given the actor's own real Strike as its backing strike");
+assert.equal(backingStrikeScored.activityProfile.backingStrike?.executable, "strike");
+
+const ordinaryCandidateForBackingStrike = { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } };
+const ordinaryScoredForBackingStrike = scoreCandidate(backingStrikeContext, ordinaryCandidateForBackingStrike);
+assert.equal(ordinaryScoredForBackingStrike.activityProfile?.backingStrike, undefined, "an ordinary action must not gain a backingStrike");
+
 console.log("PF2e Combater self-test passed");
