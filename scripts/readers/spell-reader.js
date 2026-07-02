@@ -1,7 +1,7 @@
 import { findCuratedSpell } from "../catalog/spells/index.js";
 import { heightenedSpellForRank, spellBaseRank, spellNameForRank } from "../engine/spell-heightening.js";
 import { classifySpell } from "../engine/spell-classifier.js";
-import { parseActionText, slugify } from "./action-reader.js";
+import { bestReadyStrikeAverageDamage, parseActionText, slugify } from "./action-reader.js";
 import { t } from "../i18n.js";
 
 function collectionValues(collection) {
@@ -49,6 +49,12 @@ export function readSpellActions(context) {
       const effectiveItem = heightenedSpellForRank(item, castRank);
       const inferred = classifySpell(effectiveItem);
       const tactic = mergeSpellTactic(curated, inferred);
+      if (!curated && tactic?.role === "weapon-strike") {
+        const averageDamage = bestReadyStrikeAverageDamage(actor, context);
+        if (averageDamage !== null) {
+          tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
+        }
+      }
       const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
       const parsedTime = readSpellActionCost(effectiveItem);
       const actionCosts = curated?.actionCost !== undefined

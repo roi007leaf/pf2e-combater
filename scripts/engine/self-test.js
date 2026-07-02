@@ -3149,6 +3149,106 @@ assert.equal(
   false,
   "a non-sustained spell with a turn-long duration must not be flagged sustainable",
 );
+const weaponStrikeSpellClassification = classifySpell({
+  name: "Hand of the Apprentice",
+  system: {
+    traits: { value: ["attack", "focus"] },
+    range: { value: "500 feet" },
+    target: { value: "1 creature" },
+    damage: {},
+    description: { value: "Make a ranged Strike using a weapon you are wielding, using your spell attack modifier for the attack roll." },
+  },
+});
+assert.equal(
+  weaponStrikeSpellClassification?.role,
+  "weapon-strike",
+  "a spell that makes a Strike with the actor's own weapon (attack trait, no stored damage, not self-targeted) should classify as weapon-strike, not fall through to combat-utility",
+);
+const weaponStrikeActor = {
+  id: "weapon-strike-actor",
+  itemTypes: { spell: [{
+    id: "hand-of-the-apprentice",
+    slug: "hand-of-the-apprentice",
+    name: "Hand of the Apprentice",
+    system: {
+      traits: { value: ["attack", "focus"] },
+      time: { value: "1" },
+      range: { value: "500 feet" },
+      target: { value: "1 creature" },
+      damage: {},
+      level: { value: 4 },
+      description: { value: "Make a ranged Strike using a weapon you are wielding." },
+    },
+  }] },
+  system: {
+    actions: [{
+      type: "strike",
+      slug: "longsword",
+      label: "Longsword",
+      ready: true,
+      visible: true,
+      canAttack: true,
+      item: { system: { damageRolls: { base: { damage: "1d8+4", damageType: "slashing" } } } },
+    }],
+  },
+};
+const weaponStrikeActions = readSpellActions({ actor: { document: weaponStrikeActor } });
+const weaponStrikeAction = weaponStrikeActions.find((action) => action.slug === "hand-of-the-apprentice");
+assert.ok(weaponStrikeAction, "Hand of the Apprentice should be read as a spell action");
+assert.equal(
+  weaponStrikeAction.activityProfile?.averageDamage,
+  8.5,
+  "a weapon-strike spell should be enriched with the actor's best ready Strike's average damage (1d8+4 = 4.5+4 = 8.5)",
+);
+const weaponStrikeCandidate = {
+  id: "hand-of-the-apprentice",
+  name: "Hand of the Apprentice",
+  slug: "hand-of-the-apprentice",
+  actionCost: 1,
+  source: "spell-inferred",
+  role: "weapon-strike",
+  activityProfile: { averageDamage: 8.5 },
+};
+const weaponStrikeScoringContext = {
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 30 }],
+};
+const weaponStrikeScored = scoreCandidate(weaponStrikeScoringContext, weaponStrikeCandidate);
+const misclassifiedAsUtilityScored = scoreCandidate(weaponStrikeScoringContext, { ...weaponStrikeCandidate, role: "combat-utility" });
+assert.ok(
+  weaponStrikeScored.score > misclassifiedAsUtilityScored.score,
+  `a weapon-strike spell should score higher than the identical spell misclassified as combat-utility, got weapon-strike=${weaponStrikeScored.score} combat-utility=${misclassifiedAsUtilityScored.score}`,
+);
+const scorchingRaySpellClassification = classifySpell({
+  name: "Scorching Ray",
+  system: {
+    traits: { value: ["attack", "fire"] },
+    range: { value: "120 feet" },
+    target: { value: "1 or more creatures" },
+    damage: {},
+    description: { value: "You launch a searing ray of fire. Make a spell attack roll." },
+  },
+});
+assert.equal(
+  scorchingRaySpellClassification?.role,
+  "weapon-strike",
+  "a real damage/attack spell whose damage this reader can't parse (Scorching Ray, found live with an empty system.damage) must not fall into role: buff",
+);
+const rayOfEnfeeblementClassification = classifySpell({
+  name: "Ray of Enfeeblement",
+  system: {
+    traits: { value: ["attack"] },
+    range: { value: "30 feet" },
+    target: { value: "1 creature" },
+    damage: {},
+    description: { value: "You divert the target's vital forces to disrupt its physical prowess. Make a spell attack roll against the target. Enfeebled 2" },
+  },
+});
+assert.equal(
+  rayOfEnfeeblementClassification?.role,
+  "control",
+  "an attack-roll spell that only applies a condition (Ray of Enfeeblement never deals damage by design) must keep classifying as control, not get swept into the new weapon-strike branch",
+);
 assert.deepEqual(
   builderAtomicActionsForStep({
     id: "item-healing-potion-minor",

@@ -496,6 +496,13 @@ function readGeneratedStrikes(actor, context = null) {
     });
 }
 
+export function bestReadyStrikeAverageDamage(actor, context) {
+  const averages = readGeneratedStrikes(actor, context)
+    .map((strike) => Number(strike.averageDamage))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return averages.length ? Math.max(...averages) : null;
+}
+
 function readGeneratedActivities(actor, context) {
   const actions = Array.isArray(actor?.system?.actions) ? actor.system.actions : [];
   return actions

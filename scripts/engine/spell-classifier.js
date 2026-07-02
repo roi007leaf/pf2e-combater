@@ -510,6 +510,15 @@ function classifySpellBase(spell) {
     });
   }
 
+  if (hasAttack && !damageProfile && !targetsSelfOnly(spell, rangeProfile)) {
+    return inferred("weapon-strike", {
+      activityProfile: { ...baseProfile(["damage"]), ...spellFacts, spellAttack: true },
+      targetingProfile: { enemy: true, ...rangeProfile },
+      confidence: "high",
+      reasons: [t("SpellReason.WeaponStrike", "Spell makes a Strike using the actor's wielded weapon.")],
+    });
+  }
+
   // A teleportation spell repositions the caster to a chosen space — detect it before the self-buff
   // branches so a self-targeted teleport (e.g. Translocate) isn't misread as a buff/setup.
   if (traits.includes("teleportation") || /\bteleport/.test(spellText(spell))) {

@@ -1951,7 +1951,7 @@ export function scoreCandidate(context, action) {
     }
   }
 
-  if (isCurated(action) && role === "damage" && target && !action.activityProfile?.drawsWeapon) {
+  if (isCurated(action) && (role === "damage" || role === "weapon-strike") && target && !action.activityProfile?.drawsWeapon) {
     const average = damageAverage(action);
     score += Number.isFinite(average) ? 18 + Math.min(28, Math.round(average * 1.2)) : 18;
     reasons.push(t("ScoreReason.CanDamage", "{action} can damage {target}.", { action: action.name, target: target.name }));
