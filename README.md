@@ -2,7 +2,7 @@
 
 [![GitHub all releases](https://img.shields.io/github/downloads/roi007leaf/pf2e-combater/total)](https://github.com/roi007leaf/pf2e-combater/releases)
 
-# PF2e Combater – Tactical Turn Planner
+# PF2e Combater – Tactical Turn Planner And Executioner
 
 PF2e Combater is a floating combat advisor for Foundry VTT's Pathfinder 2e system. It reads the
 acting creature's real options — strikes, spells, feats, generic actions — together with the
