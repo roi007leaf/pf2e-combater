@@ -10380,6 +10380,51 @@ assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
 assert.equal(closeFeint.suggestedTarget.name, "Ogre");
 
+const areaDamageCandidate = {
+  id: "overwhelming-blast",
+  name: "Overwhelming Blast",
+  slug: "overwhelming-blast",
+  actionCost: 2,
+  source: "spell-curated",
+  curated: { role: "area-damage" },
+  role: "area-damage",
+  targetingProfile: { type: "burst", distance: 20, maxRange: 60, enemy: true },
+  activityProfile: { spell: true },
+};
+const areaDamageScored = scoreCandidate({
+  ...fighterContext,
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ ...fighterContext.targets[0], distance: 20, center: { x: 100, y: 0 } }],
+}, areaDamageCandidate);
+assert.deepEqual(areaDamageScored.activityProfile.areaPlacementCenter, { x: 100, y: 0 });
+assert.equal(areaDamageScored.activityProfile.areaPlacementAimPoint, null);
+
+const noEnemyAreaScored = scoreCandidate({
+  ...fighterContext,
+  token: { center: { x: 0, y: 0 } },
+  targets: [],
+}, areaDamageCandidate);
+assert.equal(noEnemyAreaScored.activityProfile.areaPlacementCenter, null);
+
+const lineDamageCandidate = {
+  id: "far-lance",
+  name: "Far Lance",
+  slug: "far-lance",
+  actionCost: 2,
+  source: "spell-curated",
+  curated: { role: "area-damage" },
+  role: "area-damage",
+  targetingProfile: { type: "line", distance: 30, maxRange: 30, enemy: true },
+  activityProfile: { spell: true },
+};
+const lineDamageScored = scoreCandidate({
+  ...fighterContext,
+  token: { center: { x: 0, y: 0 } },
+  targets: [{ ...fighterContext.targets[0], distance: 15, center: { x: 0, y: 75 } }],
+}, lineDamageCandidate);
+assert.equal(lineDamageScored.activityProfile.areaPlacementCenter, null);
+assert.deepEqual(lineDamageScored.activityProfile.areaPlacementAimPoint, { x: 0, y: 75 });
+
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",
   name: "Strike",

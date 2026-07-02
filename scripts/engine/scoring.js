@@ -1598,6 +1598,8 @@ export function scoreCandidate(context, action) {
   const pressure = battlefieldPressure(context);
   const spellAdjustment = spellTacticalAdjustment(action, role, context);
   let areaHitCount = null;
+  let areaPlacementCenter = null;
+  let areaPlacementAimPoint = null;
   let score = baseScore(action);
 
   if (action.slug === "demoralize" && !target && attackableEnemies(context).some(hasDemoralizeImmunity)) {
@@ -1693,6 +1695,7 @@ export function scoreCandidate(context, action) {
       suggestedTarget: null,
       reason: t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target."),
       reasons: [t("ScoreReason.NoAttackableEnemyTarget", "No attackable enemy target.")],
+      activityProfile: { ...action.activityProfile, areaPlacementCenter: null, areaPlacementAimPoint: null },
     };
   }
 
@@ -2056,6 +2059,15 @@ export function scoreCandidate(context, action) {
     const enemiesInArea = placement.enemies;
     const alliesInArea = placement.allies;
     areaHitCount = enemiesInArea.length;
+    const centerTargetPoint = placement.centerTarget ? targetCenter(placement.centerTarget) : null;
+    const areaType = String(action?.targetingProfile?.type ?? "").toLowerCase();
+    if (centerTargetPoint) {
+      if (["cone", "line"].includes(areaType)) {
+        areaPlacementAimPoint = centerTargetPoint;
+      } else {
+        areaPlacementCenter = centerTargetPoint;
+      }
+    }
     if (enemiesInArea.length > 0) {
       score += enemiesInArea.length === 1
         ? 14
@@ -2131,6 +2143,15 @@ export function scoreCandidate(context, action) {
       ...(Array.isArray(action.activityProfile?.appliesConditions) ? action.activityProfile.appliesConditions : []),
     ].filter(Boolean);
     areaHitCount = enemiesInArea.length;
+    const centerTargetPoint = placement.centerTarget ? targetCenter(placement.centerTarget) : null;
+    const areaType = String(action?.targetingProfile?.type ?? "").toLowerCase();
+    if (centerTargetPoint) {
+      if (["cone", "line"].includes(areaType)) {
+        areaPlacementAimPoint = centerTargetPoint;
+      } else {
+        areaPlacementCenter = centerTargetPoint;
+      }
+    }
 
     if (!enemiesInArea.length) {
       score -= 24;
@@ -2454,6 +2475,7 @@ export function scoreCandidate(context, action) {
     suggestedTarget,
     reason: reasons[0] ?? defaultReason(action),
     reasons,
+    activityProfile: { ...action.activityProfile, areaPlacementCenter, areaPlacementAimPoint },
   }, {
     isGM: canUseTargetDefenses(context),
     fallbackReason: defaultReason(action),
