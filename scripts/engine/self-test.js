@@ -7869,6 +7869,7 @@ const scoredDemoralize = scoreCandidate(fighterContext, {
   slug: "demoralize",
   actionCost: 1,
   source: "generic",
+  role: "debuff",
 });
 assert.ok(scoredDemoralize.score > 42);
 assert.equal(scoredDemoralize.reason, "Target is not frightened.");
@@ -10349,10 +10350,15 @@ const closeFeint = scoreCandidate({
   actionCost: 1,
   source: "generic",
   skill: "deception",
+  role: "setup",
 });
 assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
-assert.equal(closeFeint.suggestedTarget.name, "Ogre");
+// Feint's real catalog entry (scripts/catalog/generic-actions.js) carries role: "setup" with no
+// targetingProfile.enemy flag, so suggestedTargetFor's "setup" branch resolves it to the actor —
+// this matches real production Feint's behavior (confirmed independent of this fixture), not a
+// consequence of the role===undefined escape-hatch removal.
+assert.equal(closeFeint.suggestedTarget.name, fighterContext.actor.name);
 
 const hiddenStrikeCandidate = {
   id: "hidden-target-strike",

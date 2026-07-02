@@ -1508,12 +1508,7 @@ function suggestedTargetFor(context, action, role, preferredTarget = firstTarget
     return actorTarget(context);
   }
 
-  // An unset role means the action hasn't been classified into any of the branches above at
-  // all (common for generic system actions like Demoralize's bare test fixtures) — preserve
-  // the historical permissive behavior for it. Only an explicit, recognized-but-unhandled role
-  // (e.g. combat-buff) is treated as confidently NOT wanting an enemy.
-  const seeksEnemy = role === undefined
-    || needsTargetableEnemy
+  const seeksEnemy = needsTargetableEnemy
     || isOffensiveRole(role)
     || isAttackLikeAction(action, role)
     || action?.targetingProfile?.enemy === true;
