@@ -12,6 +12,11 @@ All notable changes to PF2e Combater are documented here. The format is based on
   a bonded familiar (via the system's Master link); it now also recognizes animal, construct, and
   undead companions through trait and ownership signals, so Command an Animal correctly shows as
   available for those actors too.
+- **Area and template spells now auto-place, like targets and Stride destinations already did.**
+  When Auto-fill already knows where a burst, cone, or line will land best (the same placement
+  behind reasons like "can hit 4 enemies near X"), that placement is filled in automatically instead
+  of always prompting "Choose area at execution." Falls back to manual placement whenever there's no
+  good spot to suggest, or for area shapes this doesn't cover yet (cube/square, ring).
 
 ### Fixed
 
@@ -43,6 +48,10 @@ All notable changes to PF2e Combater are documented here. The format is based on
   condition item instead of failing to resolve.
 - **Feint now correctly displays the enemy being feinted**, instead of the actor performing it. The
   actual scoring and decision-making were never affected — only what was shown as the target.
+- **Auto-fill no longer plans a Stride onto a square another creature already occupies.** A
+  multi-Stride follow-up attack could land directly on top of its own target or an unrelated
+  creature; destinations now skip occupied squares in both the scoring engine and the interactive
+  movement preview, without blocking legitimate movement through an ally's or enemy's space.
 
 ## [1.0.2]
 
