@@ -17216,7 +17216,7 @@ const doubleAttackAction = {
     time: { value: "1" },
   },
 };
-const doubleAttackClassified = classifySystemAction(doubleAttackAction);
+const doubleAttackClassified = classifySystemAction(doubleAttackAction, { actionCost: 1, type: "action" });
 assert.equal(doubleAttackClassified.role, "multiattack");
 assert.equal(doubleAttackClassified.activityProfile.requiresDistinctTargets, true);
 assert.equal(doubleAttackClassified.activityProfile.distinctStrikeCount, 2);
@@ -17234,7 +17234,7 @@ const bladestormAction = {
     time: { value: "1" },
   },
 };
-const bladestormClassified = classifySystemAction(bladestormAction);
+const bladestormClassified = classifySystemAction(bladestormAction, { actionCost: 1, type: "action" });
 assert.equal(bladestormClassified.activityProfile.requiresDistinctTargets, true);
 assert.equal(bladestormClassified.activityProfile.distinctStrikeCount, 6, "Bladestorm makes six Strikes, not two — the count must come from its own text, not a hardcoded default");
 assert.equal(bladestormClassified.activityProfile.mapAttacks, undefined, "Bladestorm never says 'counts as N attacks' — mapAttacks must stay unset, distinctStrikeCount is a separate signal");
@@ -17250,7 +17250,7 @@ const buckingFrenzyAction = {
     time: { value: "1" },
   },
 };
-const buckingFrenzyClassified = classifySystemAction(buckingFrenzyAction);
+const buckingFrenzyClassified = classifySystemAction(buckingFrenzyAction, { actionCost: 1, type: "action" });
 assert.equal(buckingFrenzyClassified.role, "multiattack", "'different foes' must be recognized, not just 'different targets'");
 assert.equal(buckingFrenzyClassified.activityProfile.distinctStrikeCount, 3);
 
@@ -17265,7 +17265,7 @@ const genericMultiStrikeAction = {
     time: { value: "1" },
   },
 };
-const genericMultiStrikeClassified = classifySystemAction(genericMultiStrikeAction);
+const genericMultiStrikeClassified = classifySystemAction(genericMultiStrikeAction, { actionCost: 1, type: "action" });
 assert.equal(
   genericMultiStrikeClassified.activityProfile.requiresDistinctTargets,
   undefined,
