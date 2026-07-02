@@ -841,7 +841,10 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
-  if (hasName(action, /\braise a shield\b/) || /\bshield\b.*\bprotect\b|\braises? (?:a|its|their) shield\b/.test(text)) {
+  if (
+    hasName(action, /\braise a shield\b/)
+    || (/\bshield\b.*\bprotect\b|\braises? (?:a|its|their) shield\b/.test(text) && !/\bcan use this (?:extra )?action to\b|\ban extra action to\b/.test(text))
+  ) {
     return inferred("defense", {
       activityProfile: baseProfile(["defense"]),
       targetingProfile: { self: true },

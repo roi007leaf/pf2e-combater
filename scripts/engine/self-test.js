@@ -10248,6 +10248,28 @@ for (const slug of ["balance", "high-jump", "long-jump"]) {
   );
 }
 
+const grantsShieldOptionAction = {
+  name: "Inspiring Word",
+  slug: "inspiring-word",
+  system: {
+    description: {
+      value: "All allies within the dragon's heartening aura become Quickened for 1 round. Allies can use this extra action to Raise a Shield, Step, Stride, or Strike.",
+    },
+    traits: { value: [] },
+    time: { value: "2" },
+  },
+};
+const grantsShieldOptionClassified = classifySystemAction(grantsShieldOptionAction);
+assert.notEqual(
+  grantsShieldOptionClassified.role,
+  "defense",
+  "an action that merely grants an ally an extra action they could optionally spend on Raise a Shield must not itself classify as a defense action",
+);
+assert.ok(
+  !grantsShieldOptionClassified.reasons?.some((reason) => reason.includes("Raise a Shield")),
+  "reasons must not describe Raise a Shield's mechanic for an action that doesn't raise a shield",
+);
+
 const farTrip = readActionSources({
   ...fighterContext,
   targets: [{
