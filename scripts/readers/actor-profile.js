@@ -227,6 +227,16 @@ function readHasShield(actor) {
   return collectionValues(actor?.items).some((item) => isShieldLike(item) && isEquipped(item));
 }
 
+function isRangedWeapon(item) {
+  if (item?.type !== "weapon") return false;
+  const range = numericValue(systemValue(item?.system?.range), null);
+  return Number.isFinite(range) && range > 0;
+}
+
+function readHasRangedWeapon(actor) {
+  return collectionValues(actor?.items).some((item) => isRangedWeapon(item) && isEquipped(item));
+}
+
 function normalizeSlug(value) {
   return String(value ?? "")
     .normalize("NFKD")
@@ -414,6 +424,7 @@ export function readActorProfile(actor) {
     meleeReach: reach,
     defenses: readDefenses(actor),
     hasShield: readHasShield(actor),
+    equippedRangedWeapon: readHasRangedWeapon(actor),
     handsFree: numericValue(actor.system?.attributes?.handsFree, null),
   };
 }

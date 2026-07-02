@@ -2176,7 +2176,10 @@ export function scoreCandidate(context, action) {
     reasons.unshift(t("ScoreReason.ReactionCanPunishTheCurrent", "Reaction can punish the current trigger."));
   }
 
-  if (isCurated(action) && role === "defense") {
+  if (isCurated(action) && role === "defense" && action.slug === "drop-prone") {
+    score += (profile.equippedRangedWeapon ? -10 : 0) + (hpPercent(profile) < 0.5 ? 34 : 18);
+    reasons.unshift(t("ScoreReason.DropsProneForCover", "Dropping prone gives cover but penalizes the actor's own attacks."));
+  } else if (isCurated(action) && role === "defense") {
     score += hpPercent(profile) < 0.5 ? 34 : 18;
     reasons.unshift(t("ScoreReason.DefensiveReactionIsAvailableFor", "Defensive reaction is available for the trigger."));
   }

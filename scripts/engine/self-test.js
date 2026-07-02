@@ -5291,6 +5291,38 @@ const speedProfile = readActorProfile({
 assert.equal(speedProfile.speed, 35);
 assert.deepEqual(speedProfile.effects, []);
 
+const rangedWeaponActor = {
+  id: "ranged-weapon-actor",
+  items: [{
+    type: "weapon",
+    system: {
+      range: { value: 60 },
+      equipped: { carryType: "held", handsHeld: 1 },
+    },
+  }],
+  itemTypes: {},
+  system: { attributes: {}, movement: {}, details: {} },
+};
+assert.equal(
+  readActorProfile(rangedWeaponActor).equippedRangedWeapon,
+  true,
+  "readActorProfile should flag an actor with an equipped ranged weapon (system.range set)",
+);
+const meleeOnlyActor = {
+  id: "melee-only-actor",
+  items: [{
+    type: "weapon",
+    system: { equipped: { carryType: "held", handsHeld: 1 } },
+  }],
+  itemTypes: {},
+  system: { attributes: {}, movement: {}, details: {} },
+};
+assert.equal(
+  readActorProfile(meleeOnlyActor).equippedRangedWeapon,
+  false,
+  "readActorProfile should not flag an actor whose equipped weapon has no range",
+);
+
 const perceptionProfile = readActorProfile({
   id: "perceptive",
   name: "Perceptive",
@@ -10302,6 +10334,38 @@ const closeFeint = scoreCandidate({
 assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
 assert.equal(closeFeint.suggestedTarget.name, "Ogre");
+
+const rangedDropProneScored = scoreCandidate({
+  ...fighterContext,
+  profile: { ...fighterContext.profile, equippedRangedWeapon: true },
+}, {
+  id: "generic-drop-prone",
+  name: "Drop Prone",
+  slug: "drop-prone",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "defense",
+});
+const rangedRaiseShieldScored = scoreCandidate({
+  ...fighterContext,
+  profile: { ...fighterContext.profile, equippedRangedWeapon: true },
+}, {
+  id: "raise-a-shield",
+  name: "Raise a Shield",
+  slug: "raise-a-shield",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "defense",
+});
+assert.ok(
+  rangedDropProneScored.score < rangedRaiseShieldScored.score,
+  `Drop Prone imposes a -4 penalty on a ranged actor's own future Strikes and should score below Raise a Shield for that actor, got drop-prone=${rangedDropProneScored.score} raise-a-shield=${rangedRaiseShieldScored.score}`,
+);
+assert.equal(
+  rangedDropProneScored.reason,
+  "Dropping prone gives cover but penalizes the actor's own attacks.",
+  "Drop Prone must not reuse the reaction-flavored defense reason (it is a proactive action with no trigger)",
+);
 
 const medicineSources = readActionSources({
   ...fighterContext,
