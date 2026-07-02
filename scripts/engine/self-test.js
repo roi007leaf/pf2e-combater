@@ -3280,6 +3280,25 @@ assert.equal(flankExpansion[0].requiresDestination, true);
 assert.equal(flankExpansion[1].name, "Claw");
 assert.equal(flankExpansion[1].preferredTarget.id, "goblin");
 
+// A composite needing 2 Strides to reach its target (e.g. Giant Centipede closing 55 ft on a
+// 30 ft speed) must expand to two separate Stride atoms, not collapse to one via Set dedup.
+const doubleStrideExpansion = builderAtomicActionsForStep({
+  slug: "stride-strike-mandibles",
+  name: "Stride -> Stride -> Mandibles",
+  preferredTarget: { id: "isqulug", name: "Isqulug" },
+  activityProfile: {
+    includes: ["stride", "stride", "strike"],
+    includesStrike: true,
+    strideCount: 2,
+    attackCenter: { x: 10, y: 0 },
+  },
+});
+assert.deepEqual(
+  doubleStrideExpansion.map((action) => action.slug),
+  ["stride", "stride", "strike"],
+  "a strideCount: 2 composite must expand to two Stride atoms, not one",
+);
+
 // Skirmish with a 1-action ranged Strike finisher -> [melee Strike, Stride away, ranged Strike].
 const skirmishStrikeExpansion = builderAtomicActionsForStep({
   slug: "skirmish-strike-dart",

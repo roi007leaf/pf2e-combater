@@ -253,6 +253,16 @@ function actionIncludedParts(action) {
     : []);
 }
 
+// Same source as actionIncludedParts, but keeps every repeated entry instead of deduping into a
+// Set. Composite steps that need N Strides encode that as N "stride" entries in `includes`
+// (see strideCount in action-reader.js's readStrideStrikeActivities) — anything iterating this
+// list to build one atomic action per entry must not collapse repeats down to one.
+function actionIncludedPartsList(action) {
+  return Array.isArray(action?.activityProfile?.includes)
+    ? action.activityProfile.includes.map((entry) => String(entry).toLowerCase())
+    : [];
+}
+
 function stripInteractPrefix(name) {
   const value = String(name ?? "").trim();
   return value.replace(/^Interact\s*->\s*/i, "").trim() || value;
@@ -451,7 +461,7 @@ export function builderAtomicActionsForStep(action) {
 
   if (!isCompositeAtomicAction(action)) return action ? [action] : [];
 
-  const parts = [...actionIncludedParts(action)];
+  const parts = actionIncludedPartsList(action);
   if (!parts.length) return [action];
 
   return parts.flatMap((part) => {
