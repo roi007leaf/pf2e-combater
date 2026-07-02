@@ -17621,4 +17621,80 @@ const ordinaryCandidateForBackingStrike = { id: "strike", name: "Strike", slug: 
 const ordinaryScoredForBackingStrike = scoreCandidate(backingStrikeContext, ordinaryCandidateForBackingStrike);
 assert.equal(ordinaryScoredForBackingStrike.activityProfile?.backingStrike, undefined, "an ordinary action must not gain a backingStrike");
 
+const backingStrikeTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
+const backingStrikeTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
+const armBackingStrike = {
+  id: "strike-arm",
+  name: "Arm",
+  slug: "strike",
+  executable: "strike",
+  source: "strike",
+  item: { name: "Arm", uuid: "Actor.fake.Item.arm" },
+  attack: { value: 12 },
+  damage: { value: "2d8+6" },
+  damageProfile: { average: 15, type: "bludgeoning" },
+  averageDamage: 15,
+  critical: null,
+  traits: ["reach"],
+  weaponTraits: [],
+  range: {},
+  reload: 0,
+  variants: [],
+  strike: {},
+};
+const doubleAttackWithBackingStrike = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  mapPenalty: 0,
+  attackIndex: 1,
+  activityProfile: {
+    includes: ["strike", "strike"],
+    includesStrike: true,
+    multiStrike: true,
+    mapAttacks: 2,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 2,
+    distinctTargets: [backingStrikeTargetA, backingStrikeTargetB],
+    backingStrike: armBackingStrike,
+  },
+};
+const backingStrikeAtoms = builderAtomicActionsForStep(doubleAttackWithBackingStrike);
+assert.equal(backingStrikeAtoms.length, 2);
+assert.equal(backingStrikeAtoms[0].name, "Double Attack -> Arm", "the atom's name must show both the ability and the real weapon it rolls");
+assert.equal(backingStrikeAtoms[1].name, "Double Attack -> Arm");
+assert.equal(backingStrikeAtoms[0].executable, "strike", "the atom must be executable as a real Strike, not open-item");
+assert.equal(backingStrikeAtoms[0].source, "strike");
+assert.equal(backingStrikeAtoms[0].item?.name, "Arm");
+assert.equal(backingStrikeAtoms[0].attack?.value, 12);
+assert.equal(backingStrikeAtoms[0].averageDamage, 15);
+assert.equal(backingStrikeAtoms[0].mapPenalty, 0, "mapPenalty must still be inherited from the original composite, unaffected by borrowing the backing strike's execution fields");
+assert.equal(backingStrikeAtoms[0].attackIndex, 1, "attackIndex must still be inherited from the original composite");
+assert.equal(backingStrikeAtoms[0].preferredTarget?.name, "Ogre", "the per-atom target override must still win over the backing strike's own preferredTarget");
+assert.equal(backingStrikeAtoms[1].preferredTarget?.name, "Goblin");
+
+const doubleAttackWithoutBackingStrike = {
+  ...doubleAttackWithBackingStrike,
+  activityProfile: { ...doubleAttackWithBackingStrike.activityProfile, backingStrike: undefined },
+};
+const noBackingStrikeAtoms = builderAtomicActionsForStep(doubleAttackWithoutBackingStrike);
+assert.equal(noBackingStrikeAtoms[0].name, "Double Attack", "with no backing strike found, the atom falls back to the ability's own name, unchanged from before this task");
+assert.equal(noBackingStrikeAtoms[0].executable, "open-item", "with no backing strike found, execution falls back to the ability's own (unrollable) executable, unchanged from before this task");
+
+const strideStrikeCompositeForBackingStrike = {
+  id: "stride-strike-composite",
+  name: "Stride -> Strike",
+  slug: "stride-strike-composite",
+  actionCost: 2,
+  source: "generated-composite",
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+};
+const strideStrikeBackingAtoms = builderAtomicActionsForStep(strideStrikeCompositeForBackingStrike);
+assert.equal(strideStrikeBackingAtoms[1].name, "Strike", "an ordinary (non-distinct-target) composite's Strike atom name must be unaffected by this task");
+
 console.log("PF2e Combater self-test passed");

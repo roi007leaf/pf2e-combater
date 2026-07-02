@@ -383,12 +383,31 @@ function atomicMovementAction(part) {
 
 function atomicStrikeAction(action, targetOverride, costOverride) {
   const leafName = stripCompositePrefix(actionName(action));
+  const backingStrike = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.backingStrike : null;
+  const composedName = backingStrike?.name ? `${leafName} -> ${backingStrike.name}` : leafName;
   const cost = Number.isFinite(costOverride) ? costOverride : 1;
   const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
+  const backingStrikeFields = backingStrike ? {
+    executable: backingStrike.executable,
+    source: backingStrike.source,
+    item: backingStrike.item,
+    strike: backingStrike.strike,
+    variants: backingStrike.variants,
+    attack: backingStrike.attack,
+    damage: backingStrike.damage,
+    damageProfile: backingStrike.damageProfile,
+    averageDamage: backingStrike.averageDamage,
+    critical: backingStrike.critical,
+    traits: backingStrike.traits,
+    weaponTraits: backingStrike.weaponTraits,
+    range: backingStrike.range,
+    reload: backingStrike.reload,
+  } : {};
   return {
     ...action,
+    ...backingStrikeFields,
     id: compositeStrikeActionKey(action),
-    name: leafName,
+    name: composedName,
     slug: distinctTargetSlug || "strike",
     actionCost: cost,
     cost,
