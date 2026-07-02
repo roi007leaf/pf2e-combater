@@ -10373,15 +10373,11 @@ const closeFeint = scoreCandidate({
   source: "generic",
   skill: "deception",
   role: "setup",
+  targetDefense: "perception",
+  requiresEnemyInReach: true,
 });
 assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
-// KNOWN BUG (not caused by this task, predates it — confirmed present at commit d8c6b578):
-// Feint's real catalog entry (generic-actions.js, role: "setup", requiresEnemyInReach: true,
-// targetDefense: "perception") has no targetingProfile field, so suggestedTargetFor's
-// role==="setup" branch (scoring.js) falls through to actorTarget() instead of resolving
-// the enemy, regardless of range/reachability. This assertion documents the CORRECT expected
-// behavior and is expected to fail until that's fixed in a separate task.
 assert.equal(closeFeint.suggestedTarget.name, "Ogre");
 
 const hiddenStrikeCandidate = {

@@ -1496,7 +1496,7 @@ function suggestedTargetFor(context, action, role, preferredTarget = firstTarget
     }
     // Enemy-targeted setups (Taunt, Feint, Hunt Prey, off-guard setups) point at
     // the enemy; ally/self effects point at an ally or the actor.
-    if (targeting.enemy) {
+    if (targeting.enemy || needsTargetableEnemy) {
       if (target) return targetRef(target, "enemy");
       const enemy = needsTargetableEnemy ? attackableEnemies(context)[0] : enemies(context)[0];
       if (enemy) return targetRef(enemy, "enemy");
