@@ -440,6 +440,7 @@
       "SaveDamage": "Spell forces a saving throw for damage.",
       "AttackDamage": "Spell attack roll deals damage to one target.",
       "Damage": "Spell deals damage to a target.",
+      "WeaponStrike": "Spell makes a Strike using the actor's wielded weapon.",
       "ControlSave": "Spell forces a saving throw to debuff or control the target.",
       "ControlTerrain": "Spell changes terrain, visibility, or enemy positioning.",
       "ControlCondition": "Spell applies a combat condition.",
