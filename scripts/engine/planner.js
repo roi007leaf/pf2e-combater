@@ -1,5 +1,6 @@
 import { combineConfidence } from "./confidence.js";
 import { contextTriggerEvents } from "../rules/event-context.js";
+import { scoreCandidate } from "./scoring.js";
 import { t } from "../i18n.js";
 
 const BASE_ACTIONS = 3;
@@ -854,11 +855,12 @@ function inheritPlannedTarget(context, candidate, steps) {
   const currentTarget = targetForCandidate(context, candidate);
   if (sameTargetReference(currentTarget, inheritedTarget)) return candidate;
 
-  return {
-    ...candidate,
-    preferredTarget: inheritedTarget,
-    suggestedTarget: inheritedTarget,
-  };
+  // scoreCandidate seeds its reasons from action.reasons (so a caller can annotate an action
+  // before scoring and keep that note). candidate.reasons/reason here are the STALE text from
+  // scoring the candidate standalone against its original (wrong, pre-inheritance) target, so
+  // they must be cleared, not carried forward, or the recompute below just appends fresh reasons
+  // after the stale ones instead of replacing them.
+  return scoreCandidate(context, { ...candidate, reason: undefined, reasons: undefined, preferredTarget: inheritedTarget });
 }
 
 function plannedStepSatisfiesTargetCondition(context, candidate, step, optionGroup) {

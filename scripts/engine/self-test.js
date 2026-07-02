@@ -16886,4 +16886,112 @@ assert.equal(
   "the ring radius reflects the Reach Spell-extended range (90 ft × 2)",
 );
 
+// --- inheritPlannedTarget must regenerate reasons/score, not just splice the target (Task 3) ---
+// Reproduces the live Verdurous Ooze bug: a standalone Grapple candidate (scored on its own,
+// before planning, the way buildCandidates() always scores raw actions) prefers the wrong
+// target (Lem) because that's the only enemy it can see in isolation. Inside the real plan
+// (Pseudopod -> Grapple against Ezren), grabbedSetupTargetSourceStep (planner.js:813-822)
+// correctly detects that Grapple applies "grabbed" (candidateAppliedConditions) after a
+// strike-like step, and inheritPlannedTarget retargets it onto Ezren. The bug: the retargeted
+// step kept the reasons/score computed against Lem instead of recomputing them against Ezren.
+{
+  const ezren = {
+    id: "ezren",
+    name: "Ezren",
+    distance: 5,
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    saves: { fortitude: 20, reflex: 14, will: 16 },
+    ac: 22,
+  };
+  const lem = {
+    id: "lem",
+    name: "Lem",
+    distance: 5,
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    saves: { fortitude: 19, reflex: 18, will: 15 },
+    ac: 21,
+  };
+  const contextWithBothEnemies = {
+    actor: { id: "verdurous-ooze", name: "Verdurous Ooze" },
+    profile: {
+      actorType: "npc",
+      reach: 5,
+      speed: 10,
+      conditions: { slugs: [], values: {} },
+      skills: { athletics: { mod: 15, rank: 4 } },
+    },
+    token: { center: { x: 0, y: 0 } },
+    targets: [ezren, lem],
+    battlefield: { targets: [ezren, lem], enemies: [ezren, lem], allies: [] },
+  };
+
+  // A strike-like candidate (isStrikeLikeCandidate: source === "strike") targeting Ezren --
+  // grabbedSetupTargetSourceStep requires steps.at(-1) to be strike-like.
+  const strikeStep = {
+    id: "pseudopod",
+    name: "Pseudopod",
+    slug: "pseudopod",
+    actionCost: 1,
+    source: "strike",
+    attack: true,
+    score: 90,
+    confidence: "high",
+    preferredTarget: ezren,
+    reason: "Attack Ezren.",
+    reasons: ["Attack Ezren."],
+  };
+
+  // A candidate that applies "grabbed" (candidateAppliedConditions reads activityProfile.includesGrab
+  // as an implicit "grabbed" source) and requires a previous strike (previousActionRequirements:
+  // ["after-strike"], read by isGrabRider/previousActionSatisfied so it's only planned as a follow-up).
+  // Its OWN preferredTarget is Lem -- the "wrong", standalone-scored target -- exactly like the live
+  // Verdurous Ooze Grapple candidate scored in isolation before the plan tree considers chaining it
+  // after Pseudopod.
+  const rawGrappleCandidate = {
+    id: "grapple",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "system-inferred",
+    role: "grab",
+    skill: "athletics",
+    confidence: "high",
+    preferredTarget: lem,
+    activityProfile: {
+      includesGrab: true,
+      appliesCondition: "grabbed",
+      previousActionRequirements: ["after-strike"],
+    },
+  };
+  // Score it standalone first (as buildCandidates() always does before candidates reach the
+  // planner), in a context where Lem is the only visible enemy -- this produces the real,
+  // wrong-target reasons/score ("Grapple can grab Lem.") that the bug used to leave stale.
+  const grappleCandidate = scoreCandidate({
+    ...contextWithBothEnemies,
+    targets: [lem],
+    battlefield: { targets: [lem], enemies: [lem], allies: [] },
+  }, rawGrappleCandidate);
+  assert.ok(
+    grappleCandidate.reasons.some((reason) => reason.includes("Lem")),
+    "sanity check: the standalone Grapple candidate's own reasons should describe Lem",
+  );
+
+  const plans = buildTurnPlans(contextWithBothEnemies, [strikeStep, grappleCandidate]);
+  const planWithGrapple = plans.find((plan) => plan.steps.some((step) => step.slug === grappleCandidate.slug));
+  assert.ok(planWithGrapple, "expected a plan chaining Pseudopod -> Grapple");
+  const grappleStep = planWithGrapple.steps.find((step) => step.slug === grappleCandidate.slug);
+
+  assert.equal(grappleStep.suggestedTarget?.name, "Ezren");
+  assert.ok(
+    grappleStep.reasons.some((reason) => reason.includes("Ezren")),
+    "reasons must describe the actual inherited target, not be copied verbatim from the standalone (wrong-target) candidate",
+  );
+  assert.ok(
+    !grappleStep.reasons.some((reason) => reason.includes("Lem")),
+    "stale reasons naming the original standalone target must not survive the retarget",
+  );
+}
+
 console.log("PF2e Combater self-test passed");
