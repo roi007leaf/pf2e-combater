@@ -1263,6 +1263,10 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
+  // mentionsMultipleStrikes is deliberately excluded here: its "up to...strikes"
+  // clause false-positives on movement-distance phrasing ("Strides up to its
+  // Speed... Strike"), which would misclassify genuine single-strike
+  // mobility-attacks (e.g. Rending Pounce) as multiattack.
   if (mentionsStride && !mentionsDifferentTargets) {
     return inferred("mobility-attack", {
       activityProfile: {

@@ -17169,4 +17169,40 @@ assert.equal(
   );
 }
 
+const suddenChargeShaped = classifySystemAction({
+  name: "Sudden Charge",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: { value: "You Stride twice. If you end this movement within reach of at least one enemy, you can make a melee Strike against that enemy." },
+    traits: { value: [] },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(suddenChargeShaped.role, "mobility-attack", "an ordinary Stride-then-single-Strike ability must still be classified as mobility-attack");
+
+const driftersWakeShaped = classifySystemAction({
+  name: "Whirling Charge",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: { value: "You Stride up to your Speed. Make up to three Strikes, each against a different target, at any point during this movement." },
+    traits: { value: [] },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(driftersWakeShaped.role, "multiattack", "a Stride ability that ALSO makes multiple Strikes against different targets must not be swallowed by the plain mobility-attack guard");
+
+const strideGenericMultiStrikeShaped = classifySystemAction({
+  name: "Rolling Advance",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: { value: "You Stride up to your Speed. Make up to three claw Strikes at any point during this movement." },
+    traits: { value: [] },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(strideGenericMultiStrikeShaped.role, "mobility-attack", "a Stride ability with generic multi-strike language but no distinct-target phrasing is still classified as mobility-attack under the shipped (narrower) condition");
+
 console.log("PF2e Combater self-test passed");
