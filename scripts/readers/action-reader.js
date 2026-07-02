@@ -502,6 +502,12 @@ function readGeneratedStrikes(actor, context = null) {
     });
 }
 
+export function bestReadyStrike(actor, context) {
+  const strikes = readGeneratedStrikes(actor, context);
+  if (!strikes.length) return null;
+  return strikes.toSorted((left, right) => (Number(right.averageDamage) || 0) - (Number(left.averageDamage) || 0))[0];
+}
+
 export function bestReadyStrikeAverageDamage(actor, context) {
   const averages = readGeneratedStrikes(actor, context)
     .map((strike) => Number(strike.averageDamage))

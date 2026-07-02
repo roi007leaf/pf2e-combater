@@ -39,7 +39,7 @@ import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
-import { readActionCost, readActionSources } from "../readers/action-reader.js";
+import { bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import {
@@ -17547,5 +17547,43 @@ const strideStrikeCompositeForIdentityFix = {
 const strideStrikeIdentityAtoms = builderAtomicActionsForStep(strideStrikeCompositeForIdentityFix);
 assert.equal(strideStrikeIdentityAtoms.length, 2);
 assert.equal(strideStrikeIdentityAtoms[1].slug, "strike", "an ordinary (non-distinct-target) composite's Strike atom must keep the existing generic 'strike' slug, unaffected by this fix");
+
+const weakStrikeActor = {
+  system: {
+    actions: [{
+      slug: "claw",
+      label: "Claw",
+      name: "Claw",
+      type: "strike",
+      visible: true,
+      ready: true,
+      canAttack: true,
+      item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "1d4", damageType: "slashing" } } } },
+    }],
+  },
+};
+const weakOnlyBest = bestReadyStrike(weakStrikeActor, {});
+assert.equal(weakOnlyBest?.name, "Claw", "with only one real Strike available, that Strike is the best one");
+assert.equal(weakOnlyBest?.executable, "strike", "the returned candidate must be a genuinely rollable Strike, not a description-only action");
+
+const twoStrikeActor = {
+  system: {
+    actions: [
+      {
+        slug: "claw", label: "Claw", name: "Claw", type: "strike", visible: true, ready: true, canAttack: true,
+        item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "1d4", damageType: "slashing" } } } },
+      },
+      {
+        slug: "bite", label: "Bite", name: "Bite", type: "strike", visible: true, ready: true, canAttack: true,
+        item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "2d10", damageType: "piercing" } } } },
+      },
+    ],
+  },
+};
+const strongerOfTwo = bestReadyStrike(twoStrikeActor, {});
+assert.equal(strongerOfTwo?.name, "Bite", "with two real Strikes available, the higher-average-damage one is picked");
+
+const noStrikeActor = { system: { actions: [] } };
+assert.equal(bestReadyStrike(noStrikeActor, {}), null, "an actor with no real Strikes returns null, not a thrown error");
 
 console.log("PF2e Combater self-test passed");
