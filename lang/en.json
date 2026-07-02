@@ -636,6 +636,7 @@
       "CanControl": "{p0} can control {p1}.",
       "ReactionCanPunishTheCurrent": "Reaction can punish the current trigger.",
       "DefensiveReactionIsAvailableFor": "Defensive reaction is available for the trigger.",
+      "DropsProneForCover": "Dropping prone gives cover but penalizes the actor's own attacks.",
       "GrantsQuickened": "{p0} grants quickened.",
       "CanBoost": "{p0} can boost {p1}.",
       "GrantsTheActorABeneficial": "{p0} grants the actor a beneficial effect.",
