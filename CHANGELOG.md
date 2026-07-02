@@ -4,6 +4,46 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3]
+
+### Added
+
+- **Command an Animal now recognizes non-familiar companions.** Auto-fill previously only detected
+  a bonded familiar (via the system's Master link); it now also recognizes animal, construct, and
+  undead companions through trait and ownership signals, so Command an Animal correctly shows as
+  available for those actors too.
+
+### Fixed
+
+- **Auto-fill no longer scores unreachable spells and abilities as usable.** When no enemy was
+  actually within an action's range, it could still be recommended at full value and displayed as
+  though the caster were targeting itself — several such actions had become the engine's top-ranked
+  recommendation. Range is now checked consistently for spells the same way it already was for
+  other actions.
+- **"Raise a Shield" is no longer misapplied to unrelated actions** that merely mention it as an
+  option, such as an ability that grants an ally an extra action usable on several different things.
+- **Follow-up actions that retarget mid-plan now show the correct reasons and difficulty class** for
+  their actual target — a Grapple chained after a Strike no longer displays leftover text describing
+  whichever enemy the action originally preferred before the retarget.
+- **Attacks against a hidden target now account for the required flat check**, instead of being
+  scored as if they reliably connect.
+- **Multi-Stride follow-up attacks on the GM side no longer lose movement.** A composite plan like
+  Stride, Stride, Strike previously collapsed to a single Stride, sending the attack short of its
+  target.
+- **Weapon-channeled attack spells are recognized as real damage options** instead of being scored
+  as generic utility — Hand of the Apprentice and similar spells now show up when they're the best
+  play.
+- **Drop Prone is scored on its own merits** instead of sharing one flat bonus with unrelated
+  reaction-based defenses, and is discounted for actors with a ranged weapon equipped, since going
+  prone also penalizes their own ranged attacks.
+- **Poison-category consumables no longer describe themselves as an instant "force a save" attack.**
+  They now correctly describe setting up a stronger follow-up Strike, matching how applying poison
+  actually works.
+- **Opening item details for Stand, Crawl, Drop Prone, and Retch** now links to the correct
+  condition item instead of failing to resolve.
+- **Feint now correctly displays the enemy being feinted**, instead of the actor performing it. The
+  actual scoring and decision-making were never affected — only what was shown as the target.
+
 ## [1.0.2]
 
 ### Added
