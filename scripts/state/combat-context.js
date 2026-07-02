@@ -418,6 +418,36 @@ function selectedEncounterCombatant(options = {}) {
     ?? null;
 }
 
+function actorTraitSlugs(actor) {
+  const value = actor?.system?.traits?.value;
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  return [];
+}
+
+// Familiars carry an explicit `system.master.id` link (exposed as `actor.familiar` by the PF2e
+// system). Animal/construct/undead companions have no such schema field, so the only available
+// signal is the shared "minion" trait (PF2e's own term for "familiar, companion, or other minion
+// whose actions are controlled by another creature") plus common ownership. Eidolons carry the
+// separate "eidolon" trait and are excluded on purpose: they act via shared actions each round,
+// not via Command an Animal.
+function sharesNonDefaultOwner(actorA, actorB) {
+  const ownerLevel = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;
+  const ownershipA = actorA?.ownership;
+  if (!ownershipA || typeof ownershipA !== "object") return false;
+  return Object.entries(ownershipA).some(([userId, level]) =>
+    userId !== "default"
+    && Number(level) >= Number(ownerLevel)
+    && Number(actorB?.ownership?.[userId]) >= Number(ownerLevel),
+  );
+}
+
+function isCommandableMinion(actor, candidate) {
+  if (!candidate || candidate === actor) return false;
+  if (candidate === actor?.familiar) return true;
+  return actorTraitSlugs(candidate).includes("minion") && sharesNonDefaultOwner(actor, candidate);
+}
+
 export function readCombatContext(refreshSource = "manual", options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
   if (!combat?.started) return null;
@@ -434,6 +464,12 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const tokens = placeables
     .filter((token) => tokenActor(token))
     .filter(canUseTokenForPlayerContext);
+  // Familiars/companions/eidolons are excluded from the encounter tracker by the PF2e system
+  // itself (their actions happen on the master's turn), so they never appear in `combatTokens`.
+  // Minion detection has to run against the wider `tokens` pool instead.
+  const minionTokens = tokens.filter((token) => isCommandableMinion(actor, tokenActor(token)));
+  const minions = minionTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
+
   const combatTokens = tokens.filter((token) => tokenInCombat(combat, token));
   const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
   const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
@@ -488,5 +524,6 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
       enemies,
       targets,
     },
+    minions,
   };
 }

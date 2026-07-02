@@ -30,6 +30,10 @@ export function selectDisplayPlan(plans, pinnedPlanId) {
   return safePlans.find((plan) => plan?.id === pinnedPlanId) ?? safePlans[0] ?? null;
 }
 
+export function bestAutoFillPlan(plans) {
+  return Array.isArray(plans) ? plans[0] ?? null : null;
+}
+
 function isSpellStep(step) {
   return String(step?.source ?? "").startsWith("spell");
 }
@@ -118,4 +122,26 @@ export function selectableAlternativePlans(plans, displayPlan) {
   const alternatives = (Array.isArray(plans) ? plans : []).filter((plan) => plan?.id !== displayPlanId);
   const totalActions = Number(displayPlan?.actionBudget?.totalActions);
   return diversifyFirstAlternatives(sortedAlternatives(alternatives, totalActions));
+}
+
+export function autoFillCyclePlans(plans) {
+  const safePlans = Array.isArray(plans) ? plans.filter(Boolean) : [];
+  const displayPlan = safePlans[0] ?? null;
+  if (!displayPlan) return [];
+  return [displayPlan, ...selectableAlternativePlans(safePlans, displayPlan)];
+}
+
+export function nextAutoFillPlan(plans, currentPlanId) {
+  const cycle = autoFillCyclePlans(plans);
+  if (!cycle.length) return null;
+  const currentIndex = cycle.findIndex((plan) => plan?.id === currentPlanId);
+  return cycle[(currentIndex + 1) % cycle.length] ?? cycle[0];
+}
+
+export function previousAutoFillPlan(plans, currentPlanId) {
+  const cycle = autoFillCyclePlans(plans);
+  if (!cycle.length) return null;
+  const currentIndex = cycle.findIndex((plan) => plan?.id === currentPlanId);
+  const index = currentIndex >= 0 ? currentIndex : 0;
+  return cycle[(index - 1 + cycle.length) % cycle.length] ?? cycle[0];
 }

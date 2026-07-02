@@ -1180,6 +1180,25 @@ function spellCastResourceSufficient(actor, entry, item, action) {
   return null;
 }
 
+async function waitForChatMessage(messagePromise, timeoutMs = 500) {
+  const schedule = globalThis.setTimeout;
+  if (typeof schedule !== "function") return null;
+
+  let timeoutId = null;
+  try {
+    return await Promise.race([
+      messagePromise,
+      new Promise((resolve) => {
+        timeoutId = schedule(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId != null && typeof globalThis.clearTimeout === "function") {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+}
+
 export function findSpellcastingEntry(actor, action) {
   const id = action?.spellcastingEntryId;
   const uuid = action?.spellcastingEntryUuid;
@@ -1201,10 +1220,13 @@ async function executeNativeItem({ actor, action, event }) {
     const resourceOk = spellCastResourceSufficient(actor, entry, item, action);
     const actorId = actor?.id ?? actor?._id ?? null;
     let castMessage = null;
+    let resolveCastMessage = null;
+    const castMessagePromise = new Promise((resolve) => { resolveCastMessage = resolve; });
     const onCreate = (message) => {
       if (castMessage) return;
       const messageActorId = message?.speaker?.actor ?? null;
       if (!actorId || !messageActorId || messageActorId === actorId) castMessage = message;
+      if (castMessage) resolveCastMessage?.(castMessage);
     };
     const hookId = globalThis.Hooks?.on?.("createChatMessage", onCreate) ?? null;
     try {
@@ -1214,6 +1236,7 @@ async function executeNativeItem({ actor, action, event }) {
         slotId: action?.slotId ?? action?.location,
       });
       if (!castMessage && returned && typeof returned === "object") castMessage = returned;
+      if (!castMessage && hookId != null) castMessage = await waitForChatMessage(castMessagePromise) ?? null;
     } finally {
       if (hookId != null) globalThis.Hooks?.off?.("createChatMessage", hookId);
     }

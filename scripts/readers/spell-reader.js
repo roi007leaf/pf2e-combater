@@ -1,4 +1,5 @@
 import { findCuratedSpell } from "../catalog/spells/index.js";
+import { heightenedSpellForRank, spellBaseRank, spellNameForRank } from "../engine/spell-heightening.js";
 import { classifySpell } from "../engine/spell-classifier.js";
 import { parseActionText, slugify } from "./action-reader.js";
 import { t } from "../i18n.js";
@@ -38,59 +39,68 @@ export function readSpellActions(context) {
   return collectionValues(actor?.itemTypes?.spell).flatMap((item) => {
     const slug = slugify(item.slug ?? item.system?.slug ?? item.name);
     const curated = findCuratedSpell(slug);
-    const inferred = classifySpell(item);
-    const tactic = mergeSpellTactic(curated, inferred);
-    const parsedTime = readSpellActionCost(item);
-    const actionCosts = curated?.actionCost !== undefined
-      ? [curated.actionCost]
-      : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
     const entry = findSpellcastingEntry(actor, item);
-    const spellAvailability = readSpellAvailability(actor, item, entry);
-    const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
     const rank = spellRank(item);
     const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase() || null;
     const variantGroup = `spell-${item.id ?? item._id ?? slug}`;
+    const castRanks = readSpellCastRanks(item, entry);
 
-    return actionCosts.map((actionCost) => ({
-      ...(tactic ?? {}),
-      id: actionCosts.length > 1 ? `${variantGroup}-${actionCost}a` : variantGroup,
-      name: curated?.name ?? item.name,
-      slug,
-      actionCost,
-      actualActionCost: parsedTime.actionCost,
-      actionCostOptions: actionCosts,
-      actionGlyph: item.actionGlyph ?? null,
-      source,
-      confidence: tactic?.confidence ?? "low",
-      executable: tactic?.executable ?? "open-item",
-      detected: true,
-      available: parsedTime.combat && actionCost !== Infinity && spellAvailability.available,
-      unavailableReason: spellAvailability.reason,
-      item,
-      curated,
-      variantGroup,
-      variableActionCost: actionCosts.length > 1,
-      role: tactic?.role ?? "unknown",
-      activityProfile: tactic?.activityProfile ?? null,
-      targetingProfile: tactic?.targetingProfile ?? null,
-      saveProfile: tactic?.saveProfile ?? null,
-      damageProfile: tactic?.damageProfile ?? null,
-      setupFor: tactic?.setupFor ?? [],
-      reasons: tactic?.reasons ?? [],
-      rank,
-      castRank: rank,
-      isCantrip: isCantrip(item),
-      isFocusSpell: isFocusSpell(item, entry),
-      spellDc: readSpellDc(actor, item, entry),
-      spellcastingEntryId: entry?.id ?? entry?._id ?? null,
-      spellcastingEntryUuid: entry?.uuid ?? null,
-      spellcastingEntryType: preparedType,
-      spellcastingEntryLabel: readSpellcastingEntryLabel(entry),
-      spellcastingEntryTradition: readSpellcastingEntryTradition(entry),
-      spellResource: readSpellResource(actor, item, entry),
-      location: systemValue(item.system?.location),
-      time: systemValue(item.system?.time) ?? "2",
-    }));
+    return castRanks.flatMap((castRank) => {
+      const effectiveItem = heightenedSpellForRank(item, castRank);
+      const inferred = classifySpell(effectiveItem);
+      const tactic = mergeSpellTactic(curated, inferred);
+      const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
+      const parsedTime = readSpellActionCost(effectiveItem);
+      const actionCosts = curated?.actionCost !== undefined
+        ? [curated.actionCost]
+        : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
+      const spellAvailability = readSpellAvailability(actor, item, entry, castRank);
+      const rankSuffix = Number.isFinite(castRank) && castRank !== rank ? `-r${castRank}` : "";
+      const actionIdBase = `${variantGroup}${rankSuffix}`;
+
+      return actionCosts.map((actionCost) => ({
+        ...(tactic ?? {}),
+        id: actionCosts.length > 1 ? `${actionIdBase}-${actionCost}a` : actionIdBase,
+        name: spellNameForRank(curated?.name ?? item.name, rank, castRank),
+        slug,
+        actionCost,
+        actualActionCost: parsedTime.actionCost,
+        actionCostOptions: actionCosts,
+        actionGlyph: effectiveItem.actionGlyph ?? item.actionGlyph ?? null,
+        source,
+        confidence: tactic?.confidence ?? "low",
+        executable: tactic?.executable ?? "open-item",
+        detected: true,
+        available: parsedTime.combat && actionCost !== Infinity && spellAvailability.available,
+        unavailableReason: spellAvailability.reason,
+        item,
+        effectiveItem,
+        curated,
+        variantGroup,
+        variableActionCost: actionCosts.length > 1,
+        role: tactic?.role ?? "unknown",
+        activityProfile: tactic?.activityProfile ?? null,
+        targetingProfile: tactic?.targetingProfile ?? null,
+        saveProfile: tactic?.saveProfile ?? null,
+        damageProfile: tactic?.damageProfile ?? null,
+        setupFor: tactic?.setupFor ?? [],
+        reasons: tactic?.reasons ?? [],
+        rank,
+        castRank,
+        heightened: Number.isFinite(castRank) && Number.isFinite(rank) && castRank > rank,
+        isCantrip: isCantrip(item),
+        isFocusSpell: isFocusSpell(item, entry),
+        spellDc: readSpellDc(actor, item, entry),
+        spellcastingEntryId: entry?.id ?? entry?._id ?? null,
+        spellcastingEntryUuid: entry?.uuid ?? null,
+        spellcastingEntryType: preparedType,
+        spellcastingEntryLabel: readSpellcastingEntryLabel(entry),
+        spellcastingEntryTradition: readSpellcastingEntryTradition(entry),
+        spellResource: readSpellResource(actor, item, entry, castRank),
+        location: systemValue(item.system?.location),
+        time: systemValue(effectiveItem.system?.time) ?? "2",
+      }));
+    });
   });
 }
 
@@ -227,7 +237,7 @@ function parseActionRange(text) {
   return values;
 }
 
-function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor, item)) {
+function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor, item), castRank = spellRank(item)) {
   if (!item) return { available: false, reason: t("Avail.MissingSpell", "Missing spell.") };
   if (item.disabled === true || item.system?.disabled === true || item.system?.enabled === false) {
     return { available: false, reason: t("Avail.SpellDisabled", "Spell is disabled.") };
@@ -253,7 +263,7 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
   }
 
   if (preparedType === "prepared") {
-    return preparedSpellAvailable(entry, item);
+    return preparedSpellAvailable(entry, item, isCantrip(item) ? null : castRank);
   }
 
   if (isCantrip(item)) return { available: true, reason: "" };
@@ -267,7 +277,7 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
   }
 
   if (preparedType === "spontaneous") {
-    return slotAvailable(entry, spellRank(item));
+    return slotAvailable(entry, castRank);
   }
 
   return { available: false, reason: t("Avail.UnknownPrepType", "Unknown spellcasting preparation type.") };
@@ -381,8 +391,56 @@ function isFocusSpell(spell, entry) {
 }
 
 function spellRank(spell) {
-  const rank = Number(spell.rank ?? spell.system?.level?.value ?? spell.system?.rank?.value);
-  return Number.isFinite(rank) ? rank : null;
+  return spellBaseRank(spell);
+}
+
+function entrySlotRanks(entry) {
+  return Object.keys(entry?.system?.slots ?? {})
+    .map(slotRankNumber)
+    .filter((rank) => Number.isFinite(rank))
+    .toSorted((left, right) => left - right);
+}
+
+function preparedCastRanks(entry, spell, rank) {
+  const ranks = entryPreparedSlotMatches(entry, spell)
+    .map((match) => match.rank)
+    .filter((matchRank) => Number.isFinite(matchRank));
+  return ranks.length ? [...new Set(ranks)].toSorted((left, right) => left - right) : [rank];
+}
+
+function preparedSpellSignature(entry, spell) {
+  const spellIds = new Set(spellIdentityValues(spell));
+  return entryPreparedSpells(entry).some((preparedSpell) =>
+    preparedSpell?.signature === true
+    && preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
+  );
+}
+
+function spellLocationSignature(spell) {
+  const location = spell?.system?.location;
+  return location?.signature === true || systemValue(location?.signature) === true;
+}
+
+function spontaneousCastRanks(entry, spell, rank) {
+  if (!spellLocationSignature(spell) && !preparedSpellSignature(entry, spell)) return [rank];
+
+  const ranks = entrySlotRanks(entry).filter((slotRank) => {
+    if (slotRank < rank) return false;
+    const slot = slotForRank(entry, slotRank);
+    return (slotMaximum(slot) ?? slotRemaining(slot) ?? 0) > 0;
+  });
+  return ranks.length ? [...new Set(ranks)].toSorted((left, right) => left - right) : [rank];
+}
+
+function readSpellCastRanks(spell, entry) {
+  const rank = spellRank(spell);
+  if (!Number.isFinite(rank) || isCantrip(spell)) return [rank];
+
+  const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
+  if (preparedType === "focus" || isFocusSpell(spell, entry)) return [rank];
+  if (preparedType === "prepared") return preparedCastRanks(entry, spell, rank);
+  if (preparedType === "spontaneous") return spontaneousCastRanks(entry, spell, rank);
+  return [rank];
 }
 
 function numericValue(...values) {
@@ -473,10 +531,17 @@ function entryPreparedSlotMatches(entry, spell) {
   return matches;
 }
 
-function readPreparedSpellResource(entry, spell, rank) {
-  const matches = entryPreparedSlotMatches(entry, spell);
+function readPreparedSpellResource(entry, spell, rank, castRank = rank) {
+  const allMatches = entryPreparedSlotMatches(entry, spell);
+  const rankMatches = Number.isFinite(castRank)
+    ? allMatches.filter((slot) => slot.rank === castRank)
+    : allMatches;
+  const matches = rankMatches.length ? rankMatches : allMatches;
   // No prepared copy anywhere: keep reporting the base-rank slot so the chip still reads 0/0.
-  const slots = matches.length ? matches : [{ rank, prepared: slotForRank(entry, rank)?.prepared ?? [], matching: [] }];
+  const reportFallbackRank = Number.isFinite(castRank) ? castRank : rank;
+  const slots = matches.length
+    ? matches
+    : [{ rank: reportFallbackRank, prepared: slotForRank(entry, reportFallbackRank)?.prepared ?? [], matching: [] }];
 
   const availableMatching = slots.reduce(
     (count, slot) => count + slot.matching.filter((preparedSpell) => preparedSpell?.expended !== true).length, 0,
@@ -544,18 +609,18 @@ function readUseSpellResource(spell, type) {
   };
 }
 
-function readSpellResource(actor, spell, entry) {
+function readSpellResource(actor, spell, entry, castRank = spellRank(spell)) {
   const rank = spellRank(spell);
   const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
   if (isCantrip(spell)) {
     return { type: "cantrip", rank, label: t("SpellRes.NoSlot", "No slot"), tooltip: t("SpellRes.CantripTooltip", "Cantrip does not spend a spell slot.") };
   }
   if (preparedType === "focus" || isFocusSpell(spell, entry)) return readFocusSpellResource(actor);
-  if (preparedType === "prepared") return readPreparedSpellResource(entry, spell, rank);
-  if (preparedType === "spontaneous") return readSlotSpellResource(entry, rank);
+  if (preparedType === "prepared") return readPreparedSpellResource(entry, spell, rank, castRank);
+  if (preparedType === "spontaneous") return readSlotSpellResource(entry, castRank);
   if (preparedType === "innate") return readUseSpellResource(spell, "innate");
   if (preparedType === "items") return readUseSpellResource(spell, "item");
-  return Number.isFinite(rank) ? readSlotSpellResource(entry, rank) : null;
+  return Number.isFinite(castRank) ? readSlotSpellResource(entry, castRank) : null;
 }
 
 function readSpellDc(actor, spell, entry) {
@@ -574,16 +639,14 @@ function readSpellDc(actor, spell, entry) {
   );
 }
 
-function preparedSpellAvailable(entry, spell) {
-  const slots = entry.system?.slots ?? {};
-  const spellIds = new Set(spellIdentityValues(spell));
+function preparedSpellAvailable(entry, spell, castRank = spellRank(spell)) {
+  const matches = entryPreparedSlotMatches(entry, spell)
+    .filter((slot) => !Number.isFinite(castRank) || slot.rank === castRank);
 
-  for (const slot of Object.values(slots)) {
-    const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
-    const match = prepared.find((preparedSpell) =>
-      preparedSpellIdentityValues(preparedSpell).some((id) => spellIds.has(id)),
-    );
-    if (match && match.expended !== true) return { available: true, reason: "" };
+  for (const slot of matches) {
+    if (slot.matching.some((preparedSpell) => preparedSpell?.expended !== true)) {
+      return { available: true, reason: "" };
+    }
   }
 
   return { available: false, reason: t("Avail.PreparedExpended", "Prepared spell is not available or is expended.") };

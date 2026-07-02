@@ -71,6 +71,11 @@ function isConsumable(action, traits) {
     || traits.includes("consumable");
 }
 
+function isEquipmentActivation(action) {
+  return ["ammo", "armor", "backpack", "book", "equipment", "weapon"]
+    .includes(String(action?.type ?? action?.item?.type ?? "").toLowerCase());
+}
+
 function localizeKeys(action) {
   return [...rawDescription(action).matchAll(/@Localize\[([^\]]+)\]/gi)]
     .map((match) => match[1].toLowerCase());
@@ -109,10 +114,21 @@ function readSaveProfile(action) {
 function readDamageProfile(action) {
   const raw = rawDescription(action);
   const match = raw.match(/@Damage\[([^\][]+)(?:\[([^\]]+)\])?/i);
-  if (!match) return null;
+  if (match) {
+    return {
+      formula: String(match[1] ?? "").trim(),
+      type: String(match[2] ?? "").trim() || null,
+    };
+  }
+
+  const text = normalizeText(raw);
+  const plain = text.match(/\b(?:additional\s+)?(\d+d\d+(?:\s*[+-]\s*\d+)?)\s*(?:[a-z-]+\s+)?damage\b/);
+  if (!plain) return null;
+
+  const damageType = plain[0].match(/\b(acid|bleed|bludgeoning|cold|electricity|fire|force|mental|piercing|poison|precision|slashing|sonic|spirit|void|vitality)\b/);
   return {
-    formula: String(match[1] ?? "").trim(),
-    type: String(match[2] ?? "").trim() || null,
+    formula: String(plain[1] ?? "").replace(/\s+/g, ""),
+    type: damageType?.[1] ?? null,
   };
 }
 
@@ -200,8 +216,9 @@ function readMovementDistance(text) {
 }
 
 function hasFrequency(action) {
+  const text = normalizeText(rawDescription(action));
   return Boolean(action?.system?.frequency ?? action?.item?.system?.frequency)
-    || /\bfrequency\b|\brecharge\b|\bcan(?:not|'t|t) use .* again\b/i.test(rawDescription(action));
+    || /\b(?:frequency|recharge)\b|\bcan(?:not|['’]?t) use [^.]{0,160}\b(?:again|more than once)\b|\bmore than once per\b|\bonce per (?:turn|round|minute|10 minutes|hour|day)\b/i.test(text);
 }
 
 function readEventProfile(text, actionCost) {
@@ -317,6 +334,72 @@ function readBuffProfile(text) {
   return { ally, attackBuff, tempHp, removesCondition, extraAction };
 }
 
+function readActiveDefenseProfile(text, traits, category) {
+  if (traits.includes("aura")) return null;
+  const parry = /\bparr(?:y|ies)\b/.test(text);
+  const acBuff = /\bbonus to ac\b|\bac\b.{0,60}\bbonus\b|\bbonus\b.{0,60}\bac\b|\braises? .*shield\b|\bdeflect\b|\bguard\b|\bprotect\b/.test(text);
+  const saveBuff = /\bbonus to saves?\b|\bsaves?\b.{0,60}\bbonus\b/.test(text);
+  const resistance = /\bresistance\b|\breduce[sd]? .*damage\b/.test(text);
+  if (category !== "defensive" && !parry && !acBuff && !saveBuff && !resistance && !traits.includes("parry")) {
+    return null;
+  }
+
+  return {
+    ...baseProfile(["defense"]),
+    acBuff,
+    saveBuff,
+    resistance,
+    parry: parry || traits.includes("parry"),
+  };
+}
+
+function readStealthDefenseProfile(text) {
+  const invisible = /\binvisible\b|\bunseen\b/.test(text);
+  const hidden = /\bhidden\b/.test(text);
+  const concealed = /\bconcealed\b|\bconcealment\b|\bmist\b/.test(text);
+  const lightSuppression = /\bgo dark\b|\bextinguishes? (?:its|their|the) glow\b|\bsuppress(?:es)? .*aura\b/.test(text);
+  if (!invisible && !hidden && !concealed && !lightSuppression) return null;
+
+  return {
+    ...baseProfile(["defense", "stealth"]),
+    stealth: true,
+    invisible,
+    hidden,
+    concealed,
+  };
+}
+
+function readCommandSupportProfile(text) {
+  const command = /\b(?:barks? orders?|bellowing command|commands?|orders?|directs?|inspir(?:e|es|ation)|word of caution|tactical direction|formation command)\b/.test(text);
+  const ally = /\bally\b|\ballies\b|\bcompanions?\b|\btroops?\b/.test(text);
+  if (!command || !ally) return null;
+
+  const extraAction = /\b(?:ally|allies|creature|target)[^.]{0,120}\b(?:step|stride|strike|attack|move)\b/.test(text);
+  const attackBuff = /\b(?:strike|attack)\b/.test(text);
+  return {
+    ...baseProfile(["buff"]),
+    ally: true,
+    commandSupport: true,
+    extraAction,
+    attackBuff,
+  };
+}
+
+function readCaptureRestraintProfile(text) {
+  const target = /\b(?:creature|target|enemy|opponent|victim)\b/.test(text);
+  const capture = /\b(?:manacles?|bind|hog-?tie|capture|restrain|restrained|immobili[sz]ed|cage|encage)\b/.test(text);
+  if (!target || !capture) return null;
+
+  const appliesCondition = /\b(?:restrained|manacles?|bind|hog-?tie|capture|cage|encage)\b/.test(text)
+    ? "restrained"
+    : /\bimmobili[sz]ed\b/.test(text) ? "immobilized" : null;
+  return {
+    ...baseProfile(["control"]),
+    npcFamily: "capture-restraint",
+    appliesCondition,
+  };
+}
+
 function inferred(role, {
   activityProfile = null,
   targetingProfile = null,
@@ -343,10 +426,37 @@ function inferred(role, {
   };
 }
 
+function resultSupportsDamageProfile(result) {
+  return ["area-damage", "control", "damage", "drain", "mobility-attack", "multiattack", "save-damage", "self-healing"]
+    .includes(result?.role);
+}
+
+function decorateClassificationResult(action, result) {
+  if (!result) return result;
+
+  const targetConditionRequirement = readTargetConditionRequirement(action);
+  const profile = result.activityProfile ?? {};
+  if (
+    targetConditionRequirement
+    && profile.npcFamily !== "grab-rider"
+    && !profile.requiresTargetCondition
+    && !profile.requiresAnyTargetCondition
+  ) {
+    result.activityProfile = withTargetConditionRequirement(profile, targetConditionRequirement);
+  }
+
+  const damageProfile = readDamageProfile(action);
+  if (damageProfile && !result.damageProfile && resultSupportsDamageProfile(result)) {
+    result.damageProfile = damageProfile;
+  }
+
+  return result;
+}
+
 // Attach a multi-template choice list (and ensure area flags) so the panel can let the player
 // pick which @Template to place. Runs regardless of which classifier branch produced the result.
 export function classifySystemAction(action, parsedCost) {
-  const result = classifySystemActionBase(action, parsedCost);
+  const result = decorateClassificationResult(action, classifySystemActionBase(action, parsedCost));
   if (!result) return result;
   const templateProfile = readTemplateProfile(action);
   if (Array.isArray(templateProfile?.templates) && templateProfile.templates.length > 1) {
@@ -438,7 +548,7 @@ function classifySystemActionBase(action, parsedCost) {
 
   const mentionsStride = /\bstrides?\b|\bsteps?\b|\bmoves?\b|\bleaps?\b|\bjumps?\b|\bbounds?\b|\bsprings?\b/.test(text);
   const mentionsDifferentTargets = /\bdifferent targets?\b|\bseparate targets?\b|\beach against\b/.test(text);
-  const mentionsMultipleStrikes = /\b(?:two|three|\d+) strikes?\b|\bup to .* strikes?\b|\bnumber of strikes?\b/.test(text);
+  const mentionsMultipleStrikes = /\b(?:two|three|\d+)\b.{0,30}\bstrikes?\b|\bup to\b.{0,30}\bstrikes?\b|\bnumber of strikes?\b/.test(text);
   const mentionsDelayedMap = /multiple attack penalty.*(?:doesn.t|does not|doesn’t) increase|map.*(?:doesn.t|does not|doesn’t) increase/.test(text);
   const mapAttacks = readMapAttacks(text);
   const mentionsFocusedTarget = /\bsingle .* strike\b|\bone .* strike\b|\bsingle target\b|\bsame target\b|\bfocus/.test(text);
@@ -741,6 +851,28 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
+  const stealthDefenseProfile = readStealthDefenseProfile(text);
+  if (stealthDefenseProfile && !isEquipmentActivation(action) && !saveProfile && !damageProfile && !mentionsStrike) {
+    return inferred("stealth-defense", {
+      activityProfile: stealthDefenseProfile,
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: stealthDefenseProfile.invisible ? "high" : "medium",
+      reasons: [t("ActReason.StealthActionMakesActor", "Stealth action makes the actor harder to target.")],
+    });
+  }
+
+  const activeDefenseProfile = readActiveDefenseProfile(text, traits, category);
+  if (activeDefenseProfile && !isEquipmentActivation(action) && !saveProfile && !damageProfile && !mentionsStrike) {
+    return inferred("defense", {
+      activityProfile: activeDefenseProfile,
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: activeDefenseProfile.acBuff || activeDefenseProfile.saveBuff ? "high" : "medium",
+      reasons: [t("ActReason.DefensiveActionImprovesSurvival", "Defensive action improves survival until the next turn.")],
+    });
+  }
+
   if (hasName(action, /\brunning reload\b/) || /\b(?:strides?|steps?|sneaks?).*\breload\b/.test(text)) {
     return inferred("mobility", {
       activityProfile: {
@@ -984,6 +1116,18 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
+  const commandSupportProfile = readCommandSupportProfile(text);
+  if (commandSupportProfile && !isEquipmentActivation(action) && !saveProfile && !damageProfile) {
+    return inferred("buff", {
+      activityProfile: commandSupportProfile,
+      targetingProfile: { ally: true },
+      setupFor: commandSupportProfile.extraAction || commandSupportProfile.attackBuff ? ["strike", "damage"] : [],
+      gatingProfile,
+      confidence: commandSupportProfile.extraAction ? "high" : "medium",
+      reasons: [t("ActReason.CommandSupportsAllies", "Command action lets an ally contribute this turn.")],
+    });
+  }
+
   // Some impulses/summons describe a SEPARATE creature moving ("you can have the crawling fire Stride
   // up to 40 feet"), not the actor. That Stride is the minion's (done via Sustain), so it must not be
   // read as the actor's own movement — otherwise the whole action gets move-gated (e.g. shown as
@@ -1056,6 +1200,17 @@ function classifySystemActionBase(action, parsedCost) {
       gatingProfile,
       confidence: "medium",
       reasons: [t("ActReason.AuraAffectsTheActor", "Aura affects the actor and nearby allies.")],
+    });
+  }
+
+  const captureRestraintProfile = readCaptureRestraintProfile(text);
+  if (captureRestraintProfile && !isEquipmentActivation(action)) {
+    return inferred("control", {
+      activityProfile: withTargetConditionRequirement(captureRestraintProfile, targetConditionRequirement),
+      targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+      gatingProfile,
+      confidence: captureRestraintProfile.appliesCondition ? "high" : "medium",
+      reasons: [t("ActReason.CaptureActionCanRestrain", "Capture action can restrain or immobilize a target.")],
     });
   }
 

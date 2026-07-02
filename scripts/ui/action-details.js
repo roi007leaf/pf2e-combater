@@ -82,7 +82,7 @@ export function actionDetailChips(action) {
   if (!isSpellAction(action)) return [];
 
   const chips = [];
-  const rank = numeric(action?.rank ?? action?.castRank);
+  const rank = numeric(action?.castRank ?? action?.rank);
   pushChip(chips, action?.isCantrip ? t("Chip.Cantrip", "Cantrip") : rank !== null ? t("Chip.Rank", "Rank {rank}", { rank }) : "", "", "rank");
   pushChip(chips, action?.spellResource?.label, action?.spellResource?.tooltip, "resource");
   pushChip(chips, action?.spellcastingEntryLabel, "", "entry");

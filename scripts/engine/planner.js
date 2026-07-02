@@ -1085,6 +1085,15 @@ function hasPlanConflict(context, candidate, steps, attackPathAvailable = false)
     return true;
   }
 
+  // Prone gives the actor a -2 circumstance penalty to attack rolls. Don't build plans that spend
+  // an action becoming prone and then attack in the same turn (or attack first, then pad with prone).
+  if (
+    (appliesProne(candidate) && steps.some(isAttackAction))
+    || (isAttackAction(candidate) && steps.some(appliesProne))
+  ) {
+    return true;
+  }
+
   // A self-moving activity (Stride -> Strike, Sudden Charge, pounce) already closes
   // distance, so prepending a plain Step/Stride is wasted movement.
   const basicMove = BASIC_MOVE_SLUGS.has(candidate.slug);
@@ -1173,6 +1182,12 @@ function toPlan(context, steps, sortedCandidates, budget) {
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",
   };
+}
+
+function planUsesFullBudget(plan, budget) {
+  const hasNegativeStep = (plan?.steps ?? [])
+    .some((step) => Number.isFinite(step?.score) && step.score < 0);
+  return !hasNegativeStep && Number(plan?.totalCost) >= Number(budget?.totalActions);
 }
 
 export function buildTurnPlans(context, candidates) {
@@ -1286,6 +1301,9 @@ export function buildTurnPlans(context, candidates) {
   if (!plans.length) return [emptyPlan(context)];
 
   return plans.toSorted((left, right) => {
+    const leftFull = planUsesFullBudget(left, budget);
+    const rightFull = planUsesFullBudget(right, budget);
+    if (leftFull !== rightFull) return rightFull ? 1 : -1;
     if (right.score !== left.score) return right.score - left.score;
     return right.totalCost - left.totalCost;
   });

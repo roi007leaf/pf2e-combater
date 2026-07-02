@@ -52,6 +52,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "detection",
     skill: "perception",
+    hideFromSuggestions: true,
     requiresTarget: true,
     requiresCombatSignal: true,
     executable: "pf2e-action",
@@ -110,6 +111,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "mobility",
     skill: "acrobatics",
+    hideFromSuggestions: true,
     requiresTerrain: "balance",
     executable: "pf2e-action",
   },
@@ -120,6 +122,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "mobility",
     skill: "athletics",
+    hideFromSuggestions: true,
     requiresTerrain: "climb",
     executable: "pf2e-action",
   },
@@ -130,6 +133,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "mobility",
     skill: "athletics",
+    hideFromSuggestions: true,
     requiresTerrain: "swim",
     executable: "pf2e-action",
   },
@@ -140,6 +144,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 2,
     role: "mobility",
     skill: "athletics",
+    hideFromSuggestions: true,
     executable: "pf2e-action",
   },
   {
@@ -149,6 +154,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 2,
     role: "mobility",
     skill: "athletics",
+    hideFromSuggestions: true,
     executable: "pf2e-action",
   },
   {
@@ -158,6 +164,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "utility",
     skill: "athletics",
+    hideFromSuggestions: true,
     attackTrait: true,
     requiresObstacleInReach: true,
     executable: "pf2e-action",
@@ -316,6 +323,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "utility",
     skill: "thievery",
+    hideFromSuggestions: true,
     requiresEnemyInReach: true,
     requiresFreeHand: true,
     executable: "pf2e-action",
@@ -327,6 +335,7 @@ const GENERIC_ACTION_DEFS = [
     actionCost: 1,
     role: "utility",
     skill: "thievery",
+    hideFromSuggestions: true,
     requiresObjectInReach: true,
     requiresFreeHand: true,
     executable: "pf2e-action",
@@ -379,9 +388,20 @@ const GENERIC_ACTION_DEFS = [
   },
 ];
 
+// Some actions are more useful explained by the condition they apply/remove/reduce than by their
+// own (often one-line) action text — Stand/Crawl/Drop Prone are all about the Prone condition,
+// Retch is entirely about reducing Sickened. Point those at the conditionitems compendium instead.
+const ACTION_CONDITION_UUID_OVERRIDES = {
+  stand: "Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60", // Prone
+  crawl: "Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60", // Prone
+  retch: "Compendium.pf2e.conditionitems.Item.fesd1n5eVhpCSS18", // Sickened
+};
+
 // Point each generic action at its pf2e.actionspf2e compendium entry so opening it shows the
 // system details instead of a chat-guidance message.
 export const GENERIC_ACTIONS = GENERIC_ACTION_DEFS.map((action) => {
+  const conditionUuid = ACTION_CONDITION_UUID_OVERRIDES[action.slug];
+  if (conditionUuid) return { ...action, uuid: conditionUuid };
   if (action.uuid) return action;
   const id = ACTION_COMPENDIUM_IDS[action.slug];
   return id ? { ...action, uuid: `Compendium.pf2e.actionspf2e.Item.${id}` } : action;

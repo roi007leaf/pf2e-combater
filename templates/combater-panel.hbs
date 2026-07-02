@@ -189,6 +189,12 @@
               <i class="fa-solid fa-wand-magic-sparkles"></i>
               <span>{{localize "PF2E_COMBATER.Panel.AutoFill"}}</span>
             </button>
+            {{#if autoFillCycle.canCycle}}
+            <button type="button" class="combater-header-alternatives" data-cycle-auto-fill data-tooltip="{{autoFillCycle.tooltip}}" aria-label="{{autoFillCycle.ariaLabel}}">
+              <i class="fa-solid fa-shuffle"></i>
+              <span>{{autoFillCycle.label}}</span>
+            </button>
+            {{/if}}
             {{/if}}
           {{/unless}}
         {{/if}}

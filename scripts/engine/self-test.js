@@ -80,7 +80,7 @@ import {
 import { readVisionerCoverState, readVisionerDetectionState } from "../integrations/visioner.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
-import { selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
+import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
 import { clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showMovementPreview } from "../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
@@ -322,6 +322,7 @@ for (const eventHook of [
   "data-move-draft-step",
   "data-favorite-action",
   "data-auto-fill",
+  "data-cycle-auto-fill",
   "data-choose-destination",
   "data-choose-target",
   "data-choose-area",
@@ -335,6 +336,8 @@ for (const eventHook of [
 assert.equal(panelTemplateSource.includes("data-execute-next"), false, "panel should not expose a global Execute next button");
 assert.ok(panelSource.includes("projectedDraftStepActions"), "draft steps should resolve actions from their projected origin");
 assert.ok(panelSource.includes("_moveDraftStep"), "panel should support explicit draft-step reordering");
+assert.ok(panelSource.includes("_cycleAutoFillDraft"), "panel should cycle through auto-fill alternative plans");
+assert.ok(panelSource.includes("contextmenu"), "shuffle right-click should cycle backward instead of opening the browser menu");
 assert.equal(
   panelTemplateSource.includes("data-load-shared-draft"),
   false,
@@ -607,13 +610,13 @@ assert.ok(
   "player draft sync should mirror the plan onto the owned actor so GM clients update even if module socket delivery is missed",
 );
 assert.ok(
-  /_addAction\(actionKey\)[\s\S]*upsertDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  /_addAction\(actionKey\)[\s\S]*_writeActiveDraftPlan\(markManualDraft\(/.test(panelSource),
   "adding an action should sync updated player plan to GM",
 );
 // A persisted display name keeps a step readable after its action stops being generated (e.g. a
 // drawn weapon no longer offers its Draw action), instead of falling back to the raw action key.
 assert.ok(
-  /_addAction\(actionKey\)[\s\S]*upsertDraftStep\(this\._context, \{[\s\S]*name: action\.name/.test(panelSource),
+  /_addAction\(actionKey\)[\s\S]*name: action\.name/.test(panelSource),
   "added plan steps should persist a display name",
 );
 assert.ok(
@@ -621,12 +624,20 @@ assert.ok(
   "added uncounted steps should persist a display name",
 );
 assert.ok(
-  /_removeDraftStep\(instanceId\)[\s\S]*removeDraftStep\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  /_removeDraftStep\(instanceId\)[\s\S]*_writeActiveDraftPlan\(markManualDraft\(/.test(panelSource),
   "removing an action should sync updated player plan to GM",
 );
 assert.ok(
-  /_autoFillDraft\(\)[\s\S]*writeDraftPlan\([\s\S]*await this\._syncDraftToGM\(\)/.test(panelSource),
+  /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*_writeActiveDraftPlan\(/.test(panelSource),
   "auto-fill should sync updated player plan to GM",
+);
+assert.ok(
+  /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*bestAutoFillPlan\(this\._autoFillPlans\)/.test(panelSource),
+  "pressing Auto-fill should load the best plan even after cycling alternatives",
+);
+assert.ok(
+  /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*if \(!plan\) this\._pinnedPlanId = null/.test(panelSource),
+  "pressing Auto-fill should reset the alternative-plan cursor",
 );
 assert.ok(
   /onChoose: (?:async )?\(destination, metadata = \{\}\) =>[\s\S]*_persistActiveDraftStep\(/.test(panelSource),
@@ -1487,6 +1498,85 @@ try {
   const goodCast = await executeDraftStep({ context: spellCastContext, step: { instanceId: "fireball-cast" }, action: spellCastAction });
   assert.equal(goodCast.status, "done", "a spell with a remaining slot should cast");
   assert.equal(damageRolls.length, beforeGoodCast + 1, "a successful cast rolls the spell's damage");
+
+  // PF2e can resolve entry.cast() before the spell chat card's createChatMessage hook fires. The
+  // executor must wait for that delayed card before posting auto damage; otherwise the damage card
+  // lands above the spell card in chat.
+  const previousHooks = globalThis.Hooks;
+  const previousDamageRoll = globalThis.game.pf2e.DamageRoll;
+  const delayedChatListeners = new Map();
+  let delayedHookId = 0;
+  const delayedChatOrder = [];
+  const emitDelayedSpellCard = () => {
+    const message = {
+      id: "spell-card-delayed",
+      documentName: "ChatMessage",
+      speaker: { actor: "wizard-delayed" },
+      timestamp: 100,
+    };
+    delayedChatOrder.push("spell-card");
+    for (const listener of delayedChatListeners.get("createChatMessage")?.values() ?? []) listener(message);
+  };
+  globalThis.Hooks = {
+    on: (name, listener) => {
+      const id = ++delayedHookId;
+      const listeners = delayedChatListeners.get(name) ?? new Map();
+      listeners.set(id, listener);
+      delayedChatListeners.set(name, listeners);
+      return id;
+    },
+    off: (name, id) => {
+      delayedChatListeners.get(name)?.delete(id);
+    },
+  };
+  globalThis.game.pf2e.DamageRoll = class {
+    async evaluate() {
+      return this;
+    }
+
+    async toMessage() {
+      delayedChatOrder.push("damage");
+      return { id: "dmg-delayed-card" };
+    }
+  };
+  try {
+    const delayedCastEntry = {
+      id: "entry-delayed-card",
+      system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
+      cast: async () => {
+        setTimeout(() => { setTimeout(emitDelayedSpellCard, 0); }, 0);
+        return undefined;
+      },
+    };
+    const delayedCastResult = await executeDraftStep({
+      context: {
+        actor: { document: { id: "wizard-delayed", name: "Wizard", itemTypes: { spellcastingEntry: [delayedCastEntry] } } },
+        token: { id: "wiz-delayed-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+      },
+      step: { instanceId: "delayed-spell-card" },
+      action: {
+        name: "Breath Fire",
+        source: "spell-spontaneous",
+        executable: "open-item",
+        spellcastingEntryId: "entry-delayed-card",
+        castRank: 1,
+        item: { id: "breath-fire", type: "spell", name: "Breath Fire" },
+        activityProfile: { spell: true },
+        damageProfile: { formula: "2d6", type: "fire" },
+      },
+    });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    assert.equal(delayedCastResult.status, "done", "delayed spell-card cast should still complete");
+    assert.deepEqual(delayedChatOrder, ["spell-card", "damage"], "auto damage must wait for the spell chat card");
+    assert.ok(
+      delayedCastResult.patch.execution.revert.ops.some((op) => op.kind === "chat" && op.messageId === "spell-card-delayed"),
+      "delayed spell card should stay revertible after being captured from the chat hook",
+    );
+  } finally {
+    globalThis.Hooks = previousHooks;
+    globalThis.game.pf2e.DamageRoll = previousDamageRoll;
+  }
 
   // Focus spells use a focus point, not a slot. With a point available, a cast whose entry.cast()
   // returns nothing must still be a success (this was the false "no slot available" warning); with
@@ -5032,6 +5122,18 @@ assert.equal(
   "Drop Prone should spend a remaining action on Take Cover when no stronger follow-up exists",
 );
 
+const fullBudgetPreferencePlans = buildTurnPlans(fighterContext, [
+  { id: "two-action-burst", name: "Two Action Burst", slug: "two-action-burst", source: "system-inferred", actionCost: 2, score: 100, confidence: "high", reason: "Strong two-action option." },
+  { id: "minor-one", name: "Minor One", slug: "minor-one", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
+  { id: "minor-two", name: "Minor Two", slug: "minor-two", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
+  { id: "minor-three", name: "Minor Three", slug: "minor-three", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
+]);
+assert.equal(
+  fullBudgetPreferencePlans[0].totalCost,
+  3,
+  "planner should prefer a legal full-budget plan over a higher-scoring partial plan",
+);
+
 const setupBeforeStrikePlans = buildTurnPlans(fighterContext, [{
   id: "mandibles",
   name: "Mandibles",
@@ -5245,6 +5347,7 @@ const displayPlans = [
   { id: "alt", summary: "Alternative" },
   { id: "third", summary: "Third" },
 ];
+assert.equal(bestAutoFillPlan(displayPlans).id, "main");
 assert.equal(selectDisplayPlan(displayPlans, null).id, "main");
 assert.equal(selectDisplayPlan(displayPlans, "alt").id, "alt");
 assert.equal(selectDisplayPlan(displayPlans, "missing").id, "main");
@@ -5252,6 +5355,15 @@ assert.deepEqual(
   selectableAlternativePlans(displayPlans, displayPlans[1]).map((plan) => plan.id),
   ["main", "third"],
 );
+assert.deepEqual(autoFillCyclePlans(displayPlans).map((plan) => plan.id), ["main", "alt", "third"]);
+assert.equal(nextAutoFillPlan(displayPlans, null).id, "main");
+assert.equal(nextAutoFillPlan(displayPlans, "main").id, "alt");
+assert.equal(nextAutoFillPlan(displayPlans, "alt").id, "third");
+assert.equal(nextAutoFillPlan(displayPlans, "third").id, "main");
+assert.equal(previousAutoFillPlan(displayPlans, null).id, "third");
+assert.equal(previousAutoFillPlan(displayPlans, "main").id, "third");
+assert.equal(previousAutoFillPlan(displayPlans, "alt").id, "main");
+assert.equal(previousAutoFillPlan(displayPlans, "third").id, "alt");
 const quickenedDisplayPlans = [
   { id: "main", summary: "Main", totalCost: 4, actionBudget: { totalActions: 4 } },
   { id: "short", summary: "Short", totalCost: 2, actionBudget: { totalActions: 4 } },
@@ -7832,6 +7944,74 @@ assert.equal(hybridAction.actionCost, 1);
 assert.equal(hybridAction.role, "mobility-attack");
 assert.equal(hybridAction.source, "custom-curated");
 
+const explorationSkillItemContext = {
+  actor: {
+    document: {
+      system: { actions: [] },
+      itemTypes: {
+        action: [{
+          id: "squeeze-action",
+          name: "Squeeze",
+          type: "action",
+          system: {
+            slug: "squeeze",
+            actionType: { value: "action" },
+            actions: { value: 1 },
+            traits: { value: ["exploration", "move"] },
+            description: { value: "<p>You contort yourself through a tight space.</p>" },
+          },
+        }],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+  battlefield: { targets: [], enemies: [], allies: [] },
+};
+assert.equal(
+  readActionSources(explorationSkillItemContext).some((action) => action.slug === "squeeze"),
+  false,
+  "exploration skill item actions should not be suggested",
+);
+
+const generatedExplorationSkillContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          id: "follow-the-expert-action",
+          name: "Follow the Expert",
+          slug: "follow-the-expert",
+          type: "action",
+          actionType: "action",
+          actions: 1,
+          traits: ["exploration"],
+          description: "<p>Choose an ally attempting a recurring skill task.</p>",
+        }],
+      },
+      itemTypes: {
+        action: [],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+  battlefield: { targets: [], enemies: [], allies: [] },
+};
+assert.equal(
+  readActionSources(generatedExplorationSkillContext).some((action) => action.slug === "follow-the-expert"),
+  false,
+  "generated exploration skill actions should not be suggested",
+);
+
 const triggeredActionContext = {
   actor: {
     document: {
@@ -8374,10 +8554,11 @@ const npcOnlyUtilityBuild = buildCandidates({
 });
 assert.equal(npcOnlyUtilityBuild.candidates.some((candidate) => candidate.slug === "pose-menacingly"), true);
 
-const hydraRecallKnowledge = readActionSources(hydraContext)
-  .find((action) => action.slug === "recall-knowledge");
-assert.equal(hydraRecallKnowledge.available, false);
-assert.equal(hydraRecallKnowledge.unavailableReason, "NPCs do not need Recall Knowledge recommendations.");
+assert.equal(
+  readActionSources({ ...hydraContext, isGM: true }).some((action) => action.slug === "recall-knowledge"),
+  false,
+  "GM NPC action sources should not include Recall Knowledge at all",
+);
 
 const pounceContext = {
   ...hydraContext,
@@ -9041,6 +9222,127 @@ const arcaneSlamClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(arcaneSlamClassification.role, "save-damage");
 assert.equal(arcaneSlamClassification.activityProfile.requiresTargetCondition, "grabbed");
+
+const captiveRakeClassification = classifySystemAction({
+  name: "Captive Rake",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p><strong>Requirements</strong> A creature is grabbed in the glabrezu's pincer. <strong>Effect</strong> The glabrezu pulls the grabbed creature closer, then makes two claw Strikes against it.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(captiveRakeClassification.role, "multiattack");
+assert.equal(captiveRakeClassification.activityProfile.requiresTargetCondition, "grabbed");
+
+const haulAwayClassification = classifySystemAction({
+  name: "Haul Away",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p><strong>Requirements</strong> The giant ant army has at least one restrained creature. <strong>Effect</strong> The army Strides up to its Speed, carrying any restrained creatures with it.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(haulAwayClassification.role, "mobility");
+assert.equal(haulAwayClassification.activityProfile.requiresTargetCondition, "restrained");
+
+const focusedGazeCooldownClassification = classifySystemAction({
+  name: "Focused Gaze",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    traits: { value: ["concentrate", "visual"] },
+    description: {
+      value: "<p>The bythos focuses its gaze on a creature it can see within 30 feet. A bythos can't use this ability against the same creature more than once per turn.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(focusedGazeCooldownClassification.activityProfile.npcFamily, "gaze");
+assert.equal(focusedGazeCooldownClassification.gatingProfile.frequency, true);
+
+const aldoriParryClassification = classifySystemAction({
+  name: "Aldori Parry",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "defensive",
+    description: {
+      value: "<p>The swordlord gains a +2 circumstance bonus to AC until the start of their next turn.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(aldoriParryClassification.role, "defense");
+assert.equal(aldoriParryClassification.activityProfile.acBuff, true);
+assert.equal(aldoriParryClassification.activityProfile.parry, true);
+
+const goDarkClassification = classifySystemAction({
+  name: "Go Dark",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "defensive",
+    traits: { value: ["concentrate"] },
+    description: {
+      value: "<p>The will-o'-wisp extinguishes its glow, becoming invisible. It can end this effect with another use of this action.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(goDarkClassification.role, "stealth-defense");
+assert.equal(goDarkClassification.activityProfile.invisible, true);
+assert.equal(goDarkClassification.targetingProfile.self, true);
+
+const barkOrdersClassification = classifySystemAction({
+  name: "Bark Orders",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "interaction",
+    traits: { value: ["auditory", "linguistic"] },
+    description: {
+      value: "<p>The captain barks orders to an ally within 30 feet. The ally can immediately Step or Strike.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(barkOrdersClassification.role, "buff");
+assert.equal(barkOrdersClassification.activityProfile.commandSupport, true);
+assert.equal(barkOrdersClassification.activityProfile.extraAction, true);
+assert.deepEqual(barkOrdersClassification.setupFor, ["strike", "damage"]);
+
+const efficientCaptureClassification = classifySystemAction({
+  name: "Efficient Capture",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 3 },
+    category: "offensive",
+    traits: { value: ["attack", "manipulate"] },
+    description: {
+      value: "<p><strong>Requirements</strong> The sneak has manacles in hand and is adjacent to a creature. <strong>Effect</strong> The sneak attempts to bind the creature's wrists or ankles with the manacles. On a success, the creature is restrained.</p>",
+    },
+  },
+}, { actionCost: 3, type: "action" });
+assert.equal(efficientCaptureClassification.role, "control");
+assert.equal(efficientCaptureClassification.activityProfile.npcFamily, "capture-restraint");
+assert.equal(efficientCaptureClassification.activityProfile.appliesCondition, "restrained");
+
+const skirmishingDashClassification = classifySystemAction({
+  name: "Skirmishing Dash",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: {
+      value: "<p>The duelist Strides or Steps, then Strikes. This Strike deals an additional 3d6 damage.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(skirmishingDashClassification.role, "mobility-attack");
+assert.equal(skirmishingDashClassification.damageProfile.formula, "3d6");
 
 {
   const flintTarget = {
@@ -9744,14 +10046,11 @@ const expandedGenericSlugs = readActionSources({
 for (const slug of [
   "seek",
   "sense-motive",
-  "balance",
   "climb",
   "swim",
   "tumble-through",
   "disarm",
   "force-open",
-  "high-jump",
-  "long-jump",
   "reposition",
   "shove",
   "create-a-diversion",
@@ -9767,6 +10066,14 @@ for (const slug of [
   "escape",
 ]) {
   assert.ok(expandedGenericSlugs.includes(slug), `${slug} should be cataloged`);
+}
+for (const slug of ["balance", "high-jump", "long-jump"]) {
+  assert.equal(expandedGenericSlugs.includes(slug), false, `${slug} should stay hidden from suggestions`);
+  assert.equal(
+    GENERIC_ACTIONS.find((action) => action.slug === slug)?.hideFromSuggestions,
+    true,
+    `${slug} should remain in the catalog as a manual-only action`,
+  );
 }
 
 const farTrip = readActionSources({
@@ -9887,6 +10194,16 @@ const medicineSources = readActionSources({
 });
 assert.equal(medicineSources.find((action) => action.slug === "administer-first-aid").available, true);
 assert.equal(medicineSources.find((action) => action.slug === "stabilize").available, true);
+
+const noCompanionCommand = readActionSources(fighterContext).find((action) => action.slug === "command-an-animal");
+assert.equal(noCompanionCommand.available, false);
+assert.equal(noCompanionCommand.unavailableReason, "No companion or minion detected.");
+
+const withCompanionCommand = readActionSources({
+  ...fighterContext,
+  minions: [{ id: "companion-1", name: "Rex" }],
+}).find((action) => action.slug === "command-an-animal");
+assert.equal(withCompanionCommand.available, true);
 
 const scoredStabilize = scoreCandidate({
   ...fighterContext,
@@ -13029,6 +13346,113 @@ try {
   globalThis.CONST = previousConst;
 }
 
+{
+  const previousMinionGame = globalThis.game;
+  const previousMinionCanvas = globalThis.canvas;
+  try {
+    const makeMinionActor = (id, name, overrides = {}) => ({
+      id,
+      uuid: `Actor.${id}`,
+      name,
+      type: overrides.type ?? "character",
+      img: "icons/svg/mystery-man.svg",
+      documentName: "Actor",
+      isOwner: true,
+      items: [],
+      itemTypes: { condition: [] },
+      getActiveTokens: () => [],
+      ownership: overrides.ownership ?? {},
+      familiar: overrides.familiar ?? null,
+      system: {
+        attributes: { hp: { value: 10, max: 10 } },
+        traits: { value: overrides.traits ?? [] },
+        skills: {},
+        abilities: {},
+      },
+    });
+    const makeMinionToken = (id, name, actor) => ({
+      id,
+      name,
+      actor,
+      x: 5,
+      y: 0,
+      document: {
+        id,
+        uuid: `Scene.Token.${id}`,
+        name,
+        actor,
+        disposition: 1,
+        x: 5,
+        y: 0,
+        width: 1,
+        height: 1,
+        texture: { src: "" },
+      },
+    });
+    const makeMinionCombatant = (token) => ({
+      id: `combatant-${token.id}`,
+      name: token.name,
+      actor: token.actor,
+      tokenId: token.id,
+      token: { object: token, id: token.id, uuid: token.document.uuid },
+    });
+
+    const casterActor = makeMinionActor("caster", "Caster", { ownership: { "user-1": 3 } });
+    const casterToken = makeMinionToken("token-caster", "Caster", casterActor);
+    const casterCombatant = makeMinionCombatant(casterToken);
+
+    const familiarActor = makeMinionActor("familiar", "Familiar", { type: "familiar", traits: ["minion"] });
+    casterActor.familiar = familiarActor;
+    const familiarToken = makeMinionToken("token-familiar", "Familiar", familiarActor);
+
+    const companionActor = makeMinionActor("companion", "Animal Companion", {
+      traits: ["minion", "animal"],
+      ownership: { "user-1": 3 },
+    });
+    const companionToken = makeMinionToken("token-companion", "Animal Companion", companionActor);
+
+    const eidolonActor = makeMinionActor("eidolon", "Eidolon", {
+      traits: ["eidolon"],
+      ownership: { "user-1": 3 },
+    });
+    const eidolonToken = makeMinionToken("token-eidolon", "Eidolon", eidolonActor);
+
+    const unownedCompanionActor = makeMinionActor("stray", "Stray Wolf", {
+      traits: ["minion", "animal"],
+      ownership: { "user-2": 3 },
+    });
+    const unownedCompanionToken = makeMinionToken("token-stray", "Stray Wolf", unownedCompanionActor);
+
+    globalThis.game = {
+      user: { isGM: true, targets: new Set() },
+      combat: {
+        id: "combat-minion",
+        round: 1,
+        turn: 0,
+        started: true,
+        combatant: casterCombatant,
+        combatants: [casterCombatant],
+      },
+    };
+    globalThis.canvas = {
+      grid: { size: 1, measurePath: ([from, to]) => Math.abs(to.x - from.x) },
+      tokens: {
+        placeables: [casterToken, familiarToken, companionToken, eidolonToken, unownedCompanionToken],
+      },
+    };
+
+    const minionContext = readCombatContext("minion-detection-test");
+    assert.deepEqual(
+      minionContext.minions.map((minion) => minion.name).sort(),
+      ["Animal Companion", "Familiar"],
+      "familiar (via actor.familiar) and owned minion-trait companion should both be detected; eidolon and unowned stray should not",
+    );
+  } finally {
+    globalThis.game = previousMinionGame;
+    globalThis.canvas = previousMinionCanvas;
+  }
+}
+
 const systemSpellContext = {
   actor: {
     document: {
@@ -13438,6 +13862,126 @@ assert.equal(
   "Divine Font heal should report the heightened slot's prepared copies, not the empty base-rank slot",
 );
 assert.equal(fontHeal.spellResource.tooltip, "Rank 2 prepared slots: 4/4 unexpended.");
+
+const heightenedPreparedSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "sepulchral-mask",
+          name: "Sepulchral Mask",
+          slug: "sepulchral-mask",
+          system: {
+            slug: "sepulchral-mask",
+            time: { value: "2" },
+            traits: { value: ["void"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            area: { type: "emanation", value: 5 },
+            damage: { "0": { formula: "2d4", type: "void" } },
+            heightening: { type: "interval", interval: 1, area: 5, damage: { "0": "2d4" } },
+          },
+        }, {
+          id: "frozen-ray",
+          name: "Frozen Ray",
+          slug: "frozen-ray",
+          system: {
+            slug: "frozen-ray",
+            time: { value: "2" },
+            traits: { value: ["attack", "cold"] },
+            level: { value: 1 },
+            location: { value: "prepared-entry" },
+            range: { value: "30 feet" },
+            damage: { "0": { formula: "2d6", type: "cold" } },
+            heightening: {
+              type: "fixed",
+              levels: {
+                3: {
+                  range: { value: "120 feet" },
+                  damage: { "0": { formula: "6d6", type: "cold" } },
+                },
+              },
+            },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "prepared-entry",
+          name: "Prepared Heightening",
+          system: {
+            prepared: { value: "prepared" },
+            tradition: { value: "arcane" },
+            slots: {
+              slot3: {
+                prepared: [
+                  { id: "sepulchral-mask", expended: false },
+                  { id: "frozen-ray", expended: false },
+                ],
+              },
+            },
+          },
+        }],
+      },
+    },
+  },
+};
+const heightenedPreparedSpells = readSpellActions(heightenedPreparedSpellContext);
+const rank3Mask = heightenedPreparedSpells.find((spell) => spell.slug === "sepulchral-mask" && spell.castRank === 3);
+assert.ok(rank3Mask, "prepared spell should produce a variant at the rank it is prepared in");
+assert.equal(rank3Mask.rank, 1);
+assert.equal(rank3Mask.castRank, 3);
+assert.equal(rank3Mask.available, true);
+assert.equal(rank3Mask.targetingProfile.distance, 15, "interval heightening should increase template size");
+assert.equal(rank3Mask.damageProfile.average, 15, "interval heightening should increase damage");
+assert.equal(rank3Mask.spellResource.tooltip, "Rank 3 prepared slots: 2/2 unexpended.");
+const rank3Ray = heightenedPreparedSpells.find((spell) => spell.slug === "frozen-ray" && spell.castRank === 3);
+assert.ok(rank3Ray, "fixed heightening should produce the prepared-rank variant");
+assert.equal(rank3Ray.targetingProfile.maxRange, 120, "fixed heightening should update range");
+assert.equal(rank3Ray.damageProfile.average, 21, "fixed heightening should replace fixed-rank damage");
+
+const heightenedSignatureSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "signature-fire",
+          name: "Breathe Fire",
+          slug: "breathe-fire",
+          system: {
+            slug: "breathe-fire",
+            time: { value: "2" },
+            traits: { value: ["fire", "manipulate"] },
+            level: { value: 1 },
+            location: { value: "spontaneous-entry", signature: true },
+            area: { type: "cone", value: 15 },
+            defense: { save: { statistic: "reflex", basic: true } },
+            damage: { "0": { formula: "2d6", type: "fire" } },
+            heightening: { type: "interval", interval: 1, damage: { "0": "2d6" } },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "spontaneous-entry",
+          name: "Spontaneous Heightening",
+          system: {
+            prepared: { value: "spontaneous" },
+            tradition: { value: "arcane" },
+            slots: {
+              slot1: { value: 0, max: 2 },
+              slot2: { value: 0, max: 2 },
+              slot3: { value: 1, max: 2 },
+            },
+          },
+        }],
+      },
+    },
+  },
+};
+const rank3BreatheFire = readSpellActions(heightenedSignatureSpellContext)
+  .find((spell) => spell.slug === "breathe-fire" && spell.castRank === 3);
+assert.ok(rank3BreatheFire, "signature spontaneous spell should produce a heightened slot variant");
+assert.equal(rank3BreatheFire.name, "Breathe Fire (Rank 3)");
+assert.equal(rank3BreatheFire.available, true);
+assert.equal(rank3BreatheFire.spellResource.label, "Slots 1/2");
+assert.equal(rank3BreatheFire.damageProfile.average, 21);
 
 const stanceClassification = classifySystemAction({
   name: "Dragon Stance",
@@ -14886,6 +15430,33 @@ assert.deepEqual(
   oneStrideRangedNoKnowledgePlan.steps.flatMap((step) => builderAtomicActionsForStep(step).map((part) => part.name)),
   ["Stride", "Energy Beam", "Energy Beam"],
   "auto-fill should expand the closing plan into three executable action rows",
+);
+
+const dropProneAttackPlan = bestTurnPlan(oneStrideRangedContext, [{
+  id: "drop-prone",
+  slug: "drop-prone",
+  name: "Drop Prone",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "defense",
+  score: 70,
+  activityProfile: { appliesConditions: ["prone"] },
+}, {
+  id: "energy-beam",
+  slug: "energy-beam",
+  name: "Energy Beam",
+  actionCost: 1,
+  source: "strike",
+  role: "damage",
+  attackTrait: true,
+  score: 80,
+  preferredTarget: oneStrideRangedContext.battlefield.enemies[0],
+  targetingProfile: { enemy: true, maxRange: 60 },
+}]);
+assert.ok(
+  !dropProneAttackPlan.steps.some((step) => step.slug === "drop-prone")
+    || !dropProneAttackPlan.steps.some((step) => step.slug === "energy-beam"),
+  `planner should not pair Drop Prone with a later attack-roll action, got ${dropProneAttackPlan.summary}`,
 );
 
 // A target beyond both current range and any move-and-strike composite should

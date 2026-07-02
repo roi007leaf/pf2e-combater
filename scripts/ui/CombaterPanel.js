@@ -38,8 +38,6 @@ import {
   writeDraftPlan,
   writeSharedDraftPlan,
   upsertDraftStep,
-  removeDraftStep,
-  moveDraftStep,
   draftListForInstance,
   writeSharedDraftPlanActorFlag,
 } from "../state/draft-plans.js";
@@ -47,7 +45,7 @@ import { clearActionPreview, showActionPreview } from "./action-preview.js";
 import { CombaterBrowser } from "./CombaterBrowser.js";
 import { showMovementPreview, recommendedMovementForStep } from "./movement-preview.js";
 import { displayStepEntries } from "./display-steps.js";
-import { selectDisplayPlan } from "./plan-selection.js";
+import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "./plan-selection.js";
 import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
 import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
 import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
@@ -955,6 +953,15 @@ async function confirmReplaceDraft() {
   return globalThis.window?.confirm?.(message) ?? true;
 }
 
+function markManualDraft(draft) {
+  return {
+    ...draft,
+    source: "manual",
+    autoFillPlanId: null,
+    autoFillPlanSummary: "",
+  };
+}
+
 class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: `${MODULE_ID}-panel`,
@@ -998,6 +1005,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._rejected = [];
     this._detected = [];
     this._plans = [];
+    this._autoFillPlans = [];
     this._plan = null;
     this._builder = null;
     this._gmExecuteMode = false;
@@ -1057,6 +1065,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       this._rejected = [];
       this._detected = [];
       this._plans = [];
+      this._autoFillPlans = [];
       this._plan = null;
       this._builder = null;
       this._planningContext = null;
@@ -1095,7 +1104,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       action: withBuilderActionFields(entry?.action),
     }));
     const draftStepActions = projectedDraftStepActions(context, activeDraft);
+    const autoFillPlans = buildTurnPlans(context, baseBuilderCandidates);
     const plans = buildTurnPlans(planningContext, builderCandidates);
+    if (this._pinnedPlanId && !autoFillPlans.some((candidatePlan) => candidatePlan?.id === this._pinnedPlanId)) {
+      this._pinnedPlanId = null;
+    }
     const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
     const favorites = readActionFavorites(context);
 
@@ -1103,6 +1116,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._rejected = rejected;
     this._detected = detected;
     this._plans = plans;
+    this._autoFillPlans = autoFillPlans;
     this._plan = plan;
     const builderModel = buildActionBuilderModel({
       context: planningContext,
@@ -1127,7 +1141,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // The GM can hide Auto-fill from players so they plan their own turns rather than taking the
     // generic recommendation. The GM always keeps it.
     const showAutoFill = game?.user?.isGM === true || !readSetting(SETTINGS.hideAutoFillFromPlayers, false);
-    const autoFill = decoratePlan(this._builder?.autoFill ?? this._plan, 0);
+    const selectedAutoFill = this._selectedAutoFillPlan();
+    const autoFill = decoratePlan(selectedAutoFill, 0);
+    const autoFillCycle = autoFillCyclePlans(this._autoFillPlans);
+    const autoFillCycleIndex = autoFillCycle.findIndex((plan) => plan?.id === selectedAutoFill?.id);
+    const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
     const draftSteps = this._builder?.draft?.steps ?? [];
 
     return {
@@ -1142,6 +1160,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       browserOpen: Boolean(this._browser),
       showDebug,
       showAutoFill,
+      autoFillCycle: {
+        canCycle: autoFillCycle.length > 1,
+        label: `${autoFillCyclePosition}/${Math.max(1, autoFillCycle.length)}`,
+        tooltip: t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
+        ariaLabel: t("Panel.AutoFillCycleAria", "Cycle Auto-fill plan"),
+      },
       hasContext: Boolean(context),
       refreshSource: this.refreshSource,
       debug: {
@@ -1155,6 +1179,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         context,
       },
     };
+  }
+
+  _selectedAutoFillPlan() {
+    return selectDisplayPlan(this._autoFillPlans, this._pinnedPlanId)
+      ?? this._builder?.autoFill
+      ?? this._plan;
   }
 
   _onRender(context, options) {
@@ -1207,6 +1237,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const button of element.querySelectorAll("[data-auto-fill]")) {
       button.addEventListener("click", () => this._autoFillDraft());
+    }
+
+    for (const button of element.querySelectorAll("[data-cycle-auto-fill]")) {
+      button.addEventListener("click", () => this._cycleAutoFillDraft());
+      button.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        this._cycleAutoFillDraft(-1);
+      });
     }
 
     for (const button of element.querySelectorAll("[data-reset-execution]")) {
@@ -1455,10 +1493,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ?? null;
   }
 
-  _draftHasManualSteps() {
-    return (this._builder?.draft?.steps?.length ?? 0) > 0;
-  }
-
   _canEditDraft() {
     return this._builder?.readonly !== true;
   }
@@ -1519,15 +1553,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
 
-    upsertDraftStep(this._context, {
-      actionKey: action.key,
-      // Persist a display name so the step still reads correctly if its action stops being
-      // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-      name: action.name,
-      actionCost: action.actionCost ?? action.cost,
-      requiresDestination: requiresDestinationForAction(action),
-    });
-    await this._syncDraftToGM();
+    const draft = this._readActiveDraftPlan();
+    await this._writeActiveDraftPlan(markManualDraft({
+      ...draft,
+      steps: [
+        ...(draft.steps ?? []),
+        {
+          instanceId: draftStepId(),
+          actionKey: action.key,
+          // Persist a display name so the step still reads correctly if its action stops being
+          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+          name: action.name,
+          actionCost: action.actionCost ?? action.cost,
+          requiresDestination: requiresDestinationForAction(action),
+        },
+      ],
+    }));
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1538,15 +1579,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canExecuteDraft()) return;
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
-    await this._persistActiveDraftStep({
-      instanceId: draftStepId(),
-      actionKey: action.key,
-      // Persist a display name so the step still reads correctly if its action stops being
-      // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-      name: action.name,
-      actionCost: action.actionCost ?? action.cost,
-      requiresDestination: requiresDestinationForAction(action),
-    }, "uncounted");
+    const draft = this._readActiveDraftPlan();
+    await this._writeActiveDraftPlan(markManualDraft({
+      ...draft,
+      uncounted: [
+        ...(draft.uncounted ?? []),
+        {
+          instanceId: draftStepId(),
+          actionKey: action.key,
+          // Persist a display name so the step still reads correctly if its action stops being
+          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+          name: action.name,
+          actionCost: action.actionCost ?? action.cost,
+          requiresDestination: requiresDestinationForAction(action),
+        },
+      ],
+    }));
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1561,7 +1609,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     const draft = this._readActiveDraftPlan();
-    await this._writeActiveDraftPlan({
+    await this._writeActiveDraftPlan(markManualDraft({
       ...draft,
       steps: [
         ...(draft.steps ?? []),
@@ -1573,7 +1621,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           sustainedSpell: sustainedSpellDraftFields(spell),
         },
       ],
-    });
+    }));
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1581,8 +1629,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _removeDraftStep(instanceId) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
-    removeDraftStep(this._context, instanceId, draftListForInstance(readDraftPlan(this._context), instanceId));
-    await this._syncDraftToGM();
+    const draft = this._readActiveDraftPlan();
+    const listKey = draftListForInstance(draft, instanceId);
+    const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+    await this._writeActiveDraftPlan(markManualDraft({
+      ...draft,
+      [listKey]: list.filter((step) => step.instanceId !== instanceId),
+    }));
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1590,14 +1643,19 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _moveDraftStep(instanceId, direction) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
-    const draft = readDraftPlan(this._context);
+    const draft = this._readActiveDraftPlan();
     const listKey = draftListForInstance(draft, instanceId);
     if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
       globalThis.ui?.notifications?.warn?.(t("Notify.RevertBeforeReorder", "Revert executed steps before reordering."));
       return;
     }
-    if (!moveDraftStep(this._context, instanceId, direction, listKey)) return;
-    await this._syncDraftToGM();
+    const steps = Array.isArray(draft[listKey]) ? [...draft[listKey]] : [];
+    const index = steps.findIndex((step) => step.instanceId === instanceId);
+    const offset = Math.sign(Number(direction) || 0);
+    const nextIndex = index + offset;
+    if (index < 0 || offset === 0 || nextIndex < 0 || nextIndex >= steps.length) return;
+    [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
+    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: steps }));
     clearActionPreview();
     await this.render({ force: true });
   }
@@ -1681,18 +1739,25 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return key;
   }
 
-  async _autoFillDraft() {
+  async _autoFillDraft({ plan = null } = {}) {
     if (!this._canEditDraft()) return;
     // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
     if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
     if (!this._context) return;
-    const replacingDraft = this._draftHasManualSteps();
-    if (replacingDraft && !await confirmReplaceDraft()) return;
-    const baseAutoFill = () => {
+    const draft = this._readActiveDraftPlan();
+    const replacingDraft = (draft.steps?.length ?? 0) > 0;
+    const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
+    if (replacingManualDraft && !await confirmReplaceDraft()) return;
+    const fallbackAutoFill = () => {
       const candidateBuild = buildCandidates(this._context);
       return bestTurnPlan(this._context, candidateBuild.candidates);
     };
-    const autoFill = replacingDraft ? baseAutoFill() : this._builder?.autoFill;
+    if (!plan) this._pinnedPlanId = null;
+    const autoFill = plan
+      ?? bestAutoFillPlan(this._autoFillPlans)
+      ?? this._builder?.autoFill
+      ?? this._plan
+      ?? fallbackAutoFill();
     if (!autoFill?.steps?.length) return;
 
     // For the GM running an NPC, the recommendation already chose targets (aggro) and a stride
@@ -1782,10 +1847,26 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       const projected = findProjectedDraftAction(this._context, reachDraft, step);
       return !isUnreachableStrikeStep(projected, hasEarlierMove);
     });
-    writeDraftPlan(this._context, { ...readDraftPlan(this._context), steps: reachableSteps });
-    await this._syncDraftToGM();
+    await this._writeActiveDraftPlan({
+      ...draft,
+      source: "auto-fill",
+      autoFillPlanId: autoFill.id ?? null,
+      autoFillPlanSummary: autoFill.summary ?? "",
+      steps: reachableSteps,
+    });
     clearActionPreview();
     await this.render({ force: true });
+  }
+
+  async _cycleAutoFillDraft(direction = 1) {
+    const current = selectDisplayPlan(this._autoFillPlans, this._pinnedPlanId);
+    const currentId = current?.id ?? this._pinnedPlanId;
+    const next = direction < 0
+      ? previousAutoFillPlan(this._autoFillPlans, currentId)
+      : nextAutoFillPlan(this._autoFillPlans, currentId);
+    if (!next) return;
+    this._pinnedPlanId = next.id ?? null;
+    await this._autoFillDraft({ plan: next });
   }
 
   async _syncDraftToGM({ notify = false } = {}) {
@@ -2103,7 +2184,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _planForPreview(element) {
     const planId = element.dataset.previewPlan;
-    if (!planId || planId === "main" || planId === "auto") return this._builder?.autoFill ?? this._plan;
+    if (!planId || planId === "main" || planId === "auto") return this._selectedAutoFillPlan();
     return this._plans.find((plan) => plan?.id === planId) ?? null;
   }
 
@@ -2273,7 +2354,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async executeStep(index) {
-    await this._openActionDetails(this._builder?.autoFill?.steps?.[index] ?? this._plan?.steps?.[index]);
+    await this._openActionDetails(this._selectedAutoFillPlan()?.steps?.[index]);
   }
 
   async _executeDraftStep(instanceId, event) {

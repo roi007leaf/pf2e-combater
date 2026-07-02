@@ -68,6 +68,75 @@ const IMMOBILIZING_CONDITIONS = new Set([
 ]);
 const PRONE_ALLOWED_MOVE_ACTION_SLUGS = new Set(["crawl", "stand"]);
 const GENERIC_ACTIONS_BY_SLUG = new Map(GENERIC_ACTIONS.map((action) => [action.slug, action]));
+const MANUAL_ONLY_SKILL_ACTION_SLUGS = new Set([
+  "balance",
+  "borrow-an-arcane-spell",
+  "coerce",
+  "cover-tracks",
+  "create-forgery",
+  "craft",
+  "decipher-writing",
+  "follow-the-expert",
+  "gather-information",
+  "high-jump",
+  "identify-alchemy",
+  "identify-magic",
+  "impersonate",
+  "learn-a-spell",
+  "lie",
+  "long-jump",
+  "make-an-impression",
+  "perform",
+  "repair",
+  "sense-direction",
+  "squeeze",
+  "subsist",
+  "track",
+  "treat-disease",
+  "treat-poison",
+  "treat-wounds",
+]);
+const COMBAT_SIGNAL_ROLES = new Set([
+  "area-damage",
+  "buff",
+  "control",
+  "damage",
+  "debuff",
+  "defense",
+  "grab",
+  "healing",
+  "mobility-attack",
+  "multiattack",
+  "reaction-attack",
+  "reaction-defense",
+  "self-healing",
+  "setup",
+  "stealth-defense",
+  "summon",
+]);
+const COMBAT_SIGNAL_SLUGS = new Set([
+  "administer-first-aid",
+  "command-an-animal",
+  "create-a-diversion",
+  "demoralize",
+  "disarm",
+  "escape",
+  "feint",
+  "grapple",
+  "hide",
+  "raise-a-shield",
+  "recall-knowledge",
+  "reposition",
+  "seek",
+  "sense-motive",
+  "shove",
+  "sneak",
+  "stabilize",
+  "steal",
+  "take-cover",
+  "trip",
+  "tumble-through",
+]);
 
 function collectionValues(collection) {
   if (!collection) return [];
@@ -139,6 +208,49 @@ function contextProfile(context) {
   return context?.profile ?? context?.actor?.profile ?? {};
 }
 
+function isGmContext(context) {
+  return context?.isGM === true || globalThis.game?.user?.isGM === true;
+}
+
+function hideGenericActionForContext(action, context) {
+  if (action.hideFromSuggestions) return true;
+  return action.slug === "recall-knowledge"
+    && action.playerFacing
+    && isGmContext(context)
+    && isNpcProfile(contextProfile(context));
+}
+
+function hasCombatRelevantSystemActionSignal(slug, traits, tactic) {
+  const normalizedTraits = traits.map((trait) => slugify(trait));
+  if (COMBAT_SIGNAL_SLUGS.has(slug)) return true;
+  if (normalizedTraits.includes("attack")) return true;
+  if (COMBAT_SIGNAL_ROLES.has(tactic?.role)) return true;
+
+  const activity = tactic?.activityProfile ?? {};
+  const targeting = tactic?.targetingProfile ?? {};
+  return Boolean(
+    targeting.enemy
+    || tactic?.saveProfile
+    || tactic?.damageProfile
+    || activity.appliesCondition
+    || activity.removesCondition
+    || activity.reducesCondition
+    || activity.requiresTargetCondition
+    || activity.averageDamage
+    || activity.healing
+    || activity.includesStrike
+    || activity.extraAction
+    || activity.shieldBlock
+  );
+}
+
+function hideNonCombatSystemAction(slug, traits, tactic) {
+  const normalizedTraits = traits.map((trait) => slugify(trait));
+  if (MANUAL_ONLY_SKILL_ACTION_SLUGS.has(slug)) return true;
+  if (!normalizedTraits.includes("exploration")) return false;
+  return !hasCombatRelevantSystemActionSignal(slug, normalizedTraits, tactic);
+}
+
 function contextTargets(context) {
   return context?.targets ?? context?.battlefield?.targets ?? [];
 }
@@ -182,7 +294,7 @@ export function readActionSources(context, spells = []) {
 }
 
 function readGenericActions(context) {
-  return GENERIC_ACTIONS.map((action) => {
+  return GENERIC_ACTIONS.filter((action) => !hideGenericActionForContext(action, context)).map((action) => {
     const itemAvailability = isGenericAvailable(action, context);
     const profile = contextProfile(context);
     const proneCover = action.slug === "take-cover"
@@ -405,6 +517,7 @@ function readGeneratedActivities(actor, context) {
       const triggerAvailability = readTriggerAvailability(trigger, context);
       const traits = readGeneratedActionTraits(action);
       const activityProfile = addItemTraitProfile(tactic?.activityProfile, traits);
+      if (hideNonCombatSystemAction(slug, traits, tactic)) return [];
       const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
       const available = actionCost !== null
         && actionCost !== Infinity
@@ -1394,6 +1507,7 @@ function readDropProneAction(actor, context) {
     available: !prone,
     unavailableReason: prone ? t("Reason.AlreadyProne", "Already prone.") : "",
     item: null,
+    uuid: "Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60", // Prone — this action has no standalone entry.
     role: "defense",
     activityProfile: { appliesConditions: ["prone"] },
     targetingProfile: { self: true },
@@ -2042,6 +2156,7 @@ function readActorItemActions(actor, context) {
       addConsumableInteractProfile(tactic?.activityProfile, parsedCost),
       traits,
     );
+    if (hideNonCombatSystemAction(slug, traits, tactic)) return [];
     const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = genericActionAvailability(slug, context);
     const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
