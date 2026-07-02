@@ -187,6 +187,7 @@ auto-fill):
 | Untrained (proficiency rank 0) in the skill | `−6`, and the action is hidden entirely if *Hide untrained skill actions* is on |
 | Untrained Athletics for a melee maneuver (own skill) | `−80` (PC) / `−42` (NPC), `−110` for a primary spellcaster; low Athletics (mod < 5) `−12` |
 | Multiple attack penalty (2nd / 3rd attack) | `−15 / −30` (agile: `−12 / −24`) |
+| Target is **hidden** (detected only by an imprecise sense) | attack-like actions have their target-dependent gain discounted **50%**, since a DC 11 flat check can fail before the attack roll or save even matters. Not GM-only — your own creature's detection of the target isn't a hidden enemy stat. |
 | Heal when you or an ally is **injured** (< 50% HP) | `+34`; if nobody is hurt, `−10` (don't waste the spell) |
 | Area spell hits **multiple** enemies | `+34 + 18 per enemy`; a single enemy in the blast `+14`; **no** enemy in it `−28` |
 | An **ally** caught in your area | `−18 each`; a clean placement that hits 2+ enemies and no allies `+8` |
