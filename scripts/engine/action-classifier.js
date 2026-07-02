@@ -266,6 +266,38 @@ function readAcSetupProfile(text) {
   };
 }
 
+function readRequirementsText(action) {
+  const text = normalizeText(rawDescription(action));
+  const match = text.match(/\brequirements?\b(.+?)(?:\beffect\b|\btrigger\b|\bfrequency\b|$)/);
+  return match?.[1]?.trim() ?? "";
+}
+
+function readTargetConditionRequirement(action) {
+  const requirements = readRequirementsText(action);
+  if (!requirements) return null;
+
+  const mentionsTarget = /\b(?:creature|target|enemy|foe|opponent|victim)\b/.test(requirements);
+  const grabbed = /\bgrabbed\b/.test(requirements);
+  const restrained = /\brestrained\b/.test(requirements);
+  if (!mentionsTarget || (!grabbed && !restrained)) return null;
+
+  const conditions = [
+    grabbed ? "grabbed" : null,
+    restrained ? "restrained" : null,
+  ].filter(Boolean);
+  return conditions.length > 1
+    ? { requiresAnyTargetCondition: conditions }
+    : { requiresTargetCondition: conditions[0] };
+}
+
+function withTargetConditionRequirement(activityProfile, requirement) {
+  if (!requirement) return activityProfile;
+  return {
+    ...(activityProfile ?? {}),
+    ...requirement,
+  };
+}
+
 // Detect a beneficial (buff/support) effect. Requires a positive signal so plain
 // utility actions are not mislabeled as buffs.
 function readBuffProfile(text) {
@@ -341,6 +373,7 @@ function classifySystemActionBase(action, parsedCost) {
   const templateProfile = readTemplateProfile(action);
   const rangeProfile = readRangeProfile(action);
   const eventProfile = readEventProfile(text, actionCost);
+  const targetConditionRequirement = readTargetConditionRequirement(action);
   const gatingProfile = {
     frequency: hasFrequency(action),
     triggerOnly: actionCost === "reaction",
@@ -779,12 +812,17 @@ function classifySystemActionBase(action, parsedCost) {
   }
 
   if (hasLocalize(action, "glossary.grab") || hasName(action, /\b(?:grab|improved grab)\b/)) {
+    const requiresPreviousStrike = hasLocalize(action, "glossary.grab")
+      || hasName(action, /\bimproved grab\b/)
+      || /\blast action\b.*\bstrike\b/.test(text);
     return inferred("grab", {
       activityProfile: {
         ...baseProfile(["grab"]),
         includesGrab: true,
+        appliesCondition: "grabbed",
         npcFamily: "grab-rider",
-        requiresPreviousStrike: hasName(action, /\bimproved grab\b/) || /\blast action\b.*\bstrike\b/.test(text),
+        requiresPreviousStrike,
+        previousActionRequirements: requiresPreviousStrike ? ["after-strike"] : [],
       },
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
@@ -893,11 +931,11 @@ function classifySystemActionBase(action, parsedCost) {
     const deathTrigger = hasName(action, /\bdeath (?:throes|burst|explosion)\b/)
       || /\bwhen .* dies\b|\bupon death\b|\bwhen reduced to 0 hit points\b/.test(text);
     return inferred("area-damage", {
-      activityProfile: {
+      activityProfile: withTargetConditionRequirement({
         ...baseProfile(["damage", "area"]),
         ...(breathWeapon ? { npcFamily: "breath-weapon" } : {}),
         ...(deathTrigger ? { npcFamily: "death-trigger" } : {}),
-      },
+      }, targetConditionRequirement),
       targetingProfile: { ...templateProfile, ...rangeProfile },
       saveProfile,
       damageProfile,
@@ -909,7 +947,7 @@ function classifySystemActionBase(action, parsedCost) {
 
   if (saveProfile && damageProfile && offensive) {
     return inferred("save-damage", {
-      activityProfile: baseProfile(["damage"]),
+      activityProfile: withTargetConditionRequirement(baseProfile(["damage"]), targetConditionRequirement),
       targetingProfile: { enemy: true, ...rangeProfile },
       saveProfile,
       damageProfile,
@@ -921,7 +959,7 @@ function classifySystemActionBase(action, parsedCost) {
 
   if (saveProfile && offensive) {
     return inferred("control", {
-      activityProfile: baseProfile(["control"]),
+      activityProfile: withTargetConditionRequirement(baseProfile(["control"]), targetConditionRequirement),
       targetingProfile: { enemy: true, ...rangeProfile },
       saveProfile,
       gatingProfile,

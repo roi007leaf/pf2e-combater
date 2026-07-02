@@ -844,6 +844,10 @@ function bestTargetForAction(context, action, role) {
     return reachable[0] ?? null;
   }
 
+  if (["step", "stride"].includes(action.slug)) {
+    return target ?? enemyValues[0] ?? null;
+  }
+
   return target;
 }
 
@@ -875,6 +879,11 @@ function hasCondition(entity, slug) {
 
 function hasAnyCondition(entity, slugs) {
   return slugs.some((slug) => hasCondition(entity, slug));
+}
+
+function hasRequiredCondition(entity, slug) {
+  return hasCondition(entity, slug)
+    || (slug === "grabbed" && hasCondition(entity, "restrained"));
 }
 
 function targetMarkLabel(mark) {
@@ -1188,10 +1197,15 @@ function profileMoveReach(profile, strideCount = 1) {
   return profileSpeed(profile) * Math.max(1, Number(strideCount) || 1) + profileReach(profile);
 }
 
+function activityStrikeReach(profile, action) {
+  const reach = Number(action?.activityProfile?.strikeReach);
+  return Number.isFinite(reach) && reach > 0 ? reach : profileReach(profile);
+}
+
 function activityMoveReach(profile, action, strideCount = 1) {
   const fixedDistance = Number(action?.activityProfile?.fixedDistance ?? action?.activityProfile?.maxDistance);
-  if (Number.isFinite(fixedDistance) && fixedDistance > 0) return fixedDistance + profileReach(profile);
-  return profileMoveReach(profile, strideCount);
+  if (Number.isFinite(fixedDistance) && fixedDistance > 0) return fixedDistance + activityStrikeReach(profile, action);
+  return profileSpeed(profile) * Math.max(1, Number(strideCount) || 1) + activityStrikeReach(profile, action);
 }
 
 function areaDistance(action) {
@@ -2070,22 +2084,20 @@ export function scoreCandidate(context, action) {
 
   if (isCurated(action) && role === "save-damage" && target) {
     const requiredCondition = action.activityProfile?.requiresTargetCondition;
-    if (requiredCondition && !hasCondition(target, requiredCondition)) {
-      score -= 24;
-      reasons.unshift(t("ScoreReason.WantsATarget", "{p0} wants a {p1} target.", { p0: action.name, p1: requiredCondition }));
-    } else {
-      const average = damageAverage(action);
-      score += requiredCondition ? 52 : 34;
-      if (Number.isFinite(average)) score += Math.min(30, Math.round(average));
-      reasons.unshift(t("ScoreReason.CanForceASave", "{p0} can force a {p1} save.", { p0: action.name, p1: action.saveProfile?.stat ?? "save" }));
-      if (targetSaveScore) {
-        score += targetSaveScore.scoreDelta;
-        reasons.push(targetSaveScore.label);
-      }
-      if (targetDamageAdjustment) {
-        score += targetDamageAdjustment.scoreDelta;
-        reasons.push(...targetDamageAdjustment.reasons);
-      }
+    const needsSetup = requiredCondition && !hasRequiredCondition(target, requiredCondition);
+    const average = damageAverage(action);
+    score += requiredCondition ? 52 : 34;
+    if (Number.isFinite(average)) score += Math.min(30, Math.round(average));
+    reasons.unshift(needsSetup
+      ? t("ScoreReason.WantsATarget", "{p0} wants a {p1} target.", { p0: action.name, p1: requiredCondition })
+      : t("ScoreReason.CanForceASave", "{p0} can force a {p1} save.", { p0: action.name, p1: action.saveProfile?.stat ?? "save" }));
+    if (targetSaveScore) {
+      score += targetSaveScore.scoreDelta;
+      reasons.push(targetSaveScore.label);
+    }
+    if (targetDamageAdjustment) {
+      score += targetDamageAdjustment.scoreDelta;
+      reasons.push(...targetDamageAdjustment.reasons);
     }
   }
 
@@ -2143,7 +2155,7 @@ export function scoreCandidate(context, action) {
       ...(Array.isArray(action.activityProfile?.appliesConditions) ? action.activityProfile.appliesConditions : []),
     ].filter(Boolean);
     const appliedCondition = appliedConditions[0];
-    if (requiredCondition && !hasCondition(target, requiredCondition)) {
+    if (requiredCondition && !hasRequiredCondition(target, requiredCondition)) {
       score -= 24;
       reasons.unshift(t("ScoreReason.WantsATarget", "{p0} wants a {p1} target.", { p0: action.name, p1: requiredCondition }));
     } else if (appliedConditions.some((condition) => hasCondition(target, condition))) {
@@ -2261,7 +2273,7 @@ export function scoreCandidate(context, action) {
     const speed = profileSpeed(profile);
     const reach = profileReach(profile);
     const distance = Number(target.distance ?? Infinity);
-    const moveReach = speed * Number(action.activityProfile.strideCount ?? 1) + reach;
+    const moveReach = speed * Number(action.activityProfile.strideCount ?? 1) + activityStrikeReach(profile, action);
     const center = attackCenter(action);
     const destinationThreatCount = center ? threatsAtCenter(context, center).length : null;
 

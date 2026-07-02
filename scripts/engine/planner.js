@@ -5,15 +5,26 @@ import { t } from "../i18n.js";
 const BASE_ACTIONS = 3;
 const MAX_CANDIDATES = 12;
 const PRIMARY_CANDIDATES = 8;
+const CONDITION_SETUP_CANDIDATES = 4;
 const MAX_FREE_STEPS = 1;
 const MAX_PLANS = 256;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const MAP_SCORE_WEIGHT = 3;
+const TARGET_CONDITION_CHAIN_BONUS = 36;
+const GRAB_RIDER_CHAIN_BONUS = 24;
 // Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
 const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride"]);
 const GENERIC_ATTACK_SLUGS = new Set(["trip", "grapple", "disarm", "shove", "reposition"]);
 const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride"]);
+const GENERATED_STRIKE_COMPOSITE_PREFIXES = [
+  "stand-stride-strike-",
+  "stride-strike-stride-",
+  "stride-away-strike-",
+  "stride-strike-",
+  "draw-strike-",
+];
+const COMPOSITE_MOVE_PART_NAMES = new Set(["crawl", "draw", "interact", "stand", "step", "stride", "stride-away"]);
 const SKILL_ACTION_SLUGS = new Set([
   "demoralize",
   "recall-knowledge",
@@ -254,6 +265,60 @@ function candidateCategory(candidate) {
   return "other";
 }
 
+function conditionValues(value) {
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  return value === undefined || value === null ? [] : [value];
+}
+
+function targetConditionRequirementOptions(candidate) {
+  const profile = candidate?.activityProfile ?? {};
+  const any = conditionValues(profile.requiresAnyTargetCondition).map(normalizeSlug).filter(Boolean);
+  if (any.length) return [any];
+  return conditionValues(profile.requiresTargetCondition)
+    .map(normalizeSlug)
+    .filter(Boolean)
+    .map((condition) => [condition]);
+}
+
+function requiresTargetCondition(candidate) {
+  return targetConditionRequirementOptions(candidate).length > 0;
+}
+
+function conditionSatisfies(requirement, condition) {
+  if (requirement === condition) return true;
+  return requirement === "grabbed" && condition === "restrained";
+}
+
+function candidateAppliedConditions(candidate) {
+  const profile = candidate?.activityProfile ?? {};
+  const conditions = [
+    ...conditionValues(profile.appliesCondition),
+    ...conditionValues(profile.appliesConditions),
+    ...conditionValues(profile.appliedCondition),
+    ...conditionValues(profile.conditions),
+    ...conditionValues(candidate?.appliesConditions),
+  ].map(normalizeSlug).filter(Boolean);
+  if (profile.includesGrab === true || candidate?.slug === "grapple") conditions.push("grabbed");
+  return new Set(conditions);
+}
+
+function stepSatisfiesTargetConditionRequirement(step, optionGroup) {
+  const applied = candidateAppliedConditions(step);
+  if (!applied.size) return false;
+  return optionGroup.some((requirement) =>
+    [...applied].some((condition) => conditionSatisfies(requirement, condition)),
+  );
+}
+
+function isGrabRider(candidate) {
+  return candidate?.activityProfile?.npcFamily === "grab-rider"
+    || (candidate?.activityProfile?.includesGrab === true
+      && previousActionRequirements(candidate).some((requirement) =>
+        ["strike", "after-strike"].includes(normalizeSlug(requirement)),
+      ));
+}
+
 function selectPlanningCandidates(sortedCandidates) {
   const selected = [];
   const selectedKeys = new Set();
@@ -268,6 +333,20 @@ function selectPlanningCandidates(sortedCandidates) {
 
   for (const candidate of sortedCandidates.slice(0, PRIMARY_CANDIDATES)) add(candidate);
 
+  for (const payoff of sortedCandidates.filter(requiresTargetCondition).slice(0, PRIMARY_CANDIDATES)) {
+    for (const group of targetConditionRequirementOptions(payoff)) {
+      let added = 0;
+      const setupCandidates = sortedCandidates
+        .filter((candidate) => candidate !== payoff && stepSatisfiesTargetConditionRequirement(candidate, group))
+        .toSorted((left, right) => Number(isGrabRider(right)) - Number(isGrabRider(left)));
+      for (const setup of setupCandidates) {
+        if (added >= CONDITION_SETUP_CANDIDATES) break;
+        add(setup);
+        added += 1;
+      }
+    }
+  }
+
   for (const category of DIVERSE_CANDIDATE_CATEGORIES) {
     if (selected.some((candidate) => candidateCategory(candidate) === category)) continue;
     add(sortedCandidates.find((candidate) => candidateCategory(candidate) === category));
@@ -275,6 +354,8 @@ function selectPlanningCandidates(sortedCandidates) {
 
   for (const candidate of sortedCandidates) add(candidate);
   return selected.toSorted((left, right) => {
+    const targetConditionDelta = Number(requiresTargetCondition(left)) - Number(requiresTargetCondition(right));
+    if (targetConditionDelta !== 0) return targetConditionDelta;
     const previousDelta = Number(requiresPreviousAction(left)) - Number(requiresPreviousAction(right));
     if (previousDelta !== 0) return previousDelta;
     return selected.indexOf(left) - selected.indexOf(right);
@@ -306,8 +387,20 @@ function includesStand(step) {
     || includes.map((entry) => String(entry ?? "").toLowerCase()).includes("stand");
 }
 
-// Stride and Step are illegal while prone (only Crawl or Stand-then-move). Crawl is fine.
-const PRONE_INCOMPATIBLE_MOVES = new Set(["stride", "step"]);
+function isCrawl(step) {
+  const includes = Array.isArray(step?.activityProfile?.includes) ? step.activityProfile.includes : [];
+  return step?.slug === "crawl"
+    || Number(step?.activityProfile?.crawlDistance) > 0
+    || includes.map((entry) => String(entry ?? "").toLowerCase()).includes("crawl");
+}
+
+function requiresProneForCover(step) {
+  return step?.slug === "take-cover" && step?.activityProfile?.requiresProneCover === true;
+}
+
+// Stride/Step and athletic movement are illegal while prone (only Crawl or Stand-then-move).
+// Crawl is intentionally allowed.
+const PRONE_INCOMPATIBLE_MOVES = new Set(["stride", "step", "high-jump", "long-jump", "tumble-through"]);
 
 function appliesProne(step) {
   // Match a slug that CONTAINS "drop-prone" — the live candidate's slug is the action id
@@ -343,6 +436,10 @@ function previousActionRequirements(candidate) {
     ...values(candidate?.activityProfile?.previousActionRequirements),
     ...values(candidate?.gatingProfile?.previousActionRequirements),
   ].map(normalizeSlug);
+  if (candidate?.activityProfile?.requiresPreviousStrike === true
+    || candidate?.gatingProfile?.requiresPreviousStrike === true) {
+    explicit.push("after-strike");
+  }
   if (explicit.length) return [...new Set(explicit)];
   return eventTriggers.includes("previous-action") ? ["previous-action"] : [];
 }
@@ -389,9 +486,58 @@ function contextSatisfiesPreviousRequirements(context, requirements) {
   });
 }
 
+function requiresAfterStrike(requirements) {
+  return requirements.some((requirement) => {
+    const key = normalizeSlug(requirement);
+    return key === "strike" || key === "after-strike";
+  });
+}
+
+function isRangedAttackStep(step) {
+  const range = currentAttackRange(step);
+  if (Number.isFinite(range) && range > 15) return true;
+  const traits = candidateTraitSlugs(step);
+  return traits.some((trait) =>
+    trait === "ranged"
+    || trait.startsWith("thrown-")
+    || trait.startsWith("range-")
+    || trait.startsWith("volley-"),
+  );
+}
+
+function stepCanApplyNpcGrab(context, step) {
+  if (!isStrikeLikeCandidate(step) || isRangedAttackStep(step)) return false;
+
+  const profileReachValue = profileReach(context);
+  const strikeReach = Number(currentAttackRange(step) ?? step?.activityProfile?.strikeReach ?? profileReachValue);
+  if (Number.isFinite(strikeReach) && strikeReach > profileReachValue) return false;
+
+  const strideCount = Number(step?.activityProfile?.strideCount ?? 0);
+  if (strideCount > 0) return true;
+
+  const target = targetForCandidate(context, step);
+  const distance = Number(target?.distance);
+  return !Number.isFinite(distance) || distance <= profileReachValue;
+}
+
+function requiresConcreteNpcGrabStrike(candidate, requirements) {
+  return isGrabRider(candidate) && requiresAfterStrike(requirements);
+}
+
+function targetAlreadyHeldForNpcGrab(context, candidate) {
+  const target = targetForCandidate(context, candidate);
+  return targetHasCondition(target, "grabbed") || targetHasCondition(target, "restrained");
+}
+
 function previousActionSatisfied(context, candidate, steps) {
   const requirements = previousActionRequirements(candidate);
   if (!requirements.length) return true;
+  if (requiresConcreteNpcGrabStrike(candidate, requirements)) {
+    if (targetAlreadyHeldForNpcGrab(context, candidate)) return true;
+    const previousStep = steps.at(-1);
+    return stepSatisfiesPreviousRequirements(previousStep, requirements)
+      && stepCanApplyNpcGrab(context, previousStep);
+  }
   if (contextSatisfiesPreviousRequirements(context, requirements)) return true;
   return stepSatisfiesPreviousRequirements(steps.at(-1), requirements);
 }
@@ -476,13 +622,51 @@ function orderPlanSteps(steps) {
     if (leftRequiresRight && !rightRequiresLeft) return 1;
     if (rightRequiresLeft && !leftRequiresRight) return -1;
 
+    const leftProjectedSource = left?.activityProfile?.requiresProjectedAfterKey;
+    const rightProjectedSource = right?.activityProfile?.requiresProjectedAfterKey;
+    if (leftProjectedSource && actionKey(right) === leftProjectedSource) return 1;
+    if (rightProjectedSource && actionKey(left) === rightProjectedSource) return -1;
+
+    const leftTargetConditionRequirements = targetConditionRequirementOptions(left);
+    const rightTargetConditionRequirements = targetConditionRequirementOptions(right);
+    const leftRequiresRightCondition = leftTargetConditionRequirements.some((group) =>
+      stepSatisfiesTargetConditionRequirement(right, group),
+    );
+    const rightRequiresLeftCondition = rightTargetConditionRequirements.some((group) =>
+      stepSatisfiesTargetConditionRequirement(left, group),
+    );
+    if (leftRequiresRightCondition && !rightRequiresLeftCondition) return 1;
+    if (rightRequiresLeftCondition && !leftRequiresRightCondition) return -1;
+
     const priorityDelta = setupPriority(left, steps) - setupPriority(right, steps);
     if (priorityDelta !== 0) return priorityDelta;
     return steps.indexOf(left) - steps.indexOf(right);
   });
 }
 
-function isRepeatableAttackAction(candidate) {
+function profileSpeed(context) {
+  const profile = context?.profile ?? context?.actor?.profile ?? {};
+  const value = Number(profile.speed?.value ?? profile.speed ?? profile.landSpeed);
+  return Number.isFinite(value) && value > 0 ? value : 25;
+}
+
+function profileReach(context) {
+  const profile = context?.profile ?? context?.actor?.profile ?? {};
+  const value = Number(profile.reach?.value ?? profile.reach ?? profile.meleeReach);
+  return Number.isFinite(value) && value > 0 ? value : 5;
+}
+
+function targetNeedsRepeatedStride(context, candidate, attackPathAvailable = false) {
+  if (attackPathAvailable) return false;
+  if (candidate?.slug !== "stride" || candidate?.source !== "generic") return false;
+  const target = targetForCandidate(context, candidate);
+  const distance = Number(target?.distance);
+  if (!Number.isFinite(distance)) return false;
+  return distance > profileSpeed(context) + profileReach(context);
+}
+
+function isRepeatablePlanningAction(context, candidate, attackPathAvailable = false) {
+  if (targetNeedsRepeatedStride(context, candidate, attackPathAvailable)) return true;
   return candidate.source === "strike";
 }
 
@@ -578,6 +762,121 @@ function targetForCandidate(context, candidate) {
     ?? fallback;
 }
 
+function targetHasCondition(target, requirement) {
+  const conditions = target?.conditions;
+  if (!conditions) return false;
+
+  const matches = (slug) => conditionSatisfies(requirement, normalizeSlug(slug));
+  if (Array.isArray(conditions)) {
+    return conditions.some((condition) => matches(condition?.slug ?? condition?.name ?? condition));
+  }
+  if (Array.isArray(conditions.slugs) && conditions.slugs.some(matches)) return true;
+
+  return Object.entries(conditions.values ?? {}).some(([slug, value]) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 && matches(slug);
+  });
+}
+
+function samePlannedTarget(context, candidate, step) {
+  const candidateTarget = targetForCandidate(context, candidate);
+  const stepTarget = targetForCandidate(context, step);
+  if (!candidateTarget || !stepTarget) return true;
+
+  const candidateIds = new Set(targetIdentity(candidateTarget));
+  const stepIds = targetIdentity(stepTarget);
+  if (!candidateIds.size || !stepIds.length) return true;
+  return stepIds.some((id) => candidateIds.has(id));
+}
+
+function sameTargetReference(left, right) {
+  if (!left || !right) return false;
+  const leftIds = new Set(targetIdentity(left));
+  const rightIds = targetIdentity(right);
+  if (!leftIds.size || !rightIds.length) return false;
+  return rightIds.some((id) => leftIds.has(id));
+}
+
+function previousActionTargetSourceStep(candidate, steps) {
+  const requirements = previousActionRequirements(candidate);
+  if (!requirements.length) return null;
+
+  const shouldInheritTarget = requirements.some((requirement) =>
+    ["strike", "after-strike", "attack"].includes(normalizeSlug(requirement)),
+  );
+  if (!shouldInheritTarget) return null;
+
+  const previousStep = steps.at(-1);
+  return stepSatisfiesPreviousRequirements(previousStep, requirements) ? previousStep : null;
+}
+
+function grabbedSetupTargetSourceStep(candidate, steps) {
+  const appliesGrabbed = [...candidateAppliedConditions(candidate)].some((condition) =>
+    conditionSatisfies("grabbed", condition),
+  );
+  if (!appliesGrabbed) return null;
+
+  const previousStep = steps.at(-1);
+  if (!previousStep) return null;
+  return isStrikeLikeCandidate(previousStep) ? previousStep : null;
+}
+
+function targetConditionSourceStep(context, candidate, steps) {
+  const optionGroups = targetConditionRequirementOptions(candidate);
+  if (!optionGroups.length || !steps.length) return null;
+
+  const currentTarget = targetForCandidate(context, candidate);
+  let sourceStep = null;
+
+  for (const group of optionGroups) {
+    if (group.some((requirement) => targetHasCondition(currentTarget, requirement))) continue;
+
+    const step = steps.toReversed().find((candidateStep) =>
+      stepSatisfiesTargetConditionRequirement(candidateStep, group),
+    );
+    if (!step) return null;
+    if (sourceStep && !samePlannedTarget(context, sourceStep, step)) return null;
+    sourceStep = step;
+  }
+
+  return sourceStep;
+}
+
+function inheritPlannedTarget(context, candidate, steps) {
+  const sourceStep = targetConditionSourceStep(context, candidate, steps)
+    ?? grabbedSetupTargetSourceStep(candidate, steps)
+    ?? previousActionTargetSourceStep(candidate, steps);
+  if (!sourceStep) return candidate;
+
+  const inheritedTarget = targetForCandidate(context, sourceStep);
+  if (!inheritedTarget) return candidate;
+
+  const currentTarget = targetForCandidate(context, candidate);
+  if (sameTargetReference(currentTarget, inheritedTarget)) return candidate;
+
+  return {
+    ...candidate,
+    preferredTarget: inheritedTarget,
+    suggestedTarget: inheritedTarget,
+  };
+}
+
+function plannedStepSatisfiesTargetCondition(context, candidate, step, optionGroup) {
+  return samePlannedTarget(context, candidate, step)
+    && stepSatisfiesTargetConditionRequirement(step, optionGroup);
+}
+
+function targetConditionSatisfied(context, candidate, steps) {
+  const optionGroups = targetConditionRequirementOptions(candidate);
+  if (!optionGroups.length) return true;
+
+  const target = targetForCandidate(context, candidate);
+  return optionGroups.every((group) =>
+    group.some((requirement) => targetHasCondition(target, requirement))
+    || steps.some((step) => plannedStepSatisfiesTargetCondition(context, candidate, step, group)),
+  );
+}
+
 function currentAttackRange(candidate) {
   const values = [
     candidate?.range?.max,
@@ -591,6 +890,141 @@ function currentAttackRange(candidate) {
   return candidate?.source === "strike" ? 5 : null;
 }
 
+function generatedStrikeActionKey(candidate) {
+  const values = [
+    candidate?.id,
+    candidate?.slug,
+  ].map((value) => String(value ?? "").toLowerCase()).filter(Boolean);
+
+  for (const value of values) {
+    for (const prefix of GENERATED_STRIKE_COMPOSITE_PREFIXES) {
+      if (!value.startsWith(prefix)) continue;
+      const suffix = value.slice(prefix.length);
+      if (!suffix) continue;
+      return suffix.startsWith("strike-") ? suffix : `strike-${suffix}`;
+    }
+  }
+  return null;
+}
+
+function strikeLeafName(candidate) {
+  const directName = candidate?.strike?.label
+    ?? candidate?.strike?.name
+    ?? candidate?.strike?.item?.name
+    ?? candidate?.item?.name;
+  if (directName) return String(directName);
+
+  const parts = String(candidate?.name ?? "")
+    .split(" -> ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (!COMPOSITE_MOVE_PART_NAMES.has(normalizeSlug(parts[index]))) return parts[index];
+  }
+  return String(candidate?.name ?? "Strike").trim() || "Strike";
+}
+
+function strikeDamageScoreEstimate(averageDamage) {
+  return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
+}
+
+function followUpStrikeScore(candidate) {
+  const average = Number(
+    candidate?.damageProfile?.average
+      ?? candidate?.activityProfile?.averageDamage
+      ?? candidate?.averageDamage,
+  );
+  const directScore = 46 + 24 + (Number.isFinite(average) && average > 0 ? strikeDamageScoreEstimate(average) : 0);
+  const compositeScore = Number(candidate?.score);
+  const projectedScore = Number.isFinite(compositeScore) ? compositeScore - 55 : directScore;
+  return Math.max(52, directScore, projectedScore);
+}
+
+function projectedFollowUpStrikeCandidate(candidate) {
+  if (!isMoveAndStrike(candidate)) return null;
+  if (Number(candidate?.actionCost) >= BASE_ACTIONS) return null;
+
+  const id = generatedStrikeActionKey(candidate);
+  if (!id) return null;
+
+  const range = currentAttackRange(candidate);
+  const sourceKey = actionKey(candidate);
+  return {
+    ...candidate,
+    id,
+    slug: "strike",
+    name: strikeLeafName(candidate),
+    actionCost: 1,
+    cost: 1,
+    source: "strike",
+    executable: "strike",
+    attackTrait: true,
+    available: true,
+    range: Number.isFinite(range) && range > 0 ? { ...(candidate.range ?? {}), max: range } : candidate.range,
+    score: followUpStrikeScore(candidate),
+    reason: t("Plan.ProjectedFollowUpStrike", "{name} is in range after the movement.", { name: strikeLeafName(candidate) }),
+    activityProfile: {
+      ...(candidate.activityProfile ?? {}),
+      includes: ["strike"],
+      includesStrike: true,
+      strideCount: 0,
+      retreatBeforeStrike: false,
+      retreatAfterStrike: false,
+      requiresProjectedAfterKey: sourceKey,
+    },
+  };
+}
+
+function projectedTakeCoverAfterProneCandidate(candidate) {
+  if (!appliesProne(candidate)) return null;
+  return {
+    id: "take-cover",
+    slug: "take-cover",
+    name: t("Action.TakeCover", "Take Cover"),
+    actionCost: 1,
+    cost: 1,
+    source: "generic",
+    role: "defense",
+    confidence: "medium",
+    executable: "pf2e-action",
+    detected: true,
+    available: true,
+    score: 28,
+    reason: t("Plan.TakeCoverAfterProne", "Take Cover after dropping prone."),
+    activityProfile: {
+      includes: ["take-cover"],
+      requiresProneCover: true,
+      requiresProjectedAfterKey: actionKey(candidate),
+    },
+  };
+}
+
+function withProjectedFollowUpStrikeCandidates(candidates) {
+  return candidates.flatMap((candidate) => {
+    const followUps = [
+      projectedFollowUpStrikeCandidate(candidate),
+      projectedTakeCoverAfterProneCandidate(candidate),
+    ].filter(Boolean);
+    return followUps.length ? [candidate, ...followUps] : [candidate];
+  });
+}
+
+function projectedFollowUpSatisfied(context, candidate, steps) {
+  const sourceKey = candidate?.activityProfile?.requiresProjectedAfterKey;
+  if (!sourceKey) return true;
+  if (!steps.some((step) => actionKey(step) === sourceKey)) return false;
+
+  const origin = priorProjectedCenter(steps);
+  const targetCenter = candidateTargetCenter(candidate);
+  if (!origin || !targetCenter) return true;
+
+  const range = currentAttackRange(candidate);
+  if (!Number.isFinite(range) || range <= 0) return true;
+
+  const distance = Math.hypot(targetCenter.x - origin.x, targetCenter.y - origin.y) * gridFeetPerPixel();
+  return distance <= range + 1e-6;
+}
+
 function reachesCurrentTarget(context, candidate) {
   if (!isAttackAction(candidate)) return false;
 
@@ -602,7 +1036,21 @@ function reachesCurrentTarget(context, candidate) {
   return Number.isFinite(distance) && distance <= range;
 }
 
-function hasPlanConflict(context, candidate, steps) {
+function canPairRepeatedStride(context, candidate, steps, attackPathAvailable = false) {
+  return targetNeedsRepeatedStride(context, candidate, attackPathAvailable)
+    && steps.every((step) =>
+      !BASIC_MOVE_SLUGS.has(step?.slug) || targetNeedsRepeatedStride(context, step, attackPathAvailable),
+    );
+}
+
+function hasAttackPathAvailable(context, candidates) {
+  return candidates.some((candidate) =>
+    isAttackAction(candidate)
+    && (reachesCurrentTarget(context, candidate) || isMoveAndStrike(candidate)),
+  );
+}
+
+function hasPlanConflict(context, candidate, steps, attackPathAvailable = false) {
   if (candidate?.variantGroup && steps.some((step) => step?.variantGroup === candidate.variantGroup)) {
     return true;
   }
@@ -611,7 +1059,18 @@ function hasPlanConflict(context, candidate, steps) {
     return true;
   }
 
-  if (BASIC_MOVE_SLUGS.has(candidate.slug) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug))) {
+  if (
+    (includesStand(candidate) && steps.some((step) => isCrawl(step) || requiresProneForCover(step)))
+    || ((isCrawl(candidate) || requiresProneForCover(candidate)) && steps.some(includesStand))
+  ) {
+    return true;
+  }
+
+  if (
+    BASIC_MOVE_SLUGS.has(candidate.slug)
+    && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug))
+    && !canPairRepeatedStride(context, candidate, steps, attackPathAvailable)
+  ) {
     return true;
   }
 
@@ -665,14 +1124,36 @@ function hasPlanConflict(context, candidate, steps) {
   return pairingChargeAndTumble && !allowsPostChargeTumbleThrough(context);
 }
 
-function planScore(steps, sortedCandidates, budget) {
+function targetConditionChainBonus(context, steps) {
+  let bonus = 0;
+
+  for (const payoff of steps) {
+    const groups = targetConditionRequirementOptions(payoff);
+    if (!groups.length) continue;
+
+    const source = steps.find((step) =>
+      step !== payoff
+      && groups.some((group) => plannedStepSatisfiesTargetCondition(context, payoff, step, group)),
+    );
+    if (!source) continue;
+
+    bonus += TARGET_CONDITION_CHAIN_BONUS;
+    if (isGrabRider(source)) bonus += GRAB_RIDER_CHAIN_BONUS;
+  }
+
+  return bonus;
+}
+
+function planScore(context, steps, sortedCandidates, budget) {
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const stepScore = steps.reduce((total, step) => {
     const indexPenalty = sortedCandidates.indexOf(step);
     return total + step.score - Math.max(indexPenalty, 0);
   }, 0);
 
-  return stepScore - (budget.totalActions - totalCost) * UNUSED_ACTION_PENALTY;
+  return stepScore
+    + targetConditionChainBonus(context, steps)
+    - (budget.totalActions - totalCost) * UNUSED_ACTION_PENALTY;
 }
 
 function toPlan(context, steps, sortedCandidates, budget) {
@@ -687,7 +1168,7 @@ function toPlan(context, steps, sortedCandidates, budget) {
     steps: orderedSteps,
     totalCost,
     actionBudget: budget,
-    score: planScore(orderedSteps, sortedCandidates, budget),
+    score: planScore(context, orderedSteps, sortedCandidates, budget),
     confidence: combineConfidence(orderedSteps.map((step) => step.confidence)),
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",
@@ -696,15 +1177,16 @@ function toPlan(context, steps, sortedCandidates, budget) {
 
 export function buildTurnPlans(context, candidates) {
   const budget = actionBudget(context);
-  const sortedCandidates = selectPlanningCandidates(candidates
+  const sortedCandidates = withProjectedFollowUpStrikeCandidates(selectPlanningCandidates(candidates
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
     .toSorted((left, right) => right.score - left.score)
-  );
+  ));
 
   const plans = [];
   const seenPlans = new Set();
+  const attackPathAvailable = hasAttackPathAvailable(context, sortedCandidates);
 
   function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions) {
     if (plans.length >= MAX_PLANS) return;
@@ -719,18 +1201,22 @@ export function buildTurnPlans(context, candidates) {
 
     for (let index = startIndex; index < sortedCandidates.length; index += 1) {
       const candidate = sortedCandidates[index];
+      const linkedCandidate = inheritPlannedTarget(context, candidate, steps);
       const key = actionKey(candidate);
-      const attackAction = isAttackAction(candidate);
-      const strikeAction = isStrikeAction(candidate);
+      const attackAction = isAttackAction(linkedCandidate);
+      const strikeAction = isStrikeAction(linkedCandidate);
       const currentUses = usedActions.get(key) ?? 0;
-      if (currentUses > 0 && !isRepeatableAttackAction(candidate)) continue;
+      const repeatableAction = isRepeatablePlanningAction(context, linkedCandidate, attackPathAvailable);
+      if (currentUses > 0 && !repeatableAction) continue;
       if (currentUses >= 3) continue;
       if (strikeAction && strikeCount >= MAX_STRIKE_STEPS) continue;
-      if (!previousActionSatisfied(context, candidate, steps)) continue;
-      if (hasPlanConflict(context, candidate, steps)) continue;
+      if (!projectedFollowUpSatisfied(context, linkedCandidate, steps)) continue;
+      if (!previousActionSatisfied(context, linkedCandidate, steps)) continue;
+      if (!targetConditionSatisfied(context, linkedCandidate, steps)) continue;
+      if (hasPlanConflict(context, linkedCandidate, steps, attackPathAvailable)) continue;
 
-      const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(candidate) : 0;
-      const candidateActionCost = Number(candidate.actionCost) + repeatReloadCost;
+      const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(linkedCandidate) : 0;
+      const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost;
 
       let nextNormalCost = normalCost + candidateActionCost;
       const nextQuickenedEligibleActions = quickenedEligibleActions + quickenedCapacity(candidate, repeatReloadCost);
@@ -747,38 +1233,38 @@ export function buildTurnPlans(context, candidates) {
         continue;
       }
 
-      const penalty = mapPenalty(candidate, attackCount);
-      const projectedVolley = attackAction ? projectedVolleyPenalty(candidate, steps) : 0;
+      const penalty = mapPenalty(linkedCandidate, attackCount);
+      const projectedVolley = attackAction ? projectedVolleyPenalty(linkedCandidate, steps) : 0;
       const plannedCandidate = attackAction
         ? {
-          ...candidate,
-          id: currentUses > 0 ? `${candidate.id ?? key}-map-${currentUses}` : candidate.id,
-          name: repeatReloadCost > 0 ? `Reload -> ${candidate.name}` : candidate.name,
+          ...linkedCandidate,
+          id: currentUses > 0 ? `${linkedCandidate.id ?? key}-map-${currentUses}` : linkedCandidate.id,
+          name: repeatReloadCost > 0 ? `Reload -> ${linkedCandidate.name}` : linkedCandidate.name,
           actionCost: candidateActionCost,
           reloadCost: repeatReloadCost,
           activityProfile: repeatReloadCost > 0
             ? {
-              ...(candidate.activityProfile ?? {}),
+              ...(linkedCandidate.activityProfile ?? {}),
               reloadBeforeStrike: true,
               reloadCost: repeatReloadCost,
             }
-            : candidate.activityProfile,
+            : linkedCandidate.activityProfile,
           mapPenalty: penalty,
           attackIndex: attackCount + 1,
-          score: candidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
+          score: linkedCandidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
           reason: [
-            repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: candidate.name }) : "",
-            penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: candidate.reason ?? "", penalty }).trim() : candidate.reason,
+            repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
+            penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: linkedCandidate.reason ?? "", penalty }).trim() : linkedCandidate.reason,
             projectedVolley > 0 ? t("Plan.VolleyMoved", "Volley -2 when fired from the moved-in position.") : "",
           ].filter(Boolean).join(" "),
         }
-        : candidate;
+        : linkedCandidate;
 
       usedActions.set(key, currentUses + 1);
       steps.push(plannedCandidate);
-      const nextStartIndex = requiresPreviousAction(candidate) && candidateActionCost === 0
+      const nextStartIndex = requiresPreviousAction(linkedCandidate) && candidateActionCost === 0
         ? 0
-        : attackAction ? index : index + 1;
+        : repeatableAction ? index : index + 1;
       visit(
         nextStartIndex,
         steps,

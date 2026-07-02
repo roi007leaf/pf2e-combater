@@ -635,14 +635,35 @@ function draftStepRemovedConditions(step) {
   return removed;
 }
 
-function draftRemovedConditions(draft, { beforeInstanceId = null } = {}) {
+function draftStepAddedConditions(step) {
+  const slug = draftActionSlug(step);
+  const profile = step?.action?.activityProfile ?? {};
+  const added = new Set(valuesArray(profile.appliesCondition)
+    .concat(valuesArray(profile.appliesConditions))
+    .concat(valuesArray(profile.appliedCondition))
+    .map((entry) => String(entry).toLowerCase())
+    .filter(Boolean));
+
+  if (slug.includes("drop-prone") || step?.action?.executable === "drop-prone") added.add("prone");
+  return added;
+}
+
+function draftConditionChanges(draft, { beforeInstanceId = null } = {}) {
+  const added = new Set();
   const removed = new Set();
   const steps = Array.isArray(draft?.steps) ? draft.steps : [];
   for (const step of steps) {
     if (beforeInstanceId && step?.instanceId === beforeInstanceId) break;
-    for (const condition of draftStepRemovedConditions(step)) removed.add(condition);
+    for (const condition of draftStepRemovedConditions(step)) {
+      added.delete(condition);
+      removed.add(condition);
+    }
+    for (const condition of draftStepAddedConditions(step)) {
+      removed.delete(condition);
+      added.add(condition);
+    }
   }
-  return removed;
+  return { added, removed };
 }
 
 function removeConditions(conditions, removed) {
@@ -671,10 +692,53 @@ function removeProfileConditions(profile, removed) {
   };
 }
 
-function projectConditionState(context, removed) {
-  if (!removed?.size) return context;
-  const nextProfile = removeProfileConditions(context?.profile, removed);
-  const actorProfile = removeProfileConditions(context?.actor?.profile, removed);
+function addConditions(conditions, added) {
+  if (!added?.size) return conditions;
+
+  if (Array.isArray(conditions)) {
+    const existing = new Set(conditions.map((condition) => String(condition?.slug ?? condition).toLowerCase()));
+    return [
+      ...conditions,
+      ...[...added].filter((condition) => !existing.has(condition)),
+    ];
+  }
+
+  const next = { ...(conditions ?? {}) };
+  const slugs = Array.isArray(next.slugs) ? [...next.slugs] : [];
+  const values = { ...(next.values ?? {}) };
+  for (const condition of added) {
+    if (!slugs.includes(condition)) slugs.push(condition);
+    values[condition] = Math.max(1, Number(values[condition]) || 0);
+  }
+  return { ...next, slugs, values };
+}
+
+function addProfileConditions(profile, added) {
+  if (!profile || !added?.size) return profile;
+  return {
+    ...profile,
+    conditions: addConditions(profile.conditions, added),
+  };
+}
+
+function conditionChangeSets(changes) {
+  if (changes instanceof Set) return { removed: changes, added: new Set() };
+  return {
+    removed: changes?.removed instanceof Set ? changes.removed : new Set(),
+    added: changes?.added instanceof Set ? changes.added : new Set(),
+  };
+}
+
+function projectProfileConditions(profile, changes) {
+  const { removed, added } = conditionChangeSets(changes);
+  return addProfileConditions(removeProfileConditions(profile, removed), added);
+}
+
+function projectConditionState(context, changes) {
+  const { removed, added } = conditionChangeSets(changes);
+  if (!removed.size && !added.size) return context;
+  const nextProfile = projectProfileConditions(context?.profile, changes);
+  const actorProfile = projectProfileConditions(context?.actor?.profile, changes);
   return {
     ...context,
     ...(nextProfile ? { profile: nextProfile } : {}),
@@ -769,9 +833,9 @@ function lastDraftDestination(draft, { beforeInstanceId = null } = {}) {
   return destination;
 }
 
-function projectContextToOrigin(context, destination, removedConditions = new Set(), shieldState = {}) {
+function projectContextToOrigin(context, destination, conditionChanges = new Set(), shieldState = {}) {
   if (!context) return context;
-  const stateContext = projectShieldCombatState(projectConditionState(context, removedConditions), shieldState);
+  const stateContext = projectShieldCombatState(projectConditionState(context, conditionChanges), shieldState);
   if (!destination) return stateContext;
 
   const battlefield = stateContext.battlefield ?? {};
@@ -799,7 +863,7 @@ export function projectContextForDraftDestination(context, draft) {
   return projectContextToOrigin(
     context,
     lastDraftDestination(draft),
-    draftRemovedConditions(draft),
+    draftConditionChanges(draft),
     draftShieldCombatState(draft),
   );
 }
@@ -809,7 +873,7 @@ export function projectContextForDraftStepOrigin(context, draft, instanceId) {
   return projectContextToOrigin(
     context,
     lastDraftDestination(draft, options),
-    draftRemovedConditions(draft, options),
+    draftConditionChanges(draft, options),
     draftShieldCombatState(draft, options),
   );
 }

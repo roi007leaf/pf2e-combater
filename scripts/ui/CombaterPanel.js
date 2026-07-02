@@ -1685,9 +1685,15 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft()) return;
     // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
     if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
-    const autoFill = this._builder?.autoFill;
-    if (!this._context || !autoFill?.steps?.length) return;
-    if (this._draftHasManualSteps() && !await confirmReplaceDraft()) return;
+    if (!this._context) return;
+    const replacingDraft = this._draftHasManualSteps();
+    if (replacingDraft && !await confirmReplaceDraft()) return;
+    const baseAutoFill = () => {
+      const candidateBuild = buildCandidates(this._context);
+      return bestTurnPlan(this._context, candidateBuild.candidates);
+    };
+    const autoFill = replacingDraft ? baseAutoFill() : this._builder?.autoFill;
+    if (!autoFill?.steps?.length) return;
 
     // For the GM running an NPC, the recommendation already chose targets (aggro) and a stride
     // destination; pre-fill both so the GM doesn't re-pick each one. (Players target/move by

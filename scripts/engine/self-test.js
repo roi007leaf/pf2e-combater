@@ -3257,6 +3257,23 @@ try {
   assert.equal(firstUcAfterPlan.token.center.x, 20, "first uncounted stride starts from the plan's last stride destination");
   const secondUcAfterPlan = projectContextForDraftStepOrigin(projectedDraftContext, planThenUncountedDraft, "uc-2");
   assert.equal(secondUcAfterPlan.token.center.x, 30, "second uncounted stride still chains off the first uncounted stride");
+
+  assert.equal(
+    buildCandidates(projectedDraftContext).candidates.some((action) => action.slug === "take-cover"),
+    false,
+    "Take Cover should not be directly available without cover or prone",
+  );
+  const takeCoverAfterDropProne = projectContextForDraftStepOrigin(projectedDraftContext, {
+    steps: [
+      { instanceId: "drop", actionKey: "drop-prone", actionCost: 1 },
+      { instanceId: "cover", actionKey: "take-cover", actionCost: 1 },
+    ],
+  }, "cover");
+  assert.equal(
+    buildCandidates(takeCoverAfterDropProne).candidates.some((action) => action.slug === "take-cover"),
+    true,
+    "projected draft state should make Take Cover available after Drop Prone",
+  );
 } finally {
   if (previousProjectedDraftCanvas === undefined) {
     delete globalThis.canvas;
@@ -4258,6 +4275,10 @@ assert.ok(/_autoFillDraft\([\s\S]*planAppliesProne[\s\S]*AUTO_FILL_BASIC_MOVE_SL
   "auto-fill should drop Stride/Step when the plan applies prone");
 // A target-aimed Stride that can't get closer to the planned target (blocked path) is dropped —
 // that's the "Stride to the same place" the GM sees.
+assert.ok(
+  /_autoFillDraft\([\s\S]*replacingDraft[\s\S]*buildCandidates\(this\._context\)[\s\S]*bestTurnPlan\(this\._context/.test(panelSource),
+  "replacing an existing draft should rebuild Auto-fill from the real context, not the draft-projected context",
+);
 assert.ok(/function strideImprovesPosition\([\s\S]*before - after\) >= minGain/.test(panelSource),
   "a kept Stride must improve position toward its target");
 assert.ok(/_autoFillDraft\([\s\S]*!strideImprovesPosition\([\s\S]*return null/.test(panelSource),
@@ -4986,6 +5007,29 @@ assert.equal(
     && plan.steps.some((step) => Number(step.activityProfile?.strideCount) > 0)),
   false,
   "no plan should pair Drop Prone with a move-and-strike that Strides (illegal while prone)",
+);
+const proneRecoveryPlans = buildTurnPlans({
+  ...fighterContext,
+  profile: { ...(fighterContext.profile ?? {}), conditions: { slugs: ["prone"], values: { prone: 1 } } },
+}, [
+  { id: "stand", name: "Stand", slug: "stand", source: "generic", actionCost: 1, score: 80, confidence: "medium", reason: "Stand.", activityProfile: { includes: ["stand"], removesCondition: "prone" } },
+  { id: "crawl", name: "Crawl", slug: "crawl", source: "generic", actionCost: 1, score: 70, confidence: "medium", reason: "Crawl.", activityProfile: { includes: ["move", "crawl"], crawlDistance: 5 } },
+  { id: "take-cover", name: "Take Cover", slug: "take-cover", source: "generic", actionCost: 1, score: 65, confidence: "medium", reason: "Cover.", activityProfile: { requiresProneCover: true } },
+]);
+assert.equal(
+  proneRecoveryPlans.some((plan) =>
+    plan.steps.some((step) => step.slug === "stand")
+    && plan.steps.some((step) => ["crawl", "take-cover"].includes(step.slug))),
+  false,
+  "standing removes prone, so the same plan must not also Crawl or use prone-only Take Cover",
+);
+const dropProneTakeCoverPlan = bestTurnPlan({ ...fighterContext, actionsSpent: { normal: 1, total: 1 } }, [
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+]);
+assert.equal(
+  dropProneTakeCoverPlan.summary,
+  "Drop Prone -> Take Cover",
+  "Drop Prone should spend a remaining action on Take Cover when no stronger follow-up exists",
 );
 
 const setupBeforeStrikePlans = buildTurnPlans(fighterContext, [{
@@ -8980,7 +9024,316 @@ const grabClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(grabClassification.role, "grab");
 assert.equal(grabClassification.activityProfile.includesGrab, true);
+assert.equal(grabClassification.activityProfile.appliesCondition, "grabbed");
 assert.equal(grabClassification.activityProfile.npcFamily, "grab-rider");
+assert.deepEqual(grabClassification.activityProfile.previousActionRequirements, ["after-strike"]);
+
+const arcaneSlamClassification = classifySystemAction({
+  name: "Arcane Slam",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 1 },
+    category: "offensive",
+    description: {
+      value: "<p><strong>Requirements</strong> The champion has a creature @UUID[Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei]{Grabbed}. <strong>Effect</strong> The grabbed creature takes @Damage[3d6[bludgeoning]] and @Damage[3d6[fire]] damage, is knocked @UUID[Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60]{Prone} and must attempt a @Check[fortitude|dc:29] save.</p>",
+    },
+  },
+}, { actionCost: 1, type: "action" });
+assert.equal(arcaneSlamClassification.role, "save-damage");
+assert.equal(arcaneSlamClassification.activityProfile.requiresTargetCondition, "grabbed");
+
+{
+  const flintTarget = {
+    id: "flint",
+    name: "Flint Glade",
+    distance: 5,
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    saves: { fortitude: 12, reflex: 15, will: 18 },
+    ac: 24,
+    token: { center: { x: 0, y: 5 } },
+  };
+  const target = {
+    id: "centipede",
+    name: "Giant Centipede",
+    distance: 5,
+    hpPercent: 1,
+    conditions: { slugs: [], values: {} },
+    saves: { fortitude: 8, reflex: 15, will: 12 },
+    ac: 24,
+    token: { center: { x: 5, y: 0 } },
+  };
+  const actionItem = (id, name, description) => ({
+    id,
+    name,
+    type: "action",
+    slug: id,
+    system: {
+      slug: id,
+      actionType: { value: "action" },
+      actions: { value: 1 },
+      category: "offensive",
+      description: { value: description },
+      traits: { value: [] },
+    },
+  });
+  const championAutomatonContext = {
+    isGM: true,
+    actor: {
+      id: "champion-automaton",
+      name: "Champion Automaton",
+      document: {
+        type: "npc",
+        system: {
+          actions: [{
+            slug: "pincer",
+            type: "strike",
+            label: "Pincer",
+            visible: true,
+            ready: true,
+            canAttack: true,
+            traits: ["magical"],
+            item: {
+              id: "pincer",
+              system: {
+                traits: { value: ["magical"] },
+                damageRolls: { main: { damage: "2d12+12", damageType: "piercing" } },
+              },
+            },
+            roll: () => null,
+          }],
+        },
+        items: [],
+        itemTypes: {
+          action: [
+            actionItem("arcane-slam", "Arcane Slam", "<p><strong>Requirements</strong> The champion has a creature @UUID[Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei]{Grabbed}. <strong>Effect</strong> The grabbed creature takes @Damage[3d6[bludgeoning]] and @Damage[3d6[fire]] damage, is knocked @UUID[Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60]{Prone} and must attempt a @Check[fortitude|dc:29] save.</p>"),
+            actionItem("grab", "Grab", "<p><strong>Requirements</strong> The monster's last action was a successful Strike that lists Grab in its damage entry, or the monster has a creature @UUID[Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei]{Grabbed} or @UUID[Compendium.pf2e.conditionitems.Item.VcDeM8A5oI6VqhbM]{Restrained}. <strong>Effect</strong> If used after a Strike, the monster attempts to @UUID[Compendium.pf2e.actionspf2e.Item.PMbdMWc2QroouFGD]{Grapple} the creature.</p>"),
+          ],
+          feat: [],
+          feature: [],
+          consumable: [],
+        },
+      },
+    },
+    profile: {
+      actorType: "npc",
+      hpPercent: 1,
+      reach: 10,
+      speed: 25,
+      conditions: { slugs: [], values: {} },
+      skills: { athletics: { mod: 27, rank: 4 } },
+    },
+    token: { center: { x: 0, y: 0 } },
+    targets: [flintTarget, target],
+    battlefield: { targets: [flintTarget, target], enemies: [flintTarget, target], allies: [] },
+  };
+  const automatonCandidates = buildCandidates(championAutomatonContext).candidates;
+  assert.ok(automatonCandidates.some((candidate) => candidate.name === "Grab"), "Champion Automaton should expose NPC Grab as a candidate");
+  const automatonPlan = bestTurnPlan(championAutomatonContext, automatonCandidates);
+  assert.equal(automatonPlan.summary, "Pincer -> Grab -> Arcane Slam", `grab-gated follow-up plan should include Grab before Arcane Slam, got ${automatonPlan.summary}`);
+  assert.equal(
+    new Set(automatonPlan.steps.map((step) => step.preferredTarget?.name ?? step.suggestedTarget?.name)).size,
+    1,
+    "grab-gated follow-up plan should keep Strike, Grab, and Arcane Slam on one target",
+  );
+
+  const targetedPincer = {
+    id: "targeted-pincer",
+    slug: "pincer",
+    name: "Pincer",
+    source: "strike",
+    actionCost: 1,
+    score: 116,
+    confidence: 0.9,
+    attack: true,
+    preferredTarget: target,
+  };
+  const offTargetGrab = {
+    id: "off-target-grab",
+    slug: "grab",
+    name: "Grab",
+    source: "system-inferred",
+    role: "grab",
+    actionCost: 1,
+    score: 108,
+    confidence: 0.9,
+    suggestedTarget: flintTarget,
+    activityProfile: {
+      includesGrab: true,
+      appliesCondition: "grabbed",
+      previousActionRequirements: ["after-strike"],
+    },
+  };
+  const offTargetArcaneSlam = {
+    id: "off-target-arcane-slam",
+    slug: "arcane-slam",
+    name: "Arcane Slam",
+    source: "system-inferred",
+    role: "save-damage",
+    actionCost: 1,
+    score: 122,
+    confidence: 0.9,
+    suggestedTarget: flintTarget,
+    activityProfile: { requiresTargetCondition: "grabbed" },
+  };
+  const mixedTargetPlan = bestTurnPlan(championAutomatonContext, [
+    {
+      id: "demoralize",
+      slug: "demoralize",
+      name: "Demoralize",
+      source: "generic",
+      role: "debuff",
+      actionCost: 1,
+      score: 64,
+      confidence: 0.7,
+      suggestedTarget: flintTarget,
+      setupFor: ["attack"],
+      activityProfile: { appliesCondition: "frightened" },
+    },
+    targetedPincer,
+    offTargetGrab,
+    offTargetArcaneSlam,
+  ]);
+  assert.equal(mixedTargetPlan.summary, "Pincer -> Grab -> Arcane Slam");
+  assert.deepEqual(
+    mixedTargetPlan.steps.map((step) => step.preferredTarget?.name ?? step.suggestedTarget?.name),
+    ["Giant Centipede", "Giant Centipede", "Giant Centipede"],
+    "Grab and Arcane Slam should inherit the struck/grabbed target, not the first target",
+  );
+
+  const liveLikeFillers = [
+    ["stride-away-strike-energy-beam", "Stride Away -> Energy Beam", "system-inferred", 126, 2],
+    ["spinning-toss", "Spinning Toss", "system-inferred", 124, 2],
+    ["strike-energy-beam", "Energy Beam", "strike", 115, 1],
+    ["trip", "Trip", "generic", 108, 1],
+    ["reposition", "Reposition", "generic", 106, 1],
+    ["shove", "Shove", "generic", 105, 1],
+    ["disarm", "Disarm", "generic", 103, 1],
+    ["generic-drop-prone", "Drop Prone", "system-inferred", 102, 1],
+    ["take-cover", "Take Cover", "generic", 101, 1],
+    ["raise-a-shield", "Raise a Shield", "generic", 100, 1],
+    ["step", "Step", "generic", 99, 1],
+    ["seek", "Seek", "generic", 98, 1],
+  ].map(([slug, name, source, score, actionCost]) => ({
+    id: slug,
+    slug,
+    name,
+    source,
+    actionCost,
+    score,
+    confidence: 0.7,
+    suggestedTarget: flintTarget,
+    ...(source === "strike" ? { attack: true, preferredTarget: target } : {}),
+  }));
+  const liveLikePlan = bestTurnPlan(championAutomatonContext, [
+    ...liveLikeFillers,
+    {
+      id: "demoralize-live",
+      slug: "demoralize",
+      name: "Demoralize",
+      source: "generic",
+      role: "debuff",
+      actionCost: 1,
+      score: 110,
+      confidence: 0.7,
+      suggestedTarget: flintTarget,
+      setupFor: ["attack"],
+      activityProfile: { appliesCondition: "frightened" },
+    },
+    targetedPincer,
+    {
+      id: "grapple-live",
+      slug: "grapple",
+      name: "Grapple",
+      source: "generic",
+      role: "grab",
+      actionCost: 1,
+      score: 86,
+      confidence: 0.7,
+      attack: true,
+      suggestedTarget: flintTarget,
+    },
+    { ...offTargetGrab, id: "buried-grab", score: 70 },
+    offTargetArcaneSlam,
+  ]);
+  assert.equal(
+    liveLikePlan.summary,
+    "Pincer -> Grab -> Arcane Slam",
+    `buried NPC Grab chain should beat filler strikes, got ${liveLikePlan.summary}`,
+  );
+  assert.deepEqual(
+    liveLikePlan.steps.map((step) => step.preferredTarget?.name ?? step.suggestedTarget?.name),
+    ["Giant Centipede", "Giant Centipede", "Giant Centipede"],
+    "buried NPC Grab chain should stay on the struck target",
+  );
+
+  const genericGrappleFallbackPlan = bestTurnPlan(championAutomatonContext, [
+    targetedPincer,
+    {
+      id: "generic-grapple-fallback",
+      slug: "grapple",
+      name: "Grapple",
+      source: "generic",
+      role: "grab",
+      actionCost: 1,
+      score: 86,
+      confidence: 0.7,
+      attack: true,
+      suggestedTarget: flintTarget,
+    },
+    offTargetArcaneSlam,
+  ]);
+  assert.equal(genericGrappleFallbackPlan.summary, "Pincer -> Grapple -> Arcane Slam");
+  assert.deepEqual(
+    genericGrappleFallbackPlan.steps.map((step) => step.preferredTarget?.name ?? step.suggestedTarget?.name),
+    ["Giant Centipede", "Giant Centipede", "Giant Centipede"],
+    "generic Grapple fallback should inherit the struck target when it sets up Arcane Slam",
+  );
+
+  const farFlintTarget = {
+    ...flintTarget,
+    distance: 80,
+    token: { center: { x: 80, y: 0 } },
+  };
+  const farGrabContext = {
+    ...championAutomatonContext,
+    targets: [farFlintTarget],
+    battlefield: { targets: [farFlintTarget], enemies: [farFlintTarget], allies: [] },
+  };
+  const eventOnlyGrabPlan = bestTurnPlan({
+    ...farGrabContext,
+    triggerEvents: ["after-strike"],
+  }, [
+    { ...offTargetGrab, id: "event-only-grab", actionCost: 0, score: 160, suggestedTarget: farFlintTarget },
+    { ...offTargetArcaneSlam, id: "event-only-arcane-slam", score: 150, suggestedTarget: farFlintTarget },
+  ]);
+  assert.ok(
+    !eventOnlyGrabPlan.steps.some((step) => ["grab", "arcane-slam"].includes(step.slug)),
+    `coarse after-strike event should not unlock far Grab chain, got ${eventOnlyGrabPlan.summary}`,
+  );
+
+  const rangedStrikeGrabPlan = bestTurnPlan(farGrabContext, [
+    {
+      id: "far-energy-beam",
+      slug: "strike",
+      name: "Energy Beam",
+      source: "strike",
+      actionCost: 1,
+      score: 170,
+      confidence: 0.9,
+      attack: true,
+      range: { max: 60 },
+      traits: ["ranged"],
+      preferredTarget: farFlintTarget,
+    },
+    { ...offTargetGrab, id: "ranged-strike-grab", score: 160, suggestedTarget: farFlintTarget },
+    { ...offTargetArcaneSlam, id: "ranged-strike-arcane-slam", score: 150, suggestedTarget: farFlintTarget },
+  ]);
+  assert.ok(
+    !rangedStrikeGrabPlan.steps.some((step) => ["grab", "arcane-slam"].includes(step.slug)),
+    `ranged Strike should not unlock NPC Grab chain, got ${rangedStrikeGrabPlan.summary}`,
+  );
+}
 
 const constrictClassification = classifySystemAction({
   name: "Constrict",
@@ -14475,6 +14828,126 @@ const oneStrideContext = {
 const oneStrideComposite = readActionSources(oneStrideContext).find((a) => a.slug === "stride-strike-claw");
 assert.equal(oneStrideComposite.actionCost, 2);
 assert.equal(oneStrideComposite.activityProfile.strideCount, 1);
+
+// Ranged move-and-strike composites must score against the Strike range, not the actor's
+// melee reach, or filler actions can outrank a valid "Stride -> ranged Strike" plan.
+const oneStrideRangedContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          slug: "energy-beam",
+          type: "strike",
+          label: "Energy Beam",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "energy-beam",
+            system: {
+              range: { max: 60 },
+              traits: { value: ["ranged"] },
+              damageRolls: { "0": { damage: "2d6+8", damageType: "fire" } },
+            },
+          },
+          roll: () => null,
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  token: { id: "champion", center: { x: 0, y: 0 } },
+  profile: { speed: 25, reach: 10, conditions: { slugs: [], values: {} }, skills: {} },
+  battlefield: {
+    enemies: [{ id: "centipede", name: "Giant Centipede", distance: 80, token: { center: { x: 80, y: 0 } } }],
+    targets: [{ id: "centipede", name: "Giant Centipede", distance: 80, token: { center: { x: 80, y: 0 } } }],
+  },
+  targets: undefined,
+};
+const oneStrideRangedPlan = bestTurnPlan(oneStrideRangedContext, buildCandidates(oneStrideRangedContext).candidates);
+assert.ok(
+  oneStrideRangedPlan.steps.some((step) => step.slug === "stride-strike-energy-beam"),
+  `ranged target just beyond max range should use Stride -> Energy Beam, got ${oneStrideRangedPlan.summary}`,
+);
+assert.ok(
+  !oneStrideRangedPlan.steps.some((step) => ["drop-prone", "high-jump", "long-jump"].includes(step.slug)),
+  `ranged move-and-strike should beat filler, got ${oneStrideRangedPlan.summary}`,
+);
+const oneStrideRangedNoKnowledgeCandidates = buildCandidates(oneStrideRangedContext).candidates
+  .filter((candidate) => candidate.slug !== "recall-knowledge");
+const oneStrideRangedNoKnowledgePlan = bestTurnPlan(oneStrideRangedContext, oneStrideRangedNoKnowledgeCandidates);
+assert.equal(
+  oneStrideRangedNoKnowledgePlan.summary,
+  "Stride -> Energy Beam -> Energy Beam",
+  `third action after closing should be another ranged Strike, got ${oneStrideRangedNoKnowledgePlan.summary}`,
+);
+assert.deepEqual(
+  oneStrideRangedNoKnowledgePlan.steps.flatMap((step) => builderAtomicActionsForStep(step).map((part) => part.name)),
+  ["Stride", "Energy Beam", "Energy Beam"],
+  "auto-fill should expand the closing plan into three executable action rows",
+);
+
+// A target beyond both current range and any move-and-strike composite should
+// still get useful closing movement, not defensive or situational filler.
+const beyondRangedReachContext = {
+  actor: {
+    document: {
+      system: {
+        actions: [{
+          slug: "energy-beam",
+          type: "strike",
+          label: "Energy Beam",
+          visible: true,
+          ready: true,
+          canAttack: true,
+          item: {
+            id: "energy-beam",
+            system: {
+              range: { max: 60 },
+              traits: { value: ["ranged"] },
+              damageRolls: { "0": { damage: "2d6+8", damageType: "fire" } },
+            },
+          },
+          roll: () => null,
+        }],
+      },
+      itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+      items: [],
+    },
+  },
+  token: { id: "champion", center: { x: 0, y: 0 } },
+  profile: { speed: 25, reach: 10, conditions: { slugs: [], values: {} }, skills: {} },
+  battlefield: {
+    enemies: [{ id: "centipede", name: "Giant Centipede", distance: 130, token: { center: { x: 130, y: 0 } } }],
+    targets: [{ id: "centipede", name: "Giant Centipede", distance: 130, token: { center: { x: 130, y: 0 } } }],
+  },
+  targets: undefined,
+};
+const beyondRangedReachPlan = bestTurnPlan(beyondRangedReachContext, buildCandidates(beyondRangedReachContext).candidates);
+assert.ok(
+  beyondRangedReachPlan.steps.some((step) => step.slug === "stride"),
+  `far ranged target should prioritize closing distance, got ${beyondRangedReachPlan.summary}`,
+);
+assert.ok(
+  !beyondRangedReachPlan.steps.some((step) => ["drop-prone", "high-jump", "long-jump"].includes(step.slug)),
+  `far ranged target should not pad with prone/jump filler, got ${beyondRangedReachPlan.summary}`,
+);
+const noSelectedFarRangedContext = {
+  ...beyondRangedReachContext,
+  actionsSpent: { normal: 1, total: 1 },
+  battlefield: {
+    ...beyondRangedReachContext.battlefield,
+    targets: [],
+  },
+  targets: undefined,
+};
+const noSelectedFarRangedPlan = bestTurnPlan(noSelectedFarRangedContext, buildCandidates(noSelectedFarRangedContext).candidates);
+assert.equal(
+  noSelectedFarRangedPlan.summary,
+  "Stride -> Stride",
+  `with no selected target, remaining actions should close toward the known enemy, got ${noSelectedFarRangedPlan.summary}`,
+);
 
 const previousSkirmishGame = globalThis.game;
 const previousSkirmishCanvas = globalThis.canvas;

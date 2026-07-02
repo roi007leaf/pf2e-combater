@@ -184,6 +184,10 @@ export function readActionSources(context, spells = []) {
 function readGenericActions(context) {
   return GENERIC_ACTIONS.map((action) => {
     const itemAvailability = isGenericAvailable(action, context);
+    const profile = contextProfile(context);
+    const proneCover = action.slug === "take-cover"
+      && hasCondition(profile, "prone")
+      && !hasAdjacentCover(context, profile);
     return {
       ...action,
       name: pf2eActionName(action.slug, action.name),
@@ -193,6 +197,10 @@ function readGenericActions(context) {
       item: null,
       available: itemAvailability.available,
       unavailableReason: itemAvailability.reason,
+      activityProfile: {
+        ...(action.activityProfile ?? {}),
+        ...(proneCover ? { requiresProneCover: true } : {}),
+      },
     };
   });
 }
@@ -2325,7 +2333,7 @@ function isGenericAvailable(action, context) {
   }
   if (action.requiresCover) {
     if (action.slug === "take-cover") {
-      if (!hasAdjacentCover(context, profile)) {
+      if (!hasCondition(profile, "prone") && !hasAdjacentCover(context, profile)) {
         return availability(false, t("Avail.NoWallCover", "No adjacent wall or cover."));
       }
     } else if (!hasCoverOrConcealment(profile, context)) {
