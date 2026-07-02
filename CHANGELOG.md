@@ -4,6 +4,54 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2]
+
+### Added
+
+- **Action coverage reports.** Added generated PF2e system-item coverage reports for actions,
+  spells, feats, and features so classifier gaps can be audited against real system data.
+- **Expanded Auto-fill documentation.** The README now explains source buckets, scoring weights,
+  GM-only target picking, action scoring examples, and the limits of automatic tactical planning.
+
+### Changed
+
+- **Aggro and target scoring are smarter.** GM NPC planning now weighs enemy roles more accurately,
+  including healer/controller/main-attacker signals, spell effectiveness, and main-defender status
+  based on creature level, High AC benchmarks, and relative AC inside the current fight.
+- **Connected-player plan mirroring is stricter.** The GM read-only player-plan view now only applies
+  while a non-GM owner is actually online; if that player disconnects, the GM can Auto-fill, edit,
+  and execute that character's plan for the session.
+- **Shared player plans survive socket gaps.** Player draft updates are mirrored to the owned actor
+  flag, so the GM can still see the newest player plan, clear stale shared plans, and execute the
+  shared draft on the player's behalf when needed.
+- **Prone affects attack scoring.** Attack-roll actions are now penalized while the actor is prone,
+  so Auto-fill prefers standing or legal prone follow-ups when those are better choices.
+- **Release packaging includes localization files.** The module archive workflow now includes the
+  bundled language files.
+
+### Fixed
+
+- **Draft controls use the correct revert button class.** Revert controls on completed draft steps
+  are wired to the expected UI class again.
+- **Auto-fill now respects action prerequisites and planned conditions.** The planner no longer
+  recommends payoff actions like Arcane Slam unless the target is actually grabbed or a valid setup
+  action is planned first.
+- **NPC Grab is preferred over generic Grapple when appropriate.** Creature abilities that use the
+  monster's Grab rider now chain from a real melee Strike on the same target, while ranged Strikes
+  and stale trigger events no longer unlock impossible Grab chains.
+- **Ranged follow-up turns fill remaining actions better.** After moving into range for a ranged
+  Strike, Auto-fill can spend the last action on another Strike at the correct MAP, and far targets
+  with no selected token get closing Strides instead of defensive filler.
+- **Prone and cover follow-ups stay legal.** Drop Prone can be followed by Take Cover when prone
+  enables it, but replacement Auto-fill no longer leaks stale prone state into a new draft or pairs
+  Stand with Crawl / prone-only Take Cover.
+
+## [1.0.1]
+
+### Fixed
+
+- Release workflow
+
 ## [1.0.0]
 
 ### Added
@@ -64,7 +112,7 @@ All notable changes to PF2e Combater are documented here. The format is based on
 - **Weapon and position manipulate actions.** Each sheathed weapon gets a 1-action **Draw**,
   each held weapon a free-action **Release** (drop to the ground), and reloadable weapons a
   **Reload** action costing the weapon's reload value — reload-0 ammunition weapons (e.g. bows)
-  show a *free* Reload step that doesn't draw from the action budget. A 1-action **Drop Prone**
+  show a _free_ Reload step that doesn't draw from the action budget. A 1-action **Drop Prone**
   is offered when the actor isn't already prone (and lacks its own Drop Prone). Draw and Release
   update the weapon's carry state and can be reverted.
 
@@ -124,7 +172,7 @@ All notable changes to PF2e Combater are documented here. The format is based on
 - **No more false "Spell could not be cast (no slot available)" warning.** Cast success was read
   from `entry.cast()`'s return value, but current PF2e resolves it to `undefined` even on a
   successful cast — so every spell (cantrips and focus spells included, neither of which uses a
-  slot) was flagged as a failed cast. Castability is now checked from the actual resource *before*
+  slot) was flagged as a failed cast. Castability is now checked from the actual resource _before_
   casting — a focus point (`resources.focus.value`), a remaining spell slot, or none for a
   cantrip — and a cast is only treated as failed when that resource is genuinely empty.
 - Action damage now lands **reliably** after its spell/strike chat card: the damage message is
