@@ -541,6 +541,7 @@
       "ObscuringEffectCanBreak": "Obscuring effect can break enemy lines of sight.",
       "ForcedMovementCanImprove": "Forced movement can improve positioning.",
       "TargetIsTemporarilyImmune": "Target is temporarily immune to Demoralize.",
+      "HiddenTargetFlatCheck": "{target} is hidden; a flat check is needed before this can affect them.",
       "NoValidElementalTarget": "No valid elemental target.",
       "TargetIsAlreadyExploited": "Target is already exploited.",
       "TargetAlreadyHas": "Target already has {label}.",

@@ -10354,6 +10354,41 @@ assert.ok(closeFeint.score > 42);
 assert.equal(closeFeint.reason, "Target is in melee and not off-guard.");
 assert.equal(closeFeint.suggestedTarget.name, "Ogre");
 
+const hiddenStrikeCandidate = {
+  id: "hidden-target-strike",
+  name: "Strike",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  role: "damage",
+  activityProfile: { averageDamage: 10 },
+};
+const observedStrikeScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 5 }],
+}, hiddenStrikeCandidate);
+const hiddenStrikeScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 5, visionerDetectionState: "hidden" }],
+}, hiddenStrikeCandidate);
+assert.ok(
+  hiddenStrikeScored.score < observedStrikeScored.score,
+  `an attack against a hidden target must score lower than the identical attack against an observed target (the DC 11 flat check can fail before the attack roll matters), got hidden=${hiddenStrikeScored.score} observed=${observedStrikeScored.score}`,
+);
+assert.ok(
+  hiddenStrikeScored.reasons.some((reason) => reason.includes("hidden") || reason.includes("flat check")),
+  "the score reasons should mention the hidden target's flat check, not just silently lower the number",
+);
+const undetectedStrikeScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 5, visionerDetectionState: "undetected" }],
+}, hiddenStrikeCandidate);
+assert.equal(
+  undetectedStrikeScored.score,
+  -999,
+  "an undetected target should still be fully excluded by the existing canAttackTarget gate, not merely discounted like a hidden one",
+);
+
 const rangedDropProneScored = scoreCandidate({
   ...fighterContext,
   profile: { ...fighterContext.profile, equippedRangedWeapon: true },

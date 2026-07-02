@@ -19,6 +19,10 @@ const ELEMENT_DAMAGE_FALLBACKS = {
   wood: ["vitality"],
 };
 const QUICKENING_SLUGS = new Set(["haste"]);
+// PF2e core rule: affecting a hidden creature (any attack roll or save-requiring effect) needs a
+// DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
+// 11 succeeds on a roll of 11 or higher — exactly half of a d20's outcomes.
+const HIDDEN_TARGET_FLAT_CHECK_DISCOUNT = 0.5;
 
 function firstTarget(context) {
   return context?.targets?.[0] ?? context?.battlefield?.targets?.[0] ?? null;
@@ -2430,6 +2434,12 @@ export function scoreCandidate(context, action) {
   if (ownSkillReliability) {
     score += ownSkillReliability.scoreDelta;
     reasons.push(...ownSkillReliability.reasons);
+  }
+
+  if (target && isAttackLikeAction(action, role) && detectionState(target) === "hidden") {
+    const targetDependentGain = Math.max(0, score - baseScore(action));
+    score -= targetDependentGain * HIDDEN_TARGET_FLAT_CHECK_DISCOUNT;
+    reasons.push(t("ScoreReason.HiddenTargetFlatCheck", "{target} is hidden; a flat check is needed before this can affect them.", { target: target.name }));
   }
 
   return sanitizeScoredRecommendation({
