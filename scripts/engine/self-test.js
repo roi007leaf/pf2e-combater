@@ -10346,20 +10346,21 @@ const rangedDropProneScored = scoreCandidate({
   source: "system-inferred",
   role: "defense",
 });
-const rangedRaiseShieldScored = scoreCandidate({
+const meleeDropProneScored = scoreCandidate({
   ...fighterContext,
-  profile: { ...fighterContext.profile, equippedRangedWeapon: true },
+  profile: { ...fighterContext.profile, equippedRangedWeapon: false },
 }, {
-  id: "raise-a-shield",
-  name: "Raise a Shield",
-  slug: "raise-a-shield",
+  id: "generic-drop-prone",
+  name: "Drop Prone",
+  slug: "drop-prone",
   actionCost: 1,
   source: "system-inferred",
   role: "defense",
 });
-assert.ok(
-  rangedDropProneScored.score < rangedRaiseShieldScored.score,
-  `Drop Prone imposes a -4 penalty on a ranged actor's own future Strikes and should score below Raise a Shield for that actor, got drop-prone=${rangedDropProneScored.score} raise-a-shield=${rangedRaiseShieldScored.score}`,
+assert.equal(
+  meleeDropProneScored.score - rangedDropProneScored.score,
+  10,
+  `a ranged actor's Drop Prone should score exactly 10 points lower than a melee actor's identical Drop Prone (the ranged penalty in isolation), got melee=${meleeDropProneScored.score} ranged=${rangedDropProneScored.score}`,
 );
 assert.equal(
   rangedDropProneScored.reason,
