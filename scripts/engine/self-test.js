@@ -17444,4 +17444,68 @@ const fallbackDoubleAttack = {
 const fallbackAtoms = builderAtomicActionsForStep(fallbackDoubleAttack);
 assert.equal(fallbackAtoms.length, 1, "with no distinctTargets computed, the action is not force-expanded into guesses");
 
+const costFixTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
+const costFixTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
+const doubleAttackForCostFix = {
+  id: "kraken-double-attack",
+  name: "Double Attack",
+  slug: "double-attack",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  activityProfile: {
+    includes: ["strike", "strike"],
+    includesStrike: true,
+    multiStrike: true,
+    mapAttacks: 2,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 2,
+    distinctTargets: [costFixTargetA, costFixTargetB],
+  },
+};
+const costFixAtoms = builderAtomicActionsForStep(doubleAttackForCostFix);
+assert.equal(costFixAtoms.length, 2);
+assert.equal(costFixAtoms[0].actionCost, 1, "the first atom of a 1-action distinct-target ability must carry its real action cost");
+assert.equal(costFixAtoms[0].cost, 1);
+assert.equal(costFixAtoms[1].actionCost, 0, "every atom after the first must cost 0 so the draft's budget only counts the ability once");
+assert.equal(costFixAtoms[1].cost, 0);
+
+const bladestormForCostFix = {
+  id: "marilith-bladestorm",
+  name: "Bladestorm",
+  slug: "bladestorm",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "multiattack",
+  activityProfile: {
+    includes: Array(6).fill("strike"),
+    includesStrike: true,
+    multiStrike: true,
+    requiresDistinctTargets: true,
+    distinctStrikeCount: 6,
+    distinctTargets: [costFixTargetA, costFixTargetB, costFixTargetA, costFixTargetB, costFixTargetA, costFixTargetB],
+  },
+};
+const bladestormCostFixAtoms = builderAtomicActionsForStep(bladestormForCostFix);
+assert.equal(bladestormCostFixAtoms.length, 6);
+assert.equal(bladestormCostFixAtoms[0].actionCost, 1, "Bladestorm is itself a 1-action ability despite making 6 Strikes");
+assert.deepEqual(
+  bladestormCostFixAtoms.slice(1).map((atom) => atom.actionCost),
+  [0, 0, 0, 0, 0],
+  "all 5 remaining Bladestorm atoms must cost 0",
+);
+
+const strideStrikeComposite = {
+  id: "stride-strike-composite",
+  name: "Stride -> Strike",
+  slug: "stride-strike-composite",
+  actionCost: 2,
+  source: "generated-composite",
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+};
+const strideStrikeAtoms = builderAtomicActionsForStep(strideStrikeComposite);
+assert.equal(strideStrikeAtoms.length, 2);
+assert.equal(strideStrikeAtoms[1].actionCost, 1, "an ordinary (non-distinct-target) composite's Strike atom must keep its existing hardcoded cost of 1, unaffected by this fix");
+
 console.log("PF2e Combater self-test passed");

@@ -381,15 +381,16 @@ function atomicMovementAction(part) {
   };
 }
 
-function atomicStrikeAction(action, targetOverride) {
+function atomicStrikeAction(action, targetOverride, costOverride) {
   const leafName = stripCompositePrefix(actionName(action));
+  const cost = Number.isFinite(costOverride) ? costOverride : 1;
   return {
     ...action,
     id: compositeStrikeActionKey(action),
     name: leafName,
     slug: "strike",
-    actionCost: 1,
-    cost: 1,
+    actionCost: cost,
+    cost,
     ...(targetOverride ? { preferredTarget: targetOverride, suggestedTarget: targetOverride } : {}),
     activityProfile: {
       ...(action.activityProfile ?? {}),
@@ -476,8 +477,11 @@ export function builderAtomicActionsForStep(action) {
     if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
     if (normalized === "strike") {
       const targetOverride = distinctTargets ? distinctTargets[strikeOccurrence] : undefined;
+      const costOverride = action.activityProfile?.requiresDistinctTargets
+        ? (strikeOccurrence === 0 ? Number(action.actionCost ?? action.cost ?? 1) : 0)
+        : undefined;
       strikeOccurrence += 1;
-      return [atomicStrikeAction(action, targetOverride)];
+      return [atomicStrikeAction(action, targetOverride, costOverride)];
     }
     return [];
   });
