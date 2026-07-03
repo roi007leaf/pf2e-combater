@@ -288,13 +288,9 @@ assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel templa
 // speeds the actor actually has, mapping the "land" speed key to the "walk" movement action.
 {
   const flier = actorMovementOptions({
-    system: {
-      movement: {
-        speeds: {
-          land: { total: 25 }, fly: { total: 60 }, burrow: { total: 0 }, swim: null, travel: { total: 25 },
-        }
-      }
-    },
+    system: { movement: { speeds: {
+      land: { total: 25 }, fly: { total: 60 }, burrow: { total: 0 }, swim: null, travel: { total: 25 },
+    } } },
   });
   assert.deepEqual(flier.map((option) => option.action), ["walk", "fly"], "only walking and the actor's real fly speed should be offered");
   assert.equal(flier[0].speed, 25, "walking option should carry the land speed");
@@ -1889,7 +1885,7 @@ try {
   // Phase 1: without a DC (or preset outcome) Retch does NOT roll blind — it asks the GM for the DC.
   let blindRollCount = 0;
   const retchNoDcResult = await executeDraftStep({
-    context: { actor: { document: { decreaseCondition: async () => { }, saves: { fortitude: { roll: async () => { blindRollCount += 1; return { degreeOfSuccess: 3 }; } } } } }, token: { id: "x", center: { x: 0, y: 0 } } },
+    context: { actor: { document: { decreaseCondition: async () => {}, saves: { fortitude: { roll: async () => { blindRollCount += 1; return { degreeOfSuccess: 3 }; } } } } }, token: { id: "x", center: { x: 0, y: 0 } } },
     step: { instanceId: "retch-nodc-step" },
     action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
   });
@@ -1930,7 +1926,7 @@ try {
     assert.equal(sharedDraftCalls.at(-1)?.handler, "receiveSharedDraft", "sharing a plan routes to the GMs' receiveSharedDraft handler");
 
     // A handler that throws (e.g. no GM connected) degrades to null rather than rejecting.
-    setSocket({ executeAsGM: async () => { throw new Error("No GM connected"); }, executeForAllGMs: () => { } });
+    setSocket({ executeAsGM: async () => { throw new Error("No GM connected"); }, executeForAllGMs: () => {} });
     assert.equal(await requestRetchDc({ actorName: "Ezren" }), null, "a socketlib error (no GM) resolves to null so the caller can fall back");
   } finally {
     setSocket(null);
@@ -3171,22 +3167,20 @@ assert.equal(
 );
 const weaponStrikeActor = {
   id: "weapon-strike-actor",
-  itemTypes: {
-    spell: [{
-      id: "hand-of-the-apprentice",
-      slug: "hand-of-the-apprentice",
-      name: "Hand of the Apprentice",
-      system: {
-        traits: { value: ["attack", "focus"] },
-        time: { value: "1" },
-        range: { value: "500 feet" },
-        target: { value: "1 creature" },
-        damage: {},
-        level: { value: 4 },
-        description: { value: "Make a ranged Strike using a weapon you are wielding." },
-      },
-    }]
-  },
+  itemTypes: { spell: [{
+    id: "hand-of-the-apprentice",
+    slug: "hand-of-the-apprentice",
+    name: "Hand of the Apprentice",
+    system: {
+      traits: { value: ["attack", "focus"] },
+      time: { value: "1" },
+      range: { value: "500 feet" },
+      target: { value: "1 creature" },
+      damage: {},
+      level: { value: 4 },
+      description: { value: "Make a ranged Strike using a weapon you are wielding." },
+    },
+  }] },
   system: {
     actions: [{
       type: "strike",
@@ -4314,13 +4308,9 @@ assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
 const relAggroTarget = (id, name, ac) => ({
   id, name, distance: 20, hpPercent: 1, ac,
   attackTargetable: true, conditions: { slugs: [], values: {} },
-  actor: {
-    document: {
-      type: "npc",
-      itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
-      system: { attributes: { hp: { value: 30, max: 30 }, ac: { value: ac } } }
-    }
-  },
+  actor: { document: { type: "npc",
+    itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
+    system: { attributes: { hp: { value: 30, max: 30 }, ac: { value: ac } } } } },
 });
 const relTank = relAggroTarget("tank", "Steel Wall", 24);
 const relStriker = relAggroTarget("striker", "Duelist", 18);
@@ -4376,18 +4366,12 @@ const incapContext = (targetLevel) => ({
   actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
   token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
   targets: [],
-  battlefield: {
-    targets: [], allies: [], enemies: [{
-      id: "foe", name: "Foe", level: targetLevel, distance: 30, hpPercent: 1, attackTargetable: true,
-      conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
-      actor: {
-        document: {
-          type: "character", itemTypes: {},
-          system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } }
-        }
-      },
-    }]
-  },
+  battlefield: { targets: [], allies: [], enemies: [{
+    id: "foe", name: "Foe", level: targetLevel, distance: 30, hpPercent: 1, attackTargetable: true,
+    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+    actor: { document: { type: "character", itemTypes: {},
+      system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
+  }] },
 });
 const incapVsLow = scoreCandidate(incapContext(3), incapSpell);
 const incapVsHigh = scoreCandidate(incapContext(20), incapSpell);
@@ -4404,21 +4388,17 @@ const skillDemoralize = {
 };
 const skillContext = (intimidationMod) => ({
   isGM: true,
-  profile: {
-    actorType: "npc", hpPercent: 1, conditions: { slugs: [], values: {} },
-    skills: { intimidation: { mod: intimidationMod, rank: 2 } }
-  },
+  profile: { actorType: "npc", hpPercent: 1, conditions: { slugs: [], values: {} },
+    skills: { intimidation: { mod: intimidationMod, rank: 2 } } },
   actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
   token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
   targets: [],
-  battlefield: {
-    targets: [], allies: [], enemies: [{
-      id: "foe", name: "Foe", distance: 20, hpPercent: 1, attackTargetable: true,
-      conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
-      perception: { dc: 20 },
-      actor: { document: { type: "character", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
-    }]
-  },
+  battlefield: { targets: [], allies: [], enemies: [{
+    id: "foe", name: "Foe", distance: 20, hpPercent: 1, attackTargetable: true,
+    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+    perception: { dc: 20 },
+    actor: { document: { type: "character", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
+  }] },
 });
 const critDemoralize = scoreCandidate(skillContext(40), skillDemoralize);
 const evenDemoralize = scoreCandidate(skillContext(10), skillDemoralize);
@@ -4430,19 +4410,11 @@ assert.ok(critDemoralize.score - evenDemoralize.score > 25,
 const prosyTarget = {
   id: "prosy", name: "Stoic", distance: 30, hpPercent: 1, ac: 18, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: {
-    document: {
-      type: "npc",
-      itemTypes: {
-        spell: [], spellcastingEntry: [], weapon: [],
-        action: [{
-          slug: "steady-nerves", name: "Steady Nerves",
-          system: { traits: { value: [] }, description: { value: "This creature cannot be slowed, frightened, or stunned." } }
-        }]
-      },
-      system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 18 } } }
-    }
-  },
+  actor: { document: { type: "npc",
+    itemTypes: { spell: [], spellcastingEntry: [], weapon: [],
+      action: [{ slug: "steady-nerves", name: "Steady Nerves",
+        system: { traits: { value: [] }, description: { value: "This creature cannot be slowed, frightened, or stunned." } } }] },
+    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 18 } } } } },
 };
 assert.equal(aggroProfile(npcAggroContext, prosyTarget).roles.includes("controller"), false,
   "control words in description prose no longer flag a controller");
@@ -4451,41 +4423,29 @@ assert.equal(aggroProfile(npcAggroContext, prosyTarget).roles.includes("controll
 const mookTarget = {
   id: "mook", name: "Mook", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: {
-    document: {
-      type: "npc",
-      itemTypes: {
-        action: [], feat: [], spell: [], spellcastingEntry: [],
-        weapon: [{ name: "Club", system: { traits: { value: [] } } }]
-      },
-      system: { attributes: { hp: { value: 20, max: 20 }, ac: { value: 16 } } }
-    }
-  },
+  actor: { document: { type: "npc",
+    itemTypes: { action: [], feat: [], spell: [], spellcastingEntry: [],
+      weapon: [{ name: "Club", system: { traits: { value: [] } } }] },
+    system: { attributes: { hp: { value: 20, max: 20 }, ac: { value: 16 } } } } },
 };
 const strikerTarget = {
   id: "striker", name: "Blademaster", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: {
-    document: {
-      type: "npc",
-      itemTypes: {
-        action: [], spell: [], spellcastingEntry: [],
-        feat: [
-          { slug: "power-attack", name: "Power Attack", system: { traits: { value: [] } } },
-          { slug: "sneak-attack", name: "Sneak Attack", system: { traits: { value: [] } } },
-        ],
-        weapon: [
-          { name: "Sword", system: { traits: { value: [] } } },
-          { name: "Dagger", system: { traits: { value: [] } } },
-        ]
-      },
-      system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 16 } } }
-    }
-  },
+  actor: { document: { type: "npc",
+    itemTypes: { action: [], spell: [], spellcastingEntry: [],
+      feat: [
+        { slug: "power-attack", name: "Power Attack", system: { traits: { value: [] } } },
+        { slug: "sneak-attack", name: "Sneak Attack", system: { traits: { value: [] } } },
+      ],
+      weapon: [
+        { name: "Sword", system: { traits: { value: [] } } },
+        { name: "Dagger", system: { traits: { value: [] } } },
+      ] },
+    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 16 } } } } },
 };
 assert.ok(
   aggroProfile(npcAggroContext, strikerTarget).roleScores["main-attacker"]
-  > aggroProfile(npcAggroContext, mookTarget).roleScores["main-attacker"],
+    > aggroProfile(npcAggroContext, mookTarget).roleScores["main-attacker"],
   "a feat-stacked, multi-weapon striker reads as a bigger attacker than a one-weapon mook");
 
 // Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
@@ -4672,16 +4632,10 @@ const dualStrikeContext = (distance) => {
   const target = { id: "petal", name: "Petal", distance, attackTargetable: true, center: { x: 0, y: 0 }, token: { center: { x: 0, y: 0 } } };
   const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
   return {
-    actor: {
-      document: {
-        itemTypes: {}, system: {
-          traits: { size: { value: "lg" } }, actions: [
-            { type: "strike", name: "Pincer", label: "Pincer", item: meleeItem("2d12+12", "piercing", ["magical"]), traits: [], weaponTraits: [], variants: [] },
-            { type: "strike", name: "Energy Beam", label: "Energy Beam", item: meleeItem("2d10+10", "fire", ["fire", "magical"], { increment: null, max: 60 }), traits: [], weaponTraits: [], variants: [] },
-          ]
-        }
-      }
-    },
+    actor: { document: { itemTypes: {}, system: { traits: { size: { value: "lg" } }, actions: [
+      { type: "strike", name: "Pincer", label: "Pincer", item: meleeItem("2d12+12", "piercing", ["magical"]), traits: [], weaponTraits: [], variants: [] },
+      { type: "strike", name: "Energy Beam", label: "Energy Beam", item: meleeItem("2d10+10", "fire", ["fire", "magical"], { increment: null, max: 60 }), traits: [], weaponTraits: [], variants: [] },
+    ] } } },
     battlefield: { allies: [], enemies: [target], targets: [target] },
     targets: [target],
   };
@@ -10957,7 +10911,7 @@ try {
     targets: undefined,
   }).find((action) => action.slug === "seek");
   assert.equal(visibleSeek.available, false);
-  assert.equal(visibleSeek.unavailableReason, "No hidden target detected.");
+  assert.equal(visibleSeek.unavailableReason, "No hidden or undetected target detected.");
 
   const observedConditionSeek = readActionSources({
     ...fighterContext,
@@ -10973,7 +10927,7 @@ try {
     targets: undefined,
   }).find((action) => action.slug === "seek");
   assert.equal(observedConditionSeek.available, false);
-  assert.equal(observedConditionSeek.unavailableReason, "No hidden target detected.");
+  assert.equal(observedConditionSeek.unavailableReason, "No hidden or undetected target detected.");
 
   const hiddenSeek = readActionSources({
     ...fighterContext,
@@ -14474,14 +14428,12 @@ const divineFontContext = {
             statistic: { dc: { value: 19 } },
             slots: {
               slot1: { value: 0, max: 0, prepared: [] },
-              slot2: {
-                value: 0, max: 4, prepared: [
-                  { id: "font-heal", expended: false },
-                  { id: "font-heal", expended: false },
-                  { id: "font-heal", expended: false },
-                  { id: "font-heal", expended: false },
-                ]
-              },
+              slot2: { value: 0, max: 4, prepared: [
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+                { id: "font-heal", expended: false },
+              ] },
             },
           },
         }],
@@ -16091,7 +16043,7 @@ const dropProneAttackPlan = bestTurnPlan(oneStrideRangedContext, [{
 }]);
 assert.ok(
   !dropProneAttackPlan.steps.some((step) => step.slug === "drop-prone")
-  || !dropProneAttackPlan.steps.some((step) => step.slug === "energy-beam"),
+    || !dropProneAttackPlan.steps.some((step) => step.slug === "energy-beam"),
   `planner should not pair Drop Prone with a later attack-roll action, got ${dropProneAttackPlan.summary}`,
 );
 
