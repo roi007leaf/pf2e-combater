@@ -413,6 +413,12 @@ function atomicStrikeAction(action, targetOverride, costOverride, strikeOccurren
       : null;
   const cost = Number.isFinite(costOverride) ? costOverride : 1;
   const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
+  // distinctTargetsFor (scoring.js) hands back raw battlefield-enemy entries, which have no
+  // `.type` field — unlike suggestedTargetFor's targetRef(target, "enemy") wrapping for an
+  // ordinary Strike. action-preview.js's hover highlight gates on suggestedTarget.type ===
+  // "enemy", so a distinct-target atom silently failed that check and never highlighted its
+  // target on hover, even though its own target label resolved correctly.
+  const distinctTarget = targetOverride ? { type: "enemy", ...targetOverride } : null;
   return {
     ...action,
     ...backingStrikeOverrideFields(backingStrike, leafName),
@@ -420,7 +426,7 @@ function atomicStrikeAction(action, targetOverride, costOverride, strikeOccurren
     slug: distinctTargetSlug || "strike",
     actionCost: cost,
     cost,
-    ...(targetOverride ? { preferredTarget: targetOverride, suggestedTarget: targetOverride } : {}),
+    ...(distinctTarget ? { preferredTarget: distinctTarget, suggestedTarget: distinctTarget } : {}),
     activityProfile: {
       ...(action.activityProfile ?? {}),
       includes: ["strike"],
