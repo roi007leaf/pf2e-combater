@@ -381,13 +381,10 @@ function atomicMovementAction(part) {
   };
 }
 
-function atomicStrikeAction(action, targetOverride, costOverride) {
-  const leafName = stripCompositePrefix(actionName(action));
-  const backingStrike = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.backingStrike : null;
-  const composedName = backingStrike?.name ? `${leafName} -> ${backingStrike.name}` : leafName;
-  const cost = Number.isFinite(costOverride) ? costOverride : 1;
-  const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
-  const backingStrikeFields = backingStrike ? {
+export function backingStrikeOverrideFields(backingStrike, leafName) {
+  if (!backingStrike) return { name: leafName };
+  return {
+    name: `${leafName} -> ${backingStrike.name}`,
     executable: backingStrike.executable,
     source: backingStrike.source,
     item: backingStrike.item,
@@ -402,12 +399,18 @@ function atomicStrikeAction(action, targetOverride, costOverride) {
     weaponTraits: backingStrike.weaponTraits,
     range: backingStrike.range,
     reload: backingStrike.reload,
-  } : {};
+  };
+}
+
+function atomicStrikeAction(action, targetOverride, costOverride) {
+  const leafName = stripCompositePrefix(actionName(action));
+  const backingStrike = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.backingStrike : null;
+  const cost = Number.isFinite(costOverride) ? costOverride : 1;
+  const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
   return {
     ...action,
-    ...backingStrikeFields,
+    ...backingStrikeOverrideFields(backingStrike, leafName),
     id: compositeStrikeActionKey(action),
-    name: composedName,
     slug: distinctTargetSlug || "strike",
     actionCost: cost,
     cost,

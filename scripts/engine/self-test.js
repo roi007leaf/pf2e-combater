@@ -6,6 +6,7 @@ import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
 import {
   ACTION_BUILDER_TABS,
   actionBuilderKey,
+  backingStrikeOverrideFields,
   builderAtomicActionsForStep,
   buildActionBuilderModel,
   computeAreaMarker,
@@ -17702,6 +17703,32 @@ const doubleAttackWithoutBackingStrike = {
 const noBackingStrikeAtoms = builderAtomicActionsForStep(doubleAttackWithoutBackingStrike);
 assert.equal(noBackingStrikeAtoms[0].name, "Double Attack", "with no backing strike found, the atom falls back to the ability's own name, unchanged from before this task");
 assert.equal(noBackingStrikeAtoms[0].executable, "open-item", "with no backing strike found, execution falls back to the ability's own (unrollable) executable, unchanged from before this task");
+
+const namedBackingStrikeForHelper = {
+  name: "Tentacle",
+  executable: "strike",
+  source: "strike",
+  item: { name: "Tentacle" },
+  strike: { label: "Tentacle" },
+  variants: [],
+  attack: null,
+  damage: null,
+  damageProfile: { average: 12, type: "bludgeoning", types: ["bludgeoning"], entries: [] },
+  averageDamage: 12,
+  critical: null,
+  traits: ["reach"],
+  weaponTraits: [],
+  range: null,
+  reload: null,
+};
+const mergedWithBackingStrike = backingStrikeOverrideFields(namedBackingStrikeForHelper, "Double Attack");
+assert.equal(mergedWithBackingStrike.name, "Double Attack -> Tentacle");
+assert.equal(mergedWithBackingStrike.executable, "strike");
+assert.equal(mergedWithBackingStrike.item.name, "Tentacle");
+assert.equal(mergedWithBackingStrike.averageDamage, 12);
+
+const mergedWithoutBackingStrike = backingStrikeOverrideFields(null, "Double Attack");
+assert.deepEqual(mergedWithoutBackingStrike, { name: "Double Attack" }, "with no backing strike, only the leaf name passes through");
 
 const strideStrikeCompositeForBackingStrike = {
   id: "stride-strike-composite",
