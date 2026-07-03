@@ -500,7 +500,7 @@ assert.ok(
   "auto-fill should split generated combo plan steps into atomic draft actions",
 );
 assert.equal(panelTemplateSource.includes("No usable action"), false, "panel template should not imply auto-fill is selected");
-assert.ok(panelSource.includes("headerSteps: draftSteps"), "panel header should render draft steps only");
+assert.ok(panelSource.includes("headerSteps: groupDraftSteps(draftSteps)"), "panel header should render draft steps only");
 assert.ok(panelSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
 assert.ok(panelSource.includes("this._planningContext = planningContext"), "action-list previews should remember projected draft destination context");
 assert.ok(
