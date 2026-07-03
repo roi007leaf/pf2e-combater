@@ -1811,6 +1811,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         name: step?.name ?? step?.action?.name,
         actionCost: step?.actionCost ?? step?.cost,
         requiresDestination: requiresDestinationForAction(step),
+        // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
+        // computed from the original, un-atomized action) -- reused here as the group id so the
+        // panel can visually nest them under one header instead of showing N identical-looking rows.
+        ...(step?.activityProfile?.requiresDistinctTargets
+          ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
+          : {}),
         ...(presetDestination ? { destination: presetDestination } : {}),
         ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
       };
