@@ -426,6 +426,25 @@ function findProjectedDraftAction(context, draft, step) {
     };
   }
   const stepContext = projectContextForDraftStepOrigin(context, draft, step?.instanceId);
+  // A distinct-target atom's own composite (e.g. a Kraken's "Double Attack") never appears among
+  // this actor's own browsable candidates once it's already reflected in the draft, so generic
+  // key/slug/item.uuid matching below falls through to an unrelated real weapon candidate that
+  // happens to share a field -- confirmed live to silently break the ability's own MAP-sharing
+  // rule (a plain weapon Strike has no mapAttacks/requiresDistinctTargets data, so the position-
+  // based MAP calculator treats each atom as an independent ordinary attack). Re-derive the exact
+  // atom fresh instead: find the original ability by its group label, re-atomize it the same way
+  // the draft was originally built, and match back to THIS step by its own persisted target.
+  if (step?.groupId) {
+    const original = buildCandidates(stepContext).candidates.find((candidate) =>
+      candidate.activityProfile?.requiresDistinctTargets
+      && String(candidate.name ?? "").split(" -> ")[0] === step.groupLabel);
+    if (original) {
+      const atoms = builderAtomicActionsForStep(original);
+      const targetIds = Array.isArray(step.targetTokenIds) ? step.targetTokenIds.map(String) : [];
+      const matchedAtom = atoms.find((atom) => targetIds.includes(String(atom.preferredTarget?.id)));
+      if (matchedAtom || atoms.length) return matchedAtom ?? atoms[0];
+    }
+  }
   const keys = draftStepLookupKeys(step);
   return draftStepActionRows(buildCandidates(stepContext)).find((action) =>
     actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
