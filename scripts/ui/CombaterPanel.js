@@ -438,12 +438,17 @@ function findProjectedDraftAction(context, draft, step) {
   // the draft was originally built, and match back to THIS step by its own persisted target.
   if (step?.groupId) {
     const original = buildCandidates(stepContext).candidates.find((candidate) =>
-      candidate.activityProfile?.requiresDistinctTargets
+      (candidate.activityProfile?.requiresDistinctTargets || candidate.activityProfile?.requiresBackingStrike)
       && String(candidate.name ?? "").split(" -> ")[0] === step.groupLabel);
     if (original) {
       const atoms = builderAtomicActionsForStep(original);
+      // A distinct-target atom (e.g. Double Attack) has its own distinct preferredTarget to match
+      // by; a move-and-strike atom (e.g. Sudden Charge's Strides and Strike) has no per-atom target
+      // to disambiguate by, but Task 2 stamps a stable atomIndex on every atom instead.
       const targetIds = Array.isArray(step.targetTokenIds) ? step.targetTokenIds.map(String) : [];
-      const matchedAtom = atoms.find((atom) => targetIds.includes(String(atom.preferredTarget?.id)));
+      const matchedAtom = Number.isFinite(step.atomIndex)
+        ? atoms[step.atomIndex]
+        : atoms.find((atom) => targetIds.includes(String(atom.preferredTarget?.id)));
       const atom = matchedAtom ?? (atoms.length ? atoms[0] : null);
       if (atom && step.weaponId) {
         const stepActorDocument = stepContext.actor?.document ?? stepContext.actor ?? null;
@@ -638,7 +643,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
   // pick which of the actor's other ready Strikes backs THIS atom instead. Only shown when the
   // actor actually has more than one Strike to choose from.
   const weaponToolLabel = action?.item?.name ?? t("Panel.WeaponDefault", "Default");
-  const canCycleWeapon = Boolean(step?.groupId) && canRunStep && !isExecutionDone && weaponOptions.length > 1;
+  const isStrikeAtom = action?.executable === "strike" || action?.source === "strike";
+  const canCycleWeapon = Boolean(step?.groupId) && isStrikeAtom && canRunStep && !isExecutionDone && weaponOptions.length > 1;
   const weaponToolTip = t("Panel.WeaponCycle", "Attacking with {label}. Click to change.", { label: weaponToolLabel });
   return {
     ...display,
