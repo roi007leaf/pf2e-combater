@@ -261,6 +261,41 @@
   border-color: #4a5363;
 }
 
+.pf2e-combater .combater-step-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid #303640;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.pf2e-combater .combater-step-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.pf2e-combater .combater-step-group-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.pf2e-combater .combater-step-group-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 16px;
+  padding-left: 8px;
+  border-left: 2px solid #303640;
+}
+
+.pf2e-combater .combater-step-group-children .combater-header-step {
+  border-color: transparent;
+}
+
 .pf2e-combater .combater-plan-strip > .combater-sequence > .combater-chip {
   flex: 1 1 190px;
 }
