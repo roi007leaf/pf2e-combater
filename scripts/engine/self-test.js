@@ -2065,6 +2065,16 @@ try {
   assert.equal(deletedConsumableOp.sourceData?.name, "Last Healing Potion", "the deleted op should carry the source data needed to recreate the item");
   assert.equal(deletedConsumableOp.actorUuid, actorDocument.uuid);
 
+  const potionRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "potion-step", execution: potionResult.patch.execution } });
+  assert.equal(potionRevert.status, "reverted");
+  assert.equal(healingPotionQuantity, 2, "reverting should restore the potion's quantity");
+  assert.deepEqual(consumableUpdates.at(-1), { item: "healing-potion", data: { "system.quantity.value": 2 } }, "revert should write the quantity back via item.update");
+
+  const lastPotionRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "last-potion-step", execution: lastPotionResult.patch.execution } });
+  assert.equal(lastPotionRevert.status, "reverted");
+  assert.equal(effectCreates.at(-1)?.type, "Item", "reverting a fully-consumed item should recreate it via createEmbeddedDocuments");
+  assert.equal(effectCreates.at(-1)?.document?.name, "Last Healing Potion", "the recreated item should match the source data captured before it was consumed");
+
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
 
@@ -2110,14 +2120,13 @@ try {
   assert.equal(regionCreates.at(-1).type, "Region");
 
   // A lasting-duration area also creates a linked PF2e timer effect and stamps the region.
-  assert.equal(effectCreates.length, 1, "a lasting-duration area should create one timer effect");
-  assert.equal(effectCreates[0].type, "Item");
-  assert.deepEqual(effectCreates[0].document.system.duration, { value: 1, unit: "minutes", expiry: null, sustained: false });
-  assert.equal(effectCreates[0].document.flags["pf2e-combater"].areaRegion.regionId, "region-1-0");
+  assert.equal(effectCreates.at(-1)?.type, "Item", "a lasting-duration area should create one timer effect");
+  assert.deepEqual(effectCreates.at(-1).document.system.duration, { value: 1, unit: "minutes", expiry: null, sustained: false });
+  assert.equal(effectCreates.at(-1).document.flags["pf2e-combater"].areaRegion.regionId, "region-1-0");
   assert.equal(regionUpdates.at(-1).updates[0]._id, "region-1-0", "the region should be stamped with its timer flag");
   assert.ok(regionUpdates.at(-1).updates[0]["flags.pf2e-combater.areaTimer"].effectUuid, "the region timer flag should link the effect");
   const areaRegionOp = areaResult.patch.execution.revert.ops.find((op) => op.kind === "region");
-  assert.equal(areaRegionOp.effectUuid, "Actor.valeros.Item.effect-1", "the region revert op should carry the linked effect uuid");
+  assert.equal(areaRegionOp.effectUuid, `Actor.valeros.Item.effect-${effectCreates.length}`, "the region revert op should carry the linked effect uuid");
 
   // An instantaneous AoE spell (no sustained/lasting duration) targets but leaves no template.
   const instantBurstMarker = { shape: "burst", center: { x: 300, y: 300 }, distance: 20 };
@@ -2231,7 +2240,7 @@ try {
   });
   assert.equal(areaRevert.status, "reverted");
   assert.deepEqual(regionDeletes.at(-1), { type: "Region", ids: ["region-1-0"] }, "reverting an area action should delete the placed region");
-  assert.ok(effectDeletes.includes("Actor.valeros.Item.effect-1"), "reverting an area action should delete its linked timer effect");
+  assert.ok(effectDeletes.includes(areaRegionOp.effectUuid), "reverting an area action should delete its linked timer effect");
 
   globalThis.game.user.targets = new Set([targetToken]);
   let strikeRollParams = null;

@@ -78,6 +78,25 @@ async function revertCarryType(op) {
   }
 }
 
+// Restore a consumable's quantity/uses (if it still exists), or recreate it outright (if PF2e's
+// own consumable-use logic deleted it once its last quantity/use was spent).
+async function revertConsumable(op, { actor }) {
+  if (op?.deleted === true) {
+    if (!actor || typeof actor.createEmbeddedDocuments !== "function" || !op.sourceData) {
+      throw new Error(t("Revert.CouldNotRestoreConsumable", "could not restore the consumed item"));
+    }
+    await actor.createEmbeddedDocuments("Item", [op.sourceData]);
+    return;
+  }
+  if (!op?.itemUuid || typeof globalThis.fromUuid !== "function") return;
+  const item = await globalThis.fromUuid(op.itemUuid);
+  if (typeof item?.update !== "function") return;
+  const update = {};
+  if (op.quantityBefore !== null && op.quantityBefore !== undefined) update["system.quantity.value"] = op.quantityBefore;
+  if (op.usesValueBefore !== null && op.usesValueBefore !== undefined) update["system.uses.value"] = op.usesValueBefore;
+  if (Object.keys(update).length) await item.update(update);
+}
+
 // True only when we can positively confirm an embedded document is already gone from its
 // collection. Returns false when we cannot check, so a real deletion is still attempted.
 function confirmedRemoved(collection, id) {
@@ -360,6 +379,8 @@ async function applyRevertOp(op, scope) {
       return revertRegion(op);
     case "carry-type":
       return revertCarryType(op);
+    case "consumable":
+      return revertConsumable(op, scope);
     case "chat":
       return revertChat(op);
     case "slot":

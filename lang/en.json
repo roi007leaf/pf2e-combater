@@ -208,7 +208,8 @@
       "SlotApiFailed": "Spell slot API restore failed: {error}",
       "PreparedSlotApiFailed": "Prepared spell slot API restore failed: {error}",
       "CouldNotClear": "could not clear {slug}",
-      "CouldNotRestoreCond": "could not restore {slug}"
+      "CouldNotRestoreCond": "could not restore {slug}",
+      "CouldNotRestoreConsumable": "could not restore the consumed item"
     },
     "Action": {
       "StandStride": "Stand -> Stride",
