@@ -56,7 +56,6 @@ import { actionDetailChips, traitChips } from "./action-details.js";
 import { actorMovementOptions } from "../readers/actor-profile.js";
 import { actorStrikeOptions, bestReadyStrike } from "../readers/action-reader.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
-import { canUseFullAggro } from "../rules/aggro.js";
 import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
 import { requestRetchDc, requestRetchResult, shareDraftPlan } from "../socket.js";
 import { pf2eActionName, t } from "../i18n.js";
@@ -1945,10 +1944,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ?? fallbackAutoFill();
     if (!autoFill?.steps?.length) return;
 
-    // For the GM running an NPC, the recommendation already chose targets (aggro) and a stride
-    // destination; pre-fill both so the GM doesn't re-pick each one. (Players target/move by
-    // hand.) The projected origin advances so a chained stride starts where the prior one lands.
-    const useAggroTargets = canUseFullAggro(this._context);
+    // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
+    // target and (for movement) a destination, so pre-fill both regardless of who's using it or
+    // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off
+    // Auto-fill for players entirely via the hideAutoFillFromPlayers setting checked above. The
+    // projected origin advances so a chained stride starts where the prior one lands.
     let movementContext = this._context;
     // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
     // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
@@ -1997,7 +1997,6 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         ...(presetDestination ? { destination: presetDestination } : {}),
         ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
       };
-      if (!useAggroTargets) return draftStep;
 
       const target = plannedTargetSelection(step);
       if (target.targetTokenIds.length) {

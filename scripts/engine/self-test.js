@@ -4696,10 +4696,10 @@ assert.equal(canUseFullAggro({ isGM: true, profile: { actorType: "character" } }
 assert.equal(canUseFullAggro({ isGM: false, profile: { actorType: "npc" } }), false, "players do not pick aggro targets");
 const prefillTarget = plannedTargetSelection({ suggestedTarget: { id: "t1", name: "Healer", token: { id: "t1" } } });
 assert.deepEqual(prefillTarget.targetTokenIds, ["t1"], "planned target selection exposes the suggested target token id");
-assert.ok(panelSource.includes("canUseFullAggro") && panelSource.includes("plannedTargetSelection"),
-  "auto-fill should consult aggro + planned target selection");
+assert.ok(!panelSource.includes("canUseFullAggro"), "auto-fill's target/destination pre-fill must no longer be gated on GM+NPC-only aggro eligibility -- it should pre-fill for any actor, GM or player, since a GM who doesn't want players pre-filled already has hideAutoFillFromPlayers");
+assert.ok(panelSource.includes("plannedTargetSelection"), "auto-fill should consult planned target selection");
 assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
-  "auto-fill should store the aggro target as a manual selection for GM NPCs");
+  "auto-fill should store the planned target as a manual selection, for any actor using auto-fill");
 assert.ok(panelSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
 assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelSource),
   "auto-fill should store the recommended destination and waypoints for GM NPCs");
