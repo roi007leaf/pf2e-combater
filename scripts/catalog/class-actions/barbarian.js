@@ -6,6 +6,7 @@ export const BARBARIAN_ACTIONS = [
       includes: ['stride', 'stride', 'strike'],
       strideCount: 2,
       includesStrike: true,
+      requiresBackingStrike: true,
     },
     executable: 'open-item',
     confidence: 'high',

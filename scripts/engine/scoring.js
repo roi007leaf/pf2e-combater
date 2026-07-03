@@ -1608,7 +1608,7 @@ export function scoreCandidate(context, action) {
   const distinctTargets = action.activityProfile?.requiresDistinctTargets
     ? distinctTargetsFor(context, action, role)
     : null;
-  const backingStrike = action.activityProfile?.requiresDistinctTargets
+  const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
     ? bestReadyStrike(contextActorDocument(context), context)
     : null;
   const backingManeuver = action.activityProfile?.npcFamily === "grab-rider"

@@ -17853,6 +17853,34 @@ const ordinaryCandidateForBackingStrike = { id: "strike", name: "Strike", slug: 
 const ordinaryScoredForBackingStrike = scoreCandidate(backingStrikeContext, ordinaryCandidateForBackingStrike);
 assert.equal(ordinaryScoredForBackingStrike.activityProfile?.backingStrike, undefined, "an ordinary action must not gain a backingStrike");
 
+const suddenChargeActorForBackingStrike = {
+  type: "npc",
+  itemTypes: {},
+  system: {
+    traits: { size: { value: "med" } },
+    actions: [
+      { type: "strike", name: "Longsword", label: "Longsword", slug: "longsword", item: meleeItem("1d8+4", "slashing", ["versatile-p"]), traits: [], weaponTraits: [], variants: [] },
+    ],
+  },
+};
+const suddenChargeForBackingStrike = {
+  id: "sudden-charge",
+  name: "Sudden Charge",
+  slug: "sudden-charge",
+  actionCost: 2,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "stride", "strike"], strideCount: 2, includesStrike: true, requiresBackingStrike: true },
+};
+const suddenChargeBackingStrikeContext = { ...fighterContext, actor: { document: suddenChargeActorForBackingStrike } };
+const suddenChargeScored = scoreCandidate(suddenChargeBackingStrikeContext, suddenChargeForBackingStrike);
+assert.equal(suddenChargeScored.activityProfile.backingStrike?.name, "Longsword", "a requiresBackingStrike action should compute a backingStrike exactly like requiresDistinctTargets already does");
+
+const ordinaryActionForBackingStrikeGate = { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } };
+const ordinaryBackingStrikeScored = scoreCandidate(suddenChargeBackingStrikeContext, ordinaryActionForBackingStrikeGate);
+assert.equal(ordinaryBackingStrikeScored.activityProfile?.backingStrike, undefined, "an ordinary action must not gain a backingStrike");
+
 const backingStrikeTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
 const backingStrikeTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
 const armBackingStrike = {
