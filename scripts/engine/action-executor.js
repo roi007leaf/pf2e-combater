@@ -1210,10 +1210,6 @@ export function findSpellcastingEntry(actor, action) {
   ) ?? null;
 }
 
-function systemFieldValue(value) {
-  return value && typeof value === "object" && "value" in value ? value.value : value;
-}
-
 // Snapshot a consumable's quantity/uses (and full source data, in case it gets deleted entirely)
 // BEFORE calling item.use() -- PF2e's own consumable-use logic decrements quantity/uses and, once
 // spent, deletes the item outright, and there's no other point where the pre-use state is visible.
@@ -1221,8 +1217,8 @@ function consumableUseSnapshot(item) {
   if (!item || item.type !== "consumable" || !item.uuid) return null;
   return {
     itemUuid: item.uuid,
-    quantityBefore: numeric(systemFieldValue(item.system?.quantity), null),
-    usesValueBefore: numeric(systemFieldValue(item.system?.uses), null),
+    quantityBefore: numeric(systemValue(item.system?.quantity), null),
+    usesValueBefore: numeric(systemValue(item.system?.uses), null),
     sourceData: typeof item.toObject === "function" ? item.toObject() : null,
   };
 }
@@ -1238,8 +1234,8 @@ async function consumableRevertOpAfterUse(before, actor) {
       ? { kind: "consumable", deleted: true, actorUuid: actor.uuid, sourceData: before.sourceData }
       : null;
   }
-  const quantityNow = numeric(systemFieldValue(stillExists.system?.quantity), null);
-  const usesNow = numeric(systemFieldValue(stillExists.system?.uses), null);
+  const quantityNow = numeric(systemValue(stillExists.system?.quantity), null);
+  const usesNow = numeric(systemValue(stillExists.system?.uses), null);
   if (quantityNow === before.quantityBefore && usesNow === before.usesValueBefore) return null;
   return { kind: "consumable", itemUuid: before.itemUuid, quantityBefore: before.quantityBefore, usesValueBefore: before.usesValueBefore };
 }
