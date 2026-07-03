@@ -78,8 +78,15 @@ async function revertCarryType(op) {
   }
 }
 
-// Restore a consumable's quantity/uses (if it still exists), or recreate it outright (if PF2e's
-// own consumable-use logic deleted it once its last quantity/use was spent).
+// PF2e's system.quantity field is a bare number on physical items (confirmed live), while
+// system.uses is { value, max, ... } -- write back to whichever shape the live item is ACTUALLY
+// using; a hardcoded "system.quantity.value" write silently merges into a bare number field as
+// an object and clamps it to 0 instead of restoring it.
+function systemFieldUpdatePath(item, field) {
+  const current = item?.system?.[field];
+  return current && typeof current === "object" && "value" in current ? `system.${field}.value` : `system.${field}`;
+}
+
 async function revertConsumable(op, { actor }) {
   if (op?.deleted === true) {
     if (!actor || typeof actor.createEmbeddedDocuments !== "function" || !op.sourceData) {
@@ -92,8 +99,8 @@ async function revertConsumable(op, { actor }) {
   const item = await globalThis.fromUuid(op.itemUuid);
   if (typeof item?.update !== "function") return;
   const update = {};
-  if (op.quantityBefore !== null && op.quantityBefore !== undefined) update["system.quantity.value"] = op.quantityBefore;
-  if (op.usesValueBefore !== null && op.usesValueBefore !== undefined) update["system.uses.value"] = op.usesValueBefore;
+  if (op.quantityBefore !== null && op.quantityBefore !== undefined) update[systemFieldUpdatePath(item, "quantity")] = op.quantityBefore;
+  if (op.usesValueBefore !== null && op.usesValueBefore !== undefined) update[systemFieldUpdatePath(item, "uses")] = op.usesValueBefore;
   if (Object.keys(update).length) await item.update(update);
 }
 

@@ -2114,6 +2114,54 @@ try {
   assert.equal(scrollRevert.status, "reverted");
   assert.equal(scrollUsesValue, 1, "reverting should restore the scroll's uses");
 
+  // Real PF2e physical items (including consumables) carry system.quantity as a BARE NUMBER, not
+  // { value: N } -- confirmed directly against a live actor's "Rations" item. Consuming the last
+  // use of a stacked item also drops the stack by one and resets uses to max (mirroring the real
+  // ConsumablePF2e#consume autoDestroy-with-quantity-left branch).
+  let journeyCakeQuantity = 2;
+  let journeyCakeUses = 1;
+  const journeyCakeUuid = "Actor.valeros.Item.journey-cake";
+  const journeyCake = {
+    id: "journey-cake",
+    type: "consumable",
+    uuid: journeyCakeUuid,
+    system: { quantity: journeyCakeQuantity, uses: { value: journeyCakeUses, max: 1, autoDestroy: true } },
+    toObject: () => ({ name: "Journey Cake", type: "consumable", system: { quantity: journeyCakeQuantity, uses: { value: journeyCakeUses, max: 1 } } }),
+    consume: async () => {
+      journeyCakeQuantity -= 1;
+      journeyCakeUses = 1;
+      journeyCake.system.quantity = journeyCakeQuantity;
+      journeyCake.system.uses.value = journeyCakeUses;
+    },
+    update: async (data) => {
+      consumableUpdates.push({ item: "journey-cake", data });
+      if ("system.quantity" in data) {
+        journeyCakeQuantity = data["system.quantity"];
+        journeyCake.system.quantity = journeyCakeQuantity;
+      }
+      if ("system.uses.value" in data) {
+        journeyCakeUses = data["system.uses.value"];
+        journeyCake.system.uses.value = journeyCakeUses;
+      }
+    },
+  };
+  createdEffects.set(journeyCakeUuid, journeyCake);
+  const journeyCakeResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "journey-cake-step" },
+    action: { name: "Journey Cake", slug: "journey-cake", executable: "open-item", item: journeyCake },
+  });
+  assert.equal(journeyCakeResult.status, "done");
+  assert.equal(journeyCakeQuantity, 1, "consuming should decrement the bare-number quantity field");
+  const journeyCakeOp = journeyCakeResult.patch.execution.revert?.ops?.find((op) => op.kind === "consumable");
+  assert.ok(journeyCakeOp, "consuming a bare-number-quantity item should still record a consumable revert op");
+  assert.equal(journeyCakeOp.quantityBefore, 2);
+  const journeyCakeRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "journey-cake-step", execution: journeyCakeResult.patch.execution } });
+  assert.equal(journeyCakeRevert.status, "reverted");
+  assert.equal(journeyCakeQuantity, 2, "reverting should restore the bare-number quantity field, not corrupt it to 0 via a nonexistent .value sub-path");
+  assert.equal(consumableUpdates.at(-1)?.data?.["system.quantity"], 2, "the write path should target the bare field directly, matching its actual shape");
+  assert.equal("system.quantity.value" in (consumableUpdates.at(-1)?.data ?? {}), false, "must not write the nonexistent .value sub-path on a bare-number field");
+
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
 
