@@ -9,6 +9,7 @@ import { SETTINGS, setting } from "../settings.js";
 import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
 import { pf2eSave, t } from "../i18n.js";
 import { bestReadyStrike } from "../readers/action-reader.js";
+import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
 const ELEMENT_DAMAGE_FALLBACKS = {
@@ -1610,6 +1611,9 @@ export function scoreCandidate(context, action) {
   const backingStrike = action.activityProfile?.requiresDistinctTargets
     ? bestReadyStrike(contextActorDocument(context), context)
     : null;
+  const backingManeuver = action.activityProfile?.npcFamily === "grab-rider"
+    ? GENERIC_ACTIONS.find((generic) => generic.slug === "grapple") ?? null
+    : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
   const reasons = [...(action.reasons ?? [])];
   const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
@@ -2491,6 +2495,7 @@ export function scoreCandidate(context, action) {
 
   return sanitizeScoredRecommendation({
     ...action,
+    ...(backingManeuver ? { executable: backingManeuver.executable, slug: backingManeuver.slug, skill: backingManeuver.skill } : {}),
     score,
     skillCheck,
     suggestedTarget,
@@ -2502,6 +2507,7 @@ export function scoreCandidate(context, action) {
       areaPlacementAimPoint,
       ...(distinctTargets ? { distinctTargets } : {}),
       ...(backingStrike ? { backingStrike } : {}),
+      ...(backingManeuver ? { backingManeuver } : {}),
     },
   }, {
     isGM: canUseTargetDefenses(context),
