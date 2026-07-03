@@ -776,6 +776,52 @@ function injectMapInfo(steps, startCount = 0) {
   return { steps: tagged, attackCount };
 }
 
+// Collapses consecutive same-groupId steps (2+) into one { isGroup: true, children } entry for
+// display, so a distinct-target ability's atoms (e.g. a Kraken's two Double Attack Strikes) nest
+// under one shared header instead of showing as identical-looking independent rows. A lone,
+// unpaired member of a group (e.g. after a manual delete) is passed through unchanged -- a header
+// around a single child adds visual noise with no benefit.
+function groupDraftSteps(steps) {
+  const list = Array.isArray(steps) ? steps : [];
+  const grouped = [];
+  let i = 0;
+  while (i < list.length) {
+    const step = list[i];
+    const groupId = step?.groupId;
+    if (!groupId) {
+      grouped.push(step);
+      i += 1;
+      continue;
+    }
+    let end = i + 1;
+    while (end < list.length && list[end]?.groupId === groupId) end += 1;
+    const members = list.slice(i, end);
+    if (members.length < 2) {
+      grouped.push(step);
+      i += 1;
+      continue;
+    }
+    const prefix = `${members[0].groupLabel} -> `;
+    grouped.push({
+      isGroup: true,
+      groupLabel: members[0].groupLabel,
+      instanceId: members[0].instanceId,
+      actionGlyphIcon: members[0].actionGlyphIcon,
+      costLabel: members[0].costLabel,
+      canMoveStepUp: members[0].canMoveStepUp,
+      canMoveStepDown: members[members.length - 1].canMoveStepDown,
+      children: members.map((member) => ({
+        ...member,
+        name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
+        canMoveStepUp: false,
+        canMoveStepDown: false,
+      })),
+    });
+    i = end;
+  }
+  return grouped;
+}
+
 function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [] } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
@@ -1153,7 +1199,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       actor: context?.actor ?? null,
       token: context?.token ?? null,
       plan: autoFill,
-      headerSteps: draftSteps,
+      headerSteps: groupDraftSteps(draftSteps),
       headerSummary: "",
       builder: this._builder,
       expanded: this.expanded,
