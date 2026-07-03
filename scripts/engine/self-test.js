@@ -40,7 +40,7 @@ import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
-import { actorStrikeOptions, bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
+import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import {
@@ -17827,6 +17827,42 @@ assert.equal(strongerOfTwo?.name, "Bite", "with two real Strikes available, the 
 const noStrikeActor = { system: { actions: [] } };
 assert.equal(bestReadyStrike(noStrikeActor, {}), null, "an actor with no real Strikes returns null, not a thrown error");
 
+const unarmedAndWeaponActor = {
+  system: {
+    actions: [
+      {
+        slug: "fist", label: "Fist", name: "Fist", type: "strike", visible: true, ready: true, canAttack: true,
+        traits: ["unarmed"],
+        item: { system: { traits: { value: ["unarmed", "agile", "finesse"] }, damageRolls: { a: { damage: "1d4", damageType: "bludgeoning" } } } },
+      },
+      {
+        slug: "longsword", label: "Longsword", name: "Longsword", type: "strike", visible: true, ready: true, canAttack: true,
+        item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "1d8+6", damageType: "slashing" } } } },
+      },
+    ],
+  },
+};
+assert.equal(bestReadyStrike(unarmedAndWeaponActor, {})?.name, "Longsword", "with no filter, the highest-average-damage Strike wins regardless of weapon type");
+assert.equal(bestReadyStrike(unarmedAndWeaponActor, {}, backingStrikeFilterByPreset("unarmed"))?.name, "Fist", "the 'unarmed' filter preset must restrict the pick to Strikes carrying the unarmed trait, even when a real weapon deals more damage");
+
+const rangedAndMeleeActor = {
+  system: {
+    actions: [
+      {
+        slug: "shortsword", label: "Shortsword", name: "Shortsword", type: "strike", visible: true, ready: true, canAttack: true,
+        item: { system: { traits: { value: [] }, damageRolls: { a: { damage: "3d6", damageType: "piercing" } } } },
+      },
+      {
+        slug: "shortbow", label: "Shortbow", name: "Shortbow", type: "strike", visible: true, ready: true, canAttack: true,
+        reload: 0,
+        item: { system: { range: { increment: 60 }, traits: { value: [] }, damageRolls: { a: { damage: "1d6", damageType: "piercing" } } } },
+      },
+    ],
+  },
+};
+assert.equal(bestReadyStrike(rangedAndMeleeActor, {}, backingStrikeFilterByPreset("ranged-reload-zero"))?.name, "Shortbow", "the 'ranged-reload-zero' filter preset must restrict the pick to a genuine ranged weapon (raw item.system.range present) with no reload, even when a melee Strike deals more damage");
+assert.equal(bestReadyStrike(rangedAndMeleeActor, {}, backingStrikeFilterByPreset("nonexistent-preset"))?.name, "Shortsword", "an unknown preset name must not throw or filter out everything -- it falls back to unfiltered (highest damage wins)");
+
 const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
 const multiStrikeActorForOptions = {
   type: "npc",
@@ -17921,6 +17957,31 @@ const flyingKickForBackingStrike = {
 const flyingKickBackingStrikeContext = { ...fighterContext, actor: { document: suddenChargeActorForBackingStrike } };
 const flyingKickScored = scoreCandidate(flyingKickBackingStrikeContext, flyingKickForBackingStrike);
 assert.equal(flyingKickScored.activityProfile.backingStrike?.name, "Longsword", "Flying Kick's requiresBackingStrike tag must compute a backingStrike exactly like Sudden Charge's already does");
+
+const flurryActorForBackingStrike = {
+  type: "npc",
+  itemTypes: {},
+  system: {
+    traits: { size: { value: "med" } },
+    actions: [
+      { type: "strike", name: "Fist", label: "Fist", slug: "fist", traits: [], weaponTraits: [], variants: [], item: meleeItem("1d6+4", "bludgeoning", ["unarmed", "agile"]) },
+      { type: "strike", name: "Longsword", label: "Longsword", slug: "longsword", traits: [], weaponTraits: [], variants: [], item: meleeItem("1d8+4", "slashing", ["versatile-p"]) },
+    ],
+  },
+};
+const flurryOfBlowsForBackingStrike = {
+  id: "flurry-of-blows",
+  name: "Flurry of Blows",
+  slug: "flurry-of-blows",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, requiresBackingStrike: true, backingStrikeFilter: "unarmed" },
+};
+const flurryBackingStrikeContext = { ...fighterContext, actor: { document: flurryActorForBackingStrike } };
+const flurryScored = scoreCandidate(flurryBackingStrikeContext, flurryOfBlowsForBackingStrike);
+assert.equal(flurryScored.activityProfile.backingStrike?.name, "Fist", "Flurry of Blows' backingStrikeFilter must restrict the borrowed weapon to an unarmed Strike, even though the Longsword deals more damage");
 
 const backingStrikeTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
 const backingStrikeTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };

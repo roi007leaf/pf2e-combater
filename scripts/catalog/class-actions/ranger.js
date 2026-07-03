@@ -20,6 +20,9 @@ export const RANGER_ACTIONS = [
       includes: ['strike', 'strike'],
       includesStrike: true,
       multiStrike: true,
+      requiresBackingStrike: true,
+      backingStrikeFilter: 'ranged-reload-zero',
+      mapAppliesPerStrike: true,
     },
     targetingProfile: {
       enemy: true,

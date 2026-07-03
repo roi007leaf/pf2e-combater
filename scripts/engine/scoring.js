@@ -8,7 +8,7 @@ import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
 import { pf2eSave, t } from "../i18n.js";
-import { bestReadyStrike } from "../readers/action-reader.js";
+import { backingStrikeFilterByPreset, bestReadyStrike } from "../readers/action-reader.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
@@ -1608,8 +1608,9 @@ export function scoreCandidate(context, action) {
   const distinctTargets = action.activityProfile?.requiresDistinctTargets
     ? distinctTargetsFor(context, action, role)
     : null;
+  const backingStrikeFilter = backingStrikeFilterByPreset(action.activityProfile?.backingStrikeFilter);
   const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
-    ? bestReadyStrike(contextActorDocument(context), context)
+    ? bestReadyStrike(contextActorDocument(context), context, backingStrikeFilter)
     : null;
   const backingManeuver = action.activityProfile?.npcFamily === "grab-rider"
     ? GENERIC_ACTIONS.find((generic) => generic.slug === "grapple") ?? null

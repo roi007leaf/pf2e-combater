@@ -6,6 +6,9 @@ export const MONK_ACTIONS = [
       includes: ['strike', 'strike'],
       includesStrike: true,
       multiStrike: true,
+      requiresBackingStrike: true,
+      backingStrikeFilter: 'unarmed',
+      mapAppliesPerStrike: true,
     },
     targetingProfile: {
       enemy: true,

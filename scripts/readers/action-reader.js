@@ -502,8 +502,18 @@ export function actorStrikeOptions(actor, context = null) {
     });
 }
 
-export function bestReadyStrike(actor, context) {
-  const strikes = actorStrikeOptions(actor, context);
+const BACKING_STRIKE_FILTERS = {
+  unarmed: (strike) => strike.traits.includes("unarmed"),
+  "ranged-reload-zero": (strike) => strike.item?.system?.range != null && strike.reload === 0,
+};
+
+export function backingStrikeFilterByPreset(preset) {
+  return BACKING_STRIKE_FILTERS[preset];
+}
+
+export function bestReadyStrike(actor, context, filter) {
+  const strikes = actorStrikeOptions(actor, context)
+    .filter((strike) => (typeof filter === "function" ? filter(strike) : true));
   if (!strikes.length) return null;
   return strikes.toSorted((left, right) => (Number(right.averageDamage) || 0) - (Number(left.averageDamage) || 0))[0];
 }
