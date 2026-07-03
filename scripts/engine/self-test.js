@@ -3514,6 +3514,32 @@ assert.deepEqual(
   "a strideCount: 2 composite must expand to two Stride atoms, not one",
 );
 
+const suddenChargeAtomFixture = {
+  id: "sudden-charge",
+  name: "Sudden Charge",
+  slug: "sudden-charge",
+  actionCost: 2,
+  activityProfile: {
+    includes: ["stride", "stride", "strike"],
+    strideCount: 2,
+    includesStrike: true,
+    requiresBackingStrike: true,
+    backingStrike: { name: "Longsword", executable: "strike", source: "strike", item: { name: "Longsword" }, strike: {}, variants: [], attack: null, damage: null, damageProfile: null, averageDamage: 8, critical: null, traits: ["versatile-p"], weaponTraits: [], range: null, reload: null },
+  },
+};
+const suddenChargeAtoms = builderAtomicActionsForStep(suddenChargeAtomFixture);
+assert.deepEqual(suddenChargeAtoms.map((atom) => atom.slug), ["stride", "stride", "strike"], "Sudden Charge must atomize into two Strides and one Strike, not stay as one un-atomized action");
+assert.deepEqual(suddenChargeAtoms.map((atom) => atom.actionCost), [2, 0, 0], "the composite's own 2-action cost must land entirely on the first atom, with every atom after it free");
+assert.equal(suddenChargeAtoms[2].name, "Sudden Charge -> Longsword", "the Strike atom must borrow the real weapon's name, exactly like a Double Attack atom does");
+assert.equal(suddenChargeAtoms[0].groupId, suddenChargeAtoms[2].groupId, "every atom (Strides included) must share one group id so the panel can nest them under one header");
+assert.equal(suddenChargeAtoms[0].groupLabel, "Sudden Charge");
+assert.deepEqual(suddenChargeAtoms.map((atom) => atom.atomIndex), [0, 1, 2], "each atom must record its own position for later re-matching a persisted step back to the exact atom it came from");
+
+// A requiresBackingStrike action that fails to atomize into 2+ atoms (e.g. malformed includes) must
+// be returned unchanged, exactly like requiresDistinctTargets already falls back safely.
+const malformedBackingStrikeFixture = { id: "malformed", name: "Malformed", slug: "malformed", actionCost: 1, activityProfile: { includes: [], requiresBackingStrike: true } };
+assert.deepEqual(builderAtomicActionsForStep(malformedBackingStrikeFixture), [malformedBackingStrikeFixture], "a requiresBackingStrike action with nothing to atomize should pass through unchanged");
+
 // Skirmish with a 1-action ranged Strike finisher -> [melee Strike, Stride away, ranged Strike].
 const skirmishStrikeExpansion = builderAtomicActionsForStep({
   slug: "skirmish-strike-dart",

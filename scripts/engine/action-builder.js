@@ -325,13 +325,15 @@ function isCompositeAtomicAction(action) {
   const includes = actionIncludedParts(action);
   const hasAtomicPart = [...COMPOSITE_ATOMIC_PARTS].some((part) => includes.has(part));
   const includesStrike = action.activityProfile?.includesStrike === true || includes.has("strike");
-  return action.activityProfile?.requiresDistinctTargets === true || (name.includes(" -> ") && (
-    (hasAtomicPart && includesStrike)
-    || (includes.has("stand") && includes.has("stride"))
-    || (action.activityProfile?.drawsWeapon === true && includesStrike)
-    || action.activityProfile?.retreatBeforeStrike === true
-    || action.activityProfile?.retreatAfterStrike === true
-  ));
+  return action.activityProfile?.requiresDistinctTargets === true
+    || action.activityProfile?.requiresBackingStrike === true
+    || (name.includes(" -> ") && (
+      (hasAtomicPart && includesStrike)
+      || (includes.has("stand") && includes.has("stride"))
+      || (action.activityProfile?.drawsWeapon === true && includesStrike)
+      || action.activityProfile?.retreatBeforeStrike === true
+      || action.activityProfile?.retreatAfterStrike === true
+    ));
 }
 
 function compositeStrikeActionKey(action) {
@@ -404,7 +406,9 @@ export function backingStrikeOverrideFields(backingStrike, leafName) {
 
 function atomicStrikeAction(action, targetOverride, costOverride) {
   const leafName = stripCompositePrefix(actionName(action));
-  const backingStrike = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.backingStrike : null;
+  const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
+    ? action.activityProfile?.backingStrike
+    : null;
   const cost = Number.isFinite(costOverride) ? costOverride : 1;
   const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
   return {
@@ -494,7 +498,7 @@ export function builderAtomicActionsForStep(action) {
   if (action.activityProfile?.requiresDistinctTargets && !distinctTargets?.length) return action ? [action] : [];
 
   let strikeOccurrence = 0;
-  return parts.flatMap((part) => {
+  const atoms = parts.flatMap((part) => {
     const normalized = String(part).toLowerCase();
     if (["crawl", "stand", "step", "stride"].includes(normalized)) return atomicMovementAction(normalized) ?? [];
     if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
@@ -508,6 +512,28 @@ export function builderAtomicActionsForStep(action) {
     }
     return [];
   });
+
+  // A backed move-and-strike feat (e.g. Sudden Charge: Stride twice, then a real weapon Strike)
+  // costs its own stated total once, not once per atom -- the first atom carries the full cost,
+  // every atom after it is free, mirroring how a distinct-target composite's own atoms already
+  // share cost. Every atom (Strides included, not just the Strike atomicStrikeAction already
+  // stamps) gets the SAME group id/label and its own position index, since Strides and Strikes are
+  // built by two different functions that otherwise share no identity -- this is what lets the
+  // panel nest them under one header and re-match a persisted step back to its exact atom later.
+  if (action.activityProfile?.requiresBackingStrike && atoms.length > 1) {
+    const totalCost = Number(action.actionCost ?? action.cost ?? 1);
+    const groupId = compositeStrikeActionKey(action);
+    const groupLabel = String(action.name ?? "").split(" -> ")[0];
+    return atoms.map((atom, index) => ({
+      ...atom,
+      actionCost: index === 0 ? totalCost : 0,
+      cost: index === 0 ? totalCost : 0,
+      groupId,
+      groupLabel,
+      atomIndex: index,
+    }));
+  }
+  return atoms;
 }
 
 function needsSyntheticInteract(action) {
