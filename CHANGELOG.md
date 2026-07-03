@@ -17,8 +17,35 @@ All notable changes to PF2e Combater are documented here. The format is based on
   behind reasons like "can hit 4 enemies near X"), that placement is filled in automatically instead
   of always prompting "Choose area at execution." Falls back to manual placement whenever there's no
   good spot to suggest, or for area shapes this doesn't cover yet (cube/square, ring).
+- **A monster's multi-strike abilities (e.g. a Kraken's Double Attack) now roll as real attacks and
+  show as a grouped step.** Previously these showed as a single generic, non-rollable strike; each
+  attack now resolves to one of the creature's actual weapons, and the plan groups them under one
+  shared header with independently movable and removable children.
+- **The GM can pick which weapon backs each attack of a multi-strike ability.** A new control on
+  each grouped strike cycles through the creature's other ready Strikes (e.g. Arm, Tentacle, Beak)
+  instead of always defaulting to its hardest-hitting one.
+- **Draft steps now show each action's PF2e traits.** Small trait chips (agile, finesse, reach,
+  magical, etc.) appear next to the target, for a quick glance without opening the step.
+- **Move-and-strike abilities (Sudden Charge, Flying Kick, and similar) now roll a real attack.**
+  Previously these showed as a single step with descriptive text only; the Stride(s) and Strike now
+  show as a grouped step, the same way a monster's multi-strike ability already does, with the
+  Strike resolving to one of the actor's real weapons.
+- **Twin Takedown, Twin Feint, Flurry of Blows, and Hunted Shot now roll real attacks.** Twin
+  Takedown and Twin Feint each borrow the actor's two actually-held weapons, one Strike per weapon;
+  Flurry of Blows and Hunted Shot borrow a single weapon restricted to the right class (unarmed, or a
+  drawn ranged weapon with no reload). All four correctly escalate the multiple attack penalty
+  between their own two strikes, matching their real rules text — unlike a monster's Double Attack,
+  which shares one penalty tier across both strikes instead.
+- **Uncurated abilities with matching rules text now get the same real-attack treatment
+  automatically**, without needing to be specifically added to the module. Auto-fill recognizes an
+  ability's own requirements wording (e.g. "wielding two melee weapons, each in a different hand," or
+  "make two unarmed Strikes") and applies whichever borrowed-weapon and multiple-attack-penalty
+  behavior it calls for.
 
 ### Fixed
+
+- **Players clicking Shuffle no longer get stuck resetting to the first plan.** A background sync
+  echo was mistaken for a real change and reset the pinned plan on every click.
 
 - **Auto-fill no longer scores unreachable spells and abilities as usable.** When no enemy was
   actually within an action's range, it could still be recommended at full value and displayed as
@@ -52,6 +79,16 @@ All notable changes to PF2e Combater are documented here. The format is based on
   multi-Stride follow-up attack could land directly on top of its own target or an unrelated
   creature; destinations now skip occupied squares in both the scoring engine and the interactive
   movement preview, without blocking legitimate movement through an ally's or enemy's space.
+- **A monster's multi-strike ability no longer double-counts its action cost** against the actor's
+  remaining actions.
+- **A multi-strike ability's own attacks no longer escalate the multiple attack penalty against each
+  other.** Both attacks now correctly share one MAP tier, while MAP still advances normally for
+  whatever comes after the ability.
+- **Grab now rolls a real Athletics check against the target** instead of only posting descriptive
+  text with nothing to click.
+- **Reverting a step that used up a potion, scroll, wand, or other consumable now restores it.** Its
+  quantity is put back, or the item itself is recreated if it was fully consumed, instead of the
+  consumed item simply staying gone.
 
 ## [1.0.2]
 
