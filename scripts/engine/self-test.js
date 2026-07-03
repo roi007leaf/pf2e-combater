@@ -59,6 +59,7 @@ import {
   writeDraftPlan,
   writeSharedDraftPlan,
   writeSharedDraftPlanActorFlag,
+  isSharedDraftPlanEcho,
   writeSharedDraftPlanPayload,
   upsertDraftStep,
   removeDraftStep,
@@ -150,6 +151,10 @@ assert.equal(
 assert.ok(
   /Hooks\.on\("controlToken"[\s\S]*?selectCombatant[\s\S]*?scheduleRefresh/.test(mainSource),
   "panel should follow the selected token (GM and players) via the controlToken hook, deferring the rebuild to the debounce",
+);
+assert.ok(
+  /Hooks\.on\("updateActor", \(actor, changes\) => \{[\s\S]*?isSharedDraftPlanEcho\(changes\)[\s\S]*?"shared-draft-sync"[\s\S]*?"actor-update"/.test(mainSource),
+  "updateActor should route a player's own shared-draft echo to a refresh source that does not reset the pinned Auto-fill plan",
 );
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
 assert.ok(
@@ -3018,6 +3023,38 @@ try {
     [],
     "GM should clear stale local player plan when the actor flag mirrors an empty player draft",
   );
+
+  assert.equal(
+    isSharedDraftPlanEcho({ _id: "actor-1", flags: { "pf2e-combater": { sharedDraftPlans: { "combat-1|combatant-1": {} } } } }),
+    true,
+    "a pure shared-draft-plan flag write should be recognized as an echo of our own sync",
+  );
+  assert.equal(
+    isSharedDraftPlanEcho({
+      flags: { "pf2e-combater": { sharedDraftPlans: { "combat-1|combatant-1": {} } } },
+      _stats: { modifiedTime: 1700000000000 },
+      _id: "actor-1",
+    }),
+    true,
+    "Foundry's auto-stamped _stats diff field should not disqualify a real setFlag echo (confirmed live against an actual updateActor hook firing)",
+  );
+  assert.equal(
+    isSharedDraftPlanEcho({ system: { attributes: { hp: { value: 5 } } } }),
+    false,
+    "a real actor data change should not be treated as an echo",
+  );
+  assert.equal(
+    isSharedDraftPlanEcho({ flags: { "pf2e-combater": { sharedDraftPlans: {} }, "other-module": { foo: 1 } } }),
+    false,
+    "a change that also touches another module's flags should not be treated as a pure echo",
+  );
+  assert.equal(
+    isSharedDraftPlanEcho({ flags: { "pf2e-combater": { sharedDraftPlans: {}, someOtherFlag: true } } }),
+    false,
+    "a change that also touches one of our OWN other flags should not be treated as a pure sharedDraftPlans-only echo",
+  );
+  assert.equal(isSharedDraftPlanEcho(null), false, "a missing changes object should not crash and should not be treated as an echo");
+  assert.equal(isSharedDraftPlanEcho(undefined), false, "an undefined changes object should not crash and should not be treated as an echo");
 
   // End-of-turn reset: clearEndedTurnDraft() runs clearDraftPlan (the acting player's local plan)
   // and clearSharedDraftPlan (the GM-visible shared store + actor flag). After a turn ends neither

@@ -1,6 +1,6 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 
-const SHARED_DRAFTS_FLAG = "sharedDraftPlans";
+export const SHARED_DRAFTS_FLAG = "sharedDraftPlans";
 
 function storage() {
   return globalThis.localStorage ?? null;
@@ -156,6 +156,21 @@ export async function writeSharedDraftPlanActorFlag(context, draft) {
     [key]: normalizeSharedDraft(draft),
   });
   return true;
+}
+
+// Foundry's updateActor hook fires for every client watching this actor, including the one that
+// made the change -- writeSharedDraftPlanActorFlag's own setFlag() call is no exception. Recognize
+// that specific self-inflicted echo (and ONLY that exact shape) so callers can refresh the panel
+// without treating it as a real change to the actor that should reset any pinned Auto-fill plan.
+// Foundry itself stamps every update diff with "_stats" (modifiedTime/lastModifiedBy/etc.), even
+// for a pure setFlag() call, so that key carries no signal about a real actor change either.
+export function isSharedDraftPlanEcho(changes) {
+  const topLevelKeys = Object.keys(changes ?? {}).filter((key) => key !== "flags" && key !== "_id" && key !== "_stats");
+  if (topLevelKeys.length) return false;
+  const flagScopes = Object.keys(changes?.flags ?? {});
+  if (flagScopes.length !== 1 || flagScopes[0] !== MODULE_ID) return false;
+  const ownFlagKeys = Object.keys(changes.flags[MODULE_ID] ?? {});
+  return ownFlagKeys.length === 1 && ownFlagKeys[0] === SHARED_DRAFTS_FLAG;
 }
 
 export function writeSharedDraftPlanPayload(payload) {
