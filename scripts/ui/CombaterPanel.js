@@ -4,6 +4,7 @@ import {
   buildActionBuilderModel,
   actionBuilderKey,
   ACTION_BUILDER_TABS,
+  backingStrikeOverrideFields,
   builderAtomicActionsForStep,
   computeAreaMarker,
   isUnreachableStrikeStep,
@@ -53,6 +54,7 @@ import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./ran
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { actorMovementOptions } from "../readers/actor-profile.js";
+import { actorStrikeOptions } from "../readers/action-reader.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
 import { canUseFullAggro } from "../rules/aggro.js";
 import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
@@ -442,7 +444,17 @@ function findProjectedDraftAction(context, draft, step) {
       const atoms = builderAtomicActionsForStep(original);
       const targetIds = Array.isArray(step.targetTokenIds) ? step.targetTokenIds.map(String) : [];
       const matchedAtom = atoms.find((atom) => targetIds.includes(String(atom.preferredTarget?.id)));
-      if (matchedAtom || atoms.length) return matchedAtom ?? atoms[0];
+      const atom = matchedAtom ?? (atoms.length ? atoms[0] : null);
+      if (atom && step.weaponId) {
+        const stepActorDocument = stepContext.actor?.document ?? stepContext.actor ?? null;
+        const chosenWeapon = actorStrikeOptions(stepActorDocument, stepContext)
+          .find((option) => option.id === step.weaponId);
+        if (chosenWeapon) {
+          const leafName = String(atom.name ?? "").split(" -> ")[0];
+          return { ...atom, ...backingStrikeOverrideFields(chosenWeapon, leafName) };
+        }
+      }
+      if (atom) return atom;
     }
   }
   const keys = draftStepLookupKeys(step);
