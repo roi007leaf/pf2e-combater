@@ -4,6 +4,36 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4]
+
+### Added
+
+- **Multi-attack feats and abilities (Flurry of Blows, Twin Takedown, Twin Feint, Hunted Shot, and
+  any matching uncurated ability) now get a "Stride into reach" combo option**, the same treatment a
+  single Strike already had. Previously one of these was only ever suggested while already adjacent
+  to an enemy — out of reach, it scored far too low to compete with unrelated single-action options,
+  so Auto-fill would recommend something else entirely instead of closing the distance first.
+
+### Fixed
+
+- **A token's footprint for reach and occupancy checks was inflated on some Foundry setups**, using
+  the live placeable's rendered pixel width/height instead of its document's grid-unit size — the
+  same root cause as the "collision-free movement path" fix in 1.0.3, recurring in the candidate
+  scoring engine's own reach calculations this time. The inflated footprint made every reachable
+  square look occupied by another creature, silently preventing any move-then-attack combo from ever
+  being suggested for the affected actor.
+- **A "Stride, then multi-attack" combo was scored as if no enemy were in reach**, checking the
+  actor's position before the Stride instead of after it. It always lost out to a lower-value
+  single-Strike combo that got the correct after-the-move reach check, so Auto-fill would suggest one
+  weaker attack instead of a feat granting two.
+- **"Raise a Shield" no longer shows a "No shield equipped" reason when a shield is actually
+  equipped** and the action is available.
+- **A "Stride, then multi-attack" combo no longer merges the Stride's cost into the attack's own
+  group.** It now shows as a standalone 1-action Stride followed by the multi-attack ability as its
+  own 1-action group with its Strikes nested underneath — matching how a bare Flurry of Blows (or
+  similar) already displays — instead of a single "Stride" header covering all of it with an
+  inflated combined cost.
+
 ## [1.0.3]
 
 ### Added

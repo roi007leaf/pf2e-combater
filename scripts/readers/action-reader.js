@@ -278,6 +278,13 @@ export function readActionSources(context, spells = []) {
   syncCollisionCacheForScene();
   const actor = contextActor(context);
   const generatedStrikes = actorStrikeOptions(actor, context);
+  // readGeneratedActivities reads actor.system.actions, which for a PC is normally just its
+  // Strikes -- feat-driven multiattacks like Flurry of Blows live as Items and only surface via
+  // readActorItemActions. Both feed the stride+multiattack combo builder below, so both are
+  // computed up front (hoisted the same way generatedStrikes already is) instead of only being
+  // spread in at their original, later position.
+  const generatedActivities = readGeneratedActivities(actor, context);
+  const itemActions = readActorItemActions(actor, context);
   return [
     ...readGenericActions(context),
     ...readStandStrideActivities(context),
@@ -290,12 +297,13 @@ export function readActionSources(context, spells = []) {
     ...readReloadWeaponActions(actor),
     ...readDropProneAction(actor, context),
     ...readStrideStrikeActivities(context, generatedStrikes),
+    ...readStrideMultiattackActivities(context, [...generatedActivities, ...itemActions]),
     ...readRangedRetreatStrikeActivities(context, generatedStrikes),
     ...readSkirmishStrikeActivities(context, generatedStrikes),
     ...readPositionalTacticActivities(context, generatedStrikes, spells),
-    ...readGeneratedActivities(actor, context),
+    ...generatedActivities,
     ...readShieldSpellBlockActions(actor, context),
-    ...readActorItemActions(actor, context),
+    ...itemActions,
   ];
 }
 
@@ -1108,9 +1116,14 @@ function attackPathBlocked(from, to) {
 function tokenFootprintPixels(value, metrics) {
   const token = value?.token ?? value ?? {};
   const document = token.document ?? token;
+  // A real canvas Token placeable's own .width/.height report the RENDERED pixel size (which can be
+  // scaled well past the token's actual grid footprint, e.g. by a token-ring or art-scale setting) --
+  // not the grid-unit size PF2e positioning math expects. TokenDocument#width/#height are always in
+  // grid units, so prefer those; only fall back to the placeable's own fields for plain descriptor
+  // objects that have no .document (self-test fixtures, battlefield ally/enemy shapes).
   return {
-    width: Math.max(1, numeric(token.width ?? document.width, 1) || 1) * metrics.pixelSize,
-    height: Math.max(1, numeric(token.height ?? document.height, 1) || 1) * metrics.pixelSize,
+    width: Math.max(1, numeric(document.width ?? token.width, 1) || 1) * metrics.pixelSize,
+    height: Math.max(1, numeric(document.height ?? token.height, 1) || 1) * metrics.pixelSize,
   };
 }
 
@@ -1672,6 +1685,96 @@ function readStrideStrikeActivities(context, readyStrikes) {
         : strides > 1
           ? t("Reason.StrideTwiceStrike", "Stride twice into reach and Strike {target}.", { target: target.name })
           : t("Reason.StrideStrike", "Stride into reach and Strike {target}.", { target: target.name })],
+    }];
+  });
+}
+
+// A multiattack (e.g. Flurry of Blows) has no range of its own to check against -- it borrows
+// whatever weapon backs each strike -- so out-of-reach standalone candidates always score too low
+// to compete with unrelated single-action options. Package "Stride into reach -> multiattack" as
+// one candidate the same way readStrideStrikeActivities does for a plain Strike, so the combo can
+// be scored and picked as a whole. Actions that already bake their own movement into `includes`
+// (e.g. Flying Kick's ['stride','strike']) are excluded -- they are a single ability with no
+// separate Stride to add on top.
+function strideMultiattackPlan(context, profile, reach, maxStrides) {
+  const speed = movementRange(profile);
+  for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
+    const distance = target?.distance ?? Infinity;
+    if (distance <= reach) continue;
+    if (maxStrides >= 1 && distance <= speed + reach) {
+      const attackCenter = bestReachableAttackCenter(context, target, speed, reach);
+      if (attackCenter) return { target, strides: 1, attackCenter };
+      if (canMoveIntoReach(context, target, speed, reach)) return { target, strides: 1 };
+    }
+    if (maxStrides >= 2 && distance <= speed * 2 + reach) {
+      const attackCenter = bestReachableAttackCenter(context, target, speed * 2, reach);
+      if (attackCenter) return { target, strides: 2, attackCenter };
+      if (canMoveIntoReach(context, target, speed * 2, reach)) return { target, strides: 2 };
+    }
+  }
+  return null;
+}
+
+function readStrideMultiattackActivities(context, generatedActivities) {
+  const profile = contextProfile(context);
+  const standFirst = canStandBeforeMovement(profile);
+  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" })) return [];
+
+  const multiattacks = generatedActivities.filter((action) =>
+    action.available !== false
+    && action.activityProfile?.requiresBackingStrike
+    && (action.activityProfile?.includes ?? []).every((part) => part === "strike"));
+  if (!multiattacks.length) return [];
+
+  const reach = meleeReach(profile);
+  const plan = strideMultiattackPlan(context, profile, reach, standFirst ? 1 : 2);
+  if (!plan) return [];
+  const { target, strides, attackCenter } = plan;
+
+  return multiattacks.flatMap((action) => {
+    const actionCost = strides + action.actionCost + (standFirst ? 1 : 0);
+    if (actionCost > 3) return [];
+
+    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
+    return [{
+      ...action,
+      id: `${standFirst ? "stand-" : ""}stride-${action.id ?? action.slug}`,
+      name: `${movePrefix}${action.name}`,
+      slug: `${standFirst ? "stand-" : ""}stride-${action.slug}`,
+      actionCost,
+      source: "system-inferred",
+      preferredTarget: target,
+      role: "mobility-attack",
+      activityProfile: {
+        ...action.activityProfile,
+        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill("stride"), ...action.activityProfile.includes],
+        strideCount: strides,
+        strikeReach: reach,
+        attackCenter,
+        removesCondition: standFirst ? "prone" : null,
+        // Unlike Sudden Charge or Flying Kick (where the Stride is baked into the ability's OWN
+        // definition and its real PF2e cost already covers the whole thing), this Stride is one this
+        // reader prepended at suggestion time onto an ability that has no movement of its own -- Stride
+        // and the multiattack are two genuinely separate PF2e actions. Mark how many leading atoms are
+        // that artificial prefix, and preserve the ability's own unmerged cost, so
+        // builderAtomicActionsForStep can keep the Stride(s) as their own standalone step(s) instead of
+        // folding their cost into the multiattack's group.
+        precedingMoveAtomCount: strides + (standFirst ? 1 : 0),
+        abilityActionCost: action.actionCost,
+      },
+      targetingProfile: {
+        ...action.targetingProfile,
+        enemy: true,
+        reachAfterMove: true,
+        preferredTargetId: target.id ?? null,
+        preferredTargetName: target.name ?? null,
+      },
+      setupFor: [],
+      reasons: [standFirst
+        ? t("Reason.StandStrideMultiattack", "Stand, Stride into reach, and use {action} on {target}.", { action: action.name, target: target.name })
+        : strides > 1
+          ? t("Reason.StrideTwiceMultiattack", "Stride twice into reach and use {action} on {target}.", { action: action.name, target: target.name })
+          : t("Reason.StrideMultiattack", "Stride into reach and use {action} on {target}.", { action: action.name, target: target.name })],
     }];
   });
 }
@@ -2437,7 +2540,8 @@ function isGenericAvailable(action, context) {
     return movementAvailability;
   }
   if (action.slug === "raise-a-shield") {
-    return availability(Boolean(profile.hasShield), t("Avail.NoShield", "No shield equipped."));
+    if (!profile.hasShield) return availability(false, t("Avail.NoShield", "No shield equipped."));
+    return availability(true, "");
   }
   if (action.requiresTarget) {
     const targetExists = Boolean(actionTargets.length);

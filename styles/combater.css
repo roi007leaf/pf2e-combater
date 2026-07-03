@@ -277,6 +277,13 @@
   padding: 2px 4px;
 }
 
+.pf2e-combater .combater-step-group-open {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+
 .pf2e-combater .combater-step-group-name {
   flex: 1 1 auto;
   font-weight: 600;

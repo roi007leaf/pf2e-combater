@@ -878,6 +878,7 @@ function groupDraftSteps(steps) {
       continue;
     }
     const prefix = `${members[0].groupLabel} -> `;
+    const groupTraitChips = traitChips({ traits: members[0].groupTraits ?? [], item: members[0].groupItem ?? null });
     grouped.push({
       isGroup: true,
       groupLabel: members[0].groupLabel,
@@ -886,6 +887,10 @@ function groupDraftSteps(steps) {
       costLabel: members[0].costLabel,
       canMoveStepUp: members[0].canMoveStepUp,
       canMoveStepDown: members[members.length - 1].canMoveStepDown,
+      groupItem: members[0].groupItem ?? null,
+      groupUuid: members[0].groupUuid ?? null,
+      traitChips: groupTraitChips,
+      hasTraitChips: groupTraitChips.length > 0,
       children: members.map((member) => ({
         ...member,
         name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
@@ -1417,6 +1422,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const button of element.querySelectorAll("[data-open-draft-step]")) {
       button.addEventListener("click", () => this._openDraftStep(button.dataset.openDraftStep));
+    }
+
+    for (const button of element.querySelectorAll("[data-open-draft-group]")) {
+      button.addEventListener("click", () => this._openDraftGroup(button.dataset.openDraftGroup));
     }
 
     for (const button of element.querySelectorAll("[data-execute-step]")) {
@@ -2405,6 +2414,20 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   async _openDraftStep(instanceId) {
     const step = this._findDraftStep(instanceId);
     await this._openActionDetails(step?.action ?? step);
+  }
+
+  // A grouped step's own atom carries the backing weapon's item/traits (e.g. Fist), not the
+  // ability's (e.g. Flurry of Blows) -- groupItem/groupUuid/groupTraits are the ability's own
+  // identity, captured before that override (see builderAtomicActionsForStep), so the group
+  // header opens and describes the ability itself rather than whichever weapon backs its first atom.
+  async _openDraftGroup(instanceId) {
+    const step = this._findDraftStep(instanceId);
+    const action = step?.action ?? step;
+    if (action?.groupItem || action?.groupUuid) {
+      await this._openActionDetails({ item: action.groupItem, uuid: action.groupUuid });
+      return;
+    }
+    await this._openActionDetails(action);
   }
 
   _planForPreview(element) {

@@ -2416,11 +2416,18 @@ export function scoreCandidate(context, action) {
   }
 
   if (action.activityProfile?.multiStrike) {
-    const reachableEnemies = attackableEnemies(context).filter((enemy) => inProfileReach(profile, enemy));
+    // A "Stride into reach -> multiattack" combo (readStrideMultiattackActivities) carries its own
+    // strideCount -- score its reach from where the Stride lands, not the actor's current position,
+    // or the combo always looks unreachable and loses to a plain single-Strike combo that gets the
+    // same treatment via activityMoveReach elsewhere in this function.
+    const strideCount = action.activityProfile?.strideCount;
+    const reach = strideCount > 0 ? activityMoveReach(profile, action, strideCount) : profileReach(profile);
+    const inReach = (candidate) => Boolean(candidate && (candidate.distance ?? Infinity) <= reach);
+    const reachableEnemies = attackableEnemies(context).filter(inReach);
     if (reachableEnemies.length >= 2) {
       score += 76;
       reasons.unshift(t("ScoreReason.EnemiesAreInReachFor", "{p0} enemies are in reach for separate Strikes.", { p0: reachableEnemies.length }));
-    } else if (inProfileReach(profile, target)) {
+    } else if (inReach(target)) {
       score += 36;
       reasons.unshift(t("ScoreReason.OnlyOneEnemyIsIn", "Only one enemy is in reach; focused offense is usually better."));
     } else {

@@ -530,17 +530,36 @@ export function builderAtomicActionsForStep(action) {
   // built by two different functions that otherwise share no identity -- this is what lets the
   // panel nest them under one header and re-match a persisted step back to its exact atom later.
   if (action.activityProfile?.requiresBackingStrike && atoms.length > 1) {
-    const totalCost = Number(action.actionCost ?? action.cost ?? 1);
     const groupId = compositeStrikeActionKey(action);
-    const groupLabel = String(action.name ?? "").split(" -> ")[0];
-    return atoms.map((atom, index) => ({
-      ...atom,
-      actionCost: index === 0 ? totalCost : 0,
-      cost: index === 0 ? totalCost : 0,
-      groupId,
-      groupLabel,
-      atomIndex: index,
-    }));
+    const groupLabel = String(action.name ?? "").split(" -> ").pop();
+    // readStrideMultiattackActivities prepends Stride atom(s) it generated at suggestion time onto
+    // an ability with no movement of its own -- those leading atoms are a genuinely separate PF2e
+    // action from the multiattack, so they keep their own normal cost and stay out of the group,
+    // instead of folding into "1 group, cost on the first atom" like Sudden Charge's intrinsic Stride.
+    const precedingMoveAtomCount = Number(action.activityProfile?.precedingMoveAtomCount) || 0;
+    const leadingAtoms = atoms.slice(0, precedingMoveAtomCount);
+    const groupedAtoms = atoms.slice(precedingMoveAtomCount);
+    const totalCost = precedingMoveAtomCount > 0
+      ? Number(action.activityProfile?.abilityActionCost ?? action.actionCost ?? action.cost ?? 1)
+      : Number(action.actionCost ?? action.cost ?? 1);
+    return [
+      ...leadingAtoms,
+      ...groupedAtoms.map((atom, index) => ({
+        ...atom,
+        actionCost: index === 0 ? totalCost : 0,
+        cost: index === 0 ? totalCost : 0,
+        groupId,
+        groupLabel,
+        atomIndex: index,
+        // The atom's own .item/.traits get overridden to whatever weapon backs THAT strike
+        // (atomicStrikeAction/backingStrikeOverrideFields) -- capture the ability's own identity
+        // here, before that override, so the group header can open and show traits for the
+        // ability itself (e.g. Flurry of Blows: Monk, Flourish) instead of the backing weapon.
+        groupItem: action.item ?? null,
+        groupUuid: action.uuid ?? null,
+        groupTraits: action.traits ?? [],
+      })),
+    ];
   }
   return atoms;
 }
