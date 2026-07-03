@@ -1699,9 +1699,24 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const steps = Array.isArray(draft[listKey]) ? [...draft[listKey]] : [];
     const index = steps.findIndex((step) => step.instanceId === instanceId);
     const offset = Math.sign(Number(direction) || 0);
-    const nextIndex = index + offset;
-    if (index < 0 || offset === 0 || nextIndex < 0 || nextIndex >= steps.length) return;
-    [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
+    if (index < 0 || offset === 0) return;
+    // A distinct-target ability's atoms share a groupId and are always contiguous (built together
+    // in one atomization pass) -- move the whole run as one block so the group's header move
+    // control can't split its own children apart in the plan order.
+    const groupId = steps[index]?.groupId;
+    const blockStart = groupId ? steps.findIndex((step) => step.groupId === groupId) : index;
+    let blockEnd = blockStart + 1;
+    if (groupId) {
+      while (blockEnd < steps.length && steps[blockEnd]?.groupId === groupId) blockEnd += 1;
+    }
+    const block = steps.slice(blockStart, blockEnd);
+    if (offset < 0) {
+      if (blockStart === 0) return;
+      steps.splice(blockStart - 1, block.length + 1, ...block, steps[blockStart - 1]);
+    } else {
+      if (blockEnd >= steps.length) return;
+      steps.splice(blockStart, block.length + 1, steps[blockEnd], ...block);
+    }
     await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: steps }));
     clearActionPreview();
     await this.render({ force: true });
