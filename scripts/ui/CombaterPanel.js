@@ -774,24 +774,48 @@ function sustainedSpellDraftFields(entry) {
 // drives the variant the executor rolls.
 function injectMapInfo(steps, startCount = 0) {
   let attackCount = startCount;
-  const tagged = (Array.isArray(steps) ? steps : []).map((step) => {
+  const list = Array.isArray(steps) ? steps : [];
+  const tagged = [];
+  let i = 0;
+  while (i < list.length) {
+    const step = list[i];
     const action = step?.action ?? step;
-    if (!isAttackAction(action)) return step;
+    if (!isAttackAction(action)) {
+      tagged.push(step);
+      i += 1;
+      continue;
+    }
+    // Every atom of the same composite (e.g. both of a Kraken's Double Attack strikes) shares one
+    // MAP tier -- the ability's own mapAttacks ("counts as two attacks") advances the running count
+    // once, for whatever comes AFTER the whole composite finishes, not once per atom, which would
+    // over-count a 2-strike ability as 4 attacks' worth of advancement instead of 2 and incorrectly
+    // escalate MAP between its own attacks.
+    const groupId = step?.groupId;
+    let end = i + 1;
+    if (groupId) {
+      while (end < list.length && list[end]?.groupId === groupId) end += 1;
+    }
+    const groupSteps = list.slice(i, end);
     const autoLevel = Math.min(2, attackCount); // position-derived MAP level: 0, 1, 2
-    attackCount += attacksTowardMap(action);
-    // A player can pin a specific MAP level per strike (0 / -5 / -10); some abilities keep MAP flat
-    // across consecutive attacks, so the auto position isn't always right. `mapOverride` null = auto.
-    const override = Number.isFinite(step?.mapOverride) ? Math.max(0, Math.min(2, step.mapOverride)) : null;
-    const level = override ?? autoLevel;
-    const penalty = mapPenalty(action, level);
-    return {
-      ...step,
-      attackIndex: level + 1,
-      mapPenalty: penalty,
-      mapPinned: override !== null,
-      action: step?.action ? { ...step.action, mapPenalty: penalty } : step?.action,
-    };
-  });
+    attackCount += attacksTowardMap(groupSteps[0]?.action ?? groupSteps[0]);
+    for (const groupStep of groupSteps) {
+      const groupAction = groupStep?.action ?? groupStep;
+      // A player can pin a specific MAP level per strike (0 / -5 / -10); some abilities keep MAP
+      // flat across consecutive attacks, so the auto position isn't always right. `mapOverride`
+      // null = auto.
+      const override = Number.isFinite(groupStep?.mapOverride) ? Math.max(0, Math.min(2, groupStep.mapOverride)) : null;
+      const level = override ?? autoLevel;
+      const penalty = mapPenalty(groupAction, level);
+      tagged.push({
+        ...groupStep,
+        attackIndex: level + 1,
+        mapPenalty: penalty,
+        mapPinned: override !== null,
+        action: groupStep?.action ? { ...groupStep.action, mapPenalty: penalty } : groupStep?.action,
+      });
+    }
+    i = end;
+  }
   return { steps: tagged, attackCount };
 }
 
