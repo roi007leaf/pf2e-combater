@@ -404,11 +404,13 @@ export function backingStrikeOverrideFields(backingStrike, leafName) {
   };
 }
 
-function atomicStrikeAction(action, targetOverride, costOverride) {
+function atomicStrikeAction(action, targetOverride, costOverride, strikeOccurrence) {
   const leafName = stripCompositePrefix(actionName(action));
-  const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
-    ? action.activityProfile?.backingStrike
-    : null;
+  const backingStrike = action.activityProfile?.requiresDualBackingStrike
+    ? action.activityProfile?.backingStrikes?.[strikeOccurrence ?? 0]
+    : (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
+      ? action.activityProfile?.backingStrike
+      : null;
   const cost = Number.isFinite(costOverride) ? costOverride : 1;
   const distinctTargetSlug = action.activityProfile?.requiresDistinctTargets ? String(action.slug ?? "").trim() : "";
   return {
@@ -503,12 +505,13 @@ export function builderAtomicActionsForStep(action) {
     if (["crawl", "stand", "step", "stride"].includes(normalized)) return atomicMovementAction(normalized) ?? [];
     if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
     if (normalized === "strike") {
+      const occurrenceIndex = strikeOccurrence;
       const targetOverride = distinctTargets ? distinctTargets[strikeOccurrence] : undefined;
       const costOverride = action.activityProfile?.requiresDistinctTargets
         ? (strikeOccurrence === 0 ? Number(action.actionCost ?? action.cost ?? 1) : 0)
         : undefined;
       strikeOccurrence += 1;
-      return [atomicStrikeAction(action, targetOverride, costOverride)];
+      return [atomicStrikeAction(action, targetOverride, costOverride, occurrenceIndex)];
     }
     return [];
   });

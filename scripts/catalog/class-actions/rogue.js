@@ -39,6 +39,9 @@ export const ROGUE_ACTIONS = [
       includes: ['strike', 'strike', 'setup'],
       includesStrike: true,
       multiStrike: true,
+      requiresBackingStrike: true,
+      requiresDualBackingStrike: true,
+      mapAppliesPerStrike: true,
     },
     targetingProfile: {
       enemy: true,

@@ -40,7 +40,7 @@ import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
-import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
+import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import {
@@ -17983,6 +17983,64 @@ const flurryBackingStrikeContext = { ...fighterContext, actor: { document: flurr
 const flurryScored = scoreCandidate(flurryBackingStrikeContext, flurryOfBlowsForBackingStrike);
 assert.equal(flurryScored.activityProfile.backingStrike?.name, "Fist", "Flurry of Blows' backingStrikeFilter must restrict the borrowed weapon to an unarmed Strike, even though the Longsword deals more damage");
 
+const twinTakedownActorForBackingStrike = {
+  type: "npc",
+  itemTypes: {},
+  system: {
+    traits: { size: { value: "med" } },
+    actions: [
+      {
+        type: "strike", name: "Sickle", label: "Sickle", slug: "sickle-1", traits: [], weaponTraits: [], variants: [],
+        item: { type: "weapon", name: "Sickle", system: { equipped: { carryType: "held", handsHeld: 1 }, traits: { value: [] }, damageRolls: { a: { damage: "1d4+4", damageType: "slashing" } } } },
+      },
+      {
+        type: "strike", name: "Dagger", label: "Dagger", slug: "dagger-1", traits: [], weaponTraits: [], variants: [],
+        item: { type: "weapon", name: "Dagger", system: { equipped: { carryType: "held", handsHeld: 1 }, traits: { value: [] }, damageRolls: { a: { damage: "1d4+2", damageType: "piercing" } } } },
+      },
+      {
+        type: "strike", name: "Fist", label: "Fist", slug: "fist", traits: ["unarmed"], weaponTraits: [], variants: [],
+        item: { type: "weapon", name: "Fist", system: { equipped: { carryType: "worn", handsHeld: 0 }, traits: { value: ["unarmed"] }, damageRolls: { a: { damage: "1d4", damageType: "bludgeoning" } } } },
+      },
+      {
+        type: "strike", name: "Hand Crossbow", label: "Hand Crossbow", slug: "hand-crossbow", traits: [], weaponTraits: [], variants: [],
+        item: { type: "weapon", name: "Hand Crossbow", system: { equipped: { carryType: "held", handsHeld: 1 }, range: { increment: 60 }, traits: { value: [] }, damageRolls: { a: { damage: "1d6", damageType: "piercing" } } } },
+      },
+    ],
+  },
+};
+const twinTakedownBackingStrikes = heldMeleeBackingStrikes(twinTakedownActorForBackingStrike, {});
+assert.equal(twinTakedownBackingStrikes.length, 2, "an actor with two held melee weapons, one worn unarmed strike, and one held RANGED weapon must return exactly the two held melee weapons");
+assert.equal(twinTakedownBackingStrikes[0].name, "Sickle");
+assert.equal(twinTakedownBackingStrikes[1].name, "Dagger");
+
+const oneHeldMeleeWeaponActor = {
+  type: "npc",
+  itemTypes: {},
+  system: { actions: [twinTakedownActorForBackingStrike.system.actions[0], twinTakedownActorForBackingStrike.system.actions[2]] },
+};
+assert.equal(heldMeleeBackingStrikes(oneHeldMeleeWeaponActor, {}).length, 1, "an actor with only one held melee weapon returns just that one, not padded or thrown");
+
+assert.deepEqual(heldMeleeBackingStrikes({ system: { actions: [] } }, {}), [], "an actor with no strikes at all returns an empty array, not null or a thrown error");
+
+const twinTakedownForBackingStrike = {
+  id: "twin-takedown",
+  name: "Twin Takedown",
+  slug: "twin-takedown",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, requiresBackingStrike: true, requiresDualBackingStrike: true },
+};
+const twinTakedownBackingStrikeContext = { ...fighterContext, actor: { document: twinTakedownActorForBackingStrike } };
+const twinTakedownScored = scoreCandidate(twinTakedownBackingStrikeContext, twinTakedownForBackingStrike);
+assert.equal(twinTakedownScored.activityProfile.backingStrikes?.length, 2, "requiresDualBackingStrike must compute an array of the actor's two held melee weapons");
+assert.equal(twinTakedownScored.activityProfile.backingStrikes[0]?.name, "Sickle");
+assert.equal(twinTakedownScored.activityProfile.backingStrikes[1]?.name, "Dagger");
+
+const ordinaryDualBackingScored = scoreCandidate(twinTakedownBackingStrikeContext, { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } });
+assert.equal(ordinaryDualBackingScored.activityProfile?.backingStrikes, undefined, "an ordinary action must not gain a backingStrikes array");
+
 const backingStrikeTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
 const backingStrikeTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
 const armBackingStrike = {
@@ -18046,6 +18104,85 @@ const doubleAttackWithoutBackingStrike = {
 const noBackingStrikeAtoms = builderAtomicActionsForStep(doubleAttackWithoutBackingStrike);
 assert.equal(noBackingStrikeAtoms[0].name, "Double Attack", "with no backing strike found, the atom falls back to the ability's own name, unchanged from before this task");
 assert.equal(noBackingStrikeAtoms[0].executable, "open-item", "with no backing strike found, execution falls back to the ability's own (unrollable) executable, unchanged from before this task");
+
+const sickleBackingStrike = {
+  id: "strike-sickle", name: "Sickle", slug: "strike", executable: "strike", source: "strike",
+  item: { name: "Sickle", uuid: "Actor.fake.Item.sickle" },
+  attack: { value: 10 }, damage: { value: "1d4+4" }, damageProfile: { average: 6, type: "slashing" },
+  averageDamage: 6, critical: null, traits: [], weaponTraits: [], range: {}, reload: 0, variants: [], strike: {},
+};
+const daggerBackingStrike = {
+  id: "strike-dagger", name: "Dagger", slug: "strike", executable: "strike", source: "strike",
+  item: { name: "Dagger", uuid: "Actor.fake.Item.dagger" },
+  attack: { value: 10 }, damage: { value: "1d4+2" }, damageProfile: { average: 4, type: "piercing" },
+  averageDamage: 4, critical: null, traits: [], weaponTraits: [], range: {}, reload: 0, variants: [], strike: {},
+};
+const twinTakedownAtomFixture = {
+  id: "twin-takedown-composite",
+  name: "Twin Takedown",
+  slug: "twin-takedown",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "multiattack",
+  attackIndex: 1,
+  mapPenalty: 0,
+  preferredTarget: { id: "enemy-a", name: "Ogre" },
+  activityProfile: {
+    includes: ["strike", "strike"],
+    includesStrike: true,
+    multiStrike: true,
+    requiresBackingStrike: true,
+    requiresDualBackingStrike: true,
+    backingStrikes: [sickleBackingStrike, daggerBackingStrike],
+  },
+};
+const twinTakedownAtoms = builderAtomicActionsForStep(twinTakedownAtomFixture);
+assert.equal(twinTakedownAtoms.length, 2);
+assert.equal(twinTakedownAtoms[0].name, "Twin Takedown -> Sickle", "the first atom must borrow the FIRST held weapon, not one single shared backingStrike");
+assert.equal(twinTakedownAtoms[1].name, "Twin Takedown -> Dagger", "the second atom must borrow the SECOND held weapon, distinct from the first");
+assert.equal(twinTakedownAtoms[0].executable, "strike");
+assert.equal(twinTakedownAtoms[1].executable, "strike");
+assert.equal(twinTakedownAtoms[0].item?.name, "Sickle");
+assert.equal(twinTakedownAtoms[1].item?.name, "Dagger");
+assert.equal(twinTakedownAtoms[0].actionCost, 1, "the first atom carries the ability's full action cost, unchanged from requiresBackingStrike's existing cost redistribution");
+assert.equal(twinTakedownAtoms[1].actionCost, 0, "the second atom is free");
+assert.equal(twinTakedownAtoms[0].groupId, twinTakedownAtoms[1].groupId, "both atoms must share one groupId so the panel nests them under one header");
+assert.equal(twinTakedownAtoms[0].atomIndex, 0);
+assert.equal(twinTakedownAtoms[1].atomIndex, 1);
+assert.equal(twinTakedownAtoms[0].preferredTarget?.name, "Ogre", "with no distinct-target data (both strikes hit the same target), the composite's own preferredTarget carries to each atom");
+assert.equal(twinTakedownAtoms[1].preferredTarget?.name, "Ogre");
+
+const twinTakedownWithOnlyOneHeldWeapon = {
+  ...twinTakedownAtomFixture,
+  activityProfile: { ...twinTakedownAtomFixture.activityProfile, backingStrikes: [sickleBackingStrike] },
+};
+const partialDualBackingAtoms = builderAtomicActionsForStep(twinTakedownWithOnlyOneHeldWeapon);
+assert.equal(partialDualBackingAtoms[0].name, "Twin Takedown -> Sickle");
+assert.equal(partialDualBackingAtoms[1].name, "Twin Takedown", "with no second held weapon found, the second atom falls back to the ability's own name, unchanged from before this task");
+assert.equal(partialDualBackingAtoms[1].executable, "open-item", "with no second held weapon found, the second atom falls back to the ability's own (unrollable) executable");
+
+const twinFeintAtomFixture = {
+  ...twinTakedownAtomFixture,
+  id: "twin-feint-composite",
+  name: "Twin Feint",
+  slug: "twin-feint",
+  actionCost: 2,
+  activityProfile: {
+    includes: ["strike", "strike", "setup"],
+    includesStrike: true,
+    multiStrike: true,
+    requiresBackingStrike: true,
+    requiresDualBackingStrike: true,
+    backingStrikes: [sickleBackingStrike, daggerBackingStrike],
+  },
+};
+const twinFeintAtoms = builderAtomicActionsForStep(twinFeintAtomFixture);
+assert.equal(twinFeintAtoms.length, 2, "Twin Feint's third 'setup' part (the off-guard condition, deliberately not automated) must not produce a phantom third atom");
+assert.equal(twinFeintAtoms[0].item?.name, "Sickle");
+assert.equal(twinFeintAtoms[1].item?.name, "Dagger");
+assert.equal(twinFeintAtoms[0].actionCost, 2, "Twin Feint's full 2-action cost must land on the first atom");
+assert.equal(twinFeintAtoms[1].actionCost, 0);
 
 const namedBackingStrikeForHelper = {
   name: "Tentacle",

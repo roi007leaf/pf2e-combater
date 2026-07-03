@@ -37,6 +37,9 @@ export const RANGER_ACTIONS = [
       includes: ['strike', 'strike'],
       includesStrike: true,
       multiStrike: true,
+      requiresBackingStrike: true,
+      requiresDualBackingStrike: true,
+      mapAppliesPerStrike: true,
     },
     targetingProfile: {
       enemy: true,

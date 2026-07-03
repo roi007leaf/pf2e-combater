@@ -511,6 +511,12 @@ export function backingStrikeFilterByPreset(preset) {
   return BACKING_STRIKE_FILTERS[preset];
 }
 
+export function heldMeleeBackingStrikes(actor, context) {
+  return actorStrikeOptions(actor, context)
+    .filter((strike) => isHeldItem(strike.item) && strike.item?.system?.range == null)
+    .slice(0, 2);
+}
+
 export function bestReadyStrike(actor, context, filter) {
   const strikes = actorStrikeOptions(actor, context)
     .filter((strike) => (typeof filter === "function" ? filter(strike) : true));
