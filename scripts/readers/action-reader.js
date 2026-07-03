@@ -277,7 +277,7 @@ export function readActionSources(context, spells = []) {
   reachableAttackCentersCache.clear();
   syncCollisionCacheForScene();
   const actor = contextActor(context);
-  const generatedStrikes = readGeneratedStrikes(actor, context);
+  const generatedStrikes = actorStrikeOptions(actor, context);
   return [
     ...readGenericActions(context),
     ...readStandStrideActivities(context),
@@ -452,7 +452,7 @@ function readStrikeAverageDamage(strike) {
   return readStrikeDamageProfile(strike)?.average ?? null;
 }
 
-function readGeneratedStrikes(actor, context = null) {
+export function actorStrikeOptions(actor, context = null) {
   const strikes = Array.isArray(actor?.system?.actions) ? actor.system.actions : [];
   return strikes
     .filter((strike, index) => {
@@ -503,13 +503,13 @@ function readGeneratedStrikes(actor, context = null) {
 }
 
 export function bestReadyStrike(actor, context) {
-  const strikes = readGeneratedStrikes(actor, context);
+  const strikes = actorStrikeOptions(actor, context);
   if (!strikes.length) return null;
   return strikes.toSorted((left, right) => (Number(right.averageDamage) || 0) - (Number(left.averageDamage) || 0))[0];
 }
 
 export function bestReadyStrikeAverageDamage(actor, context) {
-  const averages = readGeneratedStrikes(actor, context)
+  const averages = actorStrikeOptions(actor, context)
     .map((strike) => Number(strike.averageDamage))
     .filter((value) => Number.isFinite(value) && value > 0);
   return averages.length ? Math.max(...averages) : null;
@@ -2448,7 +2448,7 @@ function isGenericAvailable(action, context) {
   }
   if (action.requiresSeekTarget) {
     if (!hasSeekTarget(context, enemies)) {
-      return availability(false, t("Avail.NoHiddenTarget", "No hidden or undetected target detected."));
+      return availability(false, t("Avail.NoHiddenTarget", "No hidden target detected."));
     }
   }
   if (action.requiresCombatSignal) {

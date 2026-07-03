@@ -39,7 +39,7 @@ import { scoreCandidate } from "./scoring.js";
 import { buildCandidates } from "./candidates.js";
 import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
-import { bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
+import { actorStrikeOptions, bestReadyStrike, readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
 import { readSpellActions } from "../readers/spell-reader.js";
 import {
@@ -17585,6 +17585,24 @@ assert.equal(strongerOfTwo?.name, "Bite", "with two real Strikes available, the 
 
 const noStrikeActor = { system: { actions: [] } };
 assert.equal(bestReadyStrike(noStrikeActor, {}), null, "an actor with no real Strikes returns null, not a thrown error");
+
+const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
+const multiStrikeActorForOptions = {
+  type: "npc",
+  itemTypes: {},
+  system: {
+    traits: { size: { value: "med" } },
+    actions: [
+      { type: "strike", name: "Claw", label: "Claw", slug: "claw", item: meleeItem("1d6+4", "slashing", []), traits: [], weaponTraits: [], variants: [] },
+      { type: "strike", name: "Bite", label: "Bite", slug: "bite", item: meleeItem("1d8+4", "piercing", []), traits: [], weaponTraits: [], variants: [] },
+    ],
+  },
+};
+const strikeOptions = actorStrikeOptions(multiStrikeActorForOptions, fighterContext);
+assert.equal(strikeOptions.length, 2, "actorStrikeOptions should return every ready strike, not just the best one");
+assert.deepEqual(strikeOptions.map((option) => option.id), ["strike-claw", "strike-bite"], "each strike option should carry a stable, weapon-specific id");
+assert.equal(strikeOptions[0].name, "Claw");
+assert.equal(strikeOptions[1].name, "Bite");
 
 const backingStrikeActorDoc = {
   system: {
