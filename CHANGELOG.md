@@ -89,6 +89,25 @@ All notable changes to PF2e Combater are documented here. The format is based on
 - **Reverting a step that used up a potion, scroll, wand, or other consumable now restores it.** Its
   quantity is put back, or the item itself is recreated if it was fully consumed, instead of the
   consumed item simply staying gone.
+- **Multi-strike abilities that require different targets now actually target different
+  creatures.** A Kraken's Double Attack ("each limb targeting a different creature"), a Marilith's
+  Bladestorm, and other abilities shaped like them previously resolved every strike against the
+  same single target. Auto-fill now recognizes "different creature/enemy/foe" phrasing (not just
+  "different target(s)"), reads each ability's real strike count from its own text instead of
+  assuming two, and splits it into one Strike per distinct target when enough enemies are in
+  range — falling back to repeating the best target when fewer are available.
+- **Those same multi-strike abilities no longer double-count their action cost.** Splitting a
+  1-action ability like Double Attack into two separate per-target Strikes had it charging 2 of
+  the turn's 3 actions instead of 1; only the first Strike now carries the ability's real cost,
+  with the rest correctly free.
+- **Hovering a Strike or other attack action now highlights its target on the canvas**, matching
+  the highlight ranged spells already showed. Self-targeted actions like Drop Prone and Raise a
+  Shield never highlight anything, even if a token could technically be resolved for them.
+- **The target highlight no longer balloons into a scene-covering rectangle for non-Medium
+  creatures.** It computed a token's footprint from the placeable's own width/height instead of
+  its document's grid-based size, which on some Foundry setups is a pixel value rather than a
+  grid-unit count — for a Large-or-bigger target this produced a rectangle thousands of pixels
+  across instead of a normal token-sized box.
 
 ## [1.0.2]
 

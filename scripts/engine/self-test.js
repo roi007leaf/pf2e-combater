@@ -7954,6 +7954,15 @@ try {
         id: "target-token",
         center: { x: 200, y: 150 },
         document: { id: "target-token", uuid: "Scene.Token.target-token", width: 2, height: 1 },
+      }, {
+        id: "large-token",
+        center: { x: 400, y: 400 },
+        // A live Token placeable's own .width/.height can be a pixel-space value distinct from
+        // the TokenDocument's grid-unit width/height (confirmed live on a Large creature) — the
+        // mock deliberately diverges the two so the footprint math is caught if it ever prefers this.
+        width: 300,
+        height: 400,
+        document: { id: "large-token", uuid: "Scene.Token.large-token", width: 2, height: 2 },
       }],
     },
   };
@@ -7973,6 +7982,24 @@ try {
   assert.ok(actionPreviewCalls.some((call) =>
     call.type === "drawRect" && call.x === 150 && call.y === 125 && call.width === 100 && call.height === 50),
     "a strike hover should frame the resolved enemy token's footprint");
+
+  // The footprint must come from the TokenDocument's grid-unit width/height, never the live
+  // placeable's own .width/.height, which can be a pixel-space value on some Foundry/module
+  // combinations — confirmed live on a Large creature, whose highlight rectangle spanned
+  // thousands of pixels because the placeable's pixel width got multiplied by gridSize() again.
+  actionPreviewCalls.length = 0;
+  const largeTargetPreview = showActionPreview({
+    token: { id: "actor-token" },
+  }, {
+    name: "Strike",
+    slug: "strike",
+    suggestedTarget: { type: "enemy", id: "large-token", name: "Flint Glade" },
+    targetTokenIds: ["large-token"],
+  });
+  assert.equal(largeTargetPreview.type, "target");
+  assert.ok(actionPreviewCalls.some((call) =>
+    call.type === "drawRect" && call.x === 350 && call.y === 350 && call.width === 100 && call.height === 100),
+    "a Large token's highlight must use document.width/height (grid units), not the placeable's own pixel-space width/height");
 
   // Self-targeted actions (Drop Prone, Raise a Shield) resolve suggestedTarget.type === "self" —
   // this must never draw a highlight, even when targetTokenIds is (incorrectly) populated. This

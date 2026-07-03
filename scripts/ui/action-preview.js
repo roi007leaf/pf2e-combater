@@ -47,8 +47,13 @@ function tokenPlacement(token) {
   const center = tokenCenter(token);
   if (!center) return null;
   const document = token?.document ?? token;
-  const width = Math.max(1, numeric(token?.width ?? document?.width, 1)) * gridSize();
-  const height = Math.max(1, numeric(token?.height ?? document?.height, 1)) * gridSize();
+  // document.width/height are the TokenDocument's grid-unit size (1, 2, 4...). The live Token
+  // placeable's own .width/.height can be a pixel-space value on some Foundry/module combinations
+  // (confirmed live: a Large creature rendered a rectangle thousands of pixels wide/tall because
+  // token.width was already in pixels, then got multiplied by gridSize() a second time) — always
+  // prefer the document's grid-unit field and only fall back to the placeable's when it's absent.
+  const width = Math.max(1, numeric(document?.width ?? token?.width, 1)) * gridSize();
+  const height = Math.max(1, numeric(document?.height ?? token?.height, 1)) * gridSize();
   return {
     center,
     x: center.x - width / 2,
