@@ -820,10 +820,13 @@ function injectMapInfo(steps, startCount = 0) {
     // MAP tier -- the ability's own mapAttacks ("counts as two attacks") advances the running count
     // once, for whatever comes AFTER the whole composite finishes, not once per atom, which would
     // over-count a 2-strike ability as 4 attacks' worth of advancement instead of 2 and incorrectly
-    // escalate MAP between its own attacks.
+    // escalate MAP between its own attacks. Some grouped composites (Twin Takedown, Flurry of Blows,
+    // Twin Feint, Hunted Shot) explicitly apply MAP normally per strike instead -- mapAppliesPerStrike
+    // opts a group out of this shared-tier scan so each atom advances and tiers independently.
     const groupId = step?.groupId;
+    const perStrikeMap = action?.activityProfile?.mapAppliesPerStrike === true;
     let end = i + 1;
-    if (groupId) {
+    if (groupId && !perStrikeMap) {
       while (end < list.length && list[end]?.groupId === groupId) end += 1;
     }
     const groupSteps = list.slice(i, end);

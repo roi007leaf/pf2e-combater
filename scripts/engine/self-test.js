@@ -302,6 +302,8 @@ assert.ok(/injectMapInfo\(rawUncounted, planMap\.attackCount\)/.test(panelSource
 assert.ok(panelSource.includes("_cycleStepMap"), "the panel should let the player cycle a strike's MAP level");
 assert.ok(/mapOverride/.test(panelSource), "a pinned MAP override should feed the per-strike MAP");
 assert.ok(panelTemplateSource.includes("data-cycle-map"), "the panel template should expose a MAP cycle control on strikes");
+assert.ok(panelSource.includes("mapAppliesPerStrike"), "abilities whose rules text applies MAP normally per strike (e.g. Twin Takedown, Flurry of Blows) must be able to opt out of Double Attack's shared-tier group scan");
+assert.ok(/groupId\s*&&\s*!perStrikeMap/.test(panelSource), "the shared-tier forward scan for a grouped composite's siblings must be skipped when mapAppliesPerStrike is set, so each atom gets its own escalating MAP tier instead of one shared tier");
 // Players can pick which speed a Stride travels on (fly/burrow/swim/climb) when the actor has one.
 assert.ok(panelSource.includes("_cycleStepMovement"), "the panel should let the player cycle a Stride's movement type");
 assert.ok(/movementAction/.test(panelSource), "a pinned movement type should ride on the draft step");
