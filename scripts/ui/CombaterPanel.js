@@ -1976,9 +1976,15 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
         // computed from the original, un-atomized action) -- reused here as the group id so the
         // panel can visually nest them under one header instead of showing N identical-looking rows.
-        ...(step?.activityProfile?.requiresDistinctTargets
-          ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
-          : {}),
+        // A backed move-and-strike composite's atoms (e.g. Sudden Charge's two Strides and one
+        // Strike) arrive with this identity already stamped by builderAtomicActionsForStep, since
+        // its Stride and Strike atoms come from two different builder functions that share nothing
+        // else -- prefer that pre-stamped identity when present, over re-deriving it here.
+        ...(step?.groupId
+          ? { groupId: step.groupId, groupLabel: step.groupLabel, ...(Number.isFinite(step?.atomIndex) ? { atomIndex: step.atomIndex } : {}) }
+          : step?.activityProfile?.requiresDistinctTargets
+            ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
+            : {}),
         ...(presetDestination ? { destination: presetDestination } : {}),
         ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
       };
