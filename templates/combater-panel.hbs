@@ -56,6 +56,11 @@
                     <i class="fa-solid fa-shoe-prints"></i><span class="combater-movement-value">{{movementToolLabel}}</span>
                   </button>
                 {{/if}}
+                {{#if canCycleWeapon}}
+                  <button type="button" class="combater-chip-tool combater-weapon-cycle" data-cycle-weapon="{{instanceId}}" data-tooltip="{{weaponToolTip}}" aria-label="{{weaponToolTip}}">
+                    <i class="fa-solid fa-khanda"></i><span class="combater-weapon-value">{{weaponToolLabel}}</span>
+                  </button>
+                {{/if}}
               {{/unless}}
               {{!-- Remove template stays available after execution so a placed region can be cleared. --}}
               {{#if hasAreaMarker}}

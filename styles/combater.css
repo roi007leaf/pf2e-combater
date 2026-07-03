@@ -486,6 +486,19 @@
   font-weight: 600;
 }
 
+.pf2e-combater .combater-chip-tool.combater-weapon-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+}
+
+.pf2e-combater .combater-weapon-value {
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
 .pf2e-combater .combater-chip,
 .pf2e-combater .combater-empty-chip {
   display: inline-flex;

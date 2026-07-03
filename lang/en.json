@@ -86,7 +86,9 @@
       "MapFull": "MAP 0",
       "MapPinned": "MAP pinned to {label}. Click to cycle (auto / 0 / -5 / -10).",
       "MapAuto": "MAP auto ({label}). Click to pin a value.",
-      "MovementCycle": "Stride on {label} Speed. Click to change."
+      "MovementCycle": "Stride on {label} Speed. Click to change.",
+      "WeaponCycle": "Attacking with {label}. Click to change.",
+      "WeaponDefault": "Default"
     },
     "Browser": {
       "TabsAria": "PF2e Combater action costs",
