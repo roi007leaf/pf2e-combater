@@ -1729,6 +1729,19 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const direct = this._findBuilderAction(key);
     if (direct) return direct.key;
 
+    // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
+    // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
+    // which makes step.item.uuid collide with that weapon's OWN standalone candidate below. The
+    // atom's slug is deliberately the original ability's own, unique slug, so it must be checked
+    // on its own first, or the item.uuid fallback below wins the race and mislabels the step as
+    // the borrowed weapon instead of the ability that actually produced it.
+    if (step?.activityProfile?.requiresDistinctTargets) {
+      for (const tab of Object.values(this._builder?.tabs ?? {})) {
+        const action = tab.all.find((candidate) => candidate.slug === step?.slug);
+        if (action) return action.key;
+      }
+    }
+
     for (const tab of Object.values(this._builder?.tabs ?? {})) {
       const action = tab.all.find((candidate) =>
         candidate.baseKey === key
