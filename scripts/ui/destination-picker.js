@@ -666,13 +666,14 @@ export function chooseDestination({
           ? [...waypoints]
           : [...waypoints, destination]
         : [];
+      // Even outside waypoint mode, a single click already picks a real destination -- compute its
+      // plan too (as a one-point path) so the distance/cost readout shows without requiring the
+      // player to lay down an actual waypoint first.
       const candidateMovementPlan = enableWaypoints
         ? planForWaypoints(candidateWaypoints)
-        : null;
+        : planForWaypoints([destination]);
       const metadata = {
-        ...(candidateMovementPlan && (waypointPick || waypointFinalize || waypoints.length)
-          ? { movementPlan: candidateMovementPlan }
-          : {}),
+        ...(candidateMovementPlan ? { movementPlan: candidateMovementPlan } : {}),
         ...(vertical ? { elevation: pendingElevation } : {}),
       };
 

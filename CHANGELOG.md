@@ -41,11 +41,27 @@ All notable changes to PF2e Combater are documented here. The format is based on
   ability's own requirements wording (e.g. "wielding two melee weapons, each in a different hand," or
   "make two unarmed Strikes") and applies whichever borrowed-weapon and multiple-attack-penalty
   behavior it calls for.
+- **Auto-fill now pre-fills a target and destination for every actor, not just GM-run monsters.**
+  Any drafted step Auto-fill already has a good answer for — who to hit, where to Stride — is filled
+  in immediately instead of prompting "Choose target/destination at execution," regardless of whether
+  a player or the GM is using it. A GM who doesn't want this for players can already turn Auto-fill
+  off for them entirely.
 
 ### Fixed
 
 - **Players clicking Shuffle no longer get stuck resetting to the first plan.** A background sync
   echo was mistaken for a real change and reset the pinned plan on every click.
+- **A Stride's move-range highlight now shows the actor's real Speed.** It previously capped at
+  roughly a 3-square radius no matter how fast the actor actually was, making a normal 20-foot Speed
+  look like only 10 feet on the map.
+- **Draft steps no longer occasionally resolve to the wrong action after Auto-fill.** A Stride could
+  intermittently pick up another action's leftover state (e.g. showing a false "Actor is Prone"
+  warning, or losing its grouping under Sudden Charge) when re-matched against the current action
+  list.
+- **Auto-fill no longer suggests dropping a weapon for no reason.** Releasing a held weapon was being
+  scored as a mildly attractive free action whenever nothing else filled that slot, even though
+  leaving a weapon on the ground has no benefit; it's still available to pick manually if it's ever
+  actually wanted.
 
 - **Auto-fill no longer scores unreachable spells and abilities as usable.** When no enemy was
   actually within an action's range, it could still be recommended at full value and displayed as

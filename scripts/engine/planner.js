@@ -1194,30 +1194,37 @@ function planUsesFullBudget(plan, budget) {
 
 export function buildTurnPlans(context, candidates) {
   const budget = actionBudget(context);
-  const sortedCandidates = withProjectedFollowUpStrikeCandidates(selectPlanningCandidates(candidates
+  // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
+  // search below runs, for performance — a real actor can easily have 20-40+ legal candidates
+  // (cantrips, spell ranks, strikes, item actions, skill actions), and searching all of them in
+  // combination would be too expensive. But that means any candidate ranked outside the top 12
+  // (and not lucky enough to win a "one per category" diversity slot) never reaches the search at
+  // all, so it can never appear in any generated plan or alt-plan cycle slot — keep the full,
+  // pre-narrowing list around so the coverage backfill below can still reach it.
+  const eligibleCandidates = candidates
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
-    .toSorted((left, right) => right.score - left.score)
-  ));
+    .toSorted((left, right) => right.score - left.score);
+  const sortedCandidates = withProjectedFollowUpStrikeCandidates(selectPlanningCandidates(eligibleCandidates));
 
   const plans = [];
   const seenPlans = new Set();
   const attackPathAvailable = hasAttackPathAvailable(context, sortedCandidates);
 
-  function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions) {
-    if (plans.length >= MAX_PLANS) return;
+  function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions, targetPlans = plans, cap = MAX_PLANS, candidatePool = sortedCandidates) {
+    if (targetPlans.length >= cap) return;
 
     if (steps.length) {
       const key = steps.map(actionKey).join("|");
       if (!seenPlans.has(key)) {
         seenPlans.add(key);
-        plans.push(toPlan(context, [...steps], sortedCandidates, budget));
+        targetPlans.push(toPlan(context, [...steps], sortedCandidates, budget));
       }
     }
 
-    for (let index = startIndex; index < sortedCandidates.length; index += 1) {
-      const candidate = sortedCandidates[index];
+    for (let index = startIndex; index < candidatePool.length; index += 1) {
+      const candidate = candidatePool[index];
       const linkedCandidate = inheritPlannedTarget(context, candidate, steps);
       const key = actionKey(candidate);
       const attackAction = isAttackAction(linkedCandidate);
@@ -1291,6 +1298,9 @@ export function buildTurnPlans(context, candidates) {
         attackAction ? attackCount + attacksTowardMap(candidate) : attackCount,
         strikeAction ? strikeCount + 1 : strikeCount,
         usedActions,
+        targetPlans,
+        cap,
+        candidatePool,
       );
       steps.pop();
       if (currentUses) usedActions.set(key, currentUses);
@@ -1299,6 +1309,41 @@ export function buildTurnPlans(context, candidates) {
   }
 
   visit(0, [], 0, 0, 0, 0, 0, new Map());
+
+  // Two ways a fully legal candidate can end up in zero generated plans, both silently, no matter
+  // how many alt-plan cycle slots exist:
+  // 1. It's in sortedCandidates, but the DFS above enumerates combinations in score-sorted order
+  //    and stops at MAX_PLANS — a candidate pool near the cap can exhaust MAX_PLANS via
+  //    combinations of the top-ranked few before ever trying a lower-ranked one.
+  // 2. It never made it into sortedCandidates at all — selectPlanningCandidates narrows to
+  //    MAX_CANDIDATES (12) before the DFS runs, and a candidate outside the top 12 only gets in
+  //    via a "one per category" diversity slot, which a higher-ranked same-category candidate
+  //    (e.g. another spell) can already claim.
+  // Backfill a minimal single-step plan for each still-uncovered candidate from each pool so every
+  // currently available action is reachable somewhere in the cycle.
+  const coveredKeys = new Set(plans.flatMap((plan) => plan.steps.map(actionKey)));
+  function backfillCoverage(pool) {
+    for (let index = 0; index < pool.length; index += 1) {
+      const candidate = pool[index];
+      const key = actionKey(candidate);
+      if (coveredKeys.has(key)) continue;
+      // A negative score means the scoring engine has flagged this as actively bad standalone (the
+      // canonical case: a bare Stride/Step with nothing to chain into — see CombaterPanel.js's
+      // isRedundantAutoFillMove, which strips exactly this shape back out when a plan is applied to
+      // the draft). Backfilling it produced a "valid" 1-step plan that immediately reduced to zero
+      // steps once applied, showing an empty draft. Only backfill candidates worth showing at all.
+      if (Number(candidate.score) < 0) continue;
+      const coverageAttempt = [];
+      visit(index, [], 0, 0, 0, 0, 0, new Map(), coverageAttempt, 1, pool);
+      const coveragePlan = coverageAttempt[0];
+      if (coveragePlan?.steps.some((step) => actionKey(step) === key)) {
+        plans.push(coveragePlan);
+        coveredKeys.add(key);
+      }
+    }
+  }
+  backfillCoverage(sortedCandidates);
+  backfillCoverage(eligibleCandidates);
 
   if (!plans.length) return [emptyPlan(context)];
 

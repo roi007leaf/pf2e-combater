@@ -2615,10 +2615,6 @@ function readMovementAvailability(context, action) {
   const condition = movementBlockingCondition(profile, action);
   if (condition) return availability(false, t("Avail.MoveBlocked", "Actor is {condition}; move actions are unavailable.", { condition: pf2eCondition(condition, condition) }));
 
-  if (basicMovementBlockedByCollision(context, profile, action)) {
-    return availability(false, t("Avail.NoMovePath", "No collision-free movement path."));
-  }
-
   return availability(true, "");
 }
 

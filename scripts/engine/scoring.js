@@ -2293,6 +2293,16 @@ export function scoreCandidate(context, action) {
     reasons.unshift(t("ScoreReason.IsAvailableNoStrongerPattern", "{p0} is available; no stronger pattern recognized.", { p0: action.name }));
   }
 
+  // Releasing a held weapon is a free action, so it never competes for the turn's action budget
+  // -- without a further penalty it would win as costless filler over doing nothing at all. Nothing
+  // in this engine's planning currently benefits from a freed hand (no somatic-spell or two-handed
+  // draw logic consumes it), so there is never a real reason for Auto-fill to pick this on its own;
+  // it stays available to browse and add manually for the rare case a player actually wants it.
+  if (action.activityProfile?.dropsWeapon) {
+    score -= 60;
+    reasons.unshift(t("ScoreReason.DropsAWeaponForNo", "{p0} drops a weapon for no tactical benefit.", { p0: action.name }));
+  }
+
   if (role === "exploration-utility") {
     score -= enemies(context).length ? 46 : 18;
     reasons.unshift(t("ScoreReason.IsMostlyExplorationUtility", "{p0} is mostly exploration utility.", { p0: action.name }));

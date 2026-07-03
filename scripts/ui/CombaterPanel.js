@@ -1140,6 +1140,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // the step can show a "waiting for the GM" indicator. Transient, never persisted.
     this._awaitingGm = new Set();
     this._pinnedPlanId = null;
+    this._autoFillInFlight = false;
     this._selectedCombatant = options.combatant ?? null;
     this._onClose = typeof options.onClose === "function" ? options.onClose : null;
     this._restoredPosition = false;
@@ -1917,143 +1918,162 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         candidate.baseKey === key
         || candidate.slug === step?.slug
         || candidate.id === step?.id
-        || candidate.item?.uuid === step?.item?.uuid);
+        // Both sides omit item.uuid for any generic, item-less action (Stride, Demoralize, Drop
+        // Prone, Raise a Shield, ...), so an unguarded === here matched undefined against undefined
+        // -- silently mis-keying a step to whichever OTHER item-less candidate happened to sort
+        // first that pass, e.g. a Stride step re-resolving to Drop Prone's own (false) "Actor is
+        // Prone" availability warning. Only compare when the step actually carries a real uuid.
+        || (step?.item?.uuid && candidate.item?.uuid === step.item.uuid));
       if (action) return action.key;
     }
     return key;
   }
 
   async _autoFillDraft({ plan = null } = {}) {
-    if (!this._canEditDraft()) return;
-    // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
-    if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
-    if (!this._context) return;
-    const draft = this._readActiveDraftPlan();
-    const replacingDraft = (draft.steps?.length ?? 0) > 0;
-    const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
-    if (replacingManualDraft && !await confirmReplaceDraft()) return;
-    const fallbackAutoFill = () => {
-      const candidateBuild = buildCandidates(this._context);
-      return bestTurnPlan(this._context, candidateBuild.candidates);
-    };
-    if (!plan) this._pinnedPlanId = null;
-    const autoFill = plan
-      ?? bestAutoFillPlan(this._autoFillPlans)
-      ?? this._builder?.autoFill
-      ?? this._plan
-      ?? fallbackAutoFill();
-    if (!autoFill?.steps?.length) return;
-
-    // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
-    // target and (for movement) a destination, so pre-fill both regardless of who's using it or
-    // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off
-    // Auto-fill for players entirely via the hideAutoFillFromPlayers setting checked above. The
-    // projected origin advances so a chained stride starts where the prior one lands.
-    let movementContext = this._context;
-    // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
-    // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
-    // legal while prone, so it is not in AUTO_FILL_BASIC_MOVE_SLUGS and survives.
-    const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
-    const atomicSteps = autoFill.steps
-      .filter((step) => !isRedundantAutoFillMove(step))
-      .flatMap((step) => builderAtomicActionsForStep(step))
-      // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
-      // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
-      .filter((step) => !(planAppliesProne && AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())));
-    const steps = atomicSteps.map((step, index) => {
-      const slug = String(step?.slug ?? "").toLowerCase();
-      const isBasicMove = AUTO_FILL_BASIC_MOVE_SLUGS.has(slug);
-      // Origin for THIS step = where the prior committed strides left the actor (real position for
-      // the first). Computed before any chaining update below so over-Speed checks use the true origin.
-      const moveOrigin = movementContext.token?.plannedCenter ?? movementContext.token?.center;
-      // Keep a pre-set destination (e.g. a composite's attack square) only if the actor can actually
-      // reach it this move — Foundry's ruler is the authority, so an over-Speed square is dropped
-      // rather than auto-committed as an impossible stride.
-      const presetDestination = step?.destination
-        && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, this._context?.profile))
-        ? step.destination
-        : null;
-      const presetAreaMarker = !step?.areaMarker ? computeAreaMarker(this._context, step) : null;
-      let draftStep = {
-        instanceId: draftStepId(),
-        actionKey: this._actionKeyForStep(step),
-        // Persist a display name so the step still reads correctly if its action stops being
-        // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-        name: step?.name ?? step?.action?.name,
-        actionCost: step?.actionCost ?? step?.cost,
-        requiresDestination: requiresDestinationForAction(step),
-        // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
-        // computed from the original, un-atomized action) -- reused here as the group id so the
-        // panel can visually nest them under one header instead of showing N identical-looking rows.
-        // A backed move-and-strike composite's atoms (e.g. Sudden Charge's two Strides and one
-        // Strike) arrive with this identity already stamped by builderAtomicActionsForStep, since
-        // its Stride and Strike atoms come from two different builder functions that share nothing
-        // else -- prefer that pre-stamped identity when present, over re-deriving it here.
-        ...(step?.groupId
-          ? { groupId: step.groupId, groupLabel: step.groupLabel, ...(Number.isFinite(step?.atomIndex) ? { atomIndex: step.atomIndex } : {}) }
-          : step?.activityProfile?.requiresDistinctTargets
-            ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
-            : {}),
-        ...(presetDestination ? { destination: presetDestination } : {}),
-        ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+    // A fast double-click fired two overlapping runs of this function, and their interleaved
+    // async steps (each racing on this._context/this._autoFillPlans as they awaited in turn)
+    // produced a corrupted draft -- e.g. a Stride warning "Actor is Prone" for an actor who was
+    // never prone, or an atom losing its groupId. A single in-flight guard makes a second
+    // invocation while one is still running a no-op instead of a second overlapping run.
+    if (this._autoFillInFlight) return;
+    this._autoFillInFlight = true;
+    try {
+      if (!this._canEditDraft()) return;
+      // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
+      if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
+      if (!this._context) return;
+      const draft = this._readActiveDraftPlan();
+      const replacingDraft = (draft.steps?.length ?? 0) > 0;
+      const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
+      if (replacingManualDraft && !await confirmReplaceDraft()) return;
+      const fallbackAutoFill = () => {
+        const candidateBuild = buildCandidates(this._context);
+        return bestTurnPlan(this._context, candidateBuild.candidates);
       };
+      if (!plan) this._pinnedPlanId = null;
+      const autoFill = plan
+        ?? bestAutoFillPlan(this._autoFillPlans)
+        ?? this._builder?.autoFill
+        ?? this._plan
+        ?? fallbackAutoFill();
+      if (!autoFill?.steps?.length) return;
 
-      const target = plannedTargetSelection(step);
-      if (target.targetTokenIds.length) {
-        draftStep = {
-          ...draftStep,
-          targetTokenIds: target.targetTokenIds,
-          targetLabel: target.targetLabel,
-          targetSelection: "manual",
+      // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
+      // target and (for movement) a destination, so pre-fill both regardless of who's using it or
+      // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off
+      // Auto-fill for players entirely via the hideAutoFillFromPlayers setting checked above. The
+      // projected origin advances so a chained stride starts where the prior one lands.
+      let movementContext = this._context;
+      // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
+      // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
+      // legal while prone, so it is not in AUTO_FILL_BASIC_MOVE_SLUGS and survives.
+      const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
+      const atomicSteps = autoFill.steps
+        .filter((step) => !isRedundantAutoFillMove(step))
+        .flatMap((step) => builderAtomicActionsForStep(step))
+        // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
+        // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
+        .filter((step) => !(planAppliesProne && AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())));
+      const steps = atomicSteps.map((step, index) => {
+        const slug = String(step?.slug ?? "").toLowerCase();
+        const isBasicMove = AUTO_FILL_BASIC_MOVE_SLUGS.has(slug);
+        // Origin for THIS step = where the prior committed strides left the actor (real position for
+        // the first). Computed before any chaining update below so over-Speed checks use the true origin.
+        const moveOrigin = movementContext.token?.plannedCenter ?? movementContext.token?.center;
+        // Keep a pre-set destination (e.g. a composite's attack square) only if the actor can actually
+        // reach it this move — Foundry's ruler is the authority, so an over-Speed square is dropped
+        // rather than auto-committed as an impossible stride.
+        const presetDestination = step?.destination
+          && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, this._context?.profile))
+          ? step.destination
+          : null;
+        const presetAreaMarker = !step?.areaMarker ? computeAreaMarker(this._context, step) : null;
+        let draftStep = {
+          instanceId: draftStepId(),
+          actionKey: this._actionKeyForStep(step),
+          // Persist a display name so the step still reads correctly if its action stops being
+          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+          name: step?.name ?? step?.action?.name,
+          actionCost: step?.actionCost ?? step?.cost,
+          requiresDestination: requiresDestinationForAction(step),
+          // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
+          // computed from the original, un-atomized action) -- reused here as the group id so the
+          // panel can visually nest them under one header instead of showing N identical-looking rows.
+          // A backed move-and-strike composite's atoms (e.g. Sudden Charge's two Strides and one
+          // Strike) arrive with this identity already stamped by builderAtomicActionsForStep, since
+          // its Stride and Strike atoms come from two different builder functions that share nothing
+          // else -- prefer that pre-stamped identity when present, over re-deriving it here.
+          ...(step?.groupId
+            ? { groupId: step.groupId, groupLabel: step.groupLabel, ...(Number.isFinite(step?.atomIndex) ? { atomIndex: step.atomIndex } : {}) }
+            : step?.activityProfile?.requiresDistinctTargets
+              ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
+              : {}),
+          ...(presetDestination ? { destination: presetDestination } : {}),
+          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
         };
-      }
 
-      if (draftStep.requiresDestination && !draftStep.destination) {
-        const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
-        const movement = recommendedMovementForStep(movementContext, movementStep);
-        // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
-        // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
-        // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
-        if (isBasicMove && movement?.destination
-          && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
-          return null;
-        }
-        // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
-        // it unset so the GM places a legal one instead of an over-range auto-stride.
-        if (movement?.destination
-          && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
+        const target = plannedTargetSelection(step);
+        if (target.targetTokenIds.length) {
           draftStep = {
             ...draftStep,
-            destination: movement.destination,
-            ...(movement.waypoints?.length ? { movementPlan: { native: false, waypoints: movement.waypoints } } : {}),
-          };
-          movementContext = {
-            ...movementContext,
-            token: { ...(movementContext.token ?? {}), plannedCenter: movement.destination },
+            targetTokenIds: target.targetTokenIds,
+            targetLabel: target.targetLabel,
+            targetSelection: "manual",
           };
         }
-      }
 
-      return draftStep;
-    }).filter(Boolean);
-    // Drop a Strike that can never connect: out of range from where it executes with no earlier
-    // move to close the gap (e.g. a move-and-strike whose Stride was pruned, or an aggro target
-    // left out of melee reach). Resolve each step from its projected origin, as the warnings do.
-    const reachDraft = { steps };
-    const reachableSteps = steps.filter((step, index) => {
-      const hasEarlierMove = steps.slice(0, index).some((earlier) => earlier.requiresDestination === true);
-      const projected = findProjectedDraftAction(this._context, reachDraft, step);
-      return !isUnreachableStrikeStep(projected, hasEarlierMove);
-    });
-    await this._writeActiveDraftPlan({
-      ...draft,
-      source: "auto-fill",
-      autoFillPlanId: autoFill.id ?? null,
-      autoFillPlanSummary: autoFill.summary ?? "",
-      steps: reachableSteps,
-    });
-    clearActionPreview();
-    await this.render({ force: true });
+        if (draftStep.requiresDestination && !draftStep.destination) {
+          const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
+          const movement = recommendedMovementForStep(movementContext, movementStep);
+          // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
+          // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
+          // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
+          if (isBasicMove && movement?.destination
+            && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
+            return null;
+          }
+          // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
+          // it unset so the GM places a legal one instead of an over-range auto-stride.
+          if (movement?.destination
+            && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
+            draftStep = {
+              ...draftStep,
+              destination: movement.destination,
+              // A direct path (no corner routing) has no waypoints of its own -- fall back to the
+              // destination as a one-point path so the distance label still renders, the same fix
+              // as the interactive destination picker's single-click case.
+              movementPlan: { native: false, waypoints: movement.waypoints?.length ? movement.waypoints : [movement.destination] },
+            };
+            movementContext = {
+              ...movementContext,
+              token: { ...(movementContext.token ?? {}), plannedCenter: movement.destination },
+            };
+          }
+        }
+
+        return draftStep;
+      }).filter(Boolean);
+      // Drop a Strike that can never connect: out of range from where it executes with no earlier
+      // move to close the gap (e.g. a move-and-strike whose Stride was pruned, or an aggro target
+      // left out of melee reach). Resolve each step from its projected origin, as the warnings do.
+      const reachDraft = { steps };
+      const reachableSteps = steps.filter((step, index) => {
+        const hasEarlierMove = steps.slice(0, index).some((earlier) => earlier.requiresDestination === true);
+        const projected = findProjectedDraftAction(this._context, reachDraft, step);
+        return !isUnreachableStrikeStep(projected, hasEarlierMove);
+      });
+      await this._writeActiveDraftPlan({
+        ...draft,
+        source: "auto-fill",
+        autoFillPlanId: autoFill.id ?? null,
+        autoFillPlanSummary: autoFill.summary ?? "",
+        steps: reachableSteps,
+      });
+      clearActionPreview();
+      await this.render({ force: true });
+    } finally {
+      this._autoFillInFlight = false;
+    }
   }
 
   async _cycleAutoFillDraft(direction = 1) {
@@ -2168,6 +2188,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _chooseDestination(instanceId) {
     if (!this._canExecuteDraft()) return;
+    // Clicking the same step's "Set destination" button again while its picker is already active
+    // toggles it off, instead of tearing it down and immediately restarting an identical picker.
+    if (this._destinationPicker?.instanceId === instanceId) {
+      this._cancelDestinationPicker();
+      clearActionPreview();
+      return;
+    }
     const step = this._findDraftStep(instanceId);
     if (!this._context || !step) return;
     this._cancelDestinationPicker();

@@ -3,7 +3,12 @@ import { pf2eMovementActionForStep, pf2eMovementSegmentCost } from "../rules/mov
 import { t } from "../i18n.js";
 
 const MOVEMENT_SLUGS = new Set(["crawl", "stride", "step", "stand-stride"]);
-const MAX_REACHABLE_MARKERS = 48;
+// Purely a render-count safety net -- the expensive BFS has already run by the time this applies,
+// so raising it costs nothing but a few more cheap PIXI rectangles. 48 (a ~3-square radius) silently
+// truncated the highlighted area for any ordinary PF2e Speed above ~15ft -- e.g. a plain 20ft Speed
+// already reaches ~128 cells, so a real Stride's own highlight was being clipped to less than its
+// actual range. 500 comfortably covers even a hasted/boosted 40-50ft Speed without ever clipping.
+const MAX_REACHABLE_MARKERS = 500;
 let previewGraphics = null;
 
 function numeric(value, fallback = 0) {

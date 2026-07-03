@@ -312,9 +312,13 @@ assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel templa
 // speeds the actor actually has, mapping the "land" speed key to the "walk" movement action.
 {
   const flier = actorMovementOptions({
-    system: { movement: { speeds: {
-      land: { total: 25 }, fly: { total: 60 }, burrow: { total: 0 }, swim: null, travel: { total: 25 },
-    } } },
+    system: {
+      movement: {
+        speeds: {
+          land: { total: 25 }, fly: { total: 60 }, burrow: { total: 0 }, swim: null, travel: { total: 25 },
+        }
+      }
+    },
   });
   assert.deepEqual(flier.map((option) => option.action), ["walk", "fly"], "only walking and the actor's real fly speed should be offered");
   assert.equal(flier[0].speed, 25, "walking option should carry the land speed");
@@ -659,6 +663,14 @@ assert.ok(
 assert.ok(
   /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*bestAutoFillPlan\(this\._autoFillPlans\)/.test(panelSource),
   "pressing Auto-fill should load the best plan even after cycling alternatives",
+);
+assert.ok(
+  /_autoFillDraft\(\{ plan = null \} = \{\}\) \{[\s\S]*if \(this\._autoFillInFlight\) return;[\s\S]*this\._autoFillInFlight = true;[\s\S]*\} finally \{[\s\S]*this\._autoFillInFlight = false;/.test(panelSource),
+  "a second Auto-fill invocation while one is already running must be a no-op -- two overlapping runs previously corrupted the resulting draft (e.g. a Stride wrongly warning the actor is prone)",
+);
+assert.ok(
+  /_actionKeyForStep\(step\)[\s\S]*step\?\.item\?\.uuid && candidate\.item\?\.uuid === step\.item\.uuid/.test(panelSource),
+  "re-matching a draft step to its live candidate must not fall back to an item.uuid comparison when the step has no item at all -- an unguarded === there matched undefined against undefined, mis-keying any generic item-less action (Stride, Demoralize, ...) to whichever OTHER item-less candidate happened to sort first that pass",
 );
 assert.ok(
   /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*if \(!plan\) this\._pinnedPlanId = null/.test(panelSource),
@@ -1910,7 +1922,7 @@ try {
   // Phase 1: without a DC (or preset outcome) Retch does NOT roll blind — it asks the GM for the DC.
   let blindRollCount = 0;
   const retchNoDcResult = await executeDraftStep({
-    context: { actor: { document: { decreaseCondition: async () => {}, saves: { fortitude: { roll: async () => { blindRollCount += 1; return { degreeOfSuccess: 3 }; } } } } }, token: { id: "x", center: { x: 0, y: 0 } } },
+    context: { actor: { document: { decreaseCondition: async () => { }, saves: { fortitude: { roll: async () => { blindRollCount += 1; return { degreeOfSuccess: 3 }; } } } } }, token: { id: "x", center: { x: 0, y: 0 } } },
     step: { instanceId: "retch-nodc-step" },
     action: { name: "Retch", slug: "retch", executable: "pf2e-action" },
   });
@@ -1951,7 +1963,7 @@ try {
     assert.equal(sharedDraftCalls.at(-1)?.handler, "receiveSharedDraft", "sharing a plan routes to the GMs' receiveSharedDraft handler");
 
     // A handler that throws (e.g. no GM connected) degrades to null rather than rejecting.
-    setSocket({ executeAsGM: async () => { throw new Error("No GM connected"); }, executeForAllGMs: () => {} });
+    setSocket({ executeAsGM: async () => { throw new Error("No GM connected"); }, executeForAllGMs: () => { } });
     assert.equal(await requestRetchDc({ actorName: "Ezren" }), null, "a socketlib error (no GM) resolves to null so the caller can fall back");
   } finally {
     setSocket(null);
@@ -3383,20 +3395,22 @@ assert.equal(
 );
 const weaponStrikeActor = {
   id: "weapon-strike-actor",
-  itemTypes: { spell: [{
-    id: "hand-of-the-apprentice",
-    slug: "hand-of-the-apprentice",
-    name: "Hand of the Apprentice",
-    system: {
-      traits: { value: ["attack", "focus"] },
-      time: { value: "1" },
-      range: { value: "500 feet" },
-      target: { value: "1 creature" },
-      damage: {},
-      level: { value: 4 },
-      description: { value: "Make a ranged Strike using a weapon you are wielding." },
-    },
-  }] },
+  itemTypes: {
+    spell: [{
+      id: "hand-of-the-apprentice",
+      slug: "hand-of-the-apprentice",
+      name: "Hand of the Apprentice",
+      system: {
+        traits: { value: ["attack", "focus"] },
+        time: { value: "1" },
+        range: { value: "500 feet" },
+        target: { value: "1 creature" },
+        damage: {},
+        level: { value: 4 },
+        description: { value: "Make a ranged Strike using a weapon you are wielding." },
+      },
+    }]
+  },
   system: {
     actions: [{
       type: "strike",
@@ -3961,10 +3975,8 @@ const panelRejectedDraftBuilderModel = buildActionBuilderModel({
 const rejectedStrideRow = panelRejectedDraftBuilderModel.tabs.one.all.find((action) => action.key === "stride");
 assert.ok(rejectedStrideRow, "rejected movement actions should stay visible in action builder");
 assert.equal(rejectedStrideRow.disabled, false);
-assert.equal(rejectedStrideRow.disabledReason, "No collision-free movement path.");
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].stale, false);
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].action.name, "Stride");
-assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].warning, "No collision-free movement path.");
 
 const inapplicableMovementBuilderModel = buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
@@ -4550,9 +4562,13 @@ assert.equal(npcAggroShot.suggestedTarget.name, "Temple Healer");
 const relAggroTarget = (id, name, ac) => ({
   id, name, distance: 20, hpPercent: 1, ac,
   attackTargetable: true, conditions: { slugs: [], values: {} },
-  actor: { document: { type: "npc",
-    itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
-    system: { attributes: { hp: { value: 30, max: 30 }, ac: { value: ac } } } } },
+  actor: {
+    document: {
+      type: "npc",
+      itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
+      system: { attributes: { hp: { value: 30, max: 30 }, ac: { value: ac } } }
+    }
+  },
 });
 const relTank = relAggroTarget("tank", "Steel Wall", 24);
 const relStriker = relAggroTarget("striker", "Duelist", 18);
@@ -4608,12 +4624,18 @@ const incapContext = (targetLevel) => ({
   actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
   token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
   targets: [],
-  battlefield: { targets: [], allies: [], enemies: [{
-    id: "foe", name: "Foe", level: targetLevel, distance: 30, hpPercent: 1, attackTargetable: true,
-    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
-    actor: { document: { type: "character", itemTypes: {},
-      system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
-  }] },
+  battlefield: {
+    targets: [], allies: [], enemies: [{
+      id: "foe", name: "Foe", level: targetLevel, distance: 30, hpPercent: 1, attackTargetable: true,
+      conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+      actor: {
+        document: {
+          type: "character", itemTypes: {},
+          system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } }
+        }
+      },
+    }]
+  },
 });
 const incapVsLow = scoreCandidate(incapContext(3), incapSpell);
 const incapVsHigh = scoreCandidate(incapContext(20), incapSpell);
@@ -4630,17 +4652,21 @@ const skillDemoralize = {
 };
 const skillContext = (intimidationMod) => ({
   isGM: true,
-  profile: { actorType: "npc", hpPercent: 1, conditions: { slugs: [], values: {} },
-    skills: { intimidation: { mod: intimidationMod, rank: 2 } } },
+  profile: {
+    actorType: "npc", hpPercent: 1, conditions: { slugs: [], values: {} },
+    skills: { intimidation: { mod: intimidationMod, rank: 2 } }
+  },
   actor: { id: "boss", name: "Boss", document: { type: "npc", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 } } } } },
   token: { id: "boss-t", name: "Boss", center: { x: 0, y: 0 } },
   targets: [],
-  battlefield: { targets: [], allies: [], enemies: [{
-    id: "foe", name: "Foe", distance: 20, hpPercent: 1, attackTargetable: true,
-    conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
-    perception: { dc: 20 },
-    actor: { document: { type: "character", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
-  }] },
+  battlefield: {
+    targets: [], allies: [], enemies: [{
+      id: "foe", name: "Foe", distance: 20, hpPercent: 1, attackTargetable: true,
+      conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
+      perception: { dc: 20 },
+      actor: { document: { type: "character", itemTypes: {}, system: { attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } } } },
+    }]
+  },
 });
 const critDemoralize = scoreCandidate(skillContext(40), skillDemoralize);
 const evenDemoralize = scoreCandidate(skillContext(10), skillDemoralize);
@@ -4652,11 +4678,19 @@ assert.ok(critDemoralize.score - evenDemoralize.score > 25,
 const prosyTarget = {
   id: "prosy", name: "Stoic", distance: 30, hpPercent: 1, ac: 18, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: { document: { type: "npc",
-    itemTypes: { spell: [], spellcastingEntry: [], weapon: [],
-      action: [{ slug: "steady-nerves", name: "Steady Nerves",
-        system: { traits: { value: [] }, description: { value: "This creature cannot be slowed, frightened, or stunned." } } }] },
-    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 18 } } } } },
+  actor: {
+    document: {
+      type: "npc",
+      itemTypes: {
+        spell: [], spellcastingEntry: [], weapon: [],
+        action: [{
+          slug: "steady-nerves", name: "Steady Nerves",
+          system: { traits: { value: [] }, description: { value: "This creature cannot be slowed, frightened, or stunned." } }
+        }]
+      },
+      system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 18 } } }
+    }
+  },
 };
 assert.equal(aggroProfile(npcAggroContext, prosyTarget).roles.includes("controller"), false,
   "control words in description prose no longer flag a controller");
@@ -4665,29 +4699,41 @@ assert.equal(aggroProfile(npcAggroContext, prosyTarget).roles.includes("controll
 const mookTarget = {
   id: "mook", name: "Mook", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: { document: { type: "npc",
-    itemTypes: { action: [], feat: [], spell: [], spellcastingEntry: [],
-      weapon: [{ name: "Club", system: { traits: { value: [] } } }] },
-    system: { attributes: { hp: { value: 20, max: 20 }, ac: { value: 16 } } } } },
+  actor: {
+    document: {
+      type: "npc",
+      itemTypes: {
+        action: [], feat: [], spell: [], spellcastingEntry: [],
+        weapon: [{ name: "Club", system: { traits: { value: [] } } }]
+      },
+      system: { attributes: { hp: { value: 20, max: 20 }, ac: { value: 16 } } }
+    }
+  },
 };
 const strikerTarget = {
   id: "striker", name: "Blademaster", distance: 30, hpPercent: 1, ac: 16, attackTargetable: true,
   conditions: { slugs: [], values: {} },
-  actor: { document: { type: "npc",
-    itemTypes: { action: [], spell: [], spellcastingEntry: [],
-      feat: [
-        { slug: "power-attack", name: "Power Attack", system: { traits: { value: [] } } },
-        { slug: "sneak-attack", name: "Sneak Attack", system: { traits: { value: [] } } },
-      ],
-      weapon: [
-        { name: "Sword", system: { traits: { value: [] } } },
-        { name: "Dagger", system: { traits: { value: [] } } },
-      ] },
-    system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 16 } } } } },
+  actor: {
+    document: {
+      type: "npc",
+      itemTypes: {
+        action: [], spell: [], spellcastingEntry: [],
+        feat: [
+          { slug: "power-attack", name: "Power Attack", system: { traits: { value: [] } } },
+          { slug: "sneak-attack", name: "Sneak Attack", system: { traits: { value: [] } } },
+        ],
+        weapon: [
+          { name: "Sword", system: { traits: { value: [] } } },
+          { name: "Dagger", system: { traits: { value: [] } } },
+        ]
+      },
+      system: { attributes: { hp: { value: 40, max: 40 }, ac: { value: 16 } } }
+    }
+  },
 };
 assert.ok(
   aggroProfile(npcAggroContext, strikerTarget).roleScores["main-attacker"]
-    > aggroProfile(npcAggroContext, mookTarget).roleScores["main-attacker"],
+  > aggroProfile(npcAggroContext, mookTarget).roleScores["main-attacker"],
   "a feat-stacked, multi-weapon striker reads as a bigger attacker than a one-weapon mook");
 
 // Aggro-driven auto-fill: the GM's NPC auto-fill should pre-pick the target.
@@ -4702,7 +4748,11 @@ assert.ok(/_autoFillDraft\([\s\S]*targetSelection: "manual"/.test(panelSource),
   "auto-fill should store the planned target as a manual selection, for any actor using auto-fill");
 assert.ok(panelSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
 assert.ok(/_autoFillDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelSource),
-  "auto-fill should store the recommended destination and waypoints for GM NPCs");
+  "auto-fill should store the recommended destination and waypoints for any actor");
+assert.ok(
+  /movementPlan: \{ native: false, waypoints: movement\.waypoints\?\.length \? movement\.waypoints : \[movement\.destination\] \}/.test(panelSource),
+  "a direct auto-filled Stride (no corner routing) must still fall back to a one-point movementPlan using the destination itself, or the distance label never renders for the common case",
+);
 assert.ok(/_autoFillDraft\([\s\S]*strideStepTowardPlannedTarget\(step, atomicSteps, index\)/.test(panelSource),
   "auto-fill should aim a generic stride at the plan's upcoming attack target");
 // Speed guard: auto-fill must reject any stride destination (preset or recommended) the ruler says
@@ -4874,10 +4924,16 @@ const dualStrikeContext = (distance) => {
   const target = { id: "petal", name: "Petal", distance, attackTargetable: true, center: { x: 0, y: 0 }, token: { center: { x: 0, y: 0 } } };
   const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
   return {
-    actor: { document: { itemTypes: {}, system: { traits: { size: { value: "lg" } }, actions: [
-      { type: "strike", name: "Pincer", label: "Pincer", item: meleeItem("2d12+12", "piercing", ["magical"]), traits: [], weaponTraits: [], variants: [] },
-      { type: "strike", name: "Energy Beam", label: "Energy Beam", item: meleeItem("2d10+10", "fire", ["fire", "magical"], { increment: null, max: 60 }), traits: [], weaponTraits: [], variants: [] },
-    ] } } },
+    actor: {
+      document: {
+        itemTypes: {}, system: {
+          traits: { size: { value: "lg" } }, actions: [
+            { type: "strike", name: "Pincer", label: "Pincer", item: meleeItem("2d12+12", "piercing", ["magical"]), traits: [], weaponTraits: [], variants: [] },
+            { type: "strike", name: "Energy Beam", label: "Energy Beam", item: meleeItem("2d10+10", "fire", ["fire", "magical"], { increment: null, max: 60 }), traits: [], weaponTraits: [], variants: [] },
+          ]
+        }
+      }
+    },
     battlefield: { allies: [], enemies: [target], targets: [target] },
     targets: [target],
   };
@@ -6389,10 +6445,12 @@ try {
     stopPropagation: () => { },
   });
   assert.deepEqual(projectedOriginWarnings, []);
-  assert.deepEqual(projectedOriginDestinations, [{
-    destination: { x: 115, y: 5 },
-    metadata: {},
-  }], "Step after a planned Stride should measure from projected draft origin instead of actual token position");
+  assert.equal(projectedOriginDestinations.length, 1);
+  assert.deepEqual(projectedOriginDestinations[0].destination, { x: 115, y: 5 }, "Step after a planned Stride should measure from projected draft origin instead of actual token position");
+  const projectedOriginPlan = projectedOriginDestinations[0].metadata.movementPlan;
+  assert.ok(projectedOriginPlan, "a plain single-click destination pick (no waypoints used) must still carry a movement plan, so the distance/cost readout shows without requiring a waypoint first");
+  assert.deepEqual(projectedOriginPlan.waypoints, [{ x: 115, y: 5 }]);
+  assert.ok(Number.isFinite(projectedOriginPlan.cost) && projectedOriginPlan.cost > 0, "the one-point plan should carry a real, positive distance cost");
 
   let waypointPointerHandler = null;
   let waypointPointerRemoved = false;
@@ -6556,10 +6614,10 @@ try {
     preventDefault: () => { },
     stopPropagation: () => { },
   });
-  assert.deepEqual(verticalDestinations, [{
-    destination: { x: 15, y: 15, elevation: 10 },
-    metadata: { elevation: 10 },
-  }], "a fly Stride should stamp the target elevation onto the destination");
+  assert.equal(verticalDestinations.length, 1);
+  assert.deepEqual(verticalDestinations[0].destination, { x: 15, y: 15, elevation: 10 }, "a fly Stride should stamp the target elevation onto the destination");
+  assert.equal(verticalDestinations[0].metadata.elevation, 10);
+  assert.ok(verticalDestinations[0].metadata.movementPlan, "a single click still carries a movement plan even before any waypoint is placed");
 
   let diagonalCostPointerHandler = null;
   const diagonalCostWarnings = [];
@@ -6765,10 +6823,9 @@ try {
     preventDefault: () => { },
     stopPropagation: () => { },
   });
-  assert.deepEqual(directWaypointDestinations, [{
-    destination: { x: 15, y: 15 },
-    metadata: {},
-  }], "one-click destination should not store custom waypoint data unless a waypoint was added");
+  assert.equal(directWaypointDestinations.length, 1);
+  assert.deepEqual(directWaypointDestinations[0].destination, { x: 15, y: 15 }, "one-click destination should not store custom waypoint data unless a waypoint was added");
+  assert.ok(directWaypointDestinations[0].metadata.movementPlan, "a one-click destination still carries its own single-point movement plan for the distance readout");
   globalThis.ui = previousDestinationUi;
 
   let domPointerHandler = null;
@@ -8155,7 +8212,12 @@ assert.deepEqual(hugeStridePreview.recommendedMarker.strokes, [{
 }]);
 assert.equal(hugeStridePreview.reachableMarkers[0].width, 5);
 assert.equal(hugeStridePreview.reachableMarkers[0].height, 5);
-assert.ok(hugeStridePreview.reachableMarkers.length <= 48);
+assert.ok(hugeStridePreview.reachableMarkers.length <= 500);
+// This is the exact bug: the old 48-marker cap silently clipped a 20ft+ Speed's own highlighted
+// area to a visibly smaller radius than the Speed it was supposed to represent. A plain 25ft Speed
+// already reaches well past 48 cells, so it must not be truncated to exactly (or under) that count.
+assert.ok(hugeStridePreview.reachableMarkers.length > 48,
+  "a 25ft Speed reaches far more than 48 cells -- the render cap must not silently clip a Stride's highlighted area below its actual Speed");
 
 const battlefieldTargetPlan = bestTurnPlan({
   ...fighterContext,
@@ -8649,6 +8711,9 @@ assert.equal(releaseDagger.actionCost, 0);
 assert.equal(releaseDagger.executable, "drop-weapon");
 assert.equal(releaseDagger.name, "Release Dagger");
 assert.ok(!weaponSources.some((action) => action.slug === "release-longsword"), "a sheathed weapon should not get a Release");
+const releaseDaggerScored = scoreCandidate(weaponActionsContext, releaseDagger);
+assert.ok(releaseDaggerScored.score < 0, "releasing a held weapon must score net negative -- it's a free action with no action-budget cost, so without a real penalty it would win as costless filler over doing nothing, even though dropping the actor's only free hand-user has no benefit here");
+assert.ok(releaseDaggerScored.reasons.some((reason) => reason.includes("no tactical benefit")), "the score reasons should explain why Release scores negatively");
 assert.ok(!weaponSources.some((action) => action.slug === "draw-dagger"), "a held weapon should not get a Draw");
 const sheatheDagger = weaponSources.find((action) => action.slug === "sheathe-dagger");
 assert.ok(sheatheDagger, "a held weapon should get a Sheathe (1-action) action");
@@ -14785,12 +14850,14 @@ const divineFontContext = {
             statistic: { dc: { value: 19 } },
             slots: {
               slot1: { value: 0, max: 0, prepared: [] },
-              slot2: { value: 0, max: 4, prepared: [
-                { id: "font-heal", expended: false },
-                { id: "font-heal", expended: false },
-                { id: "font-heal", expended: false },
-                { id: "font-heal", expended: false },
-              ] },
+              slot2: {
+                value: 0, max: 4, prepared: [
+                  { id: "font-heal", expended: false },
+                  { id: "font-heal", expended: false },
+                  { id: "font-heal", expended: false },
+                  { id: "font-heal", expended: false },
+                ]
+              },
             },
           },
         }],
@@ -16400,7 +16467,7 @@ const dropProneAttackPlan = bestTurnPlan(oneStrideRangedContext, [{
 }]);
 assert.ok(
   !dropProneAttackPlan.steps.some((step) => step.slug === "drop-prone")
-    || !dropProneAttackPlan.steps.some((step) => step.slug === "energy-beam"),
+  || !dropProneAttackPlan.steps.some((step) => step.slug === "energy-beam"),
   `planner should not pair Drop Prone with a later attack-roll action, got ${dropProneAttackPlan.summary}`,
 );
 
@@ -17119,9 +17186,7 @@ try {
   };
   const cagedMovementActions = readActionSources(cagedMovementContext);
   assert.equal(cagedMovementActions.find((action) => action.slug === "step").available, false);
-  assert.equal(cagedMovementActions.find((action) => action.slug === "step").unavailableReason, "No collision-free movement path.");
   assert.equal(cagedMovementActions.find((action) => action.slug === "stride").available, false);
-  assert.equal(cagedMovementActions.find((action) => action.slug === "stride").unavailableReason, "No collision-free movement path.");
   assert.equal(buildCandidates(cagedMovementContext).candidates.some((action) => ["step", "stride"].includes(action.slug)), false);
 } finally {
   globalThis.canvas = previousCagedMoveCanvas;
