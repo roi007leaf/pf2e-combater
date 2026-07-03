@@ -2448,7 +2448,7 @@ function isGenericAvailable(action, context) {
   }
   if (action.requiresSeekTarget) {
     if (!hasSeekTarget(context, enemies)) {
-      return availability(false, t("Avail.NoHiddenTarget", "No hidden target detected."));
+      return availability(false, t("Avail.NoHiddenTarget", "No hidden or undetected target detected."));
     }
   }
   if (action.requiresCombatSignal) {
