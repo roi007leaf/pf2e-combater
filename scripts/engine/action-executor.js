@@ -418,6 +418,7 @@ function chatActionRevert(nativeResult, action, { target = null, slotOp = null }
   const manualWarnings = [];
   const messageId = chatMessageIdFromResult(nativeResult);
   if (messageId) ops.push({ kind: "chat", messageId });
+  if (nativeResult?.consumableRevertOp) ops.push(nativeResult.consumableRevertOp);
 
   if (slotOp) {
     ops.push(slotOp);
@@ -1209,6 +1210,40 @@ export function findSpellcastingEntry(actor, action) {
   ) ?? null;
 }
 
+function systemFieldValue(value) {
+  return value && typeof value === "object" && "value" in value ? value.value : value;
+}
+
+// Snapshot a consumable's quantity/uses (and full source data, in case it gets deleted entirely)
+// BEFORE calling item.use() -- PF2e's own consumable-use logic decrements quantity/uses and, once
+// spent, deletes the item outright, and there's no other point where the pre-use state is visible.
+function consumableUseSnapshot(item) {
+  if (!item || item.type !== "consumable" || !item.uuid) return null;
+  return {
+    itemUuid: item.uuid,
+    quantityBefore: numeric(systemFieldValue(item.system?.quantity), null),
+    usesValueBefore: numeric(systemFieldValue(item.system?.uses), null),
+    sourceData: typeof item.toObject === "function" ? item.toObject() : null,
+  };
+}
+
+// Resolve the same item by uuid AFTER use (mirroring revertCarryType's existing fromUuid lookup)
+// to tell apart "quantity/uses decremented" from "fully consumed and deleted" -- fromUuid resolving
+// to nothing is exactly PF2e's signal for the latter.
+async function consumableRevertOpAfterUse(before, actor) {
+  if (!before) return null;
+  const stillExists = typeof globalThis.fromUuid === "function" ? await globalThis.fromUuid(before.itemUuid) : null;
+  if (!stillExists) {
+    return before.sourceData && actor?.uuid
+      ? { kind: "consumable", deleted: true, actorUuid: actor.uuid, sourceData: before.sourceData }
+      : null;
+  }
+  const quantityNow = numeric(systemFieldValue(stillExists.system?.quantity), null);
+  const usesNow = numeric(systemFieldValue(stillExists.system?.uses), null);
+  if (quantityNow === before.quantityBefore && usesNow === before.usesValueBefore) return null;
+  return { kind: "consumable", itemUuid: before.itemUuid, quantityBefore: before.quantityBefore, usesValueBefore: before.usesValueBefore };
+}
+
 async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
   const entry = findSpellcastingEntry(actor, action);
@@ -1243,7 +1278,12 @@ async function executeNativeItem({ actor, action, event }) {
     return { spellCast: true, message: castMessage, castFailed: resourceOk === false };
   }
   if (typeof action?.generatedAction?.use === "function") return action.generatedAction.use({ event });
-  if (typeof item?.use === "function") return item.use({ event });
+  if (typeof item?.use === "function") {
+    const before = consumableUseSnapshot(item);
+    const used = await item.use({ event });
+    const consumableRevertOp = before ? await consumableRevertOpAfterUse(before, actor) : null;
+    return consumableRevertOp ? { ...used, consumableRevertOp } : used;
+  }
   if (typeof item?.cast === "function") return item.cast({ event, rank: action?.castRank ?? action?.rank });
   if (typeof item?.toMessage === "function") return item.toMessage({}, { rollMode: globalThis.game?.settings?.get?.("core", "rollMode") });
   if (typeof item?.sheet?.render === "function") {

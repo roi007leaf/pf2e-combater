@@ -1180,6 +1180,7 @@ try {
   const effectCreates = [];
   const effectDeletes = [];
   const carryChanges = [];
+  const consumableUpdates = [];
   const createdEffects = new Map();
   const actorDocument = {
     name: "Valeros",
@@ -2000,6 +2001,69 @@ try {
   const sheatheRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "sheathe-weapon-step", execution: sheatheResult.patch.execution } });
   assert.equal(sheatheRevert.status, "reverted");
   assert.deepEqual(carryChanges.at(-1), { item: "rapier", carryType: "held", handsHeld: 1 }, "reverting Sheathe should restore the held weapon");
+
+  // Using a consumable that still has quantity left: revert restores the quantity.
+  let healingPotionQuantity = 2;
+  const healingPotionUuid = "Actor.valeros.Item.healing-potion";
+  const healingPotion = {
+    id: "healing-potion",
+    type: "consumable",
+    uuid: healingPotionUuid,
+    system: { quantity: { value: healingPotionQuantity } },
+    toObject: () => ({ name: "Healing Potion", type: "consumable", system: { quantity: { value: healingPotionQuantity } } }),
+    use: async () => {
+      healingPotionQuantity -= 1;
+      healingPotion.system.quantity.value = healingPotionQuantity;
+      return null;
+    },
+    update: async (data) => {
+      consumableUpdates.push({ item: "healing-potion", data });
+      if ("system.quantity.value" in data) {
+        healingPotionQuantity = data["system.quantity.value"];
+        healingPotion.system.quantity.value = healingPotionQuantity;
+      }
+    },
+  };
+  createdEffects.set(healingPotionUuid, healingPotion);
+  const potionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "potion-step" },
+    action: { name: "Healing Potion", slug: "healing-potion", executable: "open-item", item: healingPotion },
+  });
+  assert.equal(potionResult.status, "done");
+  assert.equal(healingPotionQuantity, 1, "using the potion should decrement its quantity");
+  const potionConsumableOp = potionResult.patch.execution.revert?.ops?.find((op) => op.kind === "consumable");
+  assert.ok(potionConsumableOp, "using a consumable whose quantity changed should record a consumable revert op");
+  assert.equal(potionConsumableOp.itemUuid, healingPotionUuid);
+  assert.equal(potionConsumableOp.quantityBefore, 2, "the revert op should carry the quantity from BEFORE the use");
+
+  // Using the last one of a consumable (PF2e deletes it once spent): the revert op carries the
+  // full source data needed to recreate it, since there's no item left to restore a quantity on.
+  const lastPotionUuid = "Actor.valeros.Item.last-potion";
+  const lastPotionSourceData = { name: "Last Healing Potion", type: "consumable", system: { quantity: { value: 1 } } };
+  const lastPotion = {
+    id: "last-potion",
+    type: "consumable",
+    uuid: lastPotionUuid,
+    system: { quantity: { value: 1 } },
+    toObject: () => lastPotionSourceData,
+    use: async () => {
+      createdEffects.delete(lastPotionUuid); // simulate PF2e deleting the item once its last use is spent
+      return null;
+    },
+  };
+  createdEffects.set(lastPotionUuid, lastPotion);
+  const lastPotionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "last-potion-step" },
+    action: { name: "Last Healing Potion", slug: "last-healing-potion", executable: "open-item", item: lastPotion },
+  });
+  assert.equal(lastPotionResult.status, "done");
+  assert.equal(createdEffects.has(lastPotionUuid), false, "using the last potion should delete it (simulated)");
+  const deletedConsumableOp = lastPotionResult.patch.execution.revert?.ops?.find((op) => op.kind === "consumable");
+  assert.ok(deletedConsumableOp?.deleted, "consuming the last one should record a 'deleted' consumable revert op");
+  assert.equal(deletedConsumableOp.sourceData?.name, "Last Healing Potion", "the deleted op should carry the source data needed to recreate the item");
+  assert.equal(deletedConsumableOp.actorUuid, actorDocument.uuid);
 
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
