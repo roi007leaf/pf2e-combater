@@ -2075,6 +2075,45 @@ try {
   assert.equal(effectCreates.at(-1)?.type, "Item", "reverting a fully-consumed item should recreate it via createEmbeddedDocuments");
   assert.equal(effectCreates.at(-1)?.document?.name, "Last Healing Potion", "the recreated item should match the source data captured before it was consumed");
 
+  // Real PF2e consumable documents have no .use() method at all -- only .consume(thisMany). Prove
+  // executeNativeItem actually dispatches to it (and the capture/restore machinery from Tasks 1-2
+  // still produces a working revert op), using a fixture shaped like the genuine document API.
+  let scrollUsesValue = 1;
+  const scrollUuid = "Actor.valeros.Item.scroll-of-fireball";
+  const scroll = {
+    id: "scroll-of-fireball",
+    type: "consumable",
+    uuid: scrollUuid,
+    system: { quantity: 1, uses: { value: scrollUsesValue, max: 1 } },
+    toObject: () => ({ name: "Scroll of Fireball", type: "consumable", system: { quantity: 1, uses: { value: scrollUsesValue, max: 1 } } }),
+    consume: async () => {
+      scrollUsesValue -= 1;
+      scroll.system.uses.value = scrollUsesValue;
+    },
+    update: async (data) => {
+      consumableUpdates.push({ item: "scroll-of-fireball", data });
+      if ("system.uses.value" in data) {
+        scrollUsesValue = data["system.uses.value"];
+        scroll.system.uses.value = scrollUsesValue;
+      }
+    },
+  };
+  createdEffects.set(scrollUuid, scroll);
+  assert.equal(typeof scroll.use, "undefined", "this fixture deliberately has no .use(), matching the real ConsumablePF2e API");
+  const scrollResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "scroll-step" },
+    action: { name: "Scroll of Fireball", slug: "scroll-of-fireball", executable: "open-item", item: scroll },
+  });
+  assert.equal(scrollResult.status, "done");
+  assert.equal(scrollUsesValue, 0, "executeNativeItem should dispatch to .consume() for a real consumable, decrementing its uses");
+  const scrollConsumableOp = scrollResult.patch.execution.revert?.ops?.find((op) => op.kind === "consumable");
+  assert.ok(scrollConsumableOp, "consuming via .consume() should still record a consumable revert op");
+  assert.equal(scrollConsumableOp.usesValueBefore, 1);
+  const scrollRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "scroll-step", execution: scrollResult.patch.execution } });
+  assert.equal(scrollRevert.status, "reverted");
+  assert.equal(scrollUsesValue, 1, "reverting should restore the scroll's uses");
+
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
 

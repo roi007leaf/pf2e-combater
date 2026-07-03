@@ -1284,6 +1284,15 @@ async function executeNativeItem({ actor, action, event }) {
     const consumableRevertOp = before ? await consumableRevertOpAfterUse(before, actor) : null;
     return consumableRevertOp ? { ...used, consumableRevertOp } : used;
   }
+  // Real PF2e consumable documents (potions, scrolls, wands, etc.) have no .use() -- the system's
+  // own API for spending a charge/quantity is .consume(thisMany), which posts its own chat message
+  // internally and returns nothing, so there's no nativeResult to inspect for a message id here.
+  if (typeof item?.consume === "function" && item.type === "consumable") {
+    const before = consumableUseSnapshot(item);
+    await item.consume();
+    const consumableRevertOp = before ? await consumableRevertOpAfterUse(before, actor) : null;
+    return consumableRevertOp ? { consumableRevertOp } : null;
+  }
   if (typeof item?.cast === "function") return item.cast({ event, rank: action?.castRank ?? action?.rank });
   if (typeof item?.toMessage === "function") return item.toMessage({}, { rollMode: globalThis.game?.settings?.get?.("core", "rollMode") });
   if (typeof item?.sheet?.render === "function") {
