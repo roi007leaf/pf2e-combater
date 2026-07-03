@@ -9032,6 +9032,7 @@ assert.equal(twinTakedownShapedResult.activityProfile.requiresBackingStrike, tru
 assert.equal(twinTakedownShapedResult.activityProfile.requiresDualBackingStrike, true);
 assert.equal(twinTakedownShapedResult.activityProfile.mapAppliesPerStrike, true, "the text has no 'counts as N attacks' phrase, so this ability must escalate MAP normally per strike, like the real Twin Takedown");
 assert.equal(twinTakedownShapedResult.activityProfile.backingStrikeFilter, undefined);
+assert.deepEqual(twinTakedownShapedResult.activityProfile.includes, ["strike", "strike"], "the classifier must tell the atomizer to build TWO Strike atoms, not baseAttackProfile's default single 'strike' -- otherwise builderAtomicActionsForStep silently produces only one atom and the whole borrowed-weapon mechanism never fires");
 
 const doubleSliceShapedAction = {
   id: "custom-double-slice",
@@ -9045,6 +9046,7 @@ assert.equal(doubleSliceShapedResult.activityProfile.requiresBackingStrike, true
 assert.equal(doubleSliceShapedResult.activityProfile.requiresDualBackingStrike, true, "the real fighter feat Double Slice uses the identical 'wielding two melee weapons, each in a different hand' requirement as Twin Takedown, and is NOT curated anywhere in this codebase -- this is the generalization proof");
 assert.equal(doubleSliceShapedResult.activityProfile.mapAttacks, 2, "the existing, unmodified readMapAttacks helper must still detect this ability's own 'counts as two attacks' phrase");
 assert.equal(doubleSliceShapedResult.activityProfile.mapAppliesPerStrike, undefined, "unlike Twin Takedown, Double Slice's own text says its two Strikes count as two attacks (Double Attack's shared-tier phrasing), not 'apply normally' -- it must NOT get the per-strike MAP flag, so it falls into the pre-existing shared-tier behavior instead");
+assert.deepEqual(doubleSliceShapedResult.activityProfile.includes, ["strike", "strike"]);
 
 const huntedShotShapedAction = {
   id: "custom-ranged-shot",
@@ -9058,6 +9060,7 @@ assert.equal(huntedShotShapedResult.activityProfile.requiresBackingStrike, true)
 assert.equal(huntedShotShapedResult.activityProfile.backingStrikeFilter, "ranged-reload-zero", "an uncurated ability whose Requirements clause matches Hunted Shot's own real templated text must get the same weapon-class filter");
 assert.equal(huntedShotShapedResult.activityProfile.requiresDualBackingStrike, undefined);
 assert.equal(huntedShotShapedResult.activityProfile.mapAppliesPerStrike, true);
+assert.deepEqual(huntedShotShapedResult.activityProfile.includes, ["strike", "strike"]);
 
 const flurryShapedAction = {
   id: "custom-flurry",
@@ -9071,6 +9074,7 @@ assert.equal(flurryShapedResult.activityProfile.requiresBackingStrike, true, "Fl
 assert.equal(flurryShapedResult.activityProfile.backingStrikeFilter, "unarmed");
 assert.equal(flurryShapedResult.activityProfile.requiresDualBackingStrike, undefined);
 assert.equal(flurryShapedResult.activityProfile.mapAppliesPerStrike, true);
+assert.deepEqual(flurryShapedResult.activityProfile.includes, ["strike", "strike"]);
 
 const dualHandedAssaultShapedAction = {
   id: "custom-dual-handed",
@@ -9095,6 +9099,12 @@ assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresBackingStrike, un
 assert.equal(ordinaryMultiStrikeResult.activityProfile.backingStrikeFilter, undefined);
 assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresDualBackingStrike, undefined);
 assert.equal(ordinaryMultiStrikeResult.activityProfile.mapAppliesPerStrike, undefined);
+
+const twinTakedownShapedAtoms = builderAtomicActionsForStep({
+  ...twinTakedownShapedAction,
+  ...twinTakedownShapedResult,
+});
+assert.equal(twinTakedownShapedAtoms.length, 2, "end-to-end: an uncurated dual-weapon-shaped ability must actually atomize into two real Strike atoms when piped through the real builder, not just carry the right flags in isolation");
 
 const itemAbilityContext = {
   ...hydraContext,

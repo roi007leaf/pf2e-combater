@@ -1321,6 +1321,10 @@ function classifySystemActionBase(action, parsedCost) {
     const mentionsUnarmedStrikes = !mentionsDifferentTargets && !weaponRequirement && /\bunarmed strikes?\b/.test(text);
     const backingStrikeProfile = (weaponRequirement || mentionsUnarmedStrikes)
       ? {
+        // baseAttackProfile()'s default includes:["strike"] is a single atom -- without this
+        // override, builderAtomicActionsForStep never splits the ability into real per-weapon
+        // Strike atoms at all, silently defeating the whole borrowed-weapon mechanism.
+        includes: Array(readDistinctStrikeCount(text)).fill("strike"),
         requiresBackingStrike: true,
         ...(weaponRequirement?.requiresDualBackingStrike ? { requiresDualBackingStrike: true } : {}),
         ...(weaponRequirement?.backingStrikeFilter ? { backingStrikeFilter: weaponRequirement.backingStrikeFilter } : {}),
