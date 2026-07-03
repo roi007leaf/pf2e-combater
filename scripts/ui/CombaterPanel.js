@@ -54,7 +54,7 @@ import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./ran
 import { groupActionsByBuilderCategory } from "./action-categories.js";
 import { actionDetailChips } from "./action-details.js";
 import { actorMovementOptions } from "../readers/actor-profile.js";
-import { actorStrikeOptions } from "../readers/action-reader.js";
+import { actorStrikeOptions, bestReadyStrike } from "../readers/action-reader.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
 import { canUseFullAggro } from "../rules/aggro.js";
 import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
@@ -585,7 +585,7 @@ function isSpeedBasedMovementStep(action) {
   return slug !== "step" && slug !== "crawl";
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null, movementOptions = [] } = {}) {
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
@@ -632,6 +632,13 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
   const canCycleMovement = isSpeedBasedMovementStep(action ?? step)
     && canRunStep && !isExecutionDone && movementOptions.length > 1;
   const movementToolTip = t("Panel.MovementCycle", "Stride on {label} Speed. Click to change.", { label: movementToolLabel });
+  // Per-atom weapon control: a distinct-target multiattack's atoms (e.g. a Kraken's two Double
+  // Attack strikes) each default to the actor's single best Strike; let the owner independently
+  // pick which of the actor's other ready Strikes backs THIS atom instead. Only shown when the
+  // actor actually has more than one Strike to choose from.
+  const weaponToolLabel = action?.item?.name ?? t("Panel.WeaponDefault", "Default");
+  const canCycleWeapon = Boolean(step?.groupId) && canRunStep && !isExecutionDone && weaponOptions.length > 1;
+  const weaponToolTip = t("Panel.WeaponCycle", "Attacking with {label}. Click to change.", { label: weaponToolLabel });
   return {
     ...display,
     ...step,
@@ -668,6 +675,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     canCycleMovement,
     movementToolLabel,
     movementToolTip,
+    canCycleWeapon,
+    weaponToolLabel,
+    weaponToolTip,
     canMoveStepUp: canEditStepOrder && index > 0,
     canMoveStepDown: canEditStepOrder && index < total - 1,
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
@@ -877,7 +887,7 @@ function groupDraftSteps(steps) {
   return grouped;
 }
 
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [] } = {}) {
+function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
   const isPlayerPlan = builder.draft?.shared === true;
@@ -895,6 +905,7 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
       reorderLocked,
       awaitingGm,
       movementOptions,
+      weaponOptions,
     }));
   const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
   const draftSteps = rawDraftSteps.map((step) => ({
@@ -914,6 +925,7 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
     reorderLocked: uncountedReorderLocked,
     awaitingGm,
     movementOptions,
+    weaponOptions,
   }));
   const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
   const uncountedEntries = rawUncountedSteps.map((step) => ({
@@ -1172,6 +1184,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       this._builder = null;
       this._planningContext = null;
       this._movementOptions = [];
+      this._weaponOptions = [];
       return this._viewContext(null);
     }
 
@@ -1232,7 +1245,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     });
     const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
     this._movementOptions = actorMovementOptions(this._actorForMovement(context));
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm, movementOptions: this._movementOptions });
+    this._weaponOptions = actorStrikeOptions(this._actorForMovement(context), context);
+    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm, movementOptions: this._movementOptions, weaponOptions: this._weaponOptions });
     this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
 
     return this._viewContext(context);
@@ -1327,6 +1341,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
         this._cycleStepMovement(button.dataset.cycleMovement);
+      });
+    }
+    for (const button of element.querySelectorAll("[data-cycle-weapon]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._cycleStepWeapon(button.dataset.cycleWeapon);
       });
     }
 
@@ -1828,6 +1848,29 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...step,
       movementAction: next,
       action: step.action ? { ...step.action, movementAction: next } : step.action,
+    });
+    await this._syncDraftToGM();
+    await this.render({ force: true });
+  }
+
+  // Cycle which of the actor's ready Strikes backs one atom of a distinct-target multiattack
+  // (e.g. Arm -> Tentacle -> Arm for a Kraken's Double Attack). Unlike movement, this doesn't
+  // need a manual step.action merge -- findProjectedDraftAction re-derives the atom (and applies
+  // this same weaponId) fresh on every render, so persisting the id alone is enough.
+  async _cycleStepWeapon(instanceId) {
+    if (!this._canExecuteDraft()) return;
+    if (!this._context || !instanceId) return;
+    const options = Array.isArray(this._weaponOptions) ? this._weaponOptions : [];
+    if (options.length <= 1) return;
+    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
+    if (!step || !step.groupId) return;
+    const defaultId = bestReadyStrike(this._actorForMovement(this._context), this._context)?.id ?? null;
+    const current = step.weaponId ?? defaultId;
+    const index = Math.max(0, options.findIndex((option) => option.id === current));
+    const next = options[(index + 1) % options.length];
+    await this._persistActiveDraftStep({
+      ...step,
+      weaponId: next.id,
     });
     await this._syncDraftToGM();
     await this.render({ force: true });
