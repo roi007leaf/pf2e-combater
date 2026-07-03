@@ -9019,6 +9019,83 @@ assert.equal(pounceCandidate.role, "mobility-attack");
 assert.equal(pounceCandidate.activityProfile.includesStrike, true);
 assert.equal(pounceCandidate.activityProfile.requiresBackingStrike, true, "the generic move-and-strike classifier fallback must tag its output as needing a borrowed weapon, the same as the curated Sudden Charge entry -- otherwise any uncurated ability matching this shape (like this real NPC ability) silently executes as inert text instead of moving and striking");
 
+const twinTakedownShapedAction = {
+  id: "custom-dual-strike",
+  name: "Custom Dual Strike",
+  slug: "custom-dual-strike",
+  actionCost: 1,
+  description: "Requirements You are wielding two melee weapons, each in a different hand. Make two Strikes against the same target, one with each of the required weapons. Apply your multiple attack penalty to each Strike normally.",
+};
+const twinTakedownShapedResult = classifySystemAction(twinTakedownShapedAction, { actionCost: 1, type: "action" });
+assert.equal(twinTakedownShapedResult.role, "multiattack");
+assert.equal(twinTakedownShapedResult.activityProfile.requiresBackingStrike, true, "an uncurated ability whose Requirements clause matches Twin Takedown's own real templated text ('wielding two melee weapons, each in a different hand') must get the same generic treatment Twin Takedown itself received, with zero curation");
+assert.equal(twinTakedownShapedResult.activityProfile.requiresDualBackingStrike, true);
+assert.equal(twinTakedownShapedResult.activityProfile.mapAppliesPerStrike, true, "the text has no 'counts as N attacks' phrase, so this ability must escalate MAP normally per strike, like the real Twin Takedown");
+assert.equal(twinTakedownShapedResult.activityProfile.backingStrikeFilter, undefined);
+
+const doubleSliceShapedAction = {
+  id: "custom-double-slice",
+  name: "Custom Double Slice",
+  slug: "custom-double-slice",
+  actionCost: 1,
+  description: "Requirements You are wielding two melee weapons, each in a different hand. Make two Strikes, one with each of your two melee weapons, each using your current multiple attack penalty. This counts as two attacks when calculating your multiple attack penalty.",
+};
+const doubleSliceShapedResult = classifySystemAction(doubleSliceShapedAction, { actionCost: 1, type: "action" });
+assert.equal(doubleSliceShapedResult.activityProfile.requiresBackingStrike, true);
+assert.equal(doubleSliceShapedResult.activityProfile.requiresDualBackingStrike, true, "the real fighter feat Double Slice uses the identical 'wielding two melee weapons, each in a different hand' requirement as Twin Takedown, and is NOT curated anywhere in this codebase -- this is the generalization proof");
+assert.equal(doubleSliceShapedResult.activityProfile.mapAttacks, 2, "the existing, unmodified readMapAttacks helper must still detect this ability's own 'counts as two attacks' phrase");
+assert.equal(doubleSliceShapedResult.activityProfile.mapAppliesPerStrike, undefined, "unlike Twin Takedown, Double Slice's own text says its two Strikes count as two attacks (Double Attack's shared-tier phrasing), not 'apply normally' -- it must NOT get the per-strike MAP flag, so it falls into the pre-existing shared-tier behavior instead");
+
+const huntedShotShapedAction = {
+  id: "custom-ranged-shot",
+  name: "Custom Ranged Shot",
+  slug: "custom-ranged-shot",
+  actionCost: 1,
+  description: "Requirements You are wielding a ranged weapon with reload 0. Make two Strikes against the same target with the required weapon. Apply your multiple attack penalty to each Strike normally.",
+};
+const huntedShotShapedResult = classifySystemAction(huntedShotShapedAction, { actionCost: 1, type: "action" });
+assert.equal(huntedShotShapedResult.activityProfile.requiresBackingStrike, true);
+assert.equal(huntedShotShapedResult.activityProfile.backingStrikeFilter, "ranged-reload-zero", "an uncurated ability whose Requirements clause matches Hunted Shot's own real templated text must get the same weapon-class filter");
+assert.equal(huntedShotShapedResult.activityProfile.requiresDualBackingStrike, undefined);
+assert.equal(huntedShotShapedResult.activityProfile.mapAppliesPerStrike, true);
+
+const flurryShapedAction = {
+  id: "custom-flurry",
+  name: "Custom Flurry",
+  slug: "custom-flurry",
+  actionCost: 1,
+  description: "Make two unarmed Strikes. If both hit the same creature, combine their damage for the purpose of resistances and weaknesses. Apply your multiple attack penalty to the Strikes normally.",
+};
+const flurryShapedResult = classifySystemAction(flurryShapedAction, { actionCost: 1, type: "action" });
+assert.equal(flurryShapedResult.activityProfile.requiresBackingStrike, true, "Flurry of Blows' real text has NO 'Requirements' clause at all -- the unarmed-strike detection must work from the ability's main body text too, not just a Requirements clause");
+assert.equal(flurryShapedResult.activityProfile.backingStrikeFilter, "unarmed");
+assert.equal(flurryShapedResult.activityProfile.requiresDualBackingStrike, undefined);
+assert.equal(flurryShapedResult.activityProfile.mapAppliesPerStrike, true);
+
+const dualHandedAssaultShapedAction = {
+  id: "custom-dual-handed",
+  name: "Custom Dual-Handed Assault",
+  slug: "custom-dual-handed",
+  actionCost: 1,
+  description: "Requirements You are wielding a one-handed melee weapon and have a free hand. Make a Strike with the required weapon using two hands.",
+};
+const dualHandedAssaultShapedResult = classifySystemAction(dualHandedAssaultShapedAction, { actionCost: 1, type: "action" });
+assert.notEqual(dualHandedAssaultShapedResult?.role, "multiattack", "a single-Strike ability that merely mentions a free hand must not be misdetected as a two-weapon multiattack, and must not reach the new branch at all");
+
+const ordinaryMultiStrikeAction = {
+  id: "custom-ordinary-multistrike",
+  name: "Custom Double Claw",
+  slug: "custom-ordinary-multistrike",
+  actionCost: 1,
+  description: "Make two claw Strikes against the same target.",
+};
+const ordinaryMultiStrikeResult = classifySystemAction(ordinaryMultiStrikeAction, { actionCost: 1, type: "action" });
+assert.equal(ordinaryMultiStrikeResult.activityProfile.multiStrike, true);
+assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresBackingStrike, undefined, "an ordinary same-target multi-strike ability with no weapon-class or two-weapon requirement in its text must NOT get any of the new flags -- it stays exactly as it classified before this plan");
+assert.equal(ordinaryMultiStrikeResult.activityProfile.backingStrikeFilter, undefined);
+assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresDualBackingStrike, undefined);
+assert.equal(ordinaryMultiStrikeResult.activityProfile.mapAppliesPerStrike, undefined);
+
 const itemAbilityContext = {
   ...hydraContext,
   actor: {

@@ -317,6 +317,22 @@ function readTargetConditionRequirement(action) {
     : { requiresTargetCondition: conditions[0] };
 }
 
+// Mirrors readTargetConditionRequirement's technique: Paizo's own templated Requirements
+// clause for "borrow N specific weapons to make several Strikes" feats is consistent enough
+// to detect generically (Twin Takedown, Twin Feint, and the uncurated fighter feat Double
+// Slice all use the identical "wielding two melee weapons, each in a different hand" phrase).
+function readWeaponRequirement(action) {
+  const requirements = readRequirementsText(action);
+  if (!requirements) return null;
+  if (/wielding two melee weapons/.test(requirements) && /different hand/.test(requirements)) {
+    return { requiresDualBackingStrike: true };
+  }
+  if (/wielding a ranged weapon/.test(requirements) && /reload 0\b/.test(requirements)) {
+    return { backingStrikeFilter: "ranged-reload-zero" };
+  }
+  return null;
+}
+
 function withTargetConditionRequirement(activityProfile, requirement) {
   if (!requirement) return activityProfile;
   return {
@@ -1294,6 +1310,24 @@ function classifySystemActionBase(action, parsedCost) {
 
   if (mentionsDifferentTargets || mentionsMultipleStrikes) {
     const distinctStrikeCount = mentionsDifferentTargets ? readDistinctStrikeCount(text) : null;
+    // A same-target multi-strike ability (never a distinct-target one -- that shape already
+    // has its own borrowed-weapon handling above) may require either two specific held melee
+    // weapons (Twin Takedown/Twin Feint/Double Slice) or a single weapon of a restricted class
+    // (Hunted Shot's ranged/reload-0, Flurry of Blows' unarmed). mapAppliesPerStrike mirrors
+    // whichever MAP phrasing the ability's own text used: readMapAttacks already found an
+    // explicit "counts as N attacks" (Double Slice) means shared-tier, like Double Attack;
+    // finding none means "apply ... normally" per-strike escalation, like the other three.
+    const weaponRequirement = !mentionsDifferentTargets ? readWeaponRequirement(action) : null;
+    const mentionsUnarmedStrikes = !mentionsDifferentTargets && !weaponRequirement && /\bunarmed strikes?\b/.test(text);
+    const backingStrikeProfile = (weaponRequirement || mentionsUnarmedStrikes)
+      ? {
+        requiresBackingStrike: true,
+        ...(weaponRequirement?.requiresDualBackingStrike ? { requiresDualBackingStrike: true } : {}),
+        ...(weaponRequirement?.backingStrikeFilter ? { backingStrikeFilter: weaponRequirement.backingStrikeFilter } : {}),
+        ...(mentionsUnarmedStrikes ? { backingStrikeFilter: "unarmed" } : {}),
+        ...(mapAttacks === null ? { mapAppliesPerStrike: true } : {}),
+      }
+      : {};
     return inferred("multiattack", {
       activityProfile: {
         ...baseAttackProfile(),
@@ -1301,6 +1335,7 @@ function classifySystemActionBase(action, parsedCost) {
         delayedMap: mentionsDelayedMap,
         ...(mapAttacks !== null ? { mapAttacks } : {}),
         ...(distinctStrikeCount ? { includes: Array(distinctStrikeCount).fill("strike"), requiresDistinctTargets: true, distinctStrikeCount } : {}),
+        ...backingStrikeProfile,
       },
       targetingProfile: {
         enemy: true,
