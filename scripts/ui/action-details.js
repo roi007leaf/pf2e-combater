@@ -78,6 +78,16 @@ function notableTraitChips(action) {
   return NOTABLE_TRAITS.filter((trait) => traits.has(trait)).slice(0, 2).map((trait) => pf2eTrait(trait));
 }
 
+export function traitChips(action) {
+  const traits = [...new Set([
+    ...(Array.isArray(action?.traits) ? action.traits : []),
+    ...(Array.isArray(action?.item?.system?.traits?.value) ? action.item.system.traits.value : []),
+  ].map((trait) => String(trait?.slug ?? trait?.name ?? trait).toLowerCase()).filter(Boolean))];
+  const chips = [];
+  for (const trait of traits) pushChip(chips, pf2eTrait(trait), "", "trait");
+  return chips;
+}
+
 export function actionDetailChips(action) {
   if (!isSpellAction(action)) return [];
 

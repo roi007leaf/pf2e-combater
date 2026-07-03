@@ -89,7 +89,7 @@ import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
 import { builderActionCategory, groupActionsByBuilderCategory } from "../ui/action-categories.js";
-import { actionDetailChips } from "../ui/action-details.js";
+import { actionDetailChips, traitChips } from "../ui/action-details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../rules/aggro.js";
 import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
@@ -265,6 +265,22 @@ assert.deepEqual(
   }).map((chip) => chip.label),
   ["Rank 3", "Slots 2/4", "Arcane Spontaneous", "DC 21 Reflex basic", "20-ft Burst", "Sustain", "Incapacitation", "Manipulate"],
   "spell action detail chips should show rank, resource, entry, resolution, area, duration, and notable traits",
+);
+assert.deepEqual(
+  traitChips({ name: "Arm", traits: ["agile", "reach-10", { slug: "magical" }] }).map((chip) => chip.label),
+  ["Agile", "Reach 10", "Magical"],
+  "traitChips should localize every trait on a non-spell action, not just a notable subset",
+);
+assert.deepEqual(
+  traitChips({ name: "Longsword", item: { system: { traits: { value: ["finesse", "versatile-p"] } } } }).map((chip) => chip.label),
+  ["Finesse", "Versatile P"],
+  "traitChips should fall back to the item's own raw trait slugs when the action has no traits array",
+);
+assert.deepEqual(traitChips({ name: "Nothing" }), [], "an action with no traits at all should produce no chips");
+assert.deepEqual(
+  traitChips({ name: "Deduped", traits: ["agile"], item: { system: { traits: { value: ["agile"] } } } }).map((chip) => chip.label),
+  ["Agile"],
+  "a trait present in both action.traits and the item's raw traits should not be duplicated",
 );
 assert.ok(panelTemplateSource.includes("combater-sustained-spells"), "panel template should expose sustained spell choices");
 assert.ok(

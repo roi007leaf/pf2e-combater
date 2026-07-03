@@ -19,6 +19,11 @@
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
                   {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
+                  {{#if hasTraitChips}}
+                    {{#each traitChips}}
+                      <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                    {{/each}}
+                  {{/if}}
                 </span>
                 {{/if}}
               </span>

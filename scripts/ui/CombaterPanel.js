@@ -52,7 +52,7 @@ import { cancelDestinationPicker, chooseDestination } from "./destination-picker
 import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
 import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
 import { groupActionsByBuilderCategory } from "./action-categories.js";
-import { actionDetailChips } from "./action-details.js";
+import { actionDetailChips, traitChips } from "./action-details.js";
 import { actorMovementOptions } from "../readers/actor-profile.js";
 import { actorStrikeOptions, bestReadyStrike } from "../readers/action-reader.js";
 import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
@@ -596,6 +596,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
   const requiresDestination = requiresDestinationForAction(action ?? step);
   const requiresTarget = requiresTargetForAction(action ?? step);
   const requiresArea = requiresAreaMarkerForAction(action ?? step);
+  const stepTraitChips = traitChips(action ?? step);
   const status = executionStatus(step);
   const isExecutionDone = status === "done";
   const canRunStep = readonly !== true || gmExecute === true;
@@ -683,7 +684,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
     canRevertStep: isExecutionDone && canRunStep,
     warning,
-    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm),
+    traitChips: stepTraitChips,
+    hasTraitChips: stepTraitChips.length > 0,
+    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0),
   };
 }
 
