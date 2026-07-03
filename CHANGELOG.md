@@ -46,6 +46,8 @@ All notable changes to PF2e Combater are documented here. The format is based on
   in immediately instead of prompting "Choose target/destination at execution," regardless of whether
   a player or the GM is using it. A GM who doesn't want this for players can already turn Auto-fill
   off for them entirely.
+- **Clicking "Set destination" again while already picking a Stride/Step destination now cancels
+  it**, instead of tearing down the in-progress pick and immediately starting an identical one.
 
 ### Fixed
 
@@ -95,6 +97,11 @@ All notable changes to PF2e Combater are documented here. The format is based on
   multi-Stride follow-up attack could land directly on top of its own target or an unrelated
   creature; destinations now skip occupied squares in both the scoring engine and the interactive
   movement preview, without blocking legitimate movement through an ally's or enemy's space.
+- **Step and Stride no longer falsely report "No collision-free movement path" when the
+  destination is actually open.** The occupancy check above computed a token's own footprint from
+  the live placeable's width/height instead of its document's grid-unit size — on some Foundry
+  setups the placeable's own value is pixel-space, inflating the footprint far past the token's
+  real size and making it read as blocked by any other creature on the map, however far away.
 - **A monster's multi-strike ability no longer double-counts its action cost** against the actor's
   remaining actions.
 - **A multi-strike ability's own attacks no longer escalate the multiple attack penalty against each
@@ -124,6 +131,17 @@ All notable changes to PF2e Combater are documented here. The format is based on
   its document's grid-based size, which on some Foundry setups is a pixel value rather than a
   grid-unit count — for a Large-or-bigger target this produced a rectangle thousands of pixels
   across instead of a normal token-sized box.
+- **Hovering an individual attack inside a grouped multi-target ability (e.g. Arm or Tentacle under
+  a Kraken's Double Attack) now highlights its own target**, matching the highlight a plain Strike
+  already gets. Each split-off attack's resolved target was missing the internal marker that flags
+  it as an enemy, so the highlight silently never appeared even though the correct target already
+  showed in the step's own label.
+- **Auto-fill's alternate-plan cycle no longer permanently excludes viable actions ranked outside
+  the top dozen or so.** The planner narrows its candidate pool and caps how many plan combinations
+  it searches for performance; an actor with many legal actions (several spells, cantrips, item
+  actions, etc.) could have some genuinely useful ones structurally unable to ever appear in any
+  generated plan, no matter how many alternatives were cycled through. Every currently available
+  action is now guaranteed to show up in at least one alternative plan.
 
 ## [1.0.2]
 

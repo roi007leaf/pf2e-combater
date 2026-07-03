@@ -16,6 +16,7 @@
   },
   "homepage": "https://github.com/roi007leaf/pf2e-combater#readme",
   "description": "",
+  "type": "module",
   "scripts": {
     "test": "node scripts/engine/self-test.js",
     "test:watch": "node scripts/engine/self-test.js",

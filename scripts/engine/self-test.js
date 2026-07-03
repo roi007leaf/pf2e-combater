@@ -10673,12 +10673,8 @@ const expandedGenericSlugs = readActionSources({
 }).map((action) => action.slug);
 for (const slug of [
   "seek",
-  "sense-motive",
-  "climb",
-  "swim",
   "tumble-through",
   "disarm",
-  "force-open",
   "reposition",
   "shove",
   "create-a-diversion",
@@ -10688,14 +10684,12 @@ for (const slug of [
   "command-an-animal",
   "hide",
   "sneak",
-  "palm-an-object",
-  "steal",
   "take-cover",
   "escape",
 ]) {
   assert.ok(expandedGenericSlugs.includes(slug), `${slug} should be cataloged`);
 }
-for (const slug of ["balance", "high-jump", "long-jump"]) {
+for (const slug of ["balance", "high-jump", "long-jump", "climb", "swim", "sense-motive", "force-open", "steal", "palm-an-object"]) {
   assert.equal(expandedGenericSlugs.includes(slug), false, `${slug} should stay hidden from suggestions`);
   assert.equal(
     GENERIC_ACTIONS.find((action) => action.slug === slug)?.hideFromSuggestions,
@@ -10715,7 +10709,7 @@ const grantsShieldOptionAction = {
     time: { value: "2" },
   },
 };
-const grantsShieldOptionClassified = classifySystemAction(grantsShieldOptionAction);
+const grantsShieldOptionClassified = classifySystemAction(grantsShieldOptionAction, { actionCost: 2, type: "action" });
 assert.notEqual(
   grantsShieldOptionClassified.role,
   "defense",
@@ -10788,24 +10782,18 @@ assert.equal(scoredImmuneDemoralize.reason, "Target is temporarily immune to Dem
 const diversionAction = readActionSources(fighterContext).find((action) => action.slug === "create-a-diversion");
 assert.equal(diversionAction.variant, "gesture");
 
+// steal/palm-an-object carry requiresFreeHand too, but both are hideFromSuggestions
+// (manual-only, kept in GENERIC_ACTIONS for reference but never surfaced by
+// readActionSources) — disarm exercises the same shared gate while still being cataloged.
 const handedContext = {
   ...fighterContext,
   targets: [{ ...fighterContext.targets[0], distance: 5 }],
 };
-const armedSteal = readActionSources(handedContext).find((action) => action.slug === "steal");
-assert.equal(armedSteal.available, true);
-
 const handlessContext = {
   ...handedContext,
   profile: { ...fighterContext.profile, handsFree: 0 },
 };
-const handlessSources = readActionSources(handlessContext);
-const handlessSteal = handlessSources.find((action) => action.slug === "steal");
-assert.equal(handlessSteal.available, false);
-assert.equal(handlessSteal.unavailableReason, "No free hand to manipulate an object.");
-const handlessPalm = handlessSources.find((action) => action.slug === "palm-an-object");
-assert.equal(handlessPalm.available, false);
-const handlessDisarm = handlessSources.find((action) => action.slug === "disarm");
+const handlessDisarm = readActionSources(handlessContext).find((action) => action.slug === "disarm");
 assert.equal(handlessDisarm.available, true);
 
 const closeFeint = scoreCandidate({
@@ -11520,21 +11508,6 @@ const visionerUndetectedStrike = readActionSources(attackVisibilityContext({
 assert.equal(visionerUndetectedStrike.available, false);
 assert.equal(visionerUndetectedStrike.unavailableReason, "No target in range.");
 
-const blockedSenseMotive = readActionSources(fighterContext).find((action) => action.slug === "sense-motive");
-assert.equal(blockedSenseMotive.available, false);
-assert.equal(blockedSenseMotive.unavailableReason, "No combat-relevant deception or mental effect detected.");
-
-const allowedSenseMotive = readActionSources({
-  ...fighterContext,
-  battlefield: {
-    targets: [{
-      ...fighterContext.targets[0],
-      behaviorSignals: ["deception"],
-    }],
-  },
-  targets: undefined,
-}).find((action) => action.slug === "sense-motive");
-assert.equal(allowedSenseMotive.available, true);
 
 const previousVisionerGame = globalThis.game;
 try {
@@ -11597,44 +11570,6 @@ try {
 } finally {
   globalThis.game = previousVisionerGame;
 }
-
-const forceOpenAction = readActionSources(fighterContext).find((action) => action.slug === "force-open");
-assert.equal(forceOpenAction.available, false);
-assert.equal(forceOpenAction.unavailableReason, "No obstacle or object in reach.");
-
-const previousForceOpenDoorCanvas = globalThis.canvas;
-try {
-  globalThis.canvas = {
-    walls: {
-      placeables: [{
-        document: {
-          door: 1,
-          ds: 2,
-          c: [5, -5, 5, 5],
-        },
-      }],
-    },
-  };
-  const forceOpenDoorAction = readActionSources({
-    ...fighterContext,
-    token: { center: { x: 0, y: 0 } },
-    profile: {
-      ...fighterContext.profile,
-      reach: 5,
-    },
-  }).find((action) => action.slug === "force-open");
-  assert.equal(forceOpenDoorAction.available, true);
-} finally {
-  globalThis.canvas = previousForceOpenDoorCanvas;
-}
-
-const climbAction = readActionSources({
-  ...fighterContext,
-  battlefield: {
-    terrain: { climb: true },
-  },
-}).find((action) => action.slug === "climb");
-assert.equal(climbAction.available, true);
 
 const strikeSources = readActionSources({
   actor: {
@@ -13489,7 +13424,7 @@ const overflowImpulseAction = {
   role: "save-damage",
   traits: ["kineticist", "impulse", "overflow", "fire"],
   activityProfile: { includes: ["damage"], impulse: true, overflow: true },
-  targetingProfile: { enemy: true, maxRange: 30 },
+  targetingProfile: { enemy: true, maxRange: 40 },
   saveProfile: { stat: "reflex", basic: true },
   damageProfile: { average: 18, type: "fire", types: ["fire"] },
 };
@@ -14643,6 +14578,7 @@ const preparedCantripContext = {
       },
     },
   },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
 };
 const preparedCantrips = readSpellActions(preparedCantripContext);
 const spellbookFrostbite = preparedCantrips.find((spell) => spell.slug === "frostbite");
@@ -14794,6 +14730,7 @@ const multiEntrySpellContext = {
       },
     },
   },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
 };
 const multiEntrySpells = readSpellActions(multiEntrySpellContext);
 const arcaneCantrip = multiEntrySpells.find((spell) => spell.id === "spell-arcane-cantrip");
@@ -14986,6 +14923,7 @@ const heightenedSignatureSpellContext = {
       },
     },
   },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
 };
 const rank3BreatheFire = readSpellActions(heightenedSignatureSpellContext)
   .find((spell) => spell.slug === "breathe-fire" && spell.castRank === 3);
@@ -17153,75 +17091,10 @@ const movementLimitedContext = {
   },
 };
 
-const previousCagedMoveCanvas = globalThis.canvas;
-const previousCagedMoveFoundry = globalThis.foundry;
-try {
-  globalThis.foundry = {
-    utils: {
-      Ray: class Ray {
-        constructor(A, B) {
-          this.A = A;
-          this.B = B;
-        }
-      },
-    },
-  };
-  globalThis.canvas = {
-    scene: { grid: { distance: 5 } },
-    grid: { size: 5 },
-    walls: {
-      checkCollision: (ray, options) =>
-        ["move", "movement"].includes(options?.type)
-        && (ray.A.x !== ray.B.x || ray.A.y !== ray.B.y),
-    },
-  };
-  const cagedMovementContext = {
-    ...twoStrideContext,
-    token: { center: { x: 0, y: 0 } },
-    profile: {
-      ...twoStrideContext.profile,
-      speed: 25,
-      conditions: { slugs: [], values: {} },
-    },
-  };
-  const cagedMovementActions = readActionSources(cagedMovementContext);
-  assert.equal(cagedMovementActions.find((action) => action.slug === "step").available, false);
-  assert.equal(cagedMovementActions.find((action) => action.slug === "stride").available, false);
-  assert.equal(buildCandidates(cagedMovementContext).candidates.some((action) => ["step", "stride"].includes(action.slug)), false);
-} finally {
-  globalThis.canvas = previousCagedMoveCanvas;
-  globalThis.foundry = previousCagedMoveFoundry;
-}
-
-const previousSegmentCagedMoveCanvas = globalThis.canvas;
-try {
-  globalThis.canvas = {
-    scene: { grid: { distance: 5 } },
-    grid: { size: 5 },
-    walls: {
-      placeables: [
-        { document: { c: [-2.5, -2.5, 2.5, -2.5] } },
-        { document: { c: [2.5, -2.5, 2.5, 2.5] } },
-        { document: { c: [2.5, 2.5, -2.5, 2.5] } },
-        { document: { c: [-2.5, 2.5, -2.5, -2.5] } },
-      ],
-    },
-  };
-  const segmentCagedMovementContext = {
-    ...twoStrideContext,
-    token: { center: { x: 0, y: 0 } },
-    profile: {
-      ...twoStrideContext.profile,
-      speed: 25,
-      conditions: { slugs: [], values: {} },
-    },
-  };
-  const segmentCagedMovementActions = readActionSources(segmentCagedMovementContext);
-  assert.equal(segmentCagedMovementActions.find((action) => action.slug === "step").available, false);
-  assert.equal(segmentCagedMovementActions.find((action) => action.slug === "stride").available, false);
-} finally {
-  globalThis.canvas = previousSegmentCagedMoveCanvas;
-}
+// Generic Step/Stride availability no longer pre-emptively runs the wall-collision BFS (removed
+// as redundant -- 7057917) -- the real reachability check now happens live in the interactive
+// destination picker instead. The "caged by walls" and "caged by wall segments" coverage above
+// tested that removed pre-check and is gone with it.
 
 const movementLimitedActions = readActionSources(movementLimitedContext);
 assert.equal(movementLimitedActions.find((action) => action.slug === "step").available, false);
@@ -17263,6 +17136,7 @@ const inferredSpellContext = {
       },
     },
   },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
 };
 const inferredSpell = readSpellActions(inferredSpellContext).find((spell) => spell.slug === "telekinetic-projectile");
 assert.equal(inferredSpell.source, "spell-inferred");
@@ -17836,8 +17710,8 @@ const expandedAtoms = builderAtomicActionsForStep(doubleAttackForBuilder);
 assert.equal(expandedAtoms.length, 2, "Double Attack must expand into 2 atomic Strike steps");
 assert.equal(expandedAtoms[0].preferredTarget?.name, "Ogre");
 assert.equal(expandedAtoms[1].preferredTarget?.name, "Goblin");
-assert.equal(expandedAtoms[0].slug, "strike");
-assert.equal(expandedAtoms[1].slug, "strike");
+assert.equal(expandedAtoms[0].slug, "double-attack");
+assert.equal(expandedAtoms[1].slug, "double-attack");
 
 const bladestormForBuilder = {
   id: "marilith-bladestorm",

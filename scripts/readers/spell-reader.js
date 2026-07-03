@@ -80,7 +80,11 @@ export function readSpellActions(context) {
         executable: tactic?.executable ?? "open-item",
         detected: true,
         available: parsedTime.combat && actionCost !== Infinity && spellAvailability.available && enemyInRange,
-        unavailableReason: enemyInRange ? spellAvailability.reason : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange }),
+        // A spell that's itself unavailable (no active entry, no slots, etc.) should say so, even
+        // when there's also no target in range -- that reason is more fundamental than range.
+        unavailableReason: !spellAvailability.available
+          ? spellAvailability.reason
+          : (enemyInRange ? "" : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange })),
         item,
         effectiveItem,
         curated,
