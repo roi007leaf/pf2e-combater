@@ -1283,6 +1283,7 @@ function classifySystemActionBase(action, parsedCost) {
         includes: ["stride", "strike"],
         strideCount: 1,
         includesStrike: true,
+        requiresBackingStrike: true,
       },
       targetingProfile: { enemy: true, reachAfterMove: true },
       gatingProfile,

@@ -51,6 +51,7 @@ export const MONK_ACTIONS = [
     activityProfile: {
       includes: ['stride', 'strike'],
       includesStrike: true,
+      requiresBackingStrike: true,
     },
     targetingProfile: {
       enemy: true,

@@ -9015,6 +9015,7 @@ const pounceCandidate = buildCandidates(pounceContext).candidates
 assert.equal(pounceCandidate.source, "system-inferred");
 assert.equal(pounceCandidate.role, "mobility-attack");
 assert.equal(pounceCandidate.activityProfile.includesStrike, true);
+assert.equal(pounceCandidate.activityProfile.requiresBackingStrike, true, "the generic move-and-strike classifier fallback must tag its output as needing a borrowed weapon, the same as the curated Sudden Charge entry -- otherwise any uncurated ability matching this shape (like this real NPC ability) silently executes as inert text instead of moving and striking");
 
 const itemAbilityContext = {
   ...hydraContext,
@@ -17906,6 +17907,20 @@ assert.equal(suddenChargeScored.activityProfile.backingStrike?.name, "Longsword"
 const ordinaryActionForBackingStrikeGate = { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } };
 const ordinaryBackingStrikeScored = scoreCandidate(suddenChargeBackingStrikeContext, ordinaryActionForBackingStrikeGate);
 assert.equal(ordinaryBackingStrikeScored.activityProfile?.backingStrike, undefined, "an ordinary action must not gain a backingStrike");
+
+const flyingKickForBackingStrike = {
+  id: "flying-kick",
+  name: "Flying Kick",
+  slug: "flying-kick",
+  actionCost: 1,
+  source: "system-inferred",
+  executable: "open-item",
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, requiresBackingStrike: true },
+};
+const flyingKickBackingStrikeContext = { ...fighterContext, actor: { document: suddenChargeActorForBackingStrike } };
+const flyingKickScored = scoreCandidate(flyingKickBackingStrikeContext, flyingKickForBackingStrike);
+assert.equal(flyingKickScored.activityProfile.backingStrike?.name, "Longsword", "Flying Kick's requiresBackingStrike tag must compute a backingStrike exactly like Sudden Charge's already does");
 
 const backingStrikeTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
 const backingStrikeTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };
