@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
+import { reorderDraftSteps } from "./draft-reorder.js";
 import {
   ACTION_BUILDER_TABS,
   actionBuilderKey,
@@ -372,7 +373,7 @@ for (const oldTabId of ["plan", "alternatives", "debug"]) {
 for (const eventHook of [
   "data-add-action",
   "data-remove-draft-step",
-  "data-move-draft-step",
+  "data-drag-draft-step",
   "data-favorite-action",
   "data-auto-fill",
   "data-cycle-auto-fill",
@@ -388,7 +389,70 @@ for (const eventHook of [
 }
 assert.equal(panelTemplateSource.includes("data-execute-next"), false, "panel should not expose a global Execute next button");
 assert.ok(panelSource.includes("projectedDraftStepActions"), "draft steps should resolve actions from their projected origin");
-assert.ok(panelSource.includes("_moveDraftStep"), "panel should support explicit draft-step reordering");
+assert.deepEqual(
+  reorderDraftSteps(
+    [{ instanceId: "a" }, { instanceId: "b" }, { instanceId: "c" }, { instanceId: "d" }],
+    "a", "c", true,
+  ).map((step) => step.instanceId),
+  ["b", "a", "c", "d"],
+  "dragging a step and dropping it before a later step should reorder the list",
+);
+assert.deepEqual(
+  reorderDraftSteps(
+    [{ instanceId: "a" }, { instanceId: "b" }, { instanceId: "c" }, { instanceId: "d" }],
+    "a", "c", false,
+  ).map((step) => step.instanceId),
+  ["b", "c", "a", "d"],
+  "dropping after the target should place the dragged step past it",
+);
+assert.deepEqual(
+  reorderDraftSteps(
+    [
+      { instanceId: "t" },
+      { instanceId: "g1a", groupId: "g1" },
+      { instanceId: "g1b", groupId: "g1" },
+      { instanceId: "u" },
+    ],
+    "t", "g1b", false,
+  ).map((step) => step.instanceId),
+  ["g1a", "g1b", "t", "u"],
+  "dropping after any atom of a group should place the dragged step past the whole group",
+);
+assert.deepEqual(
+  reorderDraftSteps(
+    [
+      { instanceId: "t" },
+      { instanceId: "g1a", groupId: "g1" },
+      { instanceId: "g1b", groupId: "g1" },
+      { instanceId: "u" },
+    ],
+    "g1a", "t", true,
+  ).map((step) => step.instanceId),
+  ["g1a", "g1b", "t", "u"],
+  "dragging one atom of a group should move the whole group as one block",
+);
+const reorderNoOpList = [{ instanceId: "a" }, { instanceId: "b" }];
+assert.equal(
+  reorderDraftSteps(reorderNoOpList, "a", "a", true),
+  reorderNoOpList,
+  "dropping a step onto itself should be a no-op",
+);
+assert.ok(panelSource.includes("_reorderDraftStep"), "panel should support drag-to-reorder");
+assert.ok(panelSource.includes("import { reorderDraftSteps }"), "panel should reuse the pure reorder helper for drag-and-drop");
+assert.ok(
+  /_reorderDraftStep\(instanceId, targetInstanceId[\s\S]*?draftListForInstance\(draft, instanceId\)[\s\S]*?draftListForInstance\(draft, targetInstanceId\)/.test(panelSource),
+  "drag-and-drop reorder should stay confined to the same list (steps vs uncounted), matching the old up/down buttons",
+);
+assert.equal(panelSource.includes("_moveDraftStep"), false, "the up/down reorder method should be fully replaced by drag-and-drop, not left dead");
+assert.equal(panelTemplateSource.includes("data-move-draft-step"), false, "up/down reorder buttons should be replaced by the drag handle");
+assert.equal(panelStyleSource.includes("combater-step-move"), false, "the dead up/down button styling should be removed along with the buttons");
+assert.ok(panelTemplateSource.includes("data-drag-draft-step"), "each draggable step should expose a drag handle");
+assert.ok(panelTemplateSource.includes("data-drag-row"), "each step/group row should be a valid drop target");
+assert.ok(panelTemplateSource.includes("data-drag-list"), "each reorderable list should mark its drag/drop container");
+assert.ok(panelSource.includes("canDragStep"), "decorated steps should expose whether they can be dragged");
+assert.ok(panelStyleSource.includes(".combater-step-drag"), "the drag handle should have its own styling");
+assert.ok(panelStyleSource.includes(".is-dragging"), "dragged rows should get a visual dragging state");
+assert.ok(panelStyleSource.includes(".drop-target-before") && panelStyleSource.includes(".drop-target-after"), "drop targets should show an insertion indicator");
 assert.ok(panelSource.includes("_cycleAutoFillDraft"), "panel should cycle through auto-fill alternative plans");
 assert.ok(panelSource.includes("contextmenu"), "shuffle right-click should cycle backward instead of opening the browser menu");
 assert.equal(

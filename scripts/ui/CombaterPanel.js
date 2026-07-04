@@ -29,6 +29,7 @@ import { revertDraftExecution, revertDraftStep } from "../engine/action-revert.j
 import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
 import { attacksTowardMap, bestTurnPlan, buildTurnPlans, isAttackAction, mapPenalty } from "../engine/planner.js";
+import { reorderDraftSteps } from "../engine/draft-reorder.js";
 import { readActionFavorites, toggleActionFavorite } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import {
@@ -612,7 +613,7 @@ function isSpeedBasedMovementStep(action) {
   return slug !== "step" && slug !== "crawl";
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, total = 0, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
@@ -707,8 +708,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     canCycleWeapon,
     weaponToolLabel,
     weaponToolTip,
-    canMoveStepUp: canEditStepOrder && index > 0,
-    canMoveStepDown: canEditStepOrder && index < total - 1,
+    canDragStep: canEditStepOrder,
     // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
     canRevertStep: isExecutionDone && canRunStep,
     warning,
@@ -908,8 +908,7 @@ function groupDraftSteps(steps) {
       instanceId: members[0].instanceId,
       actionGlyphIcon: members[0].actionGlyphIcon,
       costLabel: members[0].costLabel,
-      canMoveStepUp: members[0].canMoveStepUp,
-      canMoveStepDown: members[members.length - 1].canMoveStepDown,
+      canDragStep: members[0].canDragStep,
       groupItem: members[0].groupItem ?? null,
       groupUuid: members[0].groupUuid ?? null,
       traitChips: groupTraitChips,
@@ -917,8 +916,7 @@ function groupDraftSteps(steps) {
       children: members.map((member) => ({
         ...member,
         name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
-        canMoveStepUp: false,
-        canMoveStepDown: false,
+        canDragStep: false,
       })),
     });
     i = end;
@@ -940,7 +938,6 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
     .map((step, index) => decorateDraftStep(step, index, {
       readonly: draftReadonly,
       gmExecute: gmCanRunPlayerPlan,
-      total: rawSteps.length,
       reorderLocked,
       awaitingGm,
       movementOptions,
@@ -960,7 +957,6 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   const rawUncountedSteps = uncountedMap.steps.map((step, index) => decorateDraftStep(step, index, {
     readonly: draftReadonly,
     gmExecute: gmCanRunPlayerPlan,
-    total: rawUncounted.length,
     reorderLocked: uncountedReorderLocked,
     awaitingGm,
     movementOptions,
@@ -1396,11 +1392,41 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
-    for (const button of element.querySelectorAll("[data-move-draft-step]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._moveDraftStep(button.dataset.moveDraftStep, button.dataset.moveDirection);
-      });
+    for (const container of element.querySelectorAll("[data-drag-list]")) {
+      let draggingId = null;
+      for (const handle of container.querySelectorAll("[data-drag-draft-step]")) {
+        handle.addEventListener("dragstart", (event) => {
+          draggingId = handle.dataset.dragDraftStep;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", draggingId);
+          handle.closest("[data-drag-row]")?.classList.add("is-dragging");
+        });
+        handle.addEventListener("dragend", () => {
+          draggingId = null;
+          for (const row of container.querySelectorAll(".is-dragging, .drop-target-before, .drop-target-after")) {
+            row.classList.remove("is-dragging", "drop-target-before", "drop-target-after");
+          }
+        });
+      }
+      for (const row of container.querySelectorAll("[data-drag-row]")) {
+        row.addEventListener("dragover", (event) => {
+          if (!draggingId) return;
+          event.preventDefault();
+          const rect = row.getBoundingClientRect();
+          const before = event.clientY < rect.top + rect.height / 2;
+          row.classList.toggle("drop-target-before", before);
+          row.classList.toggle("drop-target-after", !before);
+        });
+        row.addEventListener("dragleave", () => {
+          row.classList.remove("drop-target-before", "drop-target-after");
+        });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          const before = row.classList.contains("drop-target-before");
+          row.classList.remove("drop-target-before", "drop-target-after");
+          if (draggingId) this._reorderDraftStep(draggingId, row.dataset.dragRow, before);
+        });
+      }
     }
 
     for (const button of element.querySelectorAll("[data-auto-fill]")) {
@@ -1828,37 +1854,20 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render({ force: true });
   }
 
-  async _moveDraftStep(instanceId, direction) {
+  async _reorderDraftStep(instanceId, targetInstanceId, placeBefore = true) {
     if (!this._canEditDraft()) return;
-    if (!this._context || !instanceId) return;
+    if (!this._context || !instanceId || !targetInstanceId || instanceId === targetInstanceId) return;
     const draft = this._readActiveDraftPlan();
     const listKey = draftListForInstance(draft, instanceId);
+    if (listKey !== draftListForInstance(draft, targetInstanceId)) return;
     if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
       globalThis.ui?.notifications?.warn?.(t("Notify.RevertBeforeReorder", "Revert executed steps before reordering."));
       return;
     }
-    const steps = Array.isArray(draft[listKey]) ? [...draft[listKey]] : [];
-    const index = steps.findIndex((step) => step.instanceId === instanceId);
-    const offset = Math.sign(Number(direction) || 0);
-    if (index < 0 || offset === 0) return;
-    // A distinct-target ability's atoms share a groupId and are always contiguous (built together
-    // in one atomization pass) -- move the whole run as one block so the group's header move
-    // control can't split its own children apart in the plan order.
-    const groupId = steps[index]?.groupId;
-    const blockStart = groupId ? steps.findIndex((step) => step.groupId === groupId) : index;
-    let blockEnd = blockStart + 1;
-    if (groupId) {
-      while (blockEnd < steps.length && steps[blockEnd]?.groupId === groupId) blockEnd += 1;
-    }
-    const block = steps.slice(blockStart, blockEnd);
-    if (offset < 0) {
-      if (blockStart === 0) return;
-      steps.splice(blockStart - 1, block.length + 1, ...block, steps[blockStart - 1]);
-    } else {
-      if (blockEnd >= steps.length) return;
-      steps.splice(blockStart, block.length + 1, steps[blockEnd], ...block);
-    }
-    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: steps }));
+    const steps = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+    const reordered = reorderDraftSteps(steps, instanceId, targetInstanceId, placeBefore);
+    if (reordered === steps) return;
+    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: reordered }));
     clearActionPreview();
     await this.render({ force: true });
   }

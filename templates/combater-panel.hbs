@@ -1,7 +1,7 @@
 <div class="combater-shell{{#unless expanded}} is-compact{{/unless}}">
   {{#*inline "draftSequence"}}
   {{#*inline "draftStepChip"}}
-          <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
+          <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
             <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if mapLabel}} ({{mapLabel}}){{/if}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
               <span class="combater-chip-cost" aria-label="{{costLabel}}">
                 <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
@@ -76,15 +76,10 @@
                 </button>
                 {{/unless}}
               {{/if}}
-              {{#if canMoveStepUp}}
-                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveUp"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveUpAria" name=name}}">
-                  <i class="fa-solid fa-arrow-up"></i>
-                </button>
-              {{/if}}
-              {{#if canMoveStepDown}}
-                <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveDown"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveDownAria" name=name}}">
-                  <i class="fa-solid fa-arrow-down"></i>
-                </button>
+              {{#if canDragStep}}
+                <span class="combater-chip-tool combater-step-drag" data-drag-draft-step="{{instanceId}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}">
+                  <i class="fa-solid fa-grip-vertical"></i>
+                </span>
               {{/if}}
               {{#unless groupId}}
                 {{#unless readonly}}
@@ -122,10 +117,10 @@
           </span>
   {{/inline}}
   <div class="combater-plan-strip">
-    <div class="combater-sequence" aria-label="{{localize "PF2E_COMBATER.Panel.PlannedSequenceAria"}}">
+    <div class="combater-sequence" data-drag-list aria-label="{{localize "PF2E_COMBATER.Panel.PlannedSequenceAria"}}">
       {{#each headerSteps}}
         {{#if isGroup}}
-          <div class="combater-step-group">
+          <div class="combater-step-group" data-drag-row="{{instanceId}}">
             <div class="combater-step-group-header">
               <button type="button" class="combater-chip combater-step-group-open" data-open-draft-group="{{instanceId}}" data-tooltip="{{groupLabel}}">
                 <span class="combater-chip-cost" aria-label="{{costLabel}}">
@@ -143,15 +138,10 @@
                 </span>
               </button>
               <span class="combater-step-tools">
-                {{#if canMoveStepUp}}
-                  <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveUp"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveUpAria" name=groupLabel}}">
-                    <i class="fa-solid fa-arrow-up"></i>
-                  </button>
-                {{/if}}
-                {{#if canMoveStepDown}}
-                  <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveDown"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveDownAria" name=groupLabel}}">
-                    <i class="fa-solid fa-arrow-down"></i>
-                  </button>
+                {{#if canDragStep}}
+                  <span class="combater-chip-tool combater-step-drag" data-drag-draft-step="{{instanceId}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=groupLabel}}">
+                    <i class="fa-solid fa-grip-vertical"></i>
+                  </span>
                 {{/if}}
               </span>
             </div>
@@ -317,9 +307,9 @@
             <div class="combater-alt-head">
               <span class="combater-alt-title"><strong>{{localize "PF2E_COMBATER.Panel.UncountedActions"}}</strong></span>
             </div>
-            <div class="combater-alt-details">
+            <div class="combater-alt-details" data-drag-list>
               {{#each builder.uncounted.entries}}
-                <div class="combater-alt-step combater-uncounted-row status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
+                <div class="combater-alt-step combater-uncounted-row status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
                   <span class="combater-step-cost {{costClass}}" data-tooltip="{{costLabel}}">
                     <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
                   </span>
@@ -357,11 +347,8 @@
                     {{#if canCycleMovement}}
                       <button type="button" class="combater-chip-tool combater-movement-cycle" data-cycle-movement="{{instanceId}}" data-tooltip="{{movementToolTip}}" aria-label="{{movementToolTip}}"><i class="fa-solid fa-shoe-prints"></i><span class="combater-movement-value">{{movementToolLabel}}</span></button>
                     {{/if}}
-                    {{#if canMoveStepUp}}
-                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="-1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveUp"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveUpAria" name=name}}"><i class="fa-solid fa-arrow-up"></i></button>
-                    {{/if}}
-                    {{#if canMoveStepDown}}
-                      <button type="button" class="combater-chip-tool combater-step-move" data-move-draft-step="{{instanceId}}" data-move-direction="1" data-tooltip="{{localize "PF2E_COMBATER.Panel.MoveDown"}}" aria-label="{{localize "PF2E_COMBATER.Panel.MoveDownAria" name=name}}"><i class="fa-solid fa-arrow-down"></i></button>
+                    {{#if canDragStep}}
+                      <span class="combater-chip-tool combater-step-drag" data-drag-draft-step="{{instanceId}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}"><i class="fa-solid fa-grip-vertical"></i></span>
                     {{/if}}
                     {{#if awaitingGm}}
                       <span class="combater-chip-tool combater-step-waiting" data-tooltip="{{awaitingGmLabel}}" aria-label="{{awaitingGmLabel}}"><i class="fa-solid fa-hourglass-half fa-spin"></i></span>

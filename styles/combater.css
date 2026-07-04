@@ -358,13 +358,31 @@
   align-items: center;
 }
 
-.pf2e-combater .combater-chip-tool.combater-step-move {
+.pf2e-combater .combater-chip-tool.combater-step-drag {
+  cursor: grab;
   color: var(--combater-muted);
 }
 
-.pf2e-combater .combater-chip-tool.combater-step-move:hover,
-.pf2e-combater .combater-chip-tool.combater-step-move:focus-visible {
+.pf2e-combater .combater-chip-tool.combater-step-drag:hover,
+.pf2e-combater .combater-chip-tool.combater-step-drag:focus-visible {
   color: var(--combater-text);
+}
+
+.pf2e-combater .combater-header-step.is-dragging,
+.pf2e-combater .combater-step-group.is-dragging {
+  opacity: 0.4;
+}
+
+.pf2e-combater .combater-header-step.drop-target-before,
+.pf2e-combater .combater-step-group.drop-target-before,
+.pf2e-combater .combater-uncounted-row.drop-target-before {
+  box-shadow: inset 0 3px 0 var(--combater-focus);
+}
+
+.pf2e-combater .combater-header-step.drop-target-after,
+.pf2e-combater .combater-step-group.drop-target-after,
+.pf2e-combater .combater-uncounted-row.drop-target-after {
+  box-shadow: inset 0 -3px 0 var(--combater-focus);
 }
 
 /* Compact mode (header toggle, driven by the `expanded` flag) keeps identity, the action-pool
