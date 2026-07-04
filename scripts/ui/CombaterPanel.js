@@ -29,7 +29,7 @@ import { revertDraftExecution, revertDraftStep } from "../engine/action-revert.j
 import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
 import { attacksTowardMap, bestTurnPlan, buildTurnPlans, isAttackAction, mapPenalty } from "../engine/planner.js";
-import { reorderDraftSteps } from "../engine/draft-reorder.js";
+import { swapDraftSteps } from "../engine/draft-reorder.js";
 import { readActionFavorites, toggleActionFavorite } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import {
@@ -1411,8 +1411,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         });
         handle.addEventListener("dragend", () => {
           draggingId = null;
-          for (const row of container.querySelectorAll(".is-dragging, .drop-target-before, .drop-target-after")) {
-            row.classList.remove("is-dragging", "drop-target-before", "drop-target-after");
+          for (const row of container.querySelectorAll(".is-dragging, .drop-target")) {
+            row.classList.remove("is-dragging", "drop-target");
           }
         });
       }
@@ -1421,21 +1421,17 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           if (!draggingId) return;
           event.preventDefault();
           event.stopPropagation();
-          const rect = row.getBoundingClientRect();
-          const before = event.clientY < rect.top + rect.height / 2;
-          row.classList.toggle("drop-target-before", before);
-          row.classList.toggle("drop-target-after", !before);
+          row.classList.add("drop-target");
         });
         row.addEventListener("dragleave", (event) => {
           event.stopPropagation();
-          row.classList.remove("drop-target-before", "drop-target-after");
+          row.classList.remove("drop-target");
         });
         row.addEventListener("drop", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const before = row.classList.contains("drop-target-before");
-          row.classList.remove("drop-target-before", "drop-target-after");
-          if (draggingId) this._reorderDraftStep(draggingId, row.dataset.dragRow, before);
+          row.classList.remove("drop-target");
+          if (draggingId) this._reorderDraftStep(draggingId, row.dataset.dragRow);
         });
       }
     }
@@ -1865,7 +1861,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render({ force: true });
   }
 
-  async _reorderDraftStep(instanceId, targetInstanceId, placeBefore = true) {
+  async _reorderDraftStep(instanceId, targetInstanceId) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId || !targetInstanceId || instanceId === targetInstanceId) return;
     const draft = this._readActiveDraftPlan();
@@ -1876,9 +1872,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
     const steps = Array.isArray(draft[listKey]) ? draft[listKey] : [];
-    const reordered = reorderDraftSteps(steps, instanceId, targetInstanceId, placeBefore);
-    if (reordered === steps) return;
-    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: reordered }));
+    const swapped = swapDraftSteps(steps, instanceId, targetInstanceId);
+    if (swapped === steps) return;
+    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: swapped }));
     clearActionPreview();
     await this.render({ force: true });
   }
