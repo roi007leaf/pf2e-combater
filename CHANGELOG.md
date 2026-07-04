@@ -4,6 +4,19 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6]
+
+### Added
+
+- **Plan steps can now be reordered by drag-and-drop** instead of clicking up/down buttons. Each
+  step gets a drag handle; dropping it onto another step swaps their positions (a grouped composite
+  ability, e.g. Double Attack, always moves and receives drops as one block, never split apart).
+  Works in both the counted-steps list and the uncounted-actions list, independently.
+- **The action browser's search box now searches every action-cost tab at once**, not just the
+  currently active one. Matches from other tabs show a small tab tag so you can tell where each
+  result comes from; the tab strip is inert while a search is active (clear the search to go back to
+  browsing by tab) and picking a result works in place without switching tabs.
+
 ## [1.0.5]
 
 ### Added
