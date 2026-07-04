@@ -2071,29 +2071,17 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         if (draftStep.requiresDestination && !draftStep.destination) {
           const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
           const movement = recommendedMovementForStep(movementContext, movementStep);
-          console.debug("[pf2e-combater] stride-destination-debug", {
-            stepName: step?.name,
-            hasTarget: Boolean(movementStep?.preferredTarget ?? movementStep?.suggestedTarget),
-            targetCenter: autoFillTargetCenter(movementStep),
-            moveOrigin,
-            movementDestination: movement?.destination ?? null,
-          });
           // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
           // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
           // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
           if (isBasicMove && movement?.destination
             && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
-            console.debug("[pf2e-combater] stride-destination-debug: dropped, does not improve position");
             return null;
           }
           // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
           // it unset so the GM places a legal one instead of an over-range auto-stride.
-          const overSpeed = isBasicMove && movement?.destination
-            && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile);
-          if (movement?.destination && overSpeed) {
-            console.debug("[pf2e-combater] stride-destination-debug: rejected as over-Speed");
-          }
-          if (movement?.destination && !overSpeed) {
+          if (movement?.destination
+            && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
             draftStep = {
               ...draftStep,
               destination: movement.destination,

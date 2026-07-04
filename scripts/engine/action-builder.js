@@ -485,6 +485,20 @@ function positionalTacticAtoms(action) {
   return null;
 }
 
+// stride-strike / stride-multiattack / stride-away-strike / stride-strike-stride readers all
+// pre-compute a reach-validated activityProfile.attackCenter for the Stride(s) that close (or open)
+// the distance -- but only the LAST Stride before the attack lands on that exact square; an earlier
+// Stride in a 2-Stride approach has no known intermediate stopping point, and a retreat Stride after
+// the attack (stride-strike-stride's return-to-cover) targets a different, unrecorded square.
+function finalApproachStrideIndex(parts) {
+  const firstNonMoveIndex = parts.findIndex((part) => !["crawl", "stand", "step", "stride"].includes(String(part).toLowerCase()));
+  if (firstNonMoveIndex <= 0) return -1;
+  for (let index = firstNonMoveIndex - 1; index >= 0; index -= 1) {
+    if (String(parts[index]).toLowerCase() === "stride") return index;
+  }
+  return -1;
+}
+
 export function builderAtomicActionsForStep(action) {
   const activation = builderActivationAction(action);
   if (activation) {
@@ -505,10 +519,20 @@ export function builderAtomicActionsForStep(action) {
   const distinctTargets = action.activityProfile?.requiresDistinctTargets ? action.activityProfile?.distinctTargets : null;
   if (action.activityProfile?.requiresDistinctTargets && !distinctTargets?.length) return action ? [action] : [];
 
+  const attackCenter = action.activityProfile?.attackCenter ?? null;
+  const approachStrideIndex = attackCenter ? finalApproachStrideIndex(parts) : -1;
+
   let strikeOccurrence = 0;
-  const atoms = parts.flatMap((part) => {
+  const atoms = parts.flatMap((part, partIndex) => {
     const normalized = String(part).toLowerCase();
-    if (["crawl", "stand", "step", "stride"].includes(normalized)) return atomicMovementAction(normalized) ?? [];
+    if (["crawl", "stand", "step", "stride"].includes(normalized)) {
+      const atom = atomicMovementAction(normalized);
+      if (!atom) return [];
+      if (normalized === "stride" && partIndex === approachStrideIndex) {
+        return [{ ...atom, destination: attackCenter, activityProfile: { ...atom.activityProfile, attackCenter } }];
+      }
+      return [atom];
+    }
     if (normalized === "draw" || normalized === "interact") return [syntheticInteractAction()];
     if (normalized === "strike") {
       const occurrenceIndex = strikeOccurrence;

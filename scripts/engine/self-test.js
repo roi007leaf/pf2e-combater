@@ -543,6 +543,11 @@ assert.ok(
   panelSource.includes("builderAtomicActionsForStep"),
   "auto-fill should split generated combo plan steps into atomic draft actions",
 );
+assert.ok(
+  /function autoFillTargetCenter[\s\S]*canvas\?\.tokens\?\.placeables/.test(panelSource),
+  "a plain strike's target is often only a sanitized {id,name} ref with no embedded position -- " +
+  "auto-fill's target-aimed Stride must fall back to resolving the live canvas token by id/uuid",
+);
 assert.equal(panelTemplateSource.includes("No usable action"), false, "panel template should not imply auto-fill is selected");
 assert.ok(panelSource.includes("headerSteps: groupDraftSteps(draftSteps)"), "panel header should render draft steps only");
 assert.ok(panelSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
@@ -3556,6 +3561,16 @@ assert.deepEqual(
   doubleStrideExpansion.map((action) => action.slug),
   ["stride", "stride", "strike"],
   "a strideCount: 2 composite must expand to two Stride atoms, not one",
+);
+assert.equal(
+  doubleStrideExpansion[0].destination,
+  undefined,
+  "the first of two Strides has no known intermediate stopping point -- only the final approach square is recorded",
+);
+assert.deepEqual(
+  doubleStrideExpansion[1].destination,
+  { x: 10, y: 0 },
+  "the second (final) Stride before the Strike must land on the composite's pre-validated attackCenter",
 );
 
 const suddenChargeAtomFixture = {
@@ -17569,6 +17584,81 @@ assert.equal(
   );
 }
 
+// --- grab-rider inheriting from a distinct-target multiattack must land on one of the creatures
+// that step actually struck (Kraken's Double Attack: Tentacle -> Silva, Arm -> Flint), never an
+// unrelated third target (Ed) that only happens to be the composite's own single "best target"
+// guess (e.g. whatever token is currently targeted in Foundry). ---
+{
+  const ed = { id: "ed", name: "Ed", distance: 60, hpPercent: 1, conditions: { slugs: [], values: {} } };
+  const silva = { id: "silva", name: "Silva", distance: 5, hpPercent: 1, conditions: { slugs: [], values: {} }, saves: { fortitude: 20, reflex: 14, will: 16 }, ac: 22 };
+  const flint = { id: "flint", name: "Flint", distance: 5, hpPercent: 1, conditions: { slugs: [], values: {} }, saves: { fortitude: 19, reflex: 18, will: 15 }, ac: 21 };
+  const krakenContext = {
+    actor: { id: "kraken", name: "Kraken" },
+    profile: { actorType: "npc", reach: 60, speed: 10, conditions: { slugs: [], values: {} }, skills: { athletics: { mod: 20, rank: 4 } } },
+    token: { center: { x: 0, y: 0 } },
+    targets: [ed, silva, flint],
+    battlefield: { targets: [ed, silva, flint], enemies: [ed, silva, flint], allies: [] },
+  };
+
+  // The composite's own suggestedTarget/preferredTarget resolve to Ed (its single-best-target
+  // guess), while its distinctTargets (the creatures its two Strikes actually hit) are Silva and
+  // Flint -- exactly like a real scored Double Attack candidate.
+  const doubleAttackStep = {
+    id: "kraken-double-attack",
+    name: "Double Attack",
+    slug: "double-attack",
+    actionCost: 1,
+    source: "system-inferred",
+    role: "multiattack",
+    score: 90,
+    confidence: "high",
+    reasons: ["Double Attack."],
+    suggestedTarget: ed,
+    preferredTarget: ed,
+    activityProfile: {
+      includesStrike: true,
+      multiStrike: true,
+      mapAttacks: 2,
+      requiresDistinctTargets: true,
+      distinctStrikeCount: 2,
+      distinctTargets: [silva, flint],
+    },
+  };
+  const grabCandidate = {
+    id: "grab",
+    name: "Grab",
+    slug: "grab",
+    actionCost: 0,
+    source: "system-inferred",
+    role: "grab",
+    score: 80,
+    confidence: "high",
+    reasons: ["Grab."],
+    preferredTarget: ed,
+    activityProfile: {
+      includesGrab: true,
+      appliesCondition: "grabbed",
+      npcFamily: "grab-rider",
+      requiresPreviousStrike: true,
+      previousActionRequirements: ["after-strike"],
+    },
+  };
+
+  const krakenPlans = buildTurnPlans(krakenContext, [doubleAttackStep, grabCandidate]);
+  const planWithGrab = krakenPlans.find((plan) => plan.steps.some((step) => step.role === "grab"));
+  assert.ok(planWithGrab, "expected a plan chaining Double Attack -> Grab");
+  const grabStep = planWithGrab.steps.find((step) => step.role === "grab");
+  assert.equal(
+    grabStep.suggestedTarget?.name !== "Ed" && grabStep.preferredTarget?.name !== "Ed",
+    true,
+    "Grab must not inherit the composite's unrelated single-target guess (Ed) when it actually struck Silva and Flint",
+  );
+  assert.ok(
+    ["Silva", "Flint"].includes(grabStep.suggestedTarget?.name ?? grabStep.preferredTarget?.name),
+    "Grab must target one of the creatures Double Attack actually struck",
+  );
+}
+
 const suddenChargeShaped = classifySystemAction({
   name: "Sudden Charge",
   system: {
@@ -17869,11 +17959,16 @@ const strideStrikeComposite = {
   actionCost: 2,
   source: "generated-composite",
   role: "mobility-attack",
-  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1, attackCenter: { x: 20, y: 0 } },
 };
 const strideStrikeAtoms = builderAtomicActionsForStep(strideStrikeComposite);
 assert.equal(strideStrikeAtoms.length, 2);
 assert.equal(strideStrikeAtoms[1].actionCost, 1, "an ordinary (non-distinct-target) composite's Strike atom must keep its existing hardcoded cost of 1, unaffected by this fix");
+assert.deepEqual(
+  strideStrikeAtoms[0].destination,
+  { x: 20, y: 0 },
+  "the split Stride atom must inherit the composite's pre-validated reach-checked attackCenter as its destination, instead of discarding it and forcing a manual pick",
+);
 
 const identityFixTargetA = { id: "enemy-a", name: "Ogre", distance: 5 };
 const identityFixTargetB = { id: "enemy-b", name: "Goblin", distance: 5 };

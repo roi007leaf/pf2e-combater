@@ -753,7 +753,14 @@ function targetIdentity(value) {
 
 function targetForCandidate(context, candidate) {
   const fallback = contextTargets(context)[0] ?? contextEnemies(context)[0] ?? null;
-  const reference = candidate?.preferredTarget ?? candidate?.suggestedTarget ?? fallback;
+  // A distinct-target multiattack (Double Attack, Bladestorm, ...) hits several DIFFERENT
+  // creatures; its own preferredTarget/suggestedTarget describe a single "best overall target"
+  // (e.g. whichever token is currently targeted in Foundry) that may not be either creature it
+  // actually struck. A grab-rider follow-up inheriting "the previous strike's target" from this
+  // step must land on one of the real distinctTargets, not that unrelated single-target guess.
+  const distinctTargets = candidate?.activityProfile?.distinctTargets;
+  const primaryDistinctTarget = Array.isArray(distinctTargets) ? distinctTargets[0] : null;
+  const reference = primaryDistinctTarget ?? candidate?.preferredTarget ?? candidate?.suggestedTarget ?? fallback;
   if (!reference) return null;
   if (Number.isFinite(Number(reference.distance))) return reference;
 
