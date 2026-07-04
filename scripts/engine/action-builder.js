@@ -160,6 +160,38 @@ function quickenedEligible(action, cost) {
   return cost === 1 && (QUICKENED_BUILDER_SLUGS.has(action?.slug) || action?.source === "strike");
 }
 
+// Quickened Casting (and similar "reduce your next spell's action cost" setups) is flagged by the
+// classifier but otherwise inert until a step here actually applies the discount.
+function isActionDiscountStep(step) {
+  return step?.action?.activityProfile?.actionDiscount === true;
+}
+
+// Matches the granting ability's own wording: "an arcane spontaneous spell." Rank caps ("8th level
+// or lower") aren't enforced -- see the design doc for why this is an accepted simplification.
+function isDiscountEligibleSpell(step) {
+  const action = step?.action;
+  if (!action || !String(action.source ?? "").startsWith("spell")) return false;
+  return String(action.spellcastingEntryTradition ?? "").toLowerCase() === "arcane"
+    && String(action.spellcastingEntryType ?? "").toLowerCase() === "spontaneous";
+}
+
+// The discount is spent on the very next usable step regardless of whether it qualifies (mirrors
+// the ability's "if your next action is X" wording -- an unrelated next action wastes it). Runs
+// after decoration so it's recomputed fresh every render; nothing is mutated on the stored draft.
+function applyQuickenedCastingDiscount(steps) {
+  let pending = false;
+  return steps.map((step) => {
+    if (!draftStepIsUsable(step)) return step;
+    let updated = step;
+    if (pending && isDiscountEligibleSpell(step) && typeof step.actionCost === "number" && step.actionCost >= 1) {
+      const discounted = Math.max(1, step.actionCost - 1);
+      updated = { ...step, actionCost: discounted, cost: discounted, quickenedCastingDiscount: true };
+    }
+    pending = isActionDiscountStep(step);
+    return updated;
+  });
+}
+
 const QUICKENING_SLUGS = new Set(["haste"]);
 
 // A drafted action grants quickened (an extra Stride/Strike) when it's Haste, when the engine
@@ -1322,9 +1354,9 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions =
 }
 
 function resolveDraftSteps(draft, actionByKey, uniqueBaseKeys, draftStepActions = null) {
-  return Array.isArray(draft?.steps)
-    ? draft.steps.map((step) => decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions))
-    : [];
+  if (!Array.isArray(draft?.steps)) return [];
+  const decorated = draft.steps.map((step) => decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions));
+  return applyQuickenedCastingDiscount(decorated);
 }
 
 export function buildActionBuilderModel({

@@ -93,7 +93,10 @@
       "MapAuto": "MAP auto ({label}). Click to pin a value.",
       "MovementCycle": "Stride on {label} Speed. Click to change.",
       "WeaponCycle": "Attacking with {label}. Click to change.",
-      "WeaponDefault": "Default"
+      "WeaponDefault": "Default",
+      "RangeIncrement": "Range increment {value} ft",
+      "Range": "Range {value} ft",
+      "Ranged": "Ranged"
     },
     "Browser": {
       "TabsAria": "PF2e Combater action costs",
@@ -685,7 +688,8 @@
       "NoUsableActions": "No usable combat actions were detected.",
       "ReloadsBeforeFiring": "Reloads before firing {name}.",
       "MapPenalty": "{reason} MAP -{penalty}.",
-      "VolleyMoved": "Volley -2 when fired from the moved-in position."
+      "VolleyMoved": "Volley -2 when fired from the moved-in position.",
+      "QuickenedCastingDiscount": "{name} costs 1 fewer action after Quickened Casting."
     },
     "Keybind": {
       "ToggleName": "Toggle PF2e Combater",

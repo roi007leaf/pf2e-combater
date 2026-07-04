@@ -1,4 +1,4 @@
-import { pf2eAreaType, pf2eSave, pf2eTrait, t } from "../i18n.js";
+import { pf2eAreaType, pf2eAttackEffect, pf2eSave, pf2eTrait, t } from "../i18n.js";
 
 const NOTABLE_TRAITS = [
   "incapacitation",
@@ -83,8 +83,17 @@ export function traitChips(action) {
     ...(Array.isArray(action?.traits) ? action.traits : []),
     ...(Array.isArray(action?.item?.system?.traits?.value) ? action.item.system.traits.value : []),
   ].map((trait) => String(trait?.slug ?? trait?.name ?? trait).toLowerCase()).filter(Boolean))];
+  // A strike's "Additional Attack Effects" (e.g. Grab, Knockdown) aren't PF2e traits -- they're a
+  // separate NPC melee-item field -- but read the same way as far as the player is concerned, so
+  // they're shown as chips alongside the real traits rather than needing their own UI section.
+  const attackEffects = [...new Set(
+    (Array.isArray(action?.attackEffects) ? action.attackEffects : [])
+      .map((effect) => String(effect?.slug ?? effect?.name ?? effect).toLowerCase())
+      .filter(Boolean),
+  )];
   const chips = [];
   for (const trait of traits) pushChip(chips, pf2eTrait(trait), "", "trait");
+  for (const effect of attackEffects) pushChip(chips, pf2eAttackEffect(effect), "", "trait");
   return chips;
 }
 

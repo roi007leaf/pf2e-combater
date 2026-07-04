@@ -719,12 +719,6 @@
   vertical-align: middle;
 }
 
-.pf2e-combater .combater-chip-ranged {
-  margin-left: 4px;
-  color: var(--combater-focus);
-  font-size: 10px;
-}
-
 .pf2e-combater .combater-chip.free,
 .pf2e-combater .combater-chip.reaction,
 .pf2e-combater .combater-step-cost.free,
@@ -1259,6 +1253,12 @@
   border-color: rgb(229 179 91 / 36%);
   background: rgb(229 179 91 / 10%);
   color: var(--combater-two);
+}
+
+.pf2e-combater .combater-detail-chip.is-range {
+  gap: 4px;
+  color: var(--combater-focus);
+  font-variant-numeric: tabular-nums;
 }
 
 .pf2e-combater .combater-detail-chip.is-resolution,

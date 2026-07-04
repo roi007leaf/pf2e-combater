@@ -9,7 +9,7 @@
               <span class="combater-step-main">
                 <span class="combater-step-headline">
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}
-                  <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" data-tooltip="{{rangeLabel}}"></i>{{/if}}</span>
+                  <span class="combater-chip-name">{{name}}</span>
                   {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> {{localize "PF2E_COMBATER.Panel.Done"}}</span>{{/if}}
                   {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> {{localize "PF2E_COMBATER.Panel.Failed"}}</span>{{/if}}
                 </span>
@@ -17,6 +17,7 @@
                 <span class="combater-step-details">
                   {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
+                  {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
                   {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
                   {{#if hasTraitChips}}
@@ -171,10 +172,11 @@
               <span class="combater-chip-text">
                 <span class="combater-chip-titlerow">
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}
-                  <span class="combater-chip-name">{{name}}{{#if isRanged}} <i class="fa-solid fa-crosshairs combater-chip-ranged" data-tooltip="{{rangeLabel}}"></i>{{/if}}</span>
+                  <span class="combater-chip-name">{{name}}</span>
                 </span>
                 {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
                 {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
+                {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
               </span>
             </button>
           {{/if}}

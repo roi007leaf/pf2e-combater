@@ -90,3 +90,7 @@ export function pf2eCondition(slug, fallback) {
 export function pf2eAreaType(slug, fallback) {
   return pf2eTerm(["areaTypes"], slug, fallback);
 }
+
+export function pf2eAttackEffect(slug, fallback) {
+  return pf2eTerm(["attackEffects"], slug, fallback);
+}

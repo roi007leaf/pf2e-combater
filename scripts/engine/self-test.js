@@ -117,6 +117,17 @@ const actionExecutorSource = readFileSync(new URL("./action-executor.js", import
 const panelStyleSource = readFileSync(new URL("../../styles/combater.css", import.meta.url), "utf8");
 const areaPickerSource = readFileSync(new URL("../ui/area-picker.js", import.meta.url), "utf8");
 const actionPreviewSource = readFileSync(new URL("../ui/action-preview.js", import.meta.url), "utf8");
+
+// Stands in for Foundry's Collection (extends Map, but with Array-ish .some/.find/.filter mixed in
+// and an iterator that yields values rather than [key, value] pairs) -- used wherever test fixtures
+// need to mimic a real weapon's .subitems, which is a Collection, not a plain array. A plain-array
+// mock would pass Array.isArray checks that silently no-op against the real shape at runtime.
+class FakeCollection extends Map {
+  some(predicate) { return Array.from(this.values()).some(predicate); }
+  find(predicate) { return Array.from(this.values()).find(predicate); }
+  filter(predicate) { return Array.from(this.values()).filter(predicate); }
+  [Symbol.iterator]() { return this.values(); }
+}
 assert.ok(panelSource.includes("function actionGlyphIcon"), "panel action costs should map to PF2e action-cost icons");
 assert.ok(panelTemplateSource.includes("combater-cost-glyph"), "panel template should render PF2e action-cost icon images");
 assert.ok(panelSource.includes("icons/actions/OneAction.webp"), "panel should reference the PF2e action-cost icon set");
@@ -127,6 +138,14 @@ assert.ok(panelSource.includes("combatant: this._selectedCombatant"), "panel con
 assert.ok(panelSource.includes("this._onClose = typeof options.onClose === \"function\""), "panel should accept close callback");
 assert.ok(panelSource.includes("this._onClose?.(this);"), "panel close should notify owner");
 assert.ok(panelSource.includes("Quickened actions"), "panel should render a quickened-only action shelf");
+assert.ok(panelSource.includes("Range increment {value} ft"), "a range-increment weapon should get a distinct label from a flat max range");
+assert.ok(panelSource.includes("display.isRanged"), "hasStepDetails should show the details row for a ranged step even with no target/area/traits");
+assert.equal(
+  panelTemplateSource.split('{{#if isRanged}}<span class="combater-detail-chip is-range">').length - 1,
+  2,
+  "both the draft-step chip and the auto-fill preview chip should render a visible range badge",
+);
+assert.ok(panelStyleSource.includes(".combater-detail-chip.is-range"), "the range badge should have its own styling, not blend in as plain muted text");
 assert.ok(mainSource.includes("handlePanelClosed(panel)"), "main should clear active panel through close callback");
 assert.ok(mainSource.includes("onClose: handlePanelClosed"), "main should pass close callback when opening panel");
 assert.ok(mainSource.includes("let autoOpenSuppressed = false;"), "main should track manual auto-open suppression");
@@ -282,6 +301,11 @@ assert.deepEqual(
   "traitChips should fall back to the item's own raw trait slugs when the action has no traits array",
 );
 assert.deepEqual(traitChips({ name: "Nothing" }), [], "an action with no traits at all should produce no chips");
+assert.deepEqual(
+  traitChips({ name: "Hurled Thorn", traits: ["attack"], attackEffects: ["grab", "knockdown"] }).map((chip) => chip.label),
+  ["Attack", "Grab", "Knockdown"],
+  "traitChips should include a strike's Additional Attack Effects alongside its real PF2e traits",
+);
 assert.deepEqual(
   traitChips({ name: "Deduped", traits: ["agile"], item: { system: { traits: { value: ["agile"] } } } }).map((chip) => chip.label),
   ["Agile"],
@@ -2229,6 +2253,114 @@ try {
   assert.equal(journeyCakeQuantity, 2, "reverting should restore the bare-number quantity field, not corrupt it to 0 via a nonexistent .value sub-path");
   assert.equal(consumableUpdates.at(-1)?.data?.["system.quantity"], 2, "the write path should target the bare field directly, matching its actual shape");
   assert.equal("system.quantity.value" in (consumableUpdates.at(-1)?.data ?? {}), false, "must not write the nonexistent .value sub-path on a bare-number field");
+
+  // A Frequency-limited feat (e.g. Quickened Casting, 3/day) falls through to the generic
+  // item.toMessage() path, which posts the chat card but -- unlike PF2e's own sheet "use" button --
+  // doesn't spend the Frequency resource. executeDraftStep must decrement it manually and record a
+  // revert op for undo.
+  let quickenedCastingFrequency = 3;
+  const quickenedCastingUuid = "Actor.valeros.Item.quickened-casting";
+  const quickenedCastingItem = {
+    id: "quickened-casting-item",
+    name: "Quickened Casting",
+    uuid: quickenedCastingUuid,
+    system: { frequency: { value: quickenedCastingFrequency, max: 3, per: "day" } },
+    toMessage: async () => ({ id: "quickened-casting-msg-1" }),
+    update: async (data) => {
+      consumableUpdates.push({ item: "quickened-casting", data });
+      if ("system.frequency.value" in data) {
+        quickenedCastingFrequency = data["system.frequency.value"];
+        quickenedCastingItem.system.frequency.value = quickenedCastingFrequency;
+      }
+    },
+  };
+  createdEffects.set(quickenedCastingUuid, quickenedCastingItem);
+  const quickenedCastingResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "quickened-casting-step" },
+    action: { name: "Quickened Casting", slug: "quickened-casting", executable: "open-item", item: quickenedCastingItem },
+  });
+  assert.equal(quickenedCastingResult.status, "done");
+  assert.equal(quickenedCastingFrequency, 2, "executing a Frequency-limited feat should spend one use, not just display it");
+  const quickenedCastingFrequencyOp = quickenedCastingResult.patch.execution.revert?.ops?.find((op) => op.kind === "frequency");
+  assert.ok(quickenedCastingFrequencyOp, "should record a frequency revert op");
+  assert.equal(quickenedCastingFrequencyOp.valueBefore, 3);
+  const quickenedCastingRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "quickened-casting-step", execution: quickenedCastingResult.patch.execution },
+  });
+  assert.equal(quickenedCastingRevert.status, "reverted");
+  assert.equal(quickenedCastingFrequency, 3, "reverting should restore the spent Frequency use");
+
+  // Reloading a firearm/crossbow should actually attach a round to the weapon (PF2e's weapon.attach),
+  // not just post a reminder -- confirmed against the real PF2e source (getAttackAmmo/attach/detach).
+  let pistolRoundsQuantity = 5;
+  const pistolRoundsUuid = "Actor.valeros.Item.pistol-rounds";
+  const pistolRounds = {
+    id: "pistol-rounds",
+    name: "Pistol Rounds",
+    uuid: pistolRoundsUuid,
+    type: "ammo",
+    isStowed: false,
+    isAmmoFor: (weapon) => weapon?.id === "pistol",
+    get quantity() { return pistolRoundsQuantity; },
+  };
+  // subitems is a FakeCollection (Map-backed), matching Foundry's real Collection -- a plain-array
+  // mock here would let an Array.isArray-gated implementation pass while being broken at runtime.
+  const pistolSubitems = new FakeCollection();
+  let pistolSubitemIdCounter = 0;
+  const pistolUuid = "Actor.valeros.Item.pistol";
+  const pistol = {
+    id: "pistol",
+    name: "+1 Dueling Pistol",
+    uuid: pistolUuid,
+    subitems: pistolSubitems,
+    attach: async (ammoItem, { quantity = 1 } = {}) => {
+      pistolRoundsQuantity -= quantity;
+      const existing = pistolSubitems.find((sub) => sub.ammoRef === ammoItem.id);
+      if (existing) {
+        existing.quantity += quantity;
+        return;
+      }
+      pistolSubitemIdCounter += 1;
+      const subitemId = `round-${pistolSubitemIdCounter}`;
+      pistolSubitems.set(subitemId, {
+        id: subitemId,
+        ammoRef: ammoItem.id,
+        quantity,
+        detach: async ({ quantity: removeQuantity } = {}) => {
+          const subitem = pistolSubitems.get(subitemId);
+          if (!subitem) return;
+          subitem.quantity -= removeQuantity;
+          if (subitem.quantity <= 0) pistolSubitems.delete(subitemId);
+        },
+      });
+    },
+  };
+  createdEffects.set(pistolUuid, pistol);
+  createdEffects.set(pistolRoundsUuid, pistolRounds);
+  const reloadExecutionContext = {
+    ...executionContext,
+    actor: { document: { ...actorDocument, itemTypes: { ammo: [pistolRounds], weapon: [] } } },
+  };
+  const reloadPistolResult = await executeDraftStep({
+    context: reloadExecutionContext,
+    step: { instanceId: "reload-pistol-step" },
+    action: { name: "Reload +1 Dueling Pistol", slug: "reload-pistol", executable: "reload-weapon", item: pistol },
+  });
+  assert.equal(reloadPistolResult.status, "done");
+  assert.equal(pistolSubitems.size, 1, "reloading should attach a loaded round to the weapon");
+  assert.equal(pistolSubitems.get("round-1").quantity, 1);
+  assert.equal(pistolRoundsQuantity, 4, "reloading should consume one round from the ammo stack");
+  const reloadOp = reloadPistolResult.patch.execution.revert?.ops?.find((op) => op.kind === "reload");
+  assert.ok(reloadOp, "should record a reload revert op");
+  assert.equal(reloadOp.addedQuantity, 1);
+  const reloadRevert = await revertDraftStep({
+    context: reloadExecutionContext,
+    step: { instanceId: "reload-pistol-step", execution: reloadPistolResult.patch.execution },
+  });
+  assert.equal(reloadRevert.status, "reverted");
+  assert.equal(pistolSubitems.size, 0, "reverting should detach the loaded round again");
 
   assert.equal(raiseShieldCalls.length, 1, "Raise a Shield should call the legacy raiseAShield function");
   assert.equal(raiseShieldCalls[0].actors?.[0], actorDocument, "Raise a Shield should act on the acting actor with no canvas target");
@@ -4234,6 +4366,87 @@ assert.equal(
   "Haste reason should say it grants quickened without naming who it boosts",
 );
 
+// Quickened Casting reduces the very next usable step's cost by 1 (min 1), but only for an arcane
+// spontaneous spell -- and only when it's the step immediately after, spending the effect either way.
+const quickenedCastingCandidate = {
+  id: "quickened-casting", slug: "quickened-casting", source: "generic", name: "Quickened Casting",
+  actionCost: 0, score: 20, activityProfile: { actionDiscount: true },
+};
+const disintegrateCandidate = {
+  id: "disintegrate", slug: "disintegrate", source: "spell-inferred", name: "Disintegrate",
+  actionCost: 2, score: 40, spellcastingEntryTradition: "arcane", spellcastingEntryType: "spontaneous",
+};
+const messageCandidate = {
+  id: "message", slug: "message", source: "spell-inferred", name: "Message",
+  actionCost: 1, score: 10, spellcastingEntryTradition: "arcane", spellcastingEntryType: "spontaneous",
+};
+const healCandidate = {
+  id: "heal", slug: "heal", source: "spell-curated", name: "Heal",
+  actionCost: 2, score: 30, spellcastingEntryTradition: "divine", spellcastingEntryType: "prepared",
+};
+const arcanePreparedCandidate = {
+  id: "fireball", slug: "fireball", source: "spell-inferred", name: "Fireball",
+  actionCost: 2, score: 35, spellcastingEntryTradition: "arcane", spellcastingEntryType: "prepared",
+};
+const strideFillerCandidate = { id: "stride", slug: "stride", source: "generic", name: "Stride", actionCost: 1, score: 5 };
+
+const quickenedDiscountModel = buildActionBuilderModel({
+  context: {},
+  candidates: [quickenedCastingCandidate, disintegrateCandidate],
+  draft: { steps: [
+    { instanceId: "s1", actionKey: "quickened-casting", actionCost: 0 },
+    { instanceId: "s2", actionKey: "disintegrate", actionCost: 2 },
+  ] },
+});
+assert.equal(quickenedDiscountModel.draft.steps[1].actionCost, 1, "arcane spontaneous spell right after Quickened Casting should cost 1 fewer action");
+assert.equal(quickenedDiscountModel.draft.steps[1].quickenedCastingDiscount, true);
+assert.equal(quickenedDiscountModel.usage.normal, 1, "usage should reflect the discounted cost, not the sticker cost");
+
+const quickenedFloorModel = buildActionBuilderModel({
+  context: {},
+  candidates: [quickenedCastingCandidate, messageCandidate],
+  draft: { steps: [
+    { instanceId: "s1", actionKey: "quickened-casting", actionCost: 0 },
+    { instanceId: "s2", actionKey: "message", actionCost: 1 },
+  ] },
+});
+assert.equal(quickenedFloorModel.draft.steps[1].actionCost, 1, "a 1-action spell floors at 1 action, not 0");
+
+const quickenedDivineModel = buildActionBuilderModel({
+  context: {},
+  candidates: [quickenedCastingCandidate, healCandidate],
+  draft: { steps: [
+    { instanceId: "s1", actionKey: "quickened-casting", actionCost: 0 },
+    { instanceId: "s2", actionKey: "heal", actionCost: 2 },
+  ] },
+});
+assert.equal(quickenedDivineModel.draft.steps[1].actionCost, 2, "a divine spell should not be discounted by Quickened Casting");
+assert.ok(!quickenedDivineModel.draft.steps[1].quickenedCastingDiscount);
+
+const quickenedPreparedModel = buildActionBuilderModel({
+  context: {},
+  candidates: [quickenedCastingCandidate, arcanePreparedCandidate],
+  draft: { steps: [
+    { instanceId: "s1", actionKey: "quickened-casting", actionCost: 0 },
+    { instanceId: "s2", actionKey: "fireball", actionCost: 2 },
+  ] },
+});
+assert.equal(quickenedPreparedModel.draft.steps[1].actionCost, 2, "a prepared (non-spontaneous) arcane spell should not be discounted");
+
+const quickenedInterveningModel = buildActionBuilderModel({
+  context: {},
+  candidates: [quickenedCastingCandidate, strideFillerCandidate, disintegrateCandidate],
+  draft: { steps: [
+    { instanceId: "s1", actionKey: "quickened-casting", actionCost: 0 },
+    { instanceId: "s2", actionKey: "stride", actionCost: 1 },
+    { instanceId: "s3", actionKey: "disintegrate", actionCost: 2 },
+  ] },
+});
+assert.equal(
+  quickenedInterveningModel.draft.steps[2].actionCost, 2,
+  "the discount is spent on the very next usable step (the Stride here) and doesn't carry forward",
+);
+
 const staleBudgetBuilderModel = buildActionBuilderModel({
   context: { actionsSpent: { normal: 2, total: 2 } },
   candidates: [{ id: "stride", slug: "stride", name: "Stride", actionCost: 1, score: 10 }],
@@ -5632,6 +5845,48 @@ const feintStrikePlan = setupBeforeStrikePlans.find((plan) => {
 assert.deepEqual(
   feintStrikePlan.steps.map((step) => step.slug),
   ["demoralize", "feint", "strike"],
+);
+
+// Auto-fill pairs Quickened Casting with a discount-eligible spell: sequenced first, spell at 1
+// fewer action. A divine (or otherwise ineligible) spell never gets a synthetic discounted sibling.
+const plannerQuickenedCastingCandidate = {
+  id: "quickened-casting", slug: "quickened-casting", name: "Quickened Casting",
+  actionCost: 0, source: "generic", score: 20, confidence: "high",
+  activityProfile: { actionDiscount: true },
+  reason: "Quickened Casting sets up an efficient spell this turn.",
+};
+const plannerDisintegrateCandidate = {
+  id: "disintegrate", slug: "disintegrate", name: "Disintegrate",
+  actionCost: 2, source: "spell-inferred", score: 90, confidence: "high",
+  variantGroup: "spell-disintegrate",
+  spellcastingEntryTradition: "arcane", spellcastingEntryType: "spontaneous",
+  targetingProfile: { enemy: true },
+};
+const quickenedCastingComboPlans = buildTurnPlans(fighterContext, [plannerQuickenedCastingCandidate, plannerDisintegrateCandidate]);
+const quickenedCastingComboPlan = quickenedCastingComboPlans.find((plan) =>
+  plan.steps.some((step) => step.id === "disintegrate-quickened-casting"));
+assert.ok(quickenedCastingComboPlan, "auto-fill should offer a plan pairing Quickened Casting with the discounted spell");
+assert.deepEqual(
+  quickenedCastingComboPlan.steps.map((step) => step.slug),
+  ["quickened-casting", "disintegrate"],
+  "Quickened Casting should be sequenced directly before the spell it discounts",
+);
+assert.equal(
+  quickenedCastingComboPlan.steps.find((step) => step.id === "disintegrate-quickened-casting").actionCost,
+  1,
+);
+
+const plannerHealCandidate = {
+  id: "heal", slug: "heal", name: "Heal",
+  actionCost: 2, source: "spell-curated", score: 90, confidence: "high",
+  variantGroup: "spell-heal",
+  spellcastingEntryTradition: "divine", spellcastingEntryType: "prepared",
+  targetingProfile: { ally: true, self: true },
+};
+const noQuickenedCastingComboPlans = buildTurnPlans(fighterContext, [plannerQuickenedCastingCandidate, plannerHealCandidate]);
+assert.ok(
+  !noQuickenedCastingComboPlans.some((plan) => plan.steps.some((step) => step.id === "heal-quickened-casting")),
+  "a divine spell should never get a synthetic Quickened Casting discount sibling",
 );
 
 const speedProfile = readActorProfile({
@@ -8811,6 +9066,26 @@ assert.ok(reloadPistol, "a held firearm with a reload value should get a Reload 
 assert.equal(reloadPistol.actionCost, 1);
 assert.equal(reloadPistol.executable, "reload-weapon");
 assert.ok(!readActionSources(weaponActionsContext).some((action) => action.slug && action.slug.startsWith("reload-")), "non-reload weapons should not get a Reload action");
+
+// A weapon that's already got a round chambered (an embedded ammo subitem, PF2e's getLoadedAmmo)
+// doesn't need reloading yet -- it should not get a Reload action.
+const loadedPistolContext = {
+  ...reloadContext,
+  actor: {
+    ...reloadContext.actor,
+    document: {
+      ...reloadContext.actor.document,
+      itemTypes: {
+        ...reloadContext.actor.document.itemTypes,
+        weapon: [{ ...reloadContext.actor.document.itemTypes.weapon[0], subitems: new FakeCollection([["round-1", { id: "round-1", type: "ammo" }]]) }],
+      },
+    },
+  },
+};
+assert.ok(
+  !readActionSources(loadedPistolContext).some((action) => action.slug === "reload-pistol"),
+  "an already-loaded firearm (has a loaded ammo subitem) should not offer a Reload action",
+);
 
 // A reload-0 ammunition weapon (e.g. a bow) reloads as part of firing: still show the Reload step,
 // but as a free action that does not draw from the action budget.
@@ -18101,6 +18376,24 @@ assert.equal(strikeOptions.length, 2, "actorStrikeOptions should return every re
 assert.deepEqual(strikeOptions.map((option) => option.id), ["strike-claw", "strike-bite"], "each strike option should carry a stable, weapon-specific id");
 assert.equal(strikeOptions[0].name, "Claw");
 assert.equal(strikeOptions[1].name, "Bite");
+
+const attackEffectsActorForOptions = {
+  type: "npc",
+  itemTypes: {},
+  system: {
+    traits: { size: { value: "med" } },
+    actions: [{
+      type: "strike", name: "Hurled Thorn", label: "Hurled Thorn", slug: "hurled-thorn",
+      item: { type: "melee", system: { damageRolls: { r: { damage: "2d6+14", damageType: "piercing" } }, traits: { value: [] }, attackEffects: { value: ["grab", "knockdown"] } } },
+      traits: [], weaponTraits: [], variants: [],
+    }],
+  },
+};
+assert.deepEqual(
+  actorStrikeOptions(attackEffectsActorForOptions, fighterContext)[0].attackEffects,
+  ["grab", "knockdown"],
+  "actorStrikeOptions should surface the strike item's Additional Attack Effects for display",
+);
 
 const backingStrikeActorDoc = {
   system: {

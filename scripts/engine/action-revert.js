@@ -104,6 +104,29 @@ async function revertConsumable(op, { actor }) {
   if (Object.keys(update).length) await item.update(update);
 }
 
+async function revertFrequency(op) {
+  if (!op?.itemUuid || typeof globalThis.fromUuid !== "function") return;
+  const item = await globalThis.fromUuid(op.itemUuid);
+  if (typeof item?.update !== "function" || op.valueBefore === null || op.valueBefore === undefined) return;
+  await item.update({ "system.frequency.value": op.valueBefore });
+}
+
+// Undo weapon.attach(): detach exactly the quantity the reload added from that specific subitem.
+// PF2e's detach() deletes the subitem outright once its quantity hits 0, so a single-round reload
+// (the common case) cleanly disappears rather than leaving a zero-quantity stack behind.
+async function revertReload(op) {
+  if (!op?.weaponUuid || typeof globalThis.fromUuid !== "function") return;
+  const weapon = await globalThis.fromUuid(op.weaponUuid);
+  const subitems = weapon?.subitems;
+  // weapon.subitems is a Foundry Collection (extends Map) at runtime -- prefer its native .get(),
+  // falling back to .find() for a plain-array test double.
+  const subitem = typeof subitems?.get === "function"
+    ? subitems.get(op.subitemId)
+    : (typeof subitems?.find === "function" ? subitems.find((item) => item.id === op.subitemId) : null);
+  if (!subitem || typeof subitem.detach !== "function") return;
+  await subitem.detach({ skipConfirm: true, quantity: op.addedQuantity });
+}
+
 // True only when we can positively confirm an embedded document is already gone from its
 // collection. Returns false when we cannot check, so a real deletion is still attempted.
 function confirmedRemoved(collection, id) {
@@ -388,6 +411,10 @@ async function applyRevertOp(op, scope) {
       return revertCarryType(op);
     case "consumable":
       return revertConsumable(op, scope);
+    case "reload":
+      return revertReload(op);
+    case "frequency":
+      return revertFrequency(op);
     case "chat":
       return revertChat(op);
     case "slot":

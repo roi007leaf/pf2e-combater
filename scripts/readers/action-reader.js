@@ -492,6 +492,7 @@ export function actorStrikeOptions(actor, context = null) {
         attackTrait: true,
         traits,
         weaponTraits: strike.weaponTraits ?? [],
+        attackEffects: Array.isArray(strike.item?.system?.attackEffects?.value) ? strike.item.system.attackEffects.value : [],
         range,
         reload,
         detected: true,
@@ -1512,6 +1513,17 @@ function weaponReloadValue(weapon) {
   return null;
 }
 
+// A loaded round/bolt/etc. is tracked as an embedded subitem on the weapon (PF2e's getLoadedAmmo),
+// not a flag or counter on the weapon itself. Only meaningful for reload>=1 weapons -- a reload-0
+// bow has no discrete chambered state, it just fires from inventory ammo.
+// weapon.subitems is a Foundry Collection (extends Map), NOT a plain array -- it supports .some()
+// directly, so duck-type on that rather than gating with Array.isArray (which is always false for
+// a real weapon document and silently no-ops the whole check).
+function weaponHasLoadedAmmo(weapon) {
+  const subitems = weapon?.subitems;
+  return typeof subitems?.some === "function" && subitems.some((item) => item?.type === "ammo");
+}
+
 function readReloadWeaponActions(actor) {
   return readWeaponItems(actor)
     .filter(isHeldWeapon)
@@ -1519,6 +1531,9 @@ function readReloadWeaponActions(actor) {
     // Include reload-0 ammunition weapons (shown as a free step) but exclude melee/thrown weapons,
     // which have no reload value at all.
     .filter(({ reload }) => reload !== null)
+    // A weapon that's already chambered doesn't need reloading yet -- offering it anyway is what
+    // produced a "Reload" step for a pistol the sheet shows as ready to fire.
+    .filter(({ weapon, reload }) => reload <= 0 || !weaponHasLoadedAmmo(weapon))
     .map(({ weapon, reload }) => {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
       // Reload 0 reloads as part of firing: keep it in the plan for clarity, but as a free action

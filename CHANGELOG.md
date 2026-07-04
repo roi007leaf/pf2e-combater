@@ -4,6 +4,64 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5]
+
+### Added
+
+- **The panel can now be collapsed into a compact mode** via a new toggle button in the header, next
+  to Browse/Refresh. Compact mode keeps the actor identity, action-pool count, and each step's
+  Play/Remove controls visible while hiding secondary editing tools (target/destination/area
+  pickers, MAP/movement/weapon cycles, reorder, revert) and the sustained-spells/uncounted-actions
+  cards, so a finished plan takes up less screen space — handy on smaller/laptop screens once you're
+  done planning and are just clicking through to execute.
+- **Plan steps can now be duplicated with one click.** Each step's tool cluster gains a duplicate
+  button that clones it (including its target, weapon, MAP, and other overrides) and inserts the
+  copy right after the original — a quick way to add another instance of the same action (e.g. a
+  second longsword Strike) without reopening the action browser. Works for any step type, not just
+  Strikes; not shown on the individual atoms of a grouped composite ability (e.g. Double Attack),
+  since those must stay paired.
+- **Quickened Casting now actually reduces the next spell's action cost.** Previously it was
+  recognized as a setup action but had no mechanical effect. Casting an arcane spontaneous spell
+  immediately after Quickened Casting in the draft now costs 1 fewer action (minimum 1) — both in
+  the plan builder and in Auto-fill, which also now sequences Quickened Casting directly before the
+  spell it discounts instead of placing it arbitrarily.
+- **A ranged Strike now shows its range as a visible label** (e.g. "Range increment 60 ft") next to
+  its target, instead of only on hover over a small crosshair icon. **A Strike's "Additional Attack
+  Effects" (Grab, Knockdown, etc., when checked on for that specific attack) now show as chips**
+  alongside its real PF2e traits — previously only the formal traits were shown, so an attack with no
+  traits of its own (common for many NPC Strikes) looked like it carried no information at all.
+
+### Fixed
+
+- **Auto-fill offered "Reload" for a firearm/crossbow that was already loaded.** Any held weapon
+  with a reload value got a Reload step unconditionally, regardless of whether it currently had a
+  round chambered. It now checks for an actual loaded round (the same embedded-ammo state the PF2e
+  sheet shows) before offering to reload it.
+- **Executing "Reload" from the panel didn't actually reload the weapon** — it only posted a
+  reminder message, so the weapon still showed empty on the sheet afterward. It now attaches a
+  compatible round from inventory to the weapon (the same mechanism the sheet's own reload button
+  uses), consuming it from your ammo stack; reverting the step detaches it again. Falls back to the
+  reminder only when there's no compatible ammo on hand to load automatically.
+- **Executing a Frequency-limited feat or action (e.g. "3/day") from the panel never actually spent
+  its use**, so the same ability kept showing as available no matter how many times it was played.
+  The panel's fallback execution path was posting the ability's chat card directly instead of going
+  through PF2e's own use-and-spend flow. It now spends one use itself when nothing else already did,
+  and reverting a step restores it.
+- **Grab (and similar "grapple after a Strike" abilities) could target a creature the actor never
+  attacked.** After a multi-target attack like a Kraken's Double Attack, the follow-up grapple was
+  inheriting a generic "best target" guess instead of one of the creatures actually struck that
+  turn, so it could latch onto an untouched bystander instead. It now always targets one of the
+  creatures the preceding attack actually hit.
+- **Auto-fill's "Stride into reach and Strike/multi-attack" combos left the Stride's destination
+  blank**, always requiring a manual pick at execution even though a legal square had already been
+  found while building the suggestion. Splitting the combo into its separate Stride and Strike steps
+  discarded that pre-validated square; it's now carried onto the last Stride before the attack (an
+  earlier Stride in a 2-Stride approach, or a retreat Stride after the attack, still has no fixed
+  square and stays manual). Separately, when a Stride still had to fall back to guessing a
+  destination toward a plain Strike's target, that target was often only a sanitized display
+  reference with no position attached, silently defeating the fallback — it now resolves the live
+  token on the canvas instead.
+
 ## [1.0.4]
 
 ### Added

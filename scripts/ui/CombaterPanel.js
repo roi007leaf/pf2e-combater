@@ -220,8 +220,16 @@ function isRangedStep(step) {
 
 function rangeLabelFor(step) {
   if (!isRangedStep(step)) return "";
-  const max = Number(step?.range?.max ?? step?.range?.increment ?? step?.targetingProfile?.maxRange);
-  return Number.isFinite(max) && max > 0 ? `Ranged ${max} ft` : "Ranged";
+  // A range increment (readStrikeRange mirrors it onto .max too) means the attack penalty scales
+  // with distance past the first increment -- worth calling out separately from a flat max range.
+  const increment = Number(step?.range?.increment);
+  if (Number.isFinite(increment) && increment > 0) {
+    return t("Panel.RangeIncrement", "Range increment {value} ft", { value: increment });
+  }
+  const max = Number(step?.range?.max ?? step?.targetingProfile?.maxRange);
+  return Number.isFinite(max) && max > 0
+    ? t("Panel.Range", "Range {value} ft", { value: max })
+    : t("Panel.Ranged", "Ranged");
 }
 
 function withBuilderActionFields(action) {
@@ -706,7 +714,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, t
     warning,
     traitChips: stepTraitChips,
     hasTraitChips: stepTraitChips.length > 0,
-    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0),
+    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
   };
 }
 

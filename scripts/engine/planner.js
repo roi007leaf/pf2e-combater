@@ -242,6 +242,18 @@ function isSpellAction(candidate) {
   return String(candidate?.source ?? "").startsWith("spell");
 }
 
+function isActionDiscountCandidate(candidate) {
+  return candidate?.activityProfile?.actionDiscount === true;
+}
+
+// Matches the granting ability's own wording: "an arcane spontaneous spell." Rank caps ("8th level
+// or lower") aren't enforced -- see the design doc for why this is an accepted simplification.
+function isDiscountEligibleSpell(candidate) {
+  if (!isSpellAction(candidate)) return false;
+  return String(candidate?.spellcastingEntryTradition ?? "").toLowerCase() === "arcane"
+    && String(candidate?.spellcastingEntryType ?? "").toLowerCase() === "spontaneous";
+}
+
 function isStrikeLikeCandidate(candidate) {
   return isStrikeAction(candidate)
     || candidate?.activityProfile?.includesStrike === true
@@ -464,6 +476,7 @@ function stepSatisfiesPreviousRequirement(step, requirement) {
   if (key === "non-cantrip-spell") return isNonCantripSpell(step);
   if (key === "strike" || key === "after-strike") return isStrikeLikeCandidate(step);
   if (key === "attack") return isAttackAction(step);
+  if (key === "quickened-casting") return isActionDiscountCandidate(step);
   return false;
 }
 
@@ -1008,6 +1021,43 @@ function projectedTakeCoverAfterProneCandidate(candidate) {
   };
 }
 
+const QUICKENED_CASTING_DISCOUNT_BONUS = 8;
+
+// A cheaper sibling of a discount-eligible spell candidate, legal only alongside an
+// actionDiscount-flagged candidate (Quickened Casting) via the "quickened-casting" previous-action
+// requirement below. Interleaved right after its source in withQuickenedCastingDiscountCandidates
+// so its pool index -- and therefore its planScore index-penalty -- stays close to the original's.
+function projectedQuickenedCastingSpellCandidate(candidate) {
+  if (!isDiscountEligibleSpell(candidate)) return null;
+  const baseCost = Number(candidate.actionCost);
+  if (!Number.isFinite(baseCost) || baseCost < 2) return null;
+  const discountedCost = baseCost - 1;
+  return {
+    ...candidate,
+    id: `${candidate.id ?? candidate.slug ?? candidate.name}-quickened-casting`,
+    actionCost: discountedCost,
+    cost: discountedCost,
+    score: Number(candidate.score) + QUICKENED_CASTING_DISCOUNT_BONUS,
+    reason: t("Plan.QuickenedCastingDiscount", "{name} costs 1 fewer action after Quickened Casting.", { name: candidate.name }),
+    activityProfile: {
+      ...(candidate.activityProfile ?? {}),
+      previousActionRequirements: ["quickened-casting"],
+    },
+  };
+}
+
+// Inserted right after the actionDiscount candidate itself (not after each spell) so its pool index
+// is always greater than the discount grantor's -- the DFS below only visits candidates forward, and
+// the "quickened-casting" previous-action requirement checks the most recently *chosen* candidate, so
+// the synthetic must never sort ahead of the thing it depends on regardless of either one's score.
+function withQuickenedCastingDiscountCandidates(candidates) {
+  return candidates.flatMap((candidate) => {
+    if (!isActionDiscountCandidate(candidate)) return [candidate];
+    const discounted = candidates.map(projectedQuickenedCastingSpellCandidate).filter(Boolean);
+    return discounted.length ? [candidate, ...discounted] : [candidate];
+  });
+}
+
 function withProjectedFollowUpStrikeCandidates(candidates) {
   return candidates.flatMap((candidate) => {
     const followUps = [
@@ -1213,7 +1263,9 @@ export function buildTurnPlans(context, candidates) {
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
     .toSorted((left, right) => right.score - left.score);
-  const sortedCandidates = withProjectedFollowUpStrikeCandidates(selectPlanningCandidates(eligibleCandidates));
+  const sortedCandidates = withProjectedFollowUpStrikeCandidates(
+    withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
+  );
 
   const plans = [];
   const seenPlans = new Set();

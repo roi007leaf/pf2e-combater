@@ -419,6 +419,7 @@ function chatActionRevert(nativeResult, action, { target = null, slotOp = null }
   const messageId = chatMessageIdFromResult(nativeResult);
   if (messageId) ops.push({ kind: "chat", messageId });
   if (nativeResult?.consumableRevertOp) ops.push(nativeResult.consumableRevertOp);
+  if (nativeResult?.frequencyRevertOp) ops.push(nativeResult.frequencyRevertOp);
 
   if (slotOp) {
     ops.push(slotOp);
@@ -996,10 +997,64 @@ async function executeSheatheWeapon({ actor, action }) {
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") }), error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") };
 }
 
-// PF2e has no scriptable reload action (ammo selection happens in the weapon UI), so post a
-// reminder to reload rather than guessing at the ammunition state.
+// The actor's first non-stowed ammo (or ammo-capable weapon, e.g. a thrown combination weapon)
+// compatible with this weapon -- mirrors PF2e's own ammunition-picker filter (isAmmoFor).
+function findCompatibleAmmo(actor, weapon) {
+  if (!weapon) return null;
+  const pool = [
+    ...collectionValues(actor?.itemTypes?.ammo),
+    ...collectionValues(actor?.itemTypes?.weapon).filter((item) => item?.system?.usage?.canBeAmmo),
+  ];
+  return pool.find((item) => item?.isStowed !== true && typeof item?.isAmmoFor === "function" && item.isAmmoFor(weapon)) ?? null;
+}
+
+// weapon.subitems is a Foundry Collection (extends Map), not a plain array, so iterate with
+// .forEach -- supported by both a real Collection and a plain-array test double.
+function weaponSubitemQuantities(weapon) {
+  const quantities = new Map();
+  const subitems = weapon?.subitems;
+  if (typeof subitems?.forEach === "function") {
+    subitems.forEach((item) => quantities.set(item.id, Number(item.quantity ?? item.system?.quantity ?? 0)));
+  }
+  return quantities;
+}
+
+// Diff the weapon's loaded-ammo subitems before/after weapon.attach() to find which one grew (a
+// fresh subitem, or an existing stack topped up) -- the same before/after pattern already used for
+// consumables (consumableRevertOpAfterUse), since PF2e's attach() has no return value to inspect.
+async function reloadRevertOpAfterAttach(weaponUuid, before) {
+  if (!weaponUuid || typeof globalThis.fromUuid !== "function") return null;
+  const weapon = await globalThis.fromUuid(weaponUuid);
+  const subitems = weapon?.subitems;
+  if (typeof subitems?.forEach !== "function") return null;
+  let grown = null;
+  subitems.forEach((item) => {
+    if (grown) return;
+    const quantityBefore = before.get(item.id) ?? 0;
+    const quantityNow = Number(item.quantity ?? item.system?.quantity ?? 0);
+    if (quantityNow > quantityBefore) grown = { kind: "reload", weaponUuid, subitemId: item.id, addedQuantity: quantityNow - quantityBefore };
+  });
+  return grown;
+}
+
 async function executeReloadWeapon({ actor, action }) {
-  await createGuidance({ ...action, reason: t("Exec.ReloadReason", "Reload {name} before firing again.", { name: action?.item?.name ?? t("Exec.YourWeapon", "your weapon") }) }, actor);
+  const weapon = action?.item;
+  const ammo = findCompatibleAmmo(actor, weapon);
+  if (weapon?.uuid && ammo && typeof weapon.attach === "function") {
+    const before = weaponSubitemQuantities(weapon);
+    await weapon.attach(ammo, { quantity: 1, stack: true });
+    const reloadRevertOp = await reloadRevertOpAfterAttach(weapon.uuid, before);
+    return {
+      status: "done",
+      patch: executionPatch({}, "done", {
+        result: t("Exec.Reloaded", "Reloaded {name}.", { name: weapon.name }),
+        revert: revertEnvelope(reloadRevertOp ? [reloadRevertOp] : []),
+      }),
+    };
+  }
+  // No compatible ammo in inventory to attach automatically -- fall back to a reminder, same as
+  // PF2e's own sheet would leave the reload unresolved without ammo on hand.
+  await createGuidance({ ...action, reason: t("Exec.ReloadReason", "Reload {name} before firing again.", { name: weapon?.name ?? t("Exec.YourWeapon", "your weapon") }) }, actor);
   return { status: "done", patch: executionPatch({}, "done", { result: t("Exec.PostedReloadReminder", "Posted reload reminder.") }) };
 }
 
@@ -1238,6 +1293,30 @@ async function consumableRevertOpAfterUse(before, actor) {
   const usesNow = numeric(systemValue(stillExists.system?.uses), null);
   if (quantityNow === before.quantityBefore && usesNow === before.usesValueBefore) return null;
   return { kind: "consumable", itemUuid: before.itemUuid, quantityBefore: before.quantityBefore, usesValueBefore: before.usesValueBefore };
+}
+
+// Snapshot a limited-use item's Frequency ("3/day" etc.) BEFORE executing it. PF2e's own schema
+// (FrequencyField, pf2e.mjs) defaults system.frequency.value to system.frequency.max and treats it
+// as a genuine remaining-uses counter -- confirmed against the system's own consumption logic below.
+function frequencySnapshot(item) {
+  const valueBefore = numeric(systemValue(item?.system?.frequency?.value), null);
+  return valueBefore === null || !item?.uuid ? null : { itemUuid: item.uuid, valueBefore };
+}
+
+// The system's own item-use flow (createUseActionMessage, pf2e.mjs) decrements Frequency before
+// posting the chat card -- but only for its own sheet/hotbar "use" button. Our generic fallback below
+// posts via item.toMessage() directly, which skips that entirely, so a "3/day" feat like Quickened
+// Casting never actually spent its use no matter how many times it was played. Replicate the same
+// decrement (item.update({ "system.frequency.value": value - 1 })) here. Skipped when the value
+// already moved by the time we check, so a native path that manages its own Frequency is never
+// double-spent.
+async function consumeFrequencyIfUnspent(before) {
+  if (!before || typeof globalThis.fromUuid !== "function") return null;
+  const item = await globalThis.fromUuid(before.itemUuid);
+  const valueNow = numeric(systemValue(item?.system?.frequency?.value), null);
+  if (valueNow === null || valueNow !== before.valueBefore || valueNow <= 0 || typeof item?.update !== "function") return null;
+  await item.update({ "system.frequency.value": valueNow - 1 });
+  return { kind: "frequency", itemUuid: before.itemUuid, valueBefore: before.valueBefore };
 }
 
 async function executeNativeItem({ actor, action, event }) {
@@ -1731,8 +1810,12 @@ async function rollActionDamageMessages({ actor, action, target = null, after = 
 }
 
 async function executeOpenItem({ actor, action, event }) {
+  const frequencyBefore = frequencySnapshot(action?.item);
   const result = await executeNativeItem({ actor, action, event });
-  if (result) return result;
+  if (result) {
+    const frequencyRevertOp = await consumeFrequencyIfUnspent(frequencyBefore);
+    return frequencyRevertOp ? { ...result, frequencyRevertOp } : result;
+  }
   // Open the compendium entry (e.g. pf2e.actionspf2e) rather than posting a chat reminder.
   const uuid = action?.uuid ?? action?.sourceId;
   if (uuid && typeof globalThis.fromUuid === "function") {
