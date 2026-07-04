@@ -1334,6 +1334,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     element.querySelector("[data-action='toggle-browser']")
       ?.addEventListener("click", () => this._toggleBrowser());
+    element.querySelector("[data-action='toggle-compact']")
+      ?.addEventListener("click", () => this._setExpanded(!this.expanded));
     element.querySelector("[data-action='refresh']")
       ?.addEventListener("click", () => this.refresh("button"));
 
@@ -1517,6 +1519,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   _setExpanded(expanded) {
     this.expanded = expanded;
     writePanelState({ expanded });
+    this.setPosition({ width: expanded ? 720 : 360 });
     this.render({ force: true });
   }
 

@@ -90,7 +90,7 @@ export function buildCandidates(context) {
       rejected.push({ action, reason: t("Reject.UnknownHidden", "Unknown custom action hidden by setting.") });
       continue;
     }
-    const scored = scoreCandidate(context, action);
+    const scored = scoreCandidate(context, action, spells);
     const npcRejection = npcTacticRejection(context, scored, detected);
     if (npcRejection) {
       rejected.push({ action: scored, reason: npcRejection });

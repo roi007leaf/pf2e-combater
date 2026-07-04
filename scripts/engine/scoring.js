@@ -1590,7 +1590,33 @@ function spellTacticalAdjustment(action, role, context) {
   return { scoreDelta, reasons };
 }
 
-export function scoreCandidate(context, action) {
+function isRangeBuffSetup(action) {
+  return action?.activityProfile?.rangeBuff === true;
+}
+
+function spellHasReachableTarget(context, spell) {
+  const targeting = spell?.targetingProfile ?? {};
+  const range = maxRange(spell);
+  if (!Number.isFinite(range)) return true;
+  const pool = targeting.enemy ? attackableEnemies(context) : allies(context);
+  return pool.some((entity) => (entity?.distance ?? Infinity) <= range);
+}
+
+// Reach Spell (and similar rangeBuff setups) only matter when some other castable spell can't
+// reach a target at its normal range -- if every spell already has one in range, the buff is
+// redundant this turn.
+function rangeBuffIsNeeded(context, siblingSpells) {
+  const relevantSpells = (siblingSpells ?? []).filter((spell) => {
+    if (!isSpellAction(spell) || isRangeBuffSetup(spell)) return false;
+    const targeting = spell.targetingProfile ?? {};
+    if (!targeting.enemy && !targeting.ally) return false;
+    return Number.isFinite(maxRange(spell));
+  });
+  if (!relevantSpells.length) return true;
+  return relevantSpells.some((spell) => !spellHasReachableTarget(context, spell));
+}
+
+export function scoreCandidate(context, action, siblingSpells = []) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const role = action.curated?.role ?? action.role;
   const requiredTraining = trainedSkillRequirement(profile, action);
@@ -1684,6 +1710,16 @@ export function scoreCandidate(context, action) {
       suggestedTarget: null,
       reason: t("ScoreReason.KineticAuraAlreadyActive", "Kinetic aura already active; Channel Elements is redundant."),
       reasons: [t("ScoreReason.KineticAuraAlreadyActive", "Kinetic aura already active; Channel Elements is redundant.")],
+    };
+  }
+
+  if (isRangeBuffSetup(action) && !rangeBuffIsNeeded(context, siblingSpells)) {
+    return {
+      ...action,
+      score: -999,
+      suggestedTarget: null,
+      reason: t("ScoreReason.NoSpellNeedsExtraRange", "No castable spell currently lacks a target in range."),
+      reasons: [t("ScoreReason.NoSpellNeedsExtraRange", "No castable spell currently lacks a target in range.")],
     };
   }
 

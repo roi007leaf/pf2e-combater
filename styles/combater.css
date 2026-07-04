@@ -367,6 +367,19 @@
   color: var(--combater-text);
 }
 
+/* Compact mode (header toggle, driven by the `expanded` flag) keeps identity, the action-pool
+   count, and each step's Play/Remove controls visible while hiding secondary editing tools and
+   detail text, so a finished plan fits in less vertical space on smaller screens. */
+.pf2e-combater .combater-shell.is-compact .combater-step-details,
+.pf2e-combater .combater-shell.is-compact .combater-sustained-panel,
+.pf2e-combater .combater-shell.is-compact .combater-uncounted-panel {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-waiting) {
+  display: none;
+}
+
 /* Step state reads as a colored left spine rather than a full boxy outline. */
 /* The whole step row is the bordered container (see .combater-plan-strip below), so the
    state spine paints on the row itself — not the inner chip — and reaches the tool buttons. */

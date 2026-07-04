@@ -1,4 +1,4 @@
-<div class="combater-shell">
+<div class="combater-shell{{#unless expanded}} is-compact{{/unless}}">
   {{#*inline "draftSequence"}}
   {{#*inline "draftStepChip"}}
           <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}">
@@ -253,6 +253,9 @@
         <button type="button" class="combater-header-browse {{#if browserOpen}}is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}{{localize "PF2E_COMBATER.Panel.BrowseClose"}}{{else}}{{localize "PF2E_COMBATER.Panel.BrowseOpen"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.BrowseAria"}}" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}">
           <i class="fa-solid fa-layer-group"></i>
           <span>{{localize "PF2E_COMBATER.Panel.Browse"}}</span>
+        </button>
+        <button type="button" class="icon-button" data-action="toggle-compact" data-tooltip="{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.CompactToggleAria"}}" aria-pressed="{{#if expanded}}false{{else}}true{{/if}}">
+          <i class="fa-solid {{#if expanded}}fa-compress{{else}}fa-expand{{/if}}"></i>
         </button>
         <button type="button" class="icon-button" data-action="refresh" data-tooltip="{{localize "PF2E_COMBATER.Panel.Refresh"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Refresh"}}">
           <i class="fa-solid fa-arrows-rotate"></i>

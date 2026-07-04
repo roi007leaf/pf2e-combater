@@ -501,6 +501,22 @@ assert.ok(
   /\.pf2e-combater \.combater-step-details\s*\{[\s\S]*?flex-wrap:\s*wrap;/.test(panelStyleSource),
   "selected action metadata should wrap instead of overlapping",
 );
+assert.ok(
+  panelTemplateSource.includes('data-action="toggle-compact"'),
+  "panel header should expose a compact-mode toggle button",
+);
+assert.ok(
+  panelTemplateSource.includes('combater-shell{{#unless expanded}} is-compact{{/unless}}'),
+  "panel shell should flag compact mode via a CSS class driven by the expanded flag",
+);
+assert.ok(
+  /_setExpanded\(expanded\) \{[\s\S]*?setPosition\(\{ width: expanded \? 720 : 360 \}\)/.test(panelSource),
+  "toggling compact mode should also shrink/restore the window width",
+);
+assert.ok(
+  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-waiting\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
+  "compact mode should hide secondary per-step tools but keep Execute/Remove/awaiting-GM visible",
+);
 assert.equal(
   /headerSummary:\s*draftSteps\.length/.test(panelSource),
   false,
@@ -9751,6 +9767,49 @@ const reachSpellClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(reachSpellClassification.role, "setup");
 assert.deepEqual(reachSpellClassification.setupFor, ["spell", "damage", "control"]);
+
+// Reach Spell should only score as useful when some other castable spell can't reach a target
+// at its normal range -- offering it when everything is already in range is just noise.
+const reachSpellCandidate = {
+  id: "reach-spell",
+  slug: "reach-spell",
+  source: "system-inferred",
+  name: "Reach Spell",
+  actionCost: 0,
+  role: "setup",
+  activityProfile: reachSpellClassification.activityProfile,
+  targetingProfile: reachSpellClassification.targetingProfile,
+  setupFor: reachSpellClassification.setupFor,
+};
+const touchSpellSibling = {
+  id: "touch-spell",
+  slug: "touch-spell",
+  source: "spell-inferred",
+  name: "Touch Spell",
+  actionCost: 1,
+  role: "damage",
+  targetingProfile: { enemy: true, maxRange: 5 },
+};
+const reachSpellOutOfRangeScore = scoreCandidate(
+  { ...fighterContext, targets: [{ ...fighterContext.targets[0], distance: 10 }] },
+  reachSpellCandidate,
+  [touchSpellSibling],
+);
+assert.ok(
+  reachSpellOutOfRangeScore.score > -999,
+  "Reach Spell should stay useful when the touch spell it sets up has no target in range",
+);
+const reachSpellInRangeScore = scoreCandidate(
+  { ...fighterContext, targets: [{ ...fighterContext.targets[0], distance: 5 }] },
+  reachSpellCandidate,
+  [touchSpellSibling],
+);
+assert.equal(
+  reachSpellInRangeScore.score,
+  -999,
+  "Reach Spell should be suppressed once the touch spell already has a target in range",
+);
+assert.equal(reachSpellInRangeScore.reason, "No castable spell currently lacks a target in range.");
 
 const drainBondedItemClassification = classifySystemAction({
   name: "Drain Bonded Item",
