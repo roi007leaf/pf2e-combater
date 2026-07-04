@@ -970,13 +970,21 @@ function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells
   const allExecutable = [...draftSteps, ...uncountedEntries];
   const executedCount = allExecutable.filter((step) => step.executionStatus === "done").length;
   const canResetExecution = allExecutable.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
+  const decoratedTabsList = ACTION_BUILDER_TABS.map((tab) => ({
+    ...decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery }),
+    label: t(`Tab.${tab.id}`, tab.label),
+  }));
+  // Every tab's actions are already filtered by `searchQuery` above (decorateBuilderTab runs for
+  // every tab, not just the active one) -- while searching, surface every tab's matches instead of
+  // just the active tab's, tagged with which tab each match came from.
+  const mergedSearchResults = decoratedTabsList.flatMap((tab) => tab.sections
+    .filter((section) => section.hasActions)
+    .map((section) => ({ ...section, tabLabel: tab.label })));
   return {
     ...builder,
     readonly: draftReadonly,
-    tabsList: ACTION_BUILDER_TABS.map((tab) => ({
-      ...decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery }),
-      label: t(`Tab.${tab.id}`, tab.label),
-    })),
+    tabsList: decoratedTabsList,
+    mergedSearchResults,
     activeTab: active,
     activeTabLabel: t(`Tab.${active}`, ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action"),
     searchQuery: String(searchQuery ?? ""),

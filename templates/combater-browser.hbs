@@ -1,9 +1,48 @@
 <div class="combater-browser-shell">
   {{#if builder}}
+    {{#*inline "actionRows"}}
+      {{#each actions}}
+        <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}}">
+          {{#unless readonly}}
+          <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" data-tooltip="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
+            <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
+          </button>
+          {{/unless}}
+          <div class="combater-alt-step-body">
+            <h4>
+              <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.OpenDetails"}}">
+                {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
+                <span>{{name}}</span>
+              </button>
+            </h4>
+            {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
+            {{#if disabledReason}}<span class="combater-target is-warning" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
+            {{#if hasDetailChips}}
+              <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
+                {{#each detailChips}}
+                  <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                {{/each}}
+              </div>
+            {{/if}}
+            <p>{{reason}}</p>
+          </div>
+          {{#unless readonly}}
+          <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}">
+            <i class="fa-solid fa-bolt"></i>
+          </button>
+          {{/unless}}
+        </div>
+      {{else}}
+        <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
+      {{/each}}
+    {{/inline}}
     <div class="combater-browser-header">
       <nav class="combater-tabs" aria-label="{{localize "PF2E_COMBATER.Browser.TabsAria"}}">
         {{#each builder.tabsList}}
-          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">
+          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}" {{#if searchQuery}}disabled{{/if}}>
             <img class="combater-tab-glyph" src="{{glyphIcon}}" alt="">
             <span>{{label}}</span>
           </button>
@@ -17,59 +56,42 @@
 
     <section class="combater-body">
       <div class="combater-plan-list">
-        {{#each builder.tabsList}}
-          {{#if active}}
-            {{#each sections}}
-              <article class="combater-alt combater-builder-card combater-action-section">
-                <div class="combater-alt-head">
-                  <span class="combater-alt-title">
-                    <strong>{{label}}</strong>
-                    {{#if countLabel}}<span class="combater-section-count">{{countLabel}}</span>{{/if}}
-                  </span>
-                </div>
-                <div class="combater-alt-details">
-                  {{#each actions}}
-                    <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}}">
-                      {{#unless readonly}}
-                      <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" data-tooltip="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
-                        <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
-                      </button>
-                      {{/unless}}
-                      <div class="combater-alt-step-body">
-                        <h4>
-                          <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.OpenDetails"}}">
-                            {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
-                            <span>{{name}}</span>
-                          </button>
-                        </h4>
-                        {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
-                        {{#if disabledReason}}<span class="combater-target is-warning" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
-                        {{#if hasDetailChips}}
-                          <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
-                            {{#each detailChips}}
-                              <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
-                            {{/each}}
-                          </div>
-                        {{/if}}
-                        <p>{{reason}}</p>
-                      </div>
-                      {{#unless readonly}}
-                      <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
-                        <i class="fa-solid fa-plus"></i>
-                      </button>
-                      <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}">
-                        <i class="fa-solid fa-bolt"></i>
-                      </button>
-                      {{/unless}}
-                    </div>
-                  {{else}}
-                    <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
-                  {{/each}}
-                </div>
-              </article>
-            {{/each}}
-          {{/if}}
-        {{/each}}
+        {{#if builder.searchQuery}}
+          {{#each builder.mergedSearchResults}}
+            <article class="combater-alt combater-builder-card combater-action-section">
+              <div class="combater-alt-head">
+                <span class="combater-alt-title">
+                  <strong>{{label}}</strong>
+                  <span class="combater-section-tag">{{tabLabel}}</span>
+                  {{#if countLabel}}<span class="combater-section-count">{{countLabel}}</span>{{/if}}
+                </span>
+              </div>
+              <div class="combater-alt-details">
+                {{> actionRows}}
+              </div>
+            </article>
+          {{else}}
+            <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
+          {{/each}}
+        {{else}}
+          {{#each builder.tabsList}}
+            {{#if active}}
+              {{#each sections}}
+                <article class="combater-alt combater-builder-card combater-action-section">
+                  <div class="combater-alt-head">
+                    <span class="combater-alt-title">
+                      <strong>{{label}}</strong>
+                      {{#if countLabel}}<span class="combater-section-count">{{countLabel}}</span>{{/if}}
+                    </span>
+                  </div>
+                  <div class="combater-alt-details">
+                    {{> actionRows}}
+                  </div>
+                </article>
+              {{/each}}
+            {{/if}}
+          {{/each}}
+        {{/if}}
 
         {{#if showDebug}}
           <div class="combater-debug">

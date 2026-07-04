@@ -972,6 +972,11 @@
   color: var(--combater-ink);
 }
 
+.pf2e-combater .combater-tabs button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .pf2e-combater .combater-sustained-panel {
   display: grid;
   gap: 8px;
@@ -1069,6 +1074,18 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
   text-align: center;
+}
+
+.pf2e-combater .combater-section-tag {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--combater-line);
+  border-radius: 999px;
+  background: var(--combater-surface);
+  color: var(--combater-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .pf2e-combater .combater-alt-caret {

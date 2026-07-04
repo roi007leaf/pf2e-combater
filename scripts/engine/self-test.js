@@ -528,6 +528,28 @@ assert.ok(browserTemplateSource.includes("combater-tab-glyph"),
   "the cost tab header should show the action-cost glyph");
 assert.equal(browserTemplateSource.includes("combater-step-cost"), false,
   "browser action rows should not repeat the per-row cost glyph");
+assert.ok(panelSource.includes("mergedSearchResults"), "decorateBuilder should expose merged cross-tab search results");
+assert.ok(
+  /mergedSearchResults = decoratedTabsList\.flatMap/.test(panelSource),
+  "merged search results should be derived from the already-decorated per-tab list, not a separate filter pass",
+);
+assert.ok(
+  /mergedSearchResults[\s\S]*?filter\(\(section\) => section\.hasActions\)/.test(panelSource),
+  "merged search results should only include sections that actually matched",
+);
+assert.ok(browserTemplateSource.includes("builder.mergedSearchResults"), "browser template should render merged cross-tab results while searching");
+assert.ok(
+  /\{\{#if builder\.searchQuery\}\}[\s\S]*?builder\.mergedSearchResults[\s\S]*?\{\{else\}\}[\s\S]*?builder\.tabsList/.test(browserTemplateSource),
+  "browser should fall back to the per-tab view when the search box is empty",
+);
+assert.ok(browserTemplateSource.includes("combater-section-tag"), "each merged result should show which tab it came from");
+assert.ok(
+  /data-tab="\{\{id\}\}" class="\{\{#if active\}\}active\{\{\/if\}\}" \{\{#if searchQuery\}\}disabled\{\{\/if\}\}/.test(browserTemplateSource),
+  "tabs should be inert while a cross-tab search is active",
+);
+assert.ok(panelStyleSource.includes(".combater-tabs button:disabled"), "inert tabs should read as visually disabled");
+assert.ok(panelStyleSource.includes(".combater-section-tag"), "the per-result tab tag should have its own styling");
+assert.ok(browserTemplateSource.includes('{{#*inline "actionRows"}}'), "action row markup should be a shared partial, not duplicated between the merged and per-tab views");
 assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
