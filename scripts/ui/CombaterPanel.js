@@ -1412,16 +1412,19 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         row.addEventListener("dragover", (event) => {
           if (!draggingId) return;
           event.preventDefault();
+          event.stopPropagation();
           const rect = row.getBoundingClientRect();
           const before = event.clientY < rect.top + rect.height / 2;
           row.classList.toggle("drop-target-before", before);
           row.classList.toggle("drop-target-after", !before);
         });
-        row.addEventListener("dragleave", () => {
+        row.addEventListener("dragleave", (event) => {
+          event.stopPropagation();
           row.classList.remove("drop-target-before", "drop-target-after");
         });
         row.addEventListener("drop", (event) => {
           event.preventDefault();
+          event.stopPropagation();
           const before = row.classList.contains("drop-target-before");
           row.classList.remove("drop-target-before", "drop-target-after");
           if (draggingId) this._reorderDraftStep(draggingId, row.dataset.dragRow, before);

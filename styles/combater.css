@@ -369,7 +369,8 @@
 }
 
 .pf2e-combater .combater-header-step.is-dragging,
-.pf2e-combater .combater-step-group.is-dragging {
+.pf2e-combater .combater-step-group.is-dragging,
+.pf2e-combater .combater-uncounted-row.is-dragging {
   opacity: 0.4;
 }
 
