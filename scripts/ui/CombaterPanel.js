@@ -300,9 +300,24 @@ function autoFillAppliesProne(step) {
   return slug.includes("drop-prone") || step?.executable === "drop-prone";
 }
 
+// A plain strike's suggestedTarget is targetRef()'s sanitized {type, id, uuid, name} display ref --
+// it carries no position. Only composite readers (stride-strike, flank, ...) stamp a preferredTarget
+// with an embedded token/center. Resolve the live canvas token by id/uuid as a fallback so a Stride
+// borrowing an ordinary strike's target (via strideStepTowardPlannedTarget) can still find where to go.
 function autoFillTargetCenter(step) {
   const target = step?.preferredTarget ?? step?.suggestedTarget ?? step?.target;
-  return target?.token?.center ?? target?.center ?? null;
+  const embedded = target?.token?.center ?? target?.center ?? null;
+  if (embedded || !target) return embedded;
+  const ids = [target.id, target.uuid, target.actor?.id, target.actor?.uuid].filter(Boolean);
+  if (!ids.length) return null;
+  for (const token of globalThis.canvas?.tokens?.placeables ?? []) {
+    const document = token?.document ?? token;
+    const matches = ids.some((id) =>
+      token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id
+      || token?.actor?.id === id || document?.actor?.id === id);
+    if (matches) return token?.center ?? null;
+  }
+  return null;
 }
 
 // Auto-fill aims a generic Stride at the plan's attack target, so its purpose is to improve position
@@ -1349,6 +1364,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       button.addEventListener("click", () => this._removeDraftStep(button.dataset.removeDraftStep));
     }
 
+    for (const button of element.querySelectorAll("[data-duplicate-draft-step]")) {
+      button.addEventListener("click", () => this._duplicateDraftStep(button.dataset.duplicateDraftStep));
+    }
+
     for (const button of element.querySelectorAll("[data-cycle-map]")) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1786,6 +1805,21 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render({ force: true });
   }
 
+  async _duplicateDraftStep(instanceId) {
+    if (!this._canEditDraft()) return;
+    if (!this._context || !instanceId) return;
+    const draft = this._readActiveDraftPlan();
+    const listKey = draftListForInstance(draft, instanceId);
+    const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+    const index = list.findIndex((step) => step.instanceId === instanceId);
+    if (index < 0) return;
+    const clone = { ...list[index], instanceId: draftStepId() };
+    const nextList = [...list.slice(0, index + 1), clone, ...list.slice(index + 1)];
+    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: nextList }));
+    clearActionPreview();
+    await this.render({ force: true });
+  }
+
   async _moveDraftStep(instanceId, direction) {
     if (!this._canEditDraft()) return;
     if (!this._context || !instanceId) return;
@@ -2037,17 +2071,29 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         if (draftStep.requiresDestination && !draftStep.destination) {
           const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
           const movement = recommendedMovementForStep(movementContext, movementStep);
+          console.debug("[pf2e-combater] stride-destination-debug", {
+            stepName: step?.name,
+            hasTarget: Boolean(movementStep?.preferredTarget ?? movementStep?.suggestedTarget),
+            targetCenter: autoFillTargetCenter(movementStep),
+            moveOrigin,
+            movementDestination: movement?.destination ?? null,
+          });
           // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
           // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
           // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
           if (isBasicMove && movement?.destination
             && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
+            console.debug("[pf2e-combater] stride-destination-debug: dropped, does not improve position");
             return null;
           }
           // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
           // it unset so the GM places a legal one instead of an over-range auto-stride.
-          if (movement?.destination
-            && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
+          const overSpeed = isBasicMove && movement?.destination
+            && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile);
+          if (movement?.destination && overSpeed) {
+            console.debug("[pf2e-combater] stride-destination-debug: rejected as over-Speed");
+          }
+          if (movement?.destination && !overSpeed) {
             draftStep = {
               ...draftStep,
               destination: movement.destination,

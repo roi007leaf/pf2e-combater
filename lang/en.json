@@ -42,6 +42,8 @@
       "MoveUpAria": "Move {name} up",
       "MoveDown": "Move down",
       "MoveDownAria": "Move {name} down",
+      "DuplicateStep": "Duplicate this step",
+      "DuplicateStepAria": "Duplicate {name}",
       "RevertStep": "Revert this step",
       "SetDestination": "Set destination",
       "UseCurrentTarget": "Use current target",

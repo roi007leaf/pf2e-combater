@@ -673,6 +673,18 @@ assert.ok(
   "removing an action should sync updated player plan to GM",
 );
 assert.ok(
+  panelTemplateSource.includes("data-duplicate-draft-step"),
+  "each draft step should expose a duplicate control",
+);
+assert.ok(
+  /\{\{#unless groupId\}\}[\s\S]*?data-duplicate-draft-step="\{\{instanceId\}\}"/.test(panelTemplateSource),
+  "the duplicate control should be gated behind groupId so grouped composite atoms can't be duplicated individually",
+);
+assert.ok(
+  /_duplicateDraftStep\(instanceId\)[\s\S]*draftStepId\(\)[\s\S]*_writeActiveDraftPlan\(markManualDraft\(/.test(panelSource),
+  "duplicating a step should clone it with a fresh instanceId and persist through the same manual-draft write path as remove/move",
+);
+assert.ok(
   /_autoFillDraft\(\{ plan = null \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*_writeActiveDraftPlan\(/.test(panelSource),
   "auto-fill should sync updated player plan to GM",
 );

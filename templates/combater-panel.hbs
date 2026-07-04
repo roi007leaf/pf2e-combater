@@ -85,6 +85,13 @@
                   <i class="fa-solid fa-arrow-down"></i>
                 </button>
               {{/if}}
+              {{#unless groupId}}
+                {{#unless readonly}}
+                <button type="button" class="combater-chip-tool" data-duplicate-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.DuplicateStep"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DuplicateStepAria" name=name}}">
+                  <i class="fa-solid fa-clone"></i>
+                </button>
+                {{/unless}}
+              {{/unless}}
               {{#unless isExecutionDone}}
                 {{#if awaitingGm}}
                 <span class="combater-chip-tool combater-step-waiting" data-tooltip="{{awaitingGmLabel}}" aria-label="{{awaitingGmLabel}}">
