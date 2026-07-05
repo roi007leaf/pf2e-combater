@@ -4,25 +4,6 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.8]
-
-### Fixed
-
-- **Placing an emanation-shaped area (e.g. the bard's Courageous Anthem, Dirge of Doom) failed
-  outright** with an "Area template preview failed" error — "emanation" isn't a real Foundry region
-  shape, unlike burst/cone/line, so the game engine rejected it. It now resolves to a correctly-sized
-  circle, and on Foundry 14.353+ uses the engine's own token-attachment API so the region genuinely
-  follows the caster if they move, instead of staying behind as a snapshot.
-- **A self-centered emanation still forced you to press "Place template"** even though there was
-  never a real choice to make — it's always centered on the caster. Manually adding one from the
-  browser now pre-fills its placement the same way Auto-fill already did, the placement button no
-  longer shows for it at all, and execution auto-resolves the placement on its own even for older
-  drafts added before this fix.
-- **Not every emanation is centered on the caster, and this module had assumed they all were** —
-  Circle of Protection and Ymeri's Mark are both "Range touch" spells whose emanation radiates from
-  whoever you touch, not from the caster or a fixed point. These now correctly ask you to pick a
-  target instead, and anchor (and, on Foundry 14.353+, attach) the area to that target once chosen.
-
 ## [1.0.7]
 
 ### Fixed
@@ -37,6 +18,26 @@ All notable changes to PF2e Combater are documented here. The format is based on
   spending Frequency, opening an embedded crafting ability's formula picker, applying a self-effect.
   It now routes through the same system entry point real hotbar "Use" macros call, so abilities like
   Quick Alchemy actually open their crafting prompt instead of silently no-opping.
+- **Placing an emanation-shaped area (e.g. the bard's Courageous Anthem, Dirge of Doom) failed
+  outright** with an "Area template preview failed" error — "emanation" isn't a real Foundry region
+  shape, unlike burst/cone/line, so the game engine rejected it. It now resolves to a correctly-sized
+  circle, and on Foundry 14.353+ uses the engine's own token-attachment API so the region genuinely
+  follows the caster if they move, instead of staying behind as a snapshot.
+- **A self-centered emanation still forced you to press "Place template"** even though there was
+  never a real choice to make — it's always centered on the caster. Manually adding one from the
+  browser now pre-fills its placement the same way Auto-fill already did, the placement button no
+  longer shows for it at all, and execution auto-resolves the placement on its own even for older
+  drafts added before this fix.
+- **Not every emanation is centered on the caster, and this module had assumed they all were** —
+  Circle of Protection and Ymeri's Mark are both "Range touch" spells whose emanation radiates from
+  whoever you touch, not from the caster or a fixed point. These now correctly ask you to pick a
+  target instead, and anchor (and, on Foundry 14.353+, attach) the area to that target once chosen.
+- **Auto-fill could sequence Lingering Composition after the composition cantrip it's meant to
+  extend**, where it does nothing — its own rules text is forward-looking ("if your next action is
+  to cast a cantrip composition with a duration of 1 round..."). It's now sequenced immediately
+  before any cantrip composition (detected by the actual "composition" trait, so this covers Dirge
+  of Doom and Rallying Anthem too, not just the previously-curated Courageous/Vigorous Anthem), the
+  same way Quickened Casting is sequenced before the spell it discounts.
 
 ## [1.0.6]
 
