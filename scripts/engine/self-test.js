@@ -3751,6 +3751,33 @@ assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
 
+const orderedFavoritesModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-2", round: 1 }, combatant: { id: "c2" }, actor: { uuid: "Actor.a2" } },
+  candidates: [
+    { id: "alpha", slug: "alpha", name: "Alpha", actionCost: 1, score: 5, reason: "A." },
+    { id: "bravo", slug: "bravo", name: "Bravo", actionCost: 1, score: 50, reason: "B." },
+    { id: "charlie", slug: "charlie", name: "Charlie", actionCost: 1, score: 25, reason: "C." },
+  ],
+  // Deliberately not in score order (bravo has the highest score) -- favorites should follow the
+  // Set's insertion order, not tab.all's score-then-name sort.
+  favorites: new Set(["charlie", "alpha", "bravo"]),
+});
+assert.deepEqual(
+  orderedFavoritesModel.tabs.one.favorites.map((action) => action.key),
+  ["charlie", "alpha", "bravo"],
+  "favorites should render in the user's stored order, not score order",
+);
+assert.deepEqual(
+  orderedFavoritesModel.tabs.one.favorites.map((action) => action.favoriteEntryKey),
+  ["charlie", "alpha", "bravo"],
+  "each favorited action should expose which literal key is stored for it",
+);
+assert.equal(
+  orderedFavoritesModel.tabs.one.all.find((action) => action.key === "alpha").favoriteEntryKey,
+  "alpha",
+  "a non-favorited-looking lookup should still resolve favoriteEntryKey for a favorited action",
+);
+
 // --- Uncounted actions: builder model resolves the list (Task 3) ---
 {
   const ucModel = buildActionBuilderModel({
