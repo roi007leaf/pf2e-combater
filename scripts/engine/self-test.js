@@ -4,6 +4,7 @@ import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
 import { swapDraftSteps } from "./draft-reorder.js";
+import { swapFavorites } from "./favorite-reorder.js";
 import {
   ACTION_BUILDER_TABS,
   actionBuilderKey,
@@ -49,6 +50,7 @@ import { readConsumableSpellActions, readSpellActions } from "../readers/spell-r
 import {
   favoriteKey,
   readActionFavorites,
+  reorderActionFavorite,
   toggleActionFavorite,
 } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
@@ -445,6 +447,12 @@ assert.equal(
   swapGroupNoOpList,
   "dropping a step onto a member of its own group should be a no-op",
 );
+assert.deepEqual(swapFavorites(["a", "b", "c", "d"], "a", "c"), ["c", "b", "a", "d"], "swapping two favorites should trade their positions");
+assert.deepEqual(swapFavorites(["a", "b", "c", "d"], "d", "b"), ["a", "d", "c", "b"], "swap should work symmetrically regardless of which side is later in the list");
+const favoriteSwapNoOpList = ["a", "b"];
+assert.equal(swapFavorites(favoriteSwapNoOpList, "a", "a"), favoriteSwapNoOpList, "dropping a favorite onto itself should be a no-op");
+assert.equal(swapFavorites(favoriteSwapNoOpList, "a", "missing"), favoriteSwapNoOpList, "swapping with an unknown target should be a no-op");
+assert.equal(swapFavorites(favoriteSwapNoOpList, "missing", "a"), favoriteSwapNoOpList, "swapping an unknown key should be a no-op");
 assert.ok(panelSource.includes("_reorderDraftStep"), "panel should support drag-to-reorder");
 assert.ok(panelSource.includes("import { swapDraftSteps }"), "panel should reuse the pure swap helper for drag-and-drop");
 assert.ok(
@@ -558,6 +566,21 @@ assert.ok(
 assert.ok(panelStyleSource.includes(".combater-tabs button:disabled"), "inert tabs should read as visually disabled");
 assert.ok(panelStyleSource.includes(".combater-section-tag"), "the per-result tab tag should have its own styling");
 assert.ok(browserTemplateSource.includes('{{#*inline "actionRows"}}'), "action row markup should be a shared partial, not duplicated between the merged and per-tab views");
+assert.ok(panelSource.includes("canDragFavorite"), "favorites should expose whether they can be dragged");
+assert.ok(panelSource.includes("isFavoritesSection"), "the favorites section should be identifiable in the template");
+assert.ok(panelSource.includes("_reorderFavorite"), "panel should support drag-to-reorder for favorites");
+assert.ok(panelSource.includes("import { reorderActionFavorite }") || panelSource.includes("reorderActionFavorite,"),
+  "panel should reuse the persistence-layer reorder helper");
+assert.ok(browserTemplateSource.includes("data-drag-favorite"), "each draggable favorite should expose a drag handle");
+assert.ok(browserTemplateSource.includes("data-drag-list"), "the favorites container should mark itself as a drag/drop list");
+assert.ok(
+  /isFavoritesSection[\s\S]*?data-drag-list/.test(browserTemplateSource) || /data-drag-list[\s\S]*?isFavoritesSection/.test(browserTemplateSource),
+  "only the favorites section's container should be a drag/drop list",
+);
+assert.ok(browserSource.includes("panel._reorderFavorite"), "browser drag wiring should call into the panel");
+assert.ok(browserSource.includes("data-drag-favorite"), "browser should wire dragstart on the favorite drag handle");
+assert.ok(panelStyleSource.includes(".combater-action-row.is-dragging") || /\.combater-action-row\.is-dragging|combater-action-row,[\s\S]{0,80}is-dragging/.test(panelStyleSource),
+  "dragged favorite rows should get the shared dragging visual state");
 assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");
@@ -3366,6 +3389,19 @@ try {
   assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
   assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
   assert.deepEqual([...readActionFavorites(builderContext)], []);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), true);
+  assert.equal(toggleActionFavorite(builderContext, "shield"), true);
+  assert.equal(toggleActionFavorite(builderContext, "stride"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword", "shield", "stride"]);
+  assert.equal(reorderActionFavorite(builderContext, "strike-longsword", "stride"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["stride", "shield", "strike-longsword"]);
+  assert.equal(reorderActionFavorite(builderContext, "strike-longsword", "strike-longsword"), false);
+  assert.equal(reorderActionFavorite(builderContext, "missing", "stride"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["stride", "shield", "strike-longsword"]);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
+  assert.equal(toggleActionFavorite(builderContext, "shield"), false);
+  assert.equal(toggleActionFavorite(builderContext, "stride"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], []);
   // Drafts are keyed per combatant (no round) so a plan survives turn/round changes.
   assert.equal(draftPlanKey(builderContext), "user-1|combat-1|combatant-1");
   assert.equal(sharedDraftPlanKey(builderContext), "combat-1|combatant-1");
@@ -3729,6 +3765,33 @@ assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const orderedFavoritesModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-2", round: 1 }, combatant: { id: "c2" }, actor: { uuid: "Actor.a2" } },
+  candidates: [
+    { id: "alpha", slug: "alpha", name: "Alpha", actionCost: 1, score: 5, reason: "A." },
+    { id: "bravo", slug: "bravo", name: "Bravo", actionCost: 1, score: 50, reason: "B." },
+    { id: "charlie", slug: "charlie", name: "Charlie", actionCost: 1, score: 25, reason: "C." },
+  ],
+  // Deliberately not in score order (bravo has the highest score) -- favorites should follow the
+  // Set's insertion order, not tab.all's score-then-name sort.
+  favorites: new Set(["charlie", "alpha", "bravo"]),
+});
+assert.deepEqual(
+  orderedFavoritesModel.tabs.one.favorites.map((action) => action.key),
+  ["charlie", "alpha", "bravo"],
+  "favorites should render in the user's stored order, not score order",
+);
+assert.deepEqual(
+  orderedFavoritesModel.tabs.one.favorites.map((action) => action.favoriteEntryKey),
+  ["charlie", "alpha", "bravo"],
+  "each favorited action should expose which literal key is stored for it",
+);
+assert.equal(
+  orderedFavoritesModel.tabs.one.all.find((action) => action.key === "alpha").favoriteEntryKey,
+  "alpha",
+  "a non-favorited-looking lookup should still resolve favoriteEntryKey for a favorited action",
+);
 
 // --- Uncounted actions: builder model resolves the list (Task 3) ---
 {

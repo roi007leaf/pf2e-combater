@@ -1180,9 +1180,10 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
   return { disabled: false, disabledReason: "", overBudget: false };
 }
 
-function favoriteApplies(favorites, key, baseKey, baseKeyCounts) {
-  if (favorites.has(key)) return true;
-  return baseKeyCounts.get(baseKey) === 1 && favorites.has(baseKey);
+function favoriteEntryKey(favorites, key, baseKey, baseKeyCounts) {
+  if (favorites.has(key)) return key;
+  if (baseKeyCounts.get(baseKey) === 1 && favorites.has(baseKey)) return baseKey;
+  return null;
 }
 
 function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned }) {
@@ -1191,13 +1192,15 @@ function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normal
   const availabilityWarning = action?.available === false || action?.disabled === true ? actionUnavailableReason(action) : "";
   const disabled = disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned });
   const confidence = action?.confidence ?? "low";
+  const favoriteEntry = favoriteEntryKey(favorites, key, baseKey, baseKeyCounts);
   return {
     ...action,
     key,
     baseKey,
     tabId: tab.id,
     cost,
-    favorite: favoriteApplies(favorites, key, baseKey, baseKeyCounts),
+    favorite: favoriteEntry !== null,
+    favoriteEntryKey: favoriteEntry,
     ...disabled,
     availabilityWarning,
     targetLabel: targetLabel(action),
@@ -1415,6 +1418,9 @@ export function buildActionBuilderModel({
   const budget = actionBudget(context);
   const tabs = emptyTabs();
   const favoriteSet = favorites instanceof Set ? favorites : new Set(favorites ?? []);
+  // Sets iterate in insertion order, which is already the user's favorite-order (see
+  // action-favorites.js) -- capture it once here for sorting tab.favorites below.
+  const favoriteOrder = [...favoriteSet];
   // The dedicated sustained-spells section handles sustaining, so no "Sustain a Spell" action
   // is injected into the builder tabs.
   // Composites (Rush, Sudden Charge, ...) used to be hidden from Browse entirely because a manual
@@ -1510,7 +1516,9 @@ export function buildActionBuilderModel({
   }
 
   for (const tab of Object.values(tabs)) {
-    tab.favorites = tab.all.filter((action) => action.favorite);
+    tab.favorites = tab.all
+      .filter((action) => action.favorite)
+      .toSorted((left, right) => favoriteOrder.indexOf(left.favoriteEntryKey) - favoriteOrder.indexOf(right.favoriteEntryKey));
     tab.quickened = [];
     tab.recommended = tab.all.filter((action) => !action.disabled).slice(0, 3);
   }

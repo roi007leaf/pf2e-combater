@@ -392,13 +392,15 @@
 
 .pf2e-combater .combater-header-step.is-dragging,
 .pf2e-combater .combater-step-group.is-dragging,
-.pf2e-combater .combater-uncounted-row.is-dragging {
+.pf2e-combater .combater-uncounted-row.is-dragging,
+.pf2e-combater .combater-action-row.is-dragging {
   opacity: 0.4;
 }
 
 .pf2e-combater .combater-header-step.drop-target,
 .pf2e-combater .combater-step-group.drop-target,
-.pf2e-combater .combater-uncounted-row.drop-target {
+.pf2e-combater .combater-uncounted-row.drop-target,
+.pf2e-combater .combater-action-row.drop-target {
   outline: 2px dashed var(--combater-focus);
   outline-offset: -2px;
 }
