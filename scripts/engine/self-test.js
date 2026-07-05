@@ -1173,6 +1173,20 @@ assert.deepEqual(
   ["area"],
   "area actions without a planned marker should need an execution choice",
 );
+// A self-centered area (emanation) has only one possible location -- unlike the burst case above,
+// it must never block on a manual "area" choice, with or without a marker already on the step.
+const executionEmanationAction = {
+  name: "Courageous Anthem",
+  slug: "courageous-anthem",
+  executable: "open-item",
+  source: "spell-inferred",
+  targetingProfile: { area: true, type: "emanation", distance: 60, ally: true, self: true, selfCentered: true },
+};
+assert.deepEqual(
+  executionReadinessForStep({ instanceId: "no-marker-yet" }, executionEmanationAction).choices,
+  [],
+  "a self-centered area (emanation) should never need a manual area choice, even with no marker planned yet",
+);
 assert.equal(
   nextPendingExecutionStep({
     steps: [
@@ -2563,6 +2577,40 @@ try {
   assert.equal(areaResult.status, "done");
   assert.equal(regionCreates.at(-1).type, "Region");
 
+  // Regression: "emanation" is a PF2e rules concept, not a real Foundry region shape -- unlike
+  // cone/line/ring/rectangle, which the branches above pass through as literal shape types,
+  // Foundry's own schema rejected the literal string "emanation" outright ("[TokenShapeData]
+  // validation errors ... shape: may not be undefined"), so placing a self-centered ally-buff
+  // emanation (e.g. Courageous Anthem) or an enemy-effect one (e.g. Dirge of Doom) always failed.
+  // It must resolve to "circle" (like the plain-burst fallback above), with the radius grown by the
+  // token's own footprint so it measures from the edge of the caster's space, not its center point.
+  const previousCanvasDimensions = globalThis.canvas.dimensions;
+  const previousGridSize = globalThis.canvas.grid.size;
+  globalThis.canvas.dimensions = { ...previousCanvasDimensions, distancePixels: 1 };
+  globalThis.canvas.grid.size = 10;
+  try {
+    const emanationMarker = { shape: "emanation", center: { x: 100, y: 200 }, distance: 60, label: "Emanation 60 ft" };
+    const mediumEmanationRegion = createAreaRegionData({
+      context: { token: { width: 1, height: 1, center: { x: 100, y: 200 } } },
+      action: executionAreaAction,
+      marker: emanationMarker,
+    });
+    const largeEmanationRegion = createAreaRegionData({
+      context: { token: { width: 2, height: 2, center: { x: 100, y: 200 } } },
+      action: executionAreaAction,
+      marker: emanationMarker,
+    });
+    assert.equal(mediumEmanationRegion.shapes[0].type, "circle", "an emanation must resolve to a real Foundry region shape type, not the invalid literal \"emanation\"");
+    assert.equal(mediumEmanationRegion.shapes[0].base, undefined, "the region shape should not carry a stray unrecognized \"base\" field");
+    assert.equal(mediumEmanationRegion.shapes[0].x, 100);
+    assert.equal(mediumEmanationRegion.shapes[0].y, 200);
+    assert.equal(mediumEmanationRegion.shapes[0].radius, 65, "a Medium (1x1) creature's 60-foot emanation should reach 5px past the 60px baseline (half its 10px footprint)");
+    assert.equal(largeEmanationRegion.shapes[0].radius, 70, "a Large (2x2) creature's same emanation should reach further, measured from the edge of its bigger space");
+  } finally {
+    globalThis.canvas.dimensions = previousCanvasDimensions;
+    globalThis.canvas.grid.size = previousGridSize;
+  }
+
   // A lasting-duration area also creates a linked PF2e timer effect and stamps the region.
   assert.equal(effectCreates.at(-1)?.type, "Item", "a lasting-duration area should create one timer effect");
   assert.deepEqual(effectCreates.at(-1).document.system.duration, { value: 1, unit: "minutes", expiry: null, sustained: false });
@@ -2598,6 +2646,25 @@ try {
   );
   assert.deepEqual(instantAreaResult.patch.targetTokenIds, ["burst-victim"], "tokens in the burst are still targeted");
   globalThis.canvas.tokens.placeables = placeablesBeforeInstant;
+
+  // Regression: execution must auto-resolve a self-centered area's marker from context alone when
+  // none was ever chosen (e.g. a draft added before the panel started pre-filling this at add-time),
+  // instead of blocking on "needs-choice" for a placement that only ever has one possible answer.
+  const noMarkerEmanationResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "no-marker-emanation-step" },
+    action: {
+      name: "Courageous Anthem",
+      slug: "courageous-anthem",
+      executable: "open-item",
+      source: "spell-inferred",
+      activityProfile: { spell: true },
+      targetingProfile: { area: true, type: "emanation", distance: 60, ally: true, self: true, selfCentered: true },
+    },
+  });
+  assert.equal(noMarkerEmanationResult.status, "done", "a self-centered area with no marker chosen yet should auto-resolve and execute, not block on a manual choice");
+  assert.equal(noMarkerEmanationResult.patch.areaMarker?.shape, "emanation");
+  assert.deepEqual(noMarkerEmanationResult.patch.areaMarker?.center, executionContext.token.center, "the auto-resolved marker should be centered on the caster's own token");
 
   // Tokens whose center falls inside a placed template become targets.
   const burstMarker = { shape: "burst", center: { x: 100, y: 200 }, distance: 20 };

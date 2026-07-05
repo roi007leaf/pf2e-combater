@@ -161,6 +161,32 @@ function areaMarkerFromStep(step, choices = {}) {
   return choices.areaMarker ?? step?.areaMarker ?? null;
 }
 
+// An emanation is always centered on whoever cast it -- there is no other valid location to pick.
+function isSelfCenteredAreaAction(action) {
+  return String(action?.targetingProfile?.type ?? "").toLowerCase() === "emanation";
+}
+
+// If execution reaches this point with no marker chosen yet (e.g. a draft added before the panel
+// started pre-filling this at add-time), auto-resolve a self-centered area here from context alone
+// instead of blocking on a manual "Place template" choice that has nothing real to choose.
+// Burst/cone/line still return null and fall through to the manual-placement prompt -- those
+// genuinely need a player-picked point/aim.
+function autoSelfCenteredAreaMarker(context, action) {
+  if (!isSelfCenteredAreaAction(action)) return null;
+  const center = point(context?.token?.center);
+  if (!center) return null;
+  const distance = numeric(action?.targetingProfile?.distance ?? action?.targetingProfile?.radius, 5) || 5;
+  return {
+    shape: "emanation",
+    center,
+    distance,
+    width: numeric(action?.targetingProfile?.width, 5) || 5,
+    rotation: 0,
+    originTokenId: context?.token?.id ?? context?.token?.uuid ?? null,
+    label: `Emanation ${distance} ft`,
+  };
+}
+
 function destinationFromStep(step, choices = {}) {
   return point(choices.destination) ?? point(step?.destination);
 }
@@ -230,7 +256,7 @@ export function executionReadinessForStep(step, action = step?.action ?? step) {
   const choices = [];
   if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");
   if (requiresTargetForAction(resolvedAction) && !resolveTarget(step, resolvedAction)) choices.push("target");
-  if (requiresAreaMarkerForAction(resolvedAction) && !areaMarkerFromStep(step)) choices.push("area");
+  if (requiresAreaMarkerForAction(resolvedAction) && !areaMarkerFromStep(step) && !isSelfCenteredAreaAction(resolvedAction)) choices.push("area");
   const choiceLabels = choices.map((choice) => t(`Choice.${choice}`, choice));
   return {
     status: choices.length ? "needs-choice" : "ready",
@@ -1505,7 +1531,15 @@ export function createAreaRegionData({ context, action, marker }) {
   } else if (type === "cube" || type === "square") {
     shape = { ...baseShape, type: "rectangle", width: distancePx, height: distancePx, rotation };
   } else if (type === "emanation") {
-    shape = { ...baseShape, type: "emanation", radius: distancePx, base: tokenBase(context) };
+    // "emanation" is a PF2e rules concept (an aura measured from the edge of the caster's space),
+    // not a real Foundry region shape -- unlike cone/line/ring/rectangle above, which are actual
+    // shape primitives. Foundry's schema rejects an unrecognized shape type outright ("shape: may
+    // not be undefined"), so this must resolve to "circle" like the plain-burst fallback below,
+    // just with its radius grown by the token's own footprint to measure from its edge, not its
+    // center point.
+    const base = tokenBase(context);
+    const halfFootprint = Math.max(base.width, base.height) / 2;
+    shape = { ...baseShape, type: "circle", radius: distancePx + halfFootprint };
   } else if (type === "ring") {
     shape = {
       ...baseShape,
@@ -1946,7 +1980,7 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     patch.targetLabel = target.label;
   }
 
-  const areaMarker = areaMarkerFromStep(step, choices);
+  const areaMarker = areaMarkerFromStep(step, choices) ?? autoSelfCenteredAreaMarker(context, resolvedAction);
   let regionOp = null;
   if (requiresAreaMarkerForAction(resolvedAction)) {
     if (!areaMarker) return { status: "needs-choice", choices: ["area"], patch };
