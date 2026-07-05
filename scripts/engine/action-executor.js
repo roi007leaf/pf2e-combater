@@ -1369,6 +1369,16 @@ async function executeNativeItem({ actor, action, event }) {
     return consumableRevertOp ? { consumableRevertOp } : null;
   }
   if (typeof item?.cast === "function") return item.cast({ event, rank: action?.castRank ?? action?.rank });
+  // A feat/action item has no callable .use() of its own -- the sheet's "Use" button instead
+  // dispatches to the system's own createUseActionMessage, which (unlike a bare toMessage()) spends
+  // Frequency, runs an embedded crafting ability's formula picker (e.g. Quick Alchemy), and applies
+  // a selfEffect. That function isn't exported, but game.pf2e.rollItemMacro -- the public entry
+  // point real hotbar "Use" macros call -- wraps it for exactly these two item types. Falling
+  // straight to toMessage() below would silently skip all of that and just post the description.
+  if (item?.isOfType?.("action", "feat") && typeof globalThis.game?.pf2e?.rollItemMacro === "function" && item.uuid) {
+    const macroResult = await globalThis.game.pf2e.rollItemMacro(item.uuid, event);
+    if (macroResult) return macroResult;
+  }
   if (typeof item?.toMessage === "function") return item.toMessage({}, { rollMode: globalThis.game?.settings?.get?.("core", "rollMode") });
   if (typeof item?.sheet?.render === "function") {
     await item.sheet.render(true);

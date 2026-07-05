@@ -2384,6 +2384,61 @@ try {
   assert.equal(quickenedCastingRevert.status, "reverted");
   assert.equal(quickenedCastingFrequency, 3, "reverting should restore the spent Frequency use");
 
+  // A feat/action with no .use()/.consume()/.cast() (e.g. Quick Alchemy) must route through
+  // game.pf2e.rollItemMacro -- the same public entry point real hotbar "Use" macros call -- instead
+  // of falling straight to a bare toMessage(), which would silently skip the system's own
+  // createUseActionMessage logic (Frequency spend, an embedded crafting ability's formula picker,
+  // self-effect application). Regression coverage for a real bug where executing such a feat from
+  // the panel just posted its description instead of behaving like the sheet's own Use button.
+  const quickAlchemyUuid = "Actor.valeros.Item.quick-alchemy";
+  const rollItemMacroCalls = [];
+  globalThis.game.pf2e.rollItemMacro = async (uuid, event) => {
+    rollItemMacroCalls.push({ uuid, event });
+    return { id: "quick-alchemy-msg-1" };
+  };
+  const quickAlchemyItem = {
+    id: "quick-alchemy-item",
+    name: "Quick Alchemy",
+    uuid: quickAlchemyUuid,
+    isOfType: (...types) => types.includes("action") || types.includes("feat"),
+    toMessage: async () => { throw new Error("should route through rollItemMacro, not fall back to a bare toMessage"); },
+  };
+  createdEffects.set(quickAlchemyUuid, quickAlchemyItem);
+  const quickAlchemyEvent = { type: "click" };
+  const quickAlchemyResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "quick-alchemy-step" },
+    action: { name: "Quick Alchemy", slug: "quick-alchemy", executable: "open-item", item: quickAlchemyItem },
+    event: quickAlchemyEvent,
+  });
+  assert.equal(quickAlchemyResult.status, "done");
+  assert.equal(rollItemMacroCalls.length, 1, "a feat/action should route through game.pf2e.rollItemMacro instead of a bare toMessage");
+  assert.equal(rollItemMacroCalls[0].uuid, quickAlchemyUuid);
+  assert.equal(rollItemMacroCalls[0].event, quickAlchemyEvent);
+  delete globalThis.game.pf2e.rollItemMacro;
+
+  // A consumable (has its own .use()) must keep using that path -- rollItemMacro is only for
+  // feat/action items with no native use/consume/cast of their own.
+  const rollItemMacroGuardUuid = "Actor.valeros.Item.rollitemmacro-guard-potion";
+  const rollItemMacroGuardUseCalls = [];
+  globalThis.game.pf2e.rollItemMacro = async () => { throw new Error("a consumable with its own .use() must not be routed through rollItemMacro"); };
+  const rollItemMacroGuardItem = {
+    id: "rollitemmacro-guard-potion-item",
+    name: "Rollitemmacro Guard Potion",
+    uuid: rollItemMacroGuardUuid,
+    isOfType: (...types) => types.includes("consumable"),
+    use: async (options) => { rollItemMacroGuardUseCalls.push(options); return { id: "rollitemmacro-guard-potion-msg-1" }; },
+  };
+  createdEffects.set(rollItemMacroGuardUuid, rollItemMacroGuardItem);
+  const rollItemMacroGuardResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "rollitemmacro-guard-potion-step" },
+    action: { name: "Rollitemmacro Guard Potion", slug: "rollitemmacro-guard-potion", executable: "open-item", item: rollItemMacroGuardItem },
+  });
+  assert.equal(rollItemMacroGuardResult.status, "done");
+  assert.equal(rollItemMacroGuardUseCalls.length, 1, "a consumable should still execute through its own .use(), not rollItemMacro");
+  delete globalThis.game.pf2e.rollItemMacro;
+
   // Reloading a firearm/crossbow should actually attach a round to the weapon (PF2e's weapon.attach),
   // not just post a reminder -- confirmed against the real PF2e source (getAttackAmmo/attach/detach).
   let pistolRoundsQuantity = 5;
