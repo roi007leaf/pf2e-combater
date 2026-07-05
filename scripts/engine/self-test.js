@@ -45,7 +45,7 @@ import { classifySystemAction } from "./action-classifier.js";
 import { classifySpell } from "./spell-classifier.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../readers/action-reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../readers/actor-profile.js";
-import { readSpellActions } from "../readers/spell-reader.js";
+import { readConsumableSpellActions, readSpellActions } from "../readers/spell-reader.js";
 import {
   favoriteKey,
   readActionFavorites,
@@ -7452,6 +7452,68 @@ try {
     "waypoint picker range budget should include PF2e difficult terrain behavior cost",
   );
 
+  // A plain (non-waypoint) click has no drawn path of its own -- it means "go here", which the
+  // reachable-area overlay already answers via a real obstacle/terrain-avoiding BFS (movement-preview.js).
+  // The straight line from the actor to this destination crosses two difficult-terrain squares (cost
+  // 10 each = 20, over the 20ft budget once you add the third, unobstructed square), but a route that
+  // detours around them (diagonal, then straight, then diagonal back) costs exactly 20 and is well
+  // within reach -- exactly the kind of square the overlay highlights as reachable. The click must not
+  // be rejected here for assuming the (more expensive) direct line is the only path.
+  let detourPointerHandler = null;
+  const detourWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => detourWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: {
+      grid: { distance: 5 },
+      regions: [{
+        shapes: [{ type: "rectangle", x: 10, y: 10, width: 20, height: 10 }],
+        behaviors: [{
+          type: "modifyMovementCost",
+          system: { difficulties: { walk: 2 } },
+        }],
+      }],
+    },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 15 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 20 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.equal(event, "pointerdown");
+        detourPointerHandler = handler;
+      },
+      off: () => {
+        detourPointerHandler = null;
+      },
+    },
+  };
+  const detourChosen = [];
+  const detourPicker = chooseDestination({
+    context: { token: { id: "actor-token" }, actor: { profile: { speed: 20 } } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onPreview: () => { },
+    onChoose: (destination, metadata) => detourChosen.push({ destination, metadata }),
+  });
+  assert.ok(detourPicker);
+  detourPointerHandler({
+    button: 0,
+    global: { x: 35, y: 15 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.equal(detourWarnings.length, 0,
+    "a square reachable via a terrain-avoiding detour must not warn 'beyond movement range' just because the direct line costs more");
+  assert.equal(detourChosen.length, 1,
+    "the click must finalize the destination once the BFS confirms a route within budget");
+  assert.deepEqual(detourChosen[0]?.destination, { x: 35, y: 15 });
+  assert.equal(detourChosen[0]?.metadata.movementPlan.cost, 20);
+
   let doubleClickPointerHandler = null;
   let doubleClickPointerRemoved = false;
   globalThis.canvas.tokens.placeables[0].actor.system.movement.speeds.land.value = 15;
@@ -8218,6 +8280,38 @@ try {
   assert.notDeepEqual(tokenCollisionStridePreview.recommendedCenter, { x: 25, y: 0 });
 } finally {
   globalThis.canvas = previousTokenCollisionPreviewCanvas;
+}
+
+// Same root cause as the CHANGELOG's "balloons into a scene-covering rectangle for non-Medium
+// creatures" and "inflated footprint... occupied by any other creature, however far away" fixes:
+// a live Token placeable's own .width can be a pixel-space render size rather than the document's
+// grid-unit size. tokenFootprint() must prefer document.width/height so a Large-or-bigger actor's
+// own footprint (used to check destination-occupancy) doesn't balloon and read every square near a
+// distant, unrelated creature as blocked.
+const previousLargeTokenPreviewCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    tokens: {
+      placeables: [{
+        id: "large-token",
+        // Pixel-space render width (e.g. a 100px grid cell) -- NOT the 2-cell grid-unit footprint.
+        width: 200,
+        height: 200,
+        document: { width: 2, height: 2 },
+      }],
+    },
+  };
+  const largeTokenStridePreview = movementPreviewForStep({
+    token: { id: "large-token", center: { x: 0, y: 0 } },
+    actor: { profile: { speed: 25 } },
+    battlefield: {
+      enemies: [{ id: "distant-blocker", name: "Distant Blocker", token: { center: { x: 50, y: 0 }, width: 1, height: 1 } }],
+    },
+  }, { slug: "stride" }, { gridSize: 5 });
+  assert.ok(largeTokenStridePreview.reachableCenters.some((center) => center.x === 5 && center.y === 0),
+    "a square right next to the origin must stay reachable -- resolving the acting token's footprint from the live placeable's pixel-space .width (200) instead of document.width (2) must not read a distant, unrelated creature as blocking every nearby square");
+} finally {
+  globalThis.canvas = previousLargeTokenPreviewCanvas;
 }
 
 const stepPreview = movementPreviewForStep({
@@ -15659,6 +15753,83 @@ const uuidMatchedSpell = multiEntrySpells.find((spell) => spell.id === "spell-uu
 assert.equal(uuidMatchedSpell.spellcastingEntryId, "occult-entry");
 assert.equal(uuidMatchedSpell.available, true);
 assert.equal(uuidMatchedSpell.role, "stealth-defense");
+
+// Wands/scrolls/spell gems embed a stored spell (system.spell) rather than living in a
+// spellcasting entry's slots; readConsumableSpellActions reads them via the item's own
+// embeddedSpell, using actor.spellcasting (not itemTypes.spellcastingEntry) to find a caster.
+function embeddedFireball() {
+  return {
+    id: "embedded-fireball",
+    name: "Fireball",
+    slug: "fireball",
+    system: {
+      slug: "fireball",
+      time: { value: "2" },
+      traits: { value: ["fire"] },
+      level: { value: 3 },
+      range: { value: "500 feet" },
+      area: { type: "burst", value: 20 },
+      defense: { save: { statistic: "reflex", basic: true } },
+      damage: { "0": { formula: "6d6", type: "fire" } },
+    },
+  };
+}
+
+function wandOfFireball(uses = { value: 1, max: 1 }) {
+  return {
+    id: "wand-of-fireball",
+    name: "Wand of Fireball",
+    type: "consumable",
+    system: { slug: "wand-of-fireball", category: "wand", quantity: 1, uses, spell: {} },
+    embeddedSpell: embeddedFireball(),
+  };
+}
+
+const arcaneCaster = {
+  id: "arcane-entry",
+  name: "Arcane Spontaneous",
+  tradition: "arcane",
+  statistic: { dc: { value: 22 } },
+  canCast: (spell) => spell?.slug === "fireball",
+};
+
+const wandAvailableContext = {
+  actor: { document: { itemTypes: { consumable: [wandOfFireball()] }, spellcasting: [arcaneCaster] } },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
+};
+const wandFireball = readConsumableSpellActions(wandAvailableContext).find((spell) => spell.slug === "fireball");
+assert.equal(wandFireball.available, true);
+assert.equal(wandFireball.source, "spell-curated");
+assert.equal(wandFireball.role, "area-damage");
+assert.equal(wandFireball.spellDc, 22);
+assert.equal(wandFireball.spellcastingEntryId, null, "execution must route through item.consume(), not entry.cast()");
+assert.equal(wandFireball.item, wandAvailableContext.actor.document.itemTypes.consumable[0]);
+
+const wandNoCasterContext = {
+  actor: { document: { itemTypes: { consumable: [wandOfFireball()] }, spellcasting: [] } },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
+};
+const wandNoCaster = readConsumableSpellActions(wandNoCasterContext).find((spell) => spell.slug === "fireball");
+assert.equal(wandNoCaster.available, false);
+assert.equal(wandNoCaster.unavailableReason, "No spellcasting entry can cast this item's spell.");
+
+const wandDepletedContext = {
+  actor: {
+    document: {
+      itemTypes: { consumable: [wandOfFireball({ value: 0, max: 1 })] },
+      spellcasting: [arcaneCaster],
+    },
+  },
+  targets: [{ id: "target-1", name: "Target", distance: 10 }],
+};
+const wandDepleted = readConsumableSpellActions(wandDepletedContext).find((spell) => spell.slug === "fireball");
+assert.equal(wandDepleted.available, false);
+assert.equal(wandDepleted.unavailableReason, "No uses remaining.");
+
+// The wand's rules text also has an "Activate" block, which readActorItemActions would otherwise
+// classify as a second, undifferentiated action for the same item.
+const wandGenericActions = readActionSources(wandAvailableContext).filter((action) => action.item === wandAvailableContext.actor.document.itemTypes.consumable[0]);
+assert.equal(wandGenericActions.length, 0, "embedded-spell consumables must not also surface via the generic item-action path");
 
 // Divine Font auto-heightens Heal/Harm into the entry's highest-rank slot, so a base-rank-1 Heal's
 // prepared copies live in slot2 (not the empty rank-1 slot). The resource chip must count the slot

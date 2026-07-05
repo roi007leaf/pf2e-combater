@@ -1,4 +1,5 @@
 import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+import { movementRouteToPoint } from "./movement-preview.js";
 import { t } from "../i18n.js";
 
 let activeCleanup = null;
@@ -669,9 +670,25 @@ export function chooseDestination({
       // Even outside waypoint mode, a single click already picks a real destination -- compute its
       // plan too (as a one-point path) so the distance/cost readout shows without requiring the
       // player to lay down an actual waypoint first.
-      const candidateMovementPlan = enableWaypoints
-        ? planForWaypoints(candidateWaypoints)
-        : planForWaypoints([destination]);
+      // Before falling back to a naive straight-line cost, ask the same obstacle/terrain-avoiding
+      // BFS that drives the reachable-area overlay whether it already found a (possibly bent, cheaper)
+      // route here -- otherwise a square the overlay highlights as reachable via a detour around
+      // difficult terrain gets rejected here as "beyond movement range" for assuming a direct line.
+      // Only applies to a still-straight, no-bend-yet candidate: once the player has manually laid a
+      // waypoint and is placing the next one, that segment is a real drawn line and must cost as one.
+      const routedCandidate = !vertical && candidateWaypoints.length <= 1
+        ? movementRouteToPoint(context, action, destination)
+        : null;
+      const candidateMovementPlan = routedCandidate
+        ? {
+          native: false,
+          waypoints: routedCandidate.waypoints?.length ? routedCandidate.waypoints : [destination],
+          cost: routedCandidate.cost,
+          maxCost: actorSpeed(context, token, action),
+        }
+        : enableWaypoints
+          ? planForWaypoints(candidateWaypoints)
+          : planForWaypoints([destination]);
       const metadata = {
         ...(candidateMovementPlan ? { movementPlan: candidateMovementPlan } : {}),
         ...(vertical ? { elevation: pendingElevation } : {}),

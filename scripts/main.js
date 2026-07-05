@@ -1,5 +1,5 @@
 import { MODULE_ID } from "./constants.js";
-import { registerSettings, setting, SETTINGS } from "./settings.js";
+import { playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
 import { clearMovementCollisionCache } from "./readers/action-reader.js";
 import { promptRetchDc, promptRetchResult } from "./rules/retch-decision.js";
 import { setSocket } from "./socket.js";
@@ -48,6 +48,14 @@ function tokenIdentityValues(value) {
   ]
     .filter((entry) => entry !== null && entry !== undefined)
     .map((entry) => String(entry));
+}
+
+// Hazards and loot aren't plannable actors — selecting one shouldn't switch the panel to them.
+const NON_PLANNABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
+
+function isNonPlannableActorToken(token) {
+  const actorType = String(token?.actor?.type ?? token?.document?.actor?.type ?? "").toLowerCase();
+  return NON_PLANNABLE_ACTOR_TYPES.has(actorType);
 }
 
 function tokenMatchesCombatant(token, combatant) {
@@ -136,7 +144,7 @@ function panelCombatantForTokenTool() {
 
 function selectedTokenCombatant() {
   const selectedToken = canvas?.tokens?.controlled?.[0] ?? null;
-  if (!selectedToken) return null;
+  if (!selectedToken || isNonPlannableActorToken(selectedToken)) return null;
   return collectionValues(game.combat?.combatants)
     .find((combatant) => tokenMatchesCombatant(selectedToken, combatant))
     ?? null;
@@ -258,6 +266,7 @@ function addTool(toolsContainer, tool) {
 }
 
 Hooks.on("getSceneControlButtons", (controls) => {
+  if (!playerAccessAllowed()) return;
   const groups = Array.isArray(controls) ? controls : Object.values(controls ?? {});
   const tokenControl = groups.find((control) => control?.name === "tokens" || control?.name === "token");
   if (!tokenControl?.tools) return;
@@ -305,6 +314,14 @@ Hooks.once("socketlib.ready", () => {
   socket.register("promptRetchResult", promptRetchResult);
   socket.register("receiveSharedDraft", receiveSharedDraft);
   setSocket(socket);
+});
+
+// The GM can lock players out of the panel mid-session; each player's own client reacts by
+// closing whatever's open and dropping the toolbar toggle immediately, without a reload.
+Hooks.on("pf2e-combater.playerAccessChanged", () => {
+  refreshSceneControls();
+  if (playerAccessAllowed() || !activePanel) return;
+  closeActivePanel().catch((error) => console.warn(`${MODULE_ID} | Access-change close failed`, error));
 });
 
 Hooks.once("ready", async () => {
@@ -466,6 +483,7 @@ Hooks.on("targetToken", (user) => {
 // only control tokens they own, so this never exposes a plan they aren't allowed to see.)
 Hooks.on("controlToken", (token, controlled) => {
   if (!controlled || !activePanel) return;
+  if (isNonPlannableActorToken(token)) return;
   // Grabbing a token to drag selects it, firing this hook. Rebuilding the panel for the token it
   // already shows is the hitch felt at drag-start — skip it. Only a genuine switch to a different
   // combatant's token needs the rebuild.

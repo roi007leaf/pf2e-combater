@@ -30,12 +30,28 @@
   background: #121418;
 }
 
+.pf2e-combater.combater-panel .window-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+}
+
 .pf2e-combater .combater-shell {
   overflow: hidden;
   border: 1px solid var(--combater-line);
   border-radius: 8px;
   background: var(--combater-bg);
   box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+}
+
+.pf2e-combater.combater-panel .combater-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pf2e-combater.combater-panel .combater-compact {
+  flex-shrink: 0;
 }
 
 /* Plan column: the panel below the header is just the plan (draft + sustained +
@@ -46,6 +62,12 @@
   gap: 8px;
   padding: 0 10px 10px;
   min-width: 0;
+}
+
+.pf2e-combater.combater-panel .combater-plan {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* The plan/uncounted sections were full-width bands when stacked with the

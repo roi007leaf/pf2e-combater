@@ -116,6 +116,140 @@ export function readSpellActions(context) {
   });
 }
 
+// Wands, scrolls, and spell gems embed a single stored spell (system.spell) rather than living in
+// a spellcasting entry's slots. Foundry's own ConsumablePF2e#embeddedSpell getter builds a real
+// spell document from that data; casting it goes through actor.spellcasting (whichever entry's
+// tradition/rank can cast it), never a slot on that entry. readSpellActions can't see these because
+// it only walks actor.itemTypes.spell.
+const CONSUMABLE_SPELL_CATEGORIES = new Set(["scroll", "wand", "spell-gem"]);
+
+function consumableSpellItems(actor) {
+  return collectionValues(actor?.itemTypes?.consumable).filter((item) =>
+    CONSUMABLE_SPELL_CATEGORIES.has(String(systemValue(item?.system?.category) ?? "").toLowerCase())
+    && Boolean(item?.system?.spell),
+  );
+}
+
+function consumableEmbeddedSpell(item) {
+  try {
+    return item?.embeddedSpell ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function consumableUses(item) {
+  const uses = item?.uses ?? item?.system?.uses;
+  return { value: numericCount(uses?.value) ?? 0, max: numericCount(uses?.max) };
+}
+
+// Mirrors the system's own Spellcasting#canCastConsumable, but keeps the winning entry (highest DC)
+// instead of just a boolean, so the candidate can report a real spellcasting entry's DC/tradition.
+function bestConsumableCastingEntry(actor, spell, item) {
+  let best = null;
+  for (const entry of collectionValues(actor?.spellcasting)) {
+    if (!entry?.statistic || typeof entry.canCast !== "function") continue;
+    if (!entry.canCast(spell, { origin: item })) continue;
+    const dc = Number(entry.statistic?.dc?.value);
+    const bestDc = Number(best?.statistic?.dc?.value ?? -Infinity);
+    if (!best || (Number.isFinite(dc) && dc > bestDc)) best = entry;
+  }
+  return best;
+}
+
+function readConsumableSpellAvailability(item, entry) {
+  const quantity = numericCount(item?.system?.quantity);
+  if (quantity !== null && quantity <= 0) {
+    return { available: false, reason: t("Avail.ConsumableZero", "Consumable quantity is 0.") };
+  }
+  const uses = consumableUses(item);
+  if (uses.max !== null && uses.value <= 0) {
+    return { available: false, reason: t("Avail.NoUses", "No uses remaining.") };
+  }
+  if (!entry) {
+    return { available: false, reason: t("Avail.NoMatchingSpellcasting", "No spellcasting entry can cast this item's spell.") };
+  }
+  return { available: true, reason: "" };
+}
+
+// Wand/scroll/spell-gem actions execute via the physical item's own .consume(), which internally
+// picks the same best-DC entry and casts through it -- so spellcastingEntryId/Uuid stay null here
+// (a non-null id would route execution through entry.cast() instead, skipping the item's own
+// charge/quantity decrement).
+export function readConsumableSpellActions(context) {
+  const actor = contextActor(context);
+  return consumableSpellItems(actor).flatMap((item) => {
+    const embeddedSpell = consumableEmbeddedSpell(item);
+    if (!embeddedSpell) return [];
+
+    const slug = slugify(embeddedSpell.slug ?? embeddedSpell.system?.slug ?? embeddedSpell.name);
+    const curated = findCuratedSpell(slug);
+    const rank = spellRank(embeddedSpell);
+    const inferred = classifySpell(embeddedSpell);
+    const tactic = mergeSpellTactic(curated, inferred);
+    if (!curated && tactic?.role === "weapon-strike") {
+      const averageDamage = bestReadyStrikeAverageDamage(actor, context);
+      if (averageDamage !== null) tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
+    }
+    const maxRange = Number(tactic?.targetingProfile?.maxRange ?? tactic?.targetingProfile?.range);
+    const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
+    const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
+    const parsedTime = readSpellActionCost(embeddedSpell);
+    const actionCosts = curated?.actionCost !== undefined
+      ? [curated.actionCost]
+      : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
+    const bestEntry = bestConsumableCastingEntry(actor, embeddedSpell, item);
+    const availability = readConsumableSpellAvailability(item, bestEntry);
+    const variantGroup = `consumable-spell-${item.id ?? item._id ?? slug}`;
+
+    return actionCosts.map((actionCost) => ({
+      ...(tactic ?? {}),
+      id: actionCosts.length > 1 ? `${variantGroup}-${actionCost}a` : variantGroup,
+      name: curated?.name ?? embeddedSpell.name,
+      slug,
+      actionCost,
+      actualActionCost: parsedTime.actionCost,
+      actionCostOptions: actionCosts,
+      actionGlyph: embeddedSpell.actionGlyph ?? null,
+      source,
+      confidence: tactic?.confidence ?? "low",
+      executable: tactic?.executable ?? "open-item",
+      detected: true,
+      available: parsedTime.combat && actionCost !== Infinity && availability.available && enemyInRange,
+      unavailableReason: !availability.available
+        ? availability.reason
+        : (enemyInRange ? "" : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange })),
+      item,
+      effectiveItem: embeddedSpell,
+      curated,
+      variantGroup,
+      variableActionCost: actionCosts.length > 1,
+      role: tactic?.role ?? "unknown",
+      activityProfile: tactic?.activityProfile ?? null,
+      targetingProfile: tactic?.targetingProfile ?? null,
+      saveProfile: tactic?.saveProfile ?? null,
+      damageProfile: tactic?.damageProfile ?? null,
+      setupFor: tactic?.setupFor ?? [],
+      reasons: tactic?.reasons ?? [],
+      rank,
+      castRank: rank,
+      heightened: false,
+      isCantrip: isCantrip(embeddedSpell),
+      isFocusSpell: false,
+      spellDc: numericValue(bestEntry?.statistic?.dc?.value),
+      spellcastingEntryId: null,
+      spellcastingEntryUuid: null,
+      spellcastingEntryType: null,
+      spellcastingEntryLabel: bestEntry ? readSpellcastingEntryLabel(bestEntry) : "",
+      spellcastingEntryTradition: bestEntry ? readSpellcastingEntryTradition(bestEntry) : "",
+      spellResource: { type: "item", label: countLabel(t("SpellRes.Uses", "Uses"), consumableUses(item).value, consumableUses(item).max), tooltip: "" },
+      location: null,
+      time: systemValue(embeddedSpell.system?.time) ?? "2",
+      consumableItem: item,
+    }));
+  });
+}
+
 function compactSaveProfile(tactic) {
   const stat = String(tactic?.save ?? tactic?.saveProfile?.stat ?? "").toLowerCase();
   if (!["fortitude", "reflex", "will"].includes(stat)) return null;

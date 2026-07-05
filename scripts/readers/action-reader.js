@@ -15,6 +15,16 @@ import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
 import { pf2eActionName, pf2eCondition, t } from "../i18n.js";
 
 const ACTION_ITEM_TYPES = new Set(["action", "feat", "feature", "consumable"]);
+// Wands, scrolls, and spell gems with a stored spell (system.spell) are read as proper spell
+// actions by readConsumableSpellActions (spell-reader.js), which gets their real damage/targeting
+// from the same curated catalog as known spells. Left in here too, they'd also match the generic
+// Activate-block text parsing below and show up a second time as a plain, undifferentiated item.
+const EMBEDDED_SPELL_CONSUMABLE_CATEGORIES = new Set(["scroll", "wand", "spell-gem"]);
+function isEmbeddedSpellConsumable(item) {
+  if (item?.type !== "consumable" || !item.system?.spell) return false;
+  const category = String(item.system?.category ?? "").toLowerCase();
+  return EMBEDDED_SPELL_CONSUMABLE_CATEGORIES.has(category);
+}
 const ACTIVATABLE_ITEM_TYPES = new Set([
   ...ACTION_ITEM_TYPES,
   "ammo",
@@ -2299,7 +2309,7 @@ function readActorItemActions(actor, context) {
     ...collectionValues(actor?.itemTypes?.action),
     ...collectionValues(actor?.itemTypes?.feat),
     ...collectionValues(actor?.itemTypes?.feature),
-    ...collectionValues(actor?.itemTypes?.consumable),
+    ...collectionValues(actor?.itemTypes?.consumable).filter((item) => !isEmbeddedSpellConsumable(item)),
     ...collectionValues(actor?.itemTypes?.ammo),
     ...collectionValues(actor?.itemTypes?.armor),
     ...collectionValues(actor?.itemTypes?.backpack),
@@ -2310,6 +2320,7 @@ function readActorItemActions(actor, context) {
   const typedIds = new Set(typedItems.map((item) => item?.id).filter(Boolean));
   const fallbackItems = collectionValues(actor?.items)
     .filter((item) => !typedIds.has(item?.id))
+    .filter((item) => !isEmbeddedSpellConsumable(item))
     .filter((item) => ACTIVATABLE_ITEM_TYPES.has(item?.type));
 
   return [...typedItems, ...fallbackItems].flatMap((item) => {

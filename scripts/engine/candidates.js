@@ -1,5 +1,5 @@
 import { readActionSources } from "../readers/action-reader.js";
-import { readSpellActions } from "../readers/spell-reader.js";
+import { readConsumableSpellActions, readSpellActions } from "../readers/spell-reader.js";
 import { npcTacticRejection } from "../rules/npc-tactics.js";
 import { SETTINGS, setting } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
@@ -33,6 +33,12 @@ function itemKey(item) {
 function dedupeKey(action) {
   if (action.source === "strike") {
     return `strike:${itemKey(action.item) ?? action.id ?? action.name}`;
+  }
+  // Keyed by the physical wand/scroll, not slug+cost -- otherwise a carried scroll of a spell the
+  // actor also knows would collide with (and lose to) the known-spell candidate, hiding the backup
+  // option for when the known spell's own slots/focus points run out.
+  if (action.consumableItem) {
+    return `consumable-spell:${itemKey(action.consumableItem) ?? action.id ?? action.name}:${action.actionCost}`;
   }
   return `${action.slug ?? action.name}:${action.actionCost}`;
 }
@@ -68,7 +74,7 @@ function dedupeDetected(detected, includeUnknown) {
 
 export function buildCandidates(context) {
   const spells = readSetting(SETTINGS.enableSpellRecommendations, true)
-    ? readSpellActions(context)
+    ? [...readSpellActions(context), ...readConsumableSpellActions(context)]
     : [];
   const actions = readActionSources(context, spells);
   const includeUnknown = readSetting(SETTINGS.includeUnknownCustomActions, false);

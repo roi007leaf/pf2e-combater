@@ -35,9 +35,14 @@ function directPoint(value) {
 function tokenFootprint(value) {
   const token = value?.token ?? value ?? {};
   const document = token.document ?? token;
+  // A real canvas Token placeable's own .width/.height can report its RENDERED PIXEL size (e.g.
+  // scaled by a token ring or art-scale setting) rather than the grid-unit footprint PF2e
+  // positioning math expects. TokenDocument#width/#height are always in grid units, so prefer
+  // those -- same fix already applied to this bug's other occurrences (action-preview.js's
+  // tokenPlacement, action-reader.js's tokenFootprintPixels, action-executor.js's tokenFootprint).
   return {
-    widthCells: Math.max(1, numeric(token.width ?? document.width, 1) || 1),
-    heightCells: Math.max(1, numeric(token.height ?? document.height, 1) || 1),
+    widthCells: Math.max(1, numeric(document.width ?? token.width, 1) || 1),
+    heightCells: Math.max(1, numeric(document.height ?? token.height, 1) || 1),
   };
 }
 
@@ -1449,6 +1454,34 @@ export function routeCornerWaypoints(origin, route, scale = 1) {
     }
   }
   return corners;
+}
+
+// Real routed cost/path (canvas pixel coords) to a SPECIFIC candidate destination, using the same
+// obstacle- and terrain-avoiding BFS that drives the reachable-area overlay -- so a square the
+// overlay highlights as reachable is never rejected by a caller's own naive straight-line cost
+// estimate, which ignores a cheaper detour (e.g. around difficult terrain) the BFS actually found.
+// Returns null when the point isn't one of the BFS's own reachable landing squares (genuinely out
+// of range, blocked, or occupied) -- callers should fall back to their own validation in that case.
+export function movementRouteToPoint(context, step, destinationPoint) {
+  if (!destinationPoint) return null;
+  // Force the base "reachable area" branch regardless of any destination already on the step --
+  // this answers "can the BFS route to THIS point", not "validate the step's existing destination".
+  const queryStep = { ...(step ?? {}), destination: undefined, movementPlan: undefined };
+  const { preview, scale } = computeMovementPreview(context, queryStep);
+  if (!preview?.enabled || !preview.origin || !Array.isArray(preview.reachableCenters)) return null;
+
+  const sceneDestination = { x: destinationPoint.x / scale, y: destinationPoint.y / scale };
+  const epsilon = 0.01;
+  const match = preview.reachableCenters.find((center) =>
+    Math.abs(center.x - sceneDestination.x) < epsilon && Math.abs(center.y - sceneDestination.y) < epsilon);
+  if (!match) return null;
+
+  const waypoints = routeCornerWaypoints(preview.origin, match.route, scale);
+  return {
+    cost: numeric(match.cost, 0),
+    destination: { x: match.x * scale, y: match.y * scale },
+    ...(waypoints.length ? { waypoints } : {}),
+  };
 }
 
 // Recommended landing (and corner waypoints, when the route bends) for a movement step, in

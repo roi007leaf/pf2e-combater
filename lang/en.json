@@ -32,6 +32,10 @@
       "ShowDebugTab": {
         "Name": "Show GM debug tab",
         "Hint": "Allow GMs to inspect scoring inputs, rejected actions, and detected actor actions."
+      },
+      "DisableForPlayers": {
+        "Name": "Disable PF2e Combater for players",
+        "Hint": "Hide the panel and toolbar toggle from players entirely. The GM keeps full access."
       }
     },
     "Panel": {
@@ -277,11 +281,6 @@
     },
     "Dialog": {
       "Cancel": "Cancel",
-      "Replace": "Replace",
-      "ReplaceDraft": {
-        "Title": "Replace draft",
-        "Message": "Replace current draft with Auto-fill plan?"
-      },
       "ChooseTemplate": {
         "Title": "Choose template",
         "Content": "This action has more than one area template. Choose which to place:"
@@ -507,7 +506,8 @@
       "NoSpellSlots": "No spell slots remaining.",
       "InnateNoUses": "Innate spell has no uses remaining.",
       "ItemSpellNoUses": "Item spell has no uses remaining.",
-      "NoFocusPoints": "No focus points remaining."
+      "NoFocusPoints": "No focus points remaining.",
+      "NoMatchingSpellcasting": "No spellcasting entry can cast this item's spell."
     },
     "SpellRes": {
       "Prepared": "Prepared {available}/{total}",

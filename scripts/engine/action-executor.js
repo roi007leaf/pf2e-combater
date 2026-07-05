@@ -1177,8 +1177,9 @@ function resolveActionVariant(systemAction, action) {
   return variantKey(variants[0]);
 }
 
-async function usePf2eAction({ actor, context, action, event, targetToken = null }) {
+async function usePf2eAction({ actor, context, action, event, targetToken = null, step = null }) {
   const systemAction = pf2eActionBySlug(actionSlug(action));
+  const mapPenaltyValue = numeric(step?.mapPenalty ?? action?.mapPenalty, 0);
   const options = {
     actors: actor ? [actor] : [],
     actor,
@@ -1187,6 +1188,10 @@ async function usePf2eAction({ actor, context, action, event, targetToken = null
     statistic: action?.skill ?? action?.statistic,
     difficultyClass: action?.difficultyClass ?? action?.dc ?? null,
     traits: action?.traits,
+    // Non-strike attack actions (Grapple, Shove, Trip, Disarm, ...) don't get MAP tracked
+    // automatically by the system the way weapon Strikes do -- SingleCheckActionVariant#use()
+    // only applies it when told to via this raw, already-negative modifier value.
+    ...(mapPenaltyValue > 0 ? { multipleAttackPenalty: -mapPenaltyValue } : {}),
   };
 
   // New-style Action instance.
@@ -1213,7 +1218,7 @@ async function executePf2eAction({ actor, context, step, action, event, choices 
     return { status: "needs-choice", choices: ["target"], patch: {} };
   }
   if (target) setTarget(target.token);
-  const result = await usePf2eAction({ actor, context, action, event, targetToken: target?.token ?? null });
+  const result = await usePf2eAction({ actor, context, action, event, targetToken: target?.token ?? null, step });
   if (!result) {
     return {
       status: "failed",

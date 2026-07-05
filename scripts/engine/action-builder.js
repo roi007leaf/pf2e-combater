@@ -1265,7 +1265,7 @@ function normalizeDraftOnlyActions(unavailableActions, rejected) {
       const disabledReason = action.disabledReason ?? action.unavailableReason ?? rejectionReason;
       return {
         ...action,
-        disabled: false,
+        disabled: action.disabled ?? true,
         ...(disabledReason ? { disabledReason } : {}),
         ...(rejectionReason ? { rejectionReason } : {}),
       };
@@ -1326,8 +1326,40 @@ function quickenedShelfActions(actions) {
     });
 }
 
+function disabledActionReason(action) {
+  return String(
+    action?.disabledReason
+      ?? action?.unavailableReason
+      ?? action?.rejectionReason
+      ?? action?.reason
+      ?? "",
+  ).toLowerCase();
+}
+
+// Rejected/unavailable actions are only surfaced in Browse when the rejection itself is
+// informative to a player deciding what to do next turn (a blocked/inapplicable movement, or
+// Elemental Blast which is always shown so its disabled reason explains why). Everything else
+// that's merely unavailable right now (an unprepared spell, an out-of-range strike, ...) stays
+// out of the visible tabs -- it still resolves via draftOnlyActions for stale draft steps.
 function showDisabledInBuilder(action) {
-  return Boolean(action);
+  if (!action?.disabled && action?.available !== false) return false;
+  if (action?.tacticSlug === "elemental-blast") return true;
+
+  const slug = String(action?.slug ?? "").toLowerCase();
+  const role = String(action?.role ?? "").toLowerCase();
+  const isMovementAction = DESTINATION_ACTION_SLUGS.has(slug)
+    || role === "mobility"
+    || role === "movement"
+    || actionIncludes(action, "move")
+    || actionIncludes(action, "stride")
+    || actionIncludes(action, "step")
+    || Number(action?.activityProfile?.strideCount) > 0;
+  if (isMovementAction) return true;
+
+  const reason = disabledActionReason(action);
+  return reason.includes("move actions are unavailable")
+    || reason.includes("collision-free movement path")
+    || reason.includes("movement path");
 }
 
 function draftStepActionOverride(step, draftStepActions) {

@@ -9,6 +9,7 @@ const SETTINGS = {
   includeUnknownCustomActions: "includeUnknownCustomActions",
   hideAutoFillFromPlayers: "hideAutoFillFromPlayers",
   showDebugTab: "showDebugTab",
+  disableForPlayers: "disableForPlayers",
 };
 
 export function registerSettings() {
@@ -83,6 +84,26 @@ export function registerSettings() {
     type: Boolean,
     default: false,
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.disableForPlayers, {
+    name: "PF2E_COMBATER.Settings.DisableForPlayers.Name",
+    hint: "PF2E_COMBATER.Settings.DisableForPlayers.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => Hooks.callAll("pf2e-combater.playerAccessChanged"),
+  });
+}
+
+// GM can lock players out of the panel entirely; the GM's own access is never affected.
+export function playerAccessAllowed() {
+  if (game.user?.isGM === true) return true;
+  try {
+    return !game.settings.get(MODULE_ID, SETTINGS.disableForPlayers);
+  } catch (_error) {
+    return true;
+  }
 }
 
 export function setting(key) {

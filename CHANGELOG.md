@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.0.11]
+
+### Added
+
+- **A GM can now disable PF2e Combater for players entirely** via a new "Disable PF2e Combater for
+  players" world setting. Toggling it immediately hides the panel and toolbar button from every
+  connected player — and closes an already-open panel — with no reload needed; the GM's own access
+  is never affected.
+- **Wands, scrolls, and spell gems with a stored spell now show up as real, castable spell actions**,
+  pulling the same curated damage/targeting data known spells use, instead of only appearing as a
+  generic, undifferentiated "use item." Casting one goes through the item's own charge/quantity
+  consumption (matching the sheet's own "Use" button) and picks whichever spellcasting entry can
+  actually cast it.
+
+### Fixed
+
+- **Selecting a hazard or loot token switched the panel to it**, even though neither can take a
+  turn. Clicking one now leaves the panel showing whatever combatant it already had.
+- **Grapple, Shove, Trip, Disarm, and other non-Strike attack actions never applied their Multiple
+  Attack Penalty to the actual roll**, even though the planner had already calculated it — the
+  system only tracks MAP automatically for weapon Strikes, so these needed it passed in explicitly.
+  The roll now carries the real, already-computed penalty.
+- **A token's footprint for the movement-preview overlay and its destination-occupancy check could
+  balloon on some Foundry setups** — the same root cause as the 1.0.3/1.0.4 fixes, recurring in this
+  file's own footprint math: it preferred the live placeable's rendered pixel width/height over its
+  document's grid-unit size. For a non-Medium actor this could read a distant, unrelated creature as
+  blocking every nearby square.
+- **Clicking a destination inside the highlighted reachable area could still be rejected as
+  "beyond movement range."** The overlay is driven by a real pathfinding search that can route
+  around difficult terrain, but picking a destination checked cost along a straight line only — so a
+  square only reachable via a cheaper detour around terrain showed as reachable, then got refused.
+  Picking a destination now reuses the same routed cost the overlay already found.
+
 ## [1.0.9]
 
 ### Fixed
@@ -20,6 +53,12 @@
 - **Take Cover was suggested just for standing near any wall**, even one behind the actor or
   bounding an unrelated room with no enemy it actually blocked. It's now only offered after Drop
   Prone, which is the only case this module can reliably call real tactical cover.
+- **Browse listed every spell a prepared caster knew, not just the ones actually prepared for the
+  day.** The fix that kept rejected/unavailable actions visible in Browse (see above) was too broad
+  and surfaced every rejected action, not just the ones worth explaining — so a wizard's whole
+  spellbook showed up looking addable. Browse now only shows a rejected action when the rejection
+  is itself useful (blocked movement, Elemental Blast); unprepared spells and other routine
+  unavailability stay hidden again.
 
 ## [1.0.10]
 
@@ -35,6 +74,14 @@
   recover — it was treated as always available. It now checks the actor's real spellcasting data
   (a prepared slot's expended flag, or a spontaneous slot below its max) and is only offered once
   something has genuinely already been cast.
+- **The main panel's action list could grow taller than the screen and get silently clipped**, with
+  no way to see the rest. The plan body (draft sequence, sustained spells, and uncounted actions)
+  now scrolls on its own while the header stays pinned, and the window is capped to the viewport
+  height.
+- **Clicking Auto-fill after manually picking some actions wiped out those picks** and replaced the
+  whole draft with a fresh recommended turn. Auto-fill now leaves manual steps alone and only fills
+  the remaining action budget around them (cycling through Auto-fill alternates does the same once
+  manual steps are present).
 
 ## [1.0.8]
 
