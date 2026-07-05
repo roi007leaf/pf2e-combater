@@ -2335,6 +2335,7 @@ function readActorItemActions(actor, context) {
     const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = genericActionAvailability(slug, context);
     const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
+    const resourceRecoveryAvailability = readResourceRecoveryAvailability({ activityProfile }, context);
     // Reactions are standing options the player should see on their own turn — the trigger
     // fires later, so it describes WHEN to use the reaction rather than gating availability.
     // Triggered free actions stay gated (their trigger marks a fleeting moment to act).
@@ -2345,7 +2346,8 @@ function readActorItemActions(actor, context) {
       && (isReaction || triggerAvailability.available)
       && shieldBlockAvailability.available
       && movementAvailability.available
-      && genericAvailability.available;
+      && genericAvailability.available
+      && resourceRecoveryAvailability.available;
 
     if (!tactic && parsedCost.passive) return [];
     if (!curated && actionCost === null) return [];
@@ -2367,7 +2369,8 @@ function readActorItemActions(actor, context) {
         || (isReaction ? "" : triggerAvailability.reason)
         || shieldBlockAvailability.reason
         || movementAvailability.reason
-        || genericAvailability.reason,
+        || genericAvailability.reason
+        || resourceRecoveryAvailability.reason,
       item,
       trigger,
       role: tactic?.role ?? "unknown",
@@ -2419,6 +2422,32 @@ function readTriggerAvailability(trigger, context) {
   if (triggerMatchesContext(trigger, context)) return availability(true, "");
 
   return availability(false, t("Avail.TriggerNotActive", "Trigger is not active: {trigger}", { trigger }));
+}
+
+// "Already cast" (Drain Bonded Item, Recharge, ...) genuinely means cast on some earlier occasion
+// -- unlike the planner (which has no record of casts from before the current turn's plan), the
+// actor's real spellcasting data already tracks this: a prepared slot's `expended` flag, or a
+// spontaneous slot's value having dropped below its max, both only happen once something has
+// actually been cast. A fully-rested caster (e.g. round 1 of combat) has neither, so there is
+// nothing yet to recover.
+function hasExpendedSpellResource(actor) {
+  const entries = collectionValues(actor?.itemTypes?.spellcastingEntry);
+  return entries.some((entry) => {
+    const slots = entry?.system?.slots ?? {};
+    return Object.values(slots).some((slot) => {
+      const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
+      if (prepared.length) return prepared.some((preparedSpell) => preparedSpell?.expended === true);
+      const remaining = Number(systemValue(slot?.value ?? slot?.remaining));
+      const max = Number(systemValue(slot?.max ?? slot?.maximum));
+      return Number.isFinite(remaining) && Number.isFinite(max) && remaining < max;
+    });
+  });
+}
+
+function readResourceRecoveryAvailability(tactic, context) {
+  if (!tactic?.activityProfile?.recoversSpellResource) return availability(true, "");
+  if (hasExpendedSpellResource(contextActor(context))) return availability(true, "");
+  return availability(false, t("Avail.NoExpendedSpell", "No spell has been cast yet today to recover."));
 }
 
 function readShieldBlockAvailability(slug, item, context) {

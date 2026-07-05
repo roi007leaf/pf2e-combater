@@ -21,6 +21,21 @@
   bounding an unrelated room with no enemy it actually blocked. It's now only offered after Drop
   Prone, which is the only case this module can reliably call real tactical cover.
 
+## [1.0.10]
+
+### Fixed
+
+- **NPCs would Drop Prone on round 1 even with a PC standing right next to them.** Scoring never
+  checked whether the current threat was adjacent melee (where prone is a pure downside — no
+  attack-roll penalty applies to an adjacent attacker, but the prone actor still eats flat-footed
+  and its own worse attacks) versus a ranged-only threat (where prone is the actual defensive
+  upgrade it was designed for). Drop Prone now scores accordingly for each case.
+- **Auto-fill would use Drain Bonded Item (or similar "you already cast this today" resource
+  recovery) on round 1 with a fully rested caster**, even though nothing had been cast yet to
+  recover — it was treated as always available. It now checks the actor's real spellcasting data
+  (a prepared slot's expended flag, or a spontaneous slot below its max) and is only offered once
+  something has genuinely already been cast.
+
 ## [1.0.8]
 
 ### Fixed

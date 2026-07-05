@@ -2,7 +2,7 @@
   "id": "pf2e-combater",
   "title": "PF2e Combater",
   "description": "Floating tactical combat advisor for PF2e. Helps plan and execute turns from actor actions, battlefield state, generic actions, strikes, and curated spells.",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "url": "#{URL}#",
   "manifest": "#{MANIFEST}#",
   "download": "#{DOWNLOAD}#",

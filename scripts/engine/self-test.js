@@ -6255,6 +6255,7 @@ assert.ok(
   "a non-composition action should never get a synthetic Lingering Composition extension sibling",
 );
 
+
 // Real spellcasting candidates never carry activityProfile.composition/compositionExtender booleans
 // -- spell-classifier.js tags them only with the real PF2e "composition" trait inside
 // activityProfile.traits (confirmed against a live buildTurnPlans dump), and Lingering Composition's
@@ -11960,10 +11961,56 @@ assert.equal(
   10,
   `a ranged actor's Drop Prone should score exactly 10 points lower than a melee actor's identical Drop Prone (the ranged penalty in isolation), got melee=${meleeDropProneScored.score} ranged=${rangedDropProneScored.score}`,
 );
+// fighterContext has no enemies at all, so neither an adjacent melee threat nor a distant ranged
+// one is present -- Drop Prone must not reuse the reaction-flavored defense reason (it is a
+// proactive action with no trigger), and with no threat to justify it, it's a net downside.
+assert.equal(rangedDropProneScored.reason, "No current threat makes dropping prone worthwhile.");
+
+const dropProneAction = {
+  id: "generic-drop-prone",
+  name: "Drop Prone",
+  slug: "drop-prone",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "defense",
+};
+const dropProneMeleeThreatContext = {
+  ...fighterContext,
+  token: { id: "hero", name: "Hero", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  battlefield: { targets: [], allies: [], enemies: [
+    { id: "goblin", name: "Goblin", center: { x: 5, y: 0 }, token: { center: { x: 5, y: 0 }, width: 1, height: 1 } },
+  ] },
+};
+// An adjacent melee threat gets no attack-roll penalty against a prone target, so dropping prone
+// right next to one is a pure downside (this is the exact bug an Animated Broom hit: it dropped
+// prone with a PC standing right next to it on round 1, for no defensive benefit at all).
+const meleeThreatDropProneScored = scoreCandidate(dropProneMeleeThreatContext, dropProneAction);
 assert.equal(
-  rangedDropProneScored.reason,
+  meleeThreatDropProneScored.reason,
+  "An adjacent melee threat gets no penalty against a prone target, so this is a pure downside.",
+);
+assert.ok(
+  meleeThreatDropProneScored.score < meleeDropProneScored.score,
+  "an adjacent melee threat must score Drop Prone lower than having no threat at all",
+);
+
+const dropProneRangedThreatContext = {
+  ...fighterContext,
+  token: { id: "hero", name: "Hero", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  battlefield: { targets: [], allies: [], enemies: [
+    { id: "archer", name: "Archer", center: { x: 30, y: 0 }, token: { center: { x: 30, y: 0 }, width: 1, height: 1 } },
+  ] },
+};
+// A threat that can only reach at range (not adjacent) is the one case dropping prone is a real
+// defensive upgrade -- this must still reuse the original "gives cover" reason and score.
+const rangedThreatDropProneScored = scoreCandidate(dropProneRangedThreatContext, dropProneAction);
+assert.equal(
+  rangedThreatDropProneScored.reason,
   "Dropping prone gives cover but penalizes the actor's own attacks.",
-  "Drop Prone must not reuse the reaction-flavored defense reason (it is a proactive action with no trigger)",
+);
+assert.ok(
+  rangedThreatDropProneScored.score > meleeThreatDropProneScored.score,
+  "a ranged-only threat must score Drop Prone higher than an adjacent melee threat",
 );
 
 const medicineSources = readActionSources({
@@ -12102,6 +12149,58 @@ try {
 } finally {
   globalThis.canvas = previousTakeCoverWallCanvas;
 }
+
+// Drain Bonded Item's real trigger requires a spell "prepared today and already cast" -- a fully
+// rested wizard (e.g. round 1 of combat, nothing cast yet) has nothing to recover, no matter what
+// else auto-fill plans to cast this same turn. Regression test for auto-fill casting a spell and
+// then immediately draining its bonded item to "recover" that same fresh cast.
+function drainBondedItemContext(slotOverrides) {
+  return {
+    ...fighterContext,
+    actor: {
+      ...fighterContext.actor,
+      document: {
+        itemTypes: {
+          action: [{
+            id: "drain-bonded-item-item",
+            name: "Drain Bonded Item",
+            slug: "drain-bonded-item",
+            type: "action",
+            system: {
+              slug: "drain-bonded-item",
+              actionType: { value: "free" },
+              actions: { value: null },
+              description: { value: "<p>You expend the magical power stored in your bonded item.</p>" },
+            },
+          }],
+          feat: [],
+          feature: [],
+          consumable: [],
+          spellcastingEntry: [{
+            id: "entry-1",
+            system: { prepared: { value: "prepared" }, slots: slotOverrides },
+          }],
+        },
+        items: [],
+      },
+    },
+  };
+}
+const restedWizardDrainBondedItem = readActionSources(
+  drainBondedItemContext({ slot1: { value: 2, max: 2, prepared: [] } }),
+).find((action) => action.slug === "drain-bonded-item");
+assert.equal(restedWizardDrainBondedItem.available, false);
+assert.equal(restedWizardDrainBondedItem.unavailableReason, "No spell has been cast yet today to recover.");
+
+const spentSlotWizardDrainBondedItem = readActionSources(
+  drainBondedItemContext({ slot1: { value: 1, max: 2, prepared: [] } }),
+).find((action) => action.slug === "drain-bonded-item");
+assert.equal(spentSlotWizardDrainBondedItem.available, true);
+
+const expendedPreparedSpellWizardDrainBondedItem = readActionSources(
+  drainBondedItemContext({ slot1: { value: 1, max: 1, prepared: [{ id: "fireball", expended: true }] } }),
+).find((action) => action.slug === "drain-bonded-item");
+assert.equal(expendedPreparedSpellWizardDrainBondedItem.available, true);
 
 const previousSeekVisionerGame = globalThis.game;
 try {
