@@ -1159,13 +1159,18 @@ function hasPlanConflict(context, candidate, steps, attackPathAvailable = false)
     return true;
   }
 
-  // Composition cantrips (Courageous Anthem, Vigorous Anthem) aren't spells, so they never get a
-  // variantGroup -- without this, the Lingering Composition extension sibling (same slug, new id so
-  // the DFS can pick it as a distinct node) could sit in a plan alongside the plain, un-extended
-  // version of the same cantrip, showing it twice.
+  // Lingering Composition's own rules text is forward-looking ("if your next action is to cast a
+  // cantrip composition..."), so it can only ever legally pair with a cantrip's *extended* sibling
+  // (the synthetic candidate tagged previousActionRequirements: ["lingering-composition"] and
+  // sequenced right after it) -- never with the plain, un-gated cantrip candidate, in either order.
+  // Without this, nothing stops the plain cantrip from sitting in the same plan as Lingering
+  // Composition with no order between them (the exact "extends nothing" bug this fix targets), and
+  // it also covers the same cantrip appearing twice -- once plain, once as the extended sibling.
+  const isPlainExtendableCantrip = (step) => isCompositionExtensionEligible(step)
+    && !step?.activityProfile?.previousActionRequirements?.includes("lingering-composition");
   if (
-    candidate?.activityProfile?.composition === true
-    && steps.some((step) => step?.activityProfile?.composition === true && step.slug === candidate.slug)
+    (isCompositionExtenderCandidate(candidate) && steps.some(isPlainExtendableCantrip))
+    || (isPlainExtendableCantrip(candidate) && steps.some(isCompositionExtenderCandidate))
   ) {
     return true;
   }

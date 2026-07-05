@@ -6230,6 +6230,15 @@ assert.deepEqual(
   ["lingering-composition", "courageous-anthem"],
   "Lingering Composition should be sequenced directly before the cantrip composition it extends",
 );
+assert.ok(
+  !lingeringCompositionComboPlans.some((plan) => {
+    const ids = new Set(plan.steps.map((step) => step.id));
+    return ids.has("lingering-composition")
+      && ids.has("courageous-anthem")
+      && !ids.has("courageous-anthem-lingering-composition");
+  }),
+  "Lingering Composition should never pair with the plain, un-extended cantrip candidate",
+);
 
 const plannerCounterPerformanceCandidate = {
   id: "counter-performance", slug: "counter-performance", name: "Counter Performance",
