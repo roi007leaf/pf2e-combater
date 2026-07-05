@@ -32,6 +32,12 @@
   around difficult terrain, but picking a destination checked cost along a straight line only — so a
   square only reachable via a cheaper detour around terrain showed as reachable, then got refused.
   Picking a destination now reuses the same routed cost the overlay already found.
+- **Browse listed every spell a prepared caster knew, not just the ones actually prepared for the
+  day.** The 1.0.9 fix that kept rejected/unavailable actions visible in Browse was too broad and
+  surfaced every rejected action, not just the ones worth explaining — so a wizard's whole
+  spellbook showed up looking addable. Browse now only shows a rejected action when the rejection
+  is itself useful (blocked movement, Elemental Blast); unprepared spells and other routine
+  unavailability stay hidden again.
 
 ## [1.0.9]
 
@@ -53,12 +59,6 @@
 - **Take Cover was suggested just for standing near any wall**, even one behind the actor or
   bounding an unrelated room with no enemy it actually blocked. It's now only offered after Drop
   Prone, which is the only case this module can reliably call real tactical cover.
-- **Browse listed every spell a prepared caster knew, not just the ones actually prepared for the
-  day.** The fix that kept rejected/unavailable actions visible in Browse (see above) was too broad
-  and surfaced every rejected action, not just the ones worth explaining — so a wizard's whole
-  spellbook showed up looking addable. Browse now only shows a rejected action when the rejection
-  is itself useful (blocked movement, Elemental Blast); unprepared spells and other routine
-  unavailability stay hidden again.
 
 ## [1.0.10]
 
