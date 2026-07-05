@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from "../constants.js";
+import { swapFavorites } from "../engine/favorite-reorder.js";
 
 function storage() {
   return globalThis.localStorage ?? null;
@@ -76,4 +77,12 @@ export function toggleActionFavorite(context, actionKey) {
   }
   writeActionFavorites(context, favorites);
   return added;
+}
+
+export function reorderActionFavorite(context, key, targetKey) {
+  const ordered = [...readActionFavorites(context)];
+  const swapped = swapFavorites(ordered, key, targetKey);
+  if (swapped === ordered) return false;
+  writeActionFavorites(context, swapped);
+  return true;
 }

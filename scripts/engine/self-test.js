@@ -50,6 +50,7 @@ import { readSpellActions } from "../readers/spell-reader.js";
 import {
   favoriteKey,
   readActionFavorites,
+  reorderActionFavorite,
   toggleActionFavorite,
 } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
@@ -3372,6 +3373,19 @@ try {
   assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), true);
   assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword"]);
   assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], []);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), true);
+  assert.equal(toggleActionFavorite(builderContext, "shield"), true);
+  assert.equal(toggleActionFavorite(builderContext, "stride"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["strike-longsword", "shield", "stride"]);
+  assert.equal(reorderActionFavorite(builderContext, "strike-longsword", "stride"), true);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["stride", "shield", "strike-longsword"]);
+  assert.equal(reorderActionFavorite(builderContext, "strike-longsword", "strike-longsword"), false);
+  assert.equal(reorderActionFavorite(builderContext, "missing", "stride"), false);
+  assert.deepEqual([...readActionFavorites(builderContext)], ["stride", "shield", "strike-longsword"]);
+  assert.equal(toggleActionFavorite(builderContext, "strike-longsword"), false);
+  assert.equal(toggleActionFavorite(builderContext, "shield"), false);
+  assert.equal(toggleActionFavorite(builderContext, "stride"), false);
   assert.deepEqual([...readActionFavorites(builderContext)], []);
   // Drafts are keyed per combatant (no round) so a plan survives turn/round changes.
   assert.equal(draftPlanKey(builderContext), "user-1|combat-1|combatant-1");
