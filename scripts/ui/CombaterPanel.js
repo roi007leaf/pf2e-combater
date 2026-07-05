@@ -32,7 +32,7 @@ import { buildCandidates } from "../engine/candidates.js";
 import { confidenceLabel } from "../engine/confidence.js";
 import { attacksTowardMap, bestTurnPlan, buildTurnPlans, isAttackAction, mapPenalty } from "../engine/planner.js";
 import { swapDraftSteps } from "../engine/draft-reorder.js";
-import { readActionFavorites, toggleActionFavorite } from "../state/action-favorites.js";
+import { readActionFavorites, reorderActionFavorite, toggleActionFavorite } from "../state/action-favorites.js";
 import { readCombatContext } from "../state/combat-context.js";
 import {
   readDraftPlan,
@@ -582,6 +582,7 @@ function decorateAction(action, options = {}) {
     detailChips,
     hasDetailChips: detailChips.length > 0,
     readonly: options.readonly === true,
+    canDragFavorite: options.canDragFavorite === true && options.readonly !== true,
   };
 }
 
@@ -745,8 +746,9 @@ function decorateBuilderTab(tab, activeTab, { readonly = false, searchQuery = ""
     {
       id: "favorites",
       label: t("Section.Favorites", "Favorites"),
+      isFavoritesSection: true,
       actions: filterBuilderTabActions(tab.favorites, searchQuery)
-        .map((action) => decorateAction(action, { readonly })),
+        .map((action) => decorateAction(action, { readonly, canDragFavorite: true })),
     },
     ...(quickenedActions.length
       ? [{ id: "quickened", label: t("Section.Quickened", "Quickened actions"), actions: quickenedActions }]
@@ -1998,6 +2000,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft()) return;
     if (!this._context || !actionKey) return;
     toggleActionFavorite(this._context, actionKey);
+    await this.render({ force: true });
+  }
+
+  async _reorderFavorite(key, targetKey) {
+    if (!this._canEditDraft()) return;
+    if (!this._context || !key || !targetKey || key === targetKey) return;
+    const changed = reorderActionFavorite(this._context, key, targetKey);
+    if (!changed) return;
     await this.render({ force: true });
   }
 

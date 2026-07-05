@@ -566,6 +566,21 @@ assert.ok(
 assert.ok(panelStyleSource.includes(".combater-tabs button:disabled"), "inert tabs should read as visually disabled");
 assert.ok(panelStyleSource.includes(".combater-section-tag"), "the per-result tab tag should have its own styling");
 assert.ok(browserTemplateSource.includes('{{#*inline "actionRows"}}'), "action row markup should be a shared partial, not duplicated between the merged and per-tab views");
+assert.ok(panelSource.includes("canDragFavorite"), "favorites should expose whether they can be dragged");
+assert.ok(panelSource.includes("isFavoritesSection"), "the favorites section should be identifiable in the template");
+assert.ok(panelSource.includes("_reorderFavorite"), "panel should support drag-to-reorder for favorites");
+assert.ok(panelSource.includes("import { reorderActionFavorite }") || panelSource.includes("reorderActionFavorite,"),
+  "panel should reuse the persistence-layer reorder helper");
+assert.ok(browserTemplateSource.includes("data-drag-favorite"), "each draggable favorite should expose a drag handle");
+assert.ok(browserTemplateSource.includes("data-drag-list"), "the favorites container should mark itself as a drag/drop list");
+assert.ok(
+  /isFavoritesSection[\s\S]*?data-drag-list/.test(browserTemplateSource) || /data-drag-list[\s\S]*?isFavoritesSection/.test(browserTemplateSource),
+  "only the favorites section's container should be a drag/drop list",
+);
+assert.ok(browserSource.includes("panel._reorderFavorite"), "browser drag wiring should call into the panel");
+assert.ok(browserSource.includes("data-drag-favorite"), "browser should wire dragstart on the favorite drag handle");
+assert.ok(panelStyleSource.includes(".combater-action-row.is-dragging") || /\.combater-action-row\.is-dragging|combater-action-row,[\s\S]{0,80}is-dragging/.test(panelStyleSource),
+  "dragged favorite rows should get the shared dragging visual state");
 assert.ok(/async close\([\s\S]*this\._browser\?\.close\(\)/.test(panelSource), "closing the panel should close the browser");
 assert.ok(panelSource.includes("_findActiveStep"), "panel should look up steps across both lists");
 assert.ok(panelSource.includes("currentTargetSelection"), "panel should use Foundry's current target selection");

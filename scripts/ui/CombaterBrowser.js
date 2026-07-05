@@ -129,6 +129,42 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
+    for (const container of element.querySelectorAll("[data-drag-list]")) {
+      let draggingId = null;
+      for (const handle of container.querySelectorAll("[data-drag-favorite]")) {
+        handle.addEventListener("dragstart", (event) => {
+          draggingId = handle.dataset.dragFavorite;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", draggingId);
+          handle.closest("[data-drag-row]")?.classList.add("is-dragging");
+        });
+        handle.addEventListener("dragend", () => {
+          draggingId = null;
+          for (const row of container.querySelectorAll(".is-dragging, .drop-target")) {
+            row.classList.remove("is-dragging", "drop-target");
+          }
+        });
+      }
+      for (const row of container.querySelectorAll("[data-drag-row]")) {
+        row.addEventListener("dragover", (event) => {
+          if (!draggingId) return;
+          event.preventDefault();
+          event.stopPropagation();
+          row.classList.add("drop-target");
+        });
+        row.addEventListener("dragleave", (event) => {
+          event.stopPropagation();
+          row.classList.remove("drop-target");
+        });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          row.classList.remove("drop-target");
+          if (draggingId) panel._reorderFavorite(draggingId, row.dataset.dragRow);
+        });
+      }
+    }
+
     for (const button of element.querySelectorAll("[data-open-action]")) {
       button.addEventListener("click", () => panel._openBuilderAction(button.dataset.openAction));
     }
