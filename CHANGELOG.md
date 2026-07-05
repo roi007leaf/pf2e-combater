@@ -25,11 +25,11 @@
 
 ### Fixed
 
-- **NPCs would Drop Prone on round 1 even with a PC standing right next to them.** Scoring never
-  checked whether the current threat was adjacent melee (where prone is a pure downside — no
-  attack-roll penalty applies to an adjacent attacker, but the prone actor still eats flat-footed
-  and its own worse attacks) versus a ranged-only threat (where prone is the actual defensive
-  upgrade it was designed for). Drop Prone now scores accordingly for each case.
+- **Auto-fill would suggest Drop Prone on round 1 even with an enemy standing right next to the
+  actor.** Scoring never checked whether the current threat was adjacent melee (where prone is a
+  pure downside — no attack-roll penalty applies to an adjacent attacker, but the prone actor still
+  eats flat-footed and its own worse attacks) versus a ranged-only threat (where prone is the
+  actual defensive upgrade it was designed for). Drop Prone now scores accordingly for each case.
 - **Auto-fill would use Drain Bonded Item (or similar "you already cast this today" resource
   recovery) on round 1 with a fully rested caster**, even though nothing had been cast yet to
   recover — it was treated as always available. It now checks the actor's real spellcasting data
