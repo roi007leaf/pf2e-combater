@@ -15974,6 +15974,39 @@ const baneScore = scoreCandidate({
 assert.equal(baneScore.suggestedTarget, null);
 assert.ok(baneScore.reasons.some((reason) => reason.includes("Bane can affect 1 enemy")));
 
+// Courageous Anthem is the ally-polarity mirror of Dirge of Doom above (same composition-cantrip
+// self-centered emanation shape, but buffs allies instead of frightening enemies). It must not
+// prompt for a target -- it auto-affects everyone in its own emanation, same as Dirge of Doom does
+// for enemies -- regression coverage for a real bug where it incorrectly asked the user to pick a
+// target.
+const courageousAnthemClassification = classifySpell({
+  name: "Courageous Anthem",
+  system: {
+    traits: { value: ["bard", "cantrip", "composition", "emotion", "fear", "mental"] },
+    level: { value: 0 },
+    area: { type: "emanation", value: 60 },
+    duration: { value: "1 round" },
+    description: { value: "<p>You inspire yourself and your allies with words or tunes of encouragement. You and all allies in the area gain a +1 status bonus to attack rolls, damage rolls, and saves against fear effects.</p>" },
+  },
+});
+assert.equal(courageousAnthemClassification.role, "buff");
+assert.equal(courageousAnthemClassification.targetingProfile.area, true);
+assert.equal(courageousAnthemClassification.targetingProfile.selfCentered, true);
+assert.equal(courageousAnthemClassification.targetingProfile.ally, true);
+assert.equal(
+  requiresTargetForAction({
+    targetingProfile: courageousAnthemClassification.targetingProfile,
+    activityProfile: courageousAnthemClassification.activityProfile,
+  }),
+  false,
+  "a self-centered ally-buff emanation should not prompt for a target -- it auto-affects everyone in range",
+);
+assert.equal(
+  requiresAreaMarkerForAction({ targetingProfile: courageousAnthemClassification.targetingProfile }),
+  true,
+  "a self-centered ally-buff emanation should still resolve an (auto-computed) area marker",
+);
+
 const healClassification = classifySpell({
   name: "Heal",
   system: {
@@ -15999,6 +16032,16 @@ const heroismClassification = classifySpell({
 assert.equal(heroismClassification.role, "buff");
 assert.equal(heroismClassification.activityProfile.attackBuff, true);
 assert.equal(heroismClassification.targetingProfile.ally, true);
+// A genuine single-target ally buff (no area) must still require a manually-picked target --
+// only the self-centered-emanation case above should be exempt.
+assert.equal(
+  requiresTargetForAction({
+    targetingProfile: heroismClassification.targetingProfile,
+    activityProfile: heroismClassification.activityProfile,
+  }),
+  true,
+  "a single-target ally buff with no area should still prompt for a target",
+);
 
 const heroismScore = scoreCandidate({
   ...spellcasterSpellPriorityContext,

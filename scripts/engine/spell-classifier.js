@@ -150,6 +150,26 @@ function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
   };
 }
 
+// Mirrors enemyEffectTargetingProfile for the beneficial polarity: an ally-buff spell with a
+// self-centered area (e.g. a bard composition's 60-foot emanation) auto-affects everyone in range
+// -- it never needs a manually-picked target, only the auto-computed self-centered area marker
+// (see computeAreaMarker's "emanation" branch). Without this, area and non-area ally buffs were
+// indistinguishable and both prompted for a target, even though the area case never needs one.
+function allyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
+  if (isSelfCenteredArea(areaProfile)) {
+    return {
+      ...areaProfile,
+      ...rangeProfile,
+      selfCentered: true,
+      center: "self",
+      ally: true,
+      self: true,
+    };
+  }
+
+  return { ally: true, self: true, ...rangeProfile };
+}
+
 function readRangeProfile(spell) {
   const value = systemValue(spell?.system?.range);
   // Newer data models store range as a plain number of feet; older ones use a string ("120 feet").
@@ -558,7 +578,7 @@ function classifySpellBase(spell) {
   if (buff && !damageProfile && !saveProfile) {
     return inferred("buff", {
       activityProfile: { ...baseProfile(["buff"]), ...spellFacts, ...buff },
-      targetingProfile: buff.ally ? { ally: true, self: true } : { self: true },
+      targetingProfile: buff.ally ? allyEffectTargetingProfile(areaProfile, rangeProfile) : { self: true },
       setupFor: (buff.attackBuff || buff.damageBuff || buff.extraAction) ? ["strike", "damage", "spell"] : [],
       confidence: "medium",
       reasons: [t("SpellReason.Buff", "Spell grants a beneficial effect to the caster or an ally.")],
