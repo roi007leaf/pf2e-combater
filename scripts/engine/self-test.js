@@ -4,6 +4,7 @@ import { confidenceLabel } from "./confidence.js";
 import { fighterContext, fixtureCandidates } from "./fixtures.js";
 import { actionBudget, bestTurnPlan, buildTurnPlans } from "./planner.js";
 import { swapDraftSteps } from "./draft-reorder.js";
+import { swapFavorites } from "./favorite-reorder.js";
 import {
   ACTION_BUILDER_TABS,
   actionBuilderKey,
@@ -445,6 +446,12 @@ assert.equal(
   swapGroupNoOpList,
   "dropping a step onto a member of its own group should be a no-op",
 );
+assert.deepEqual(swapFavorites(["a", "b", "c", "d"], "a", "c"), ["c", "b", "a", "d"], "swapping two favorites should trade their positions");
+assert.deepEqual(swapFavorites(["a", "b", "c", "d"], "d", "b"), ["a", "d", "c", "b"], "swap should work symmetrically regardless of which side is later in the list");
+const favoriteSwapNoOpList = ["a", "b"];
+assert.equal(swapFavorites(favoriteSwapNoOpList, "a", "a"), favoriteSwapNoOpList, "dropping a favorite onto itself should be a no-op");
+assert.equal(swapFavorites(favoriteSwapNoOpList, "a", "missing"), favoriteSwapNoOpList, "swapping with an unknown target should be a no-op");
+assert.equal(swapFavorites(favoriteSwapNoOpList, "missing", "a"), favoriteSwapNoOpList, "swapping an unknown key should be a no-op");
 assert.ok(panelSource.includes("_reorderDraftStep"), "panel should support drag-to-reorder");
 assert.ok(panelSource.includes("import { swapDraftSteps }"), "panel should reuse the pure swap helper for drag-and-drop");
 assert.ok(
