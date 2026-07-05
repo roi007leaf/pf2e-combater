@@ -12,41 +12,43 @@
 
 `CombaterPanel.js`'s `decorateBuilderTab` renders `tab.favorites` as the `"favorites"` section (always first, in every tab), through the same `actionRows` inline partial (`combater-browser.hbs`) used for every other section (quickened, categorized). The partial has no per-section branching today.
 
+**Correction:** the 2026-07-04 plan-step spec (insert-before/after with a `placeBefore` flag and `.drop-target-before`/`.drop-target-after` indicators) is *not* what shipped. The actual `draft-reorder.js`/`_reorderDraftStep`/CSS that landed is simpler: dropping a step on another **swaps their two positions** (`swapDraftSteps(steps, instanceId, targetInstanceId)`, no `placeBefore` param), with a single `.drop-target` outline class, no before/after distinction. This design follows the code that actually exists, not the superseded plan doc.
+
 ## Approach
 
 No storage format change — the existing map's insertion order is already exactly what's needed, it just needs to become read/write-explicit instead of incidental, and something needs to let the user rewrite that order.
 
-**Data layer (`scripts/engine/favorite-reorder.js`, new):** a pure, unit-testable module mirroring `draft-reorder.js`'s shape but simpler — favorites are a flat list of strings, no group/block concept.
+**Data layer (`scripts/engine/favorite-reorder.js`, new):** a pure, unit-testable module mirroring `draft-reorder.js`'s actual swap shape but simpler still — favorites are a flat list of strings, no group/block concept to preserve.
 
 ```js
-export function reorderFavorites(favoriteKeys, key, targetKey, placeBefore = true) {
+export function swapFavorites(favoriteKeys, key, targetKey) {
   const list = Array.isArray(favoriteKeys) ? favoriteKeys : [];
   const index = list.indexOf(key);
   const targetIndex = list.indexOf(targetKey);
   if (index < 0 || targetIndex < 0 || key === targetKey) return list;
-  const without = [...list.slice(0, index), ...list.slice(index + 1)];
-  const shift = index < targetIndex ? 1 : 0;
-  const insertAt = (placeBefore ? targetIndex : targetIndex + 1) - shift;
-  return [...without.slice(0, insertAt), key, ...without.slice(insertAt)];
+  const swapped = [...list];
+  [swapped[index], swapped[targetIndex]] = [swapped[targetIndex], swapped[index]];
+  return swapped;
 }
 ```
 
-**Data layer (`action-favorites.js`):** add `reorderActionFavorite(context, key, targetKey, placeBefore = true)` — reads the current order via `[...readActionFavorites(context)]`, runs it through `reorderFavorites`, and if it actually changed, writes it back with the existing `writeActionFavorites` (which already just re-persists whatever iterable it's given, in that iterable's order — no change needed there). Returns whether anything changed.
+**Data layer (`action-favorites.js`):** add `reorderActionFavorite(context, key, targetKey)` — reads the current order via `[...readActionFavorites(context)]`, runs it through `swapFavorites`, and if it actually changed, writes it back with the existing `writeActionFavorites` (which already just re-persists whatever iterable it's given, in that iterable's order — no change needed there). Returns whether anything changed.
 
 **Builder model (`action-builder.js`):** replace the boolean-only `favoriteApplies` with `favoriteEntryKey(favorites, key, baseKey, baseKeyCounts)`, returning the literal string actually present in the favorites set (`key`, `baseKey`, or `null`) instead of just `true`/`false`. `decorateAction` sets `favorite: favoriteEntryKey !== null` and a new `favoriteEntryKey` field carrying that literal string — this is what drag/drop and the reorder call need, since a favorite may be stored under either its variant key or its shared base key, and the two must not be confused. `buildActionBuilderModel` builds `favoriteOrder = [...favoriteSet]` (already insertion-ordered) and sorts `tab.favorites` by `favoriteOrder.indexOf(action.favoriteEntryKey)` instead of leaving it in `tab.all`'s score order. Nothing else changes — `tab.all`, `tab.quickened`, `tab.recommended` keep their existing sort.
 
 **UI model (`CombaterPanel.js`):**
+
 - `decorateBuilderTab`'s favorites section gains `isFavoritesSection: true`; its actions are decorated with `canDragFavorite: true` (every other section's actions leave it unset).
 - The local `decorateAction` (template-facing, distinct from the one in `action-builder.js`) gains `canDragFavorite: options.canDragFavorite === true && options.readonly !== true` — hidden whenever the row itself is read-only, same as the plan-step handle.
-- New `_reorderFavorite(key, targetKey, placeBefore)` method, gated by `_canEditDraft()` exactly like the existing `_toggleFavorite` — reads `this._context`, calls `reorderActionFavorite`, and if it changed, `await this.render({ force: true })` (which already cascades to the detached browser window per the existing `this._browser?.render(...)` call at the end of `_onRender`).
+- New `_reorderFavorite(key, targetKey)` method (same signature shape as the existing `_reorderDraftStep(instanceId, targetInstanceId)`), gated by `_canEditDraft()` exactly like the existing `_toggleFavorite` — reads `this._context`, calls `reorderActionFavorite`, and if it changed, `await this.render({ force: true })` (which already cascades to the detached browser window per the existing `this._browser?.render(...)` call at the end of `_onRender`).
 
 **Markup (`combater-browser.hbs`):** the shared `actionRows` inline partial gets one addition — a grip-handle span appended after the existing add/add-uncounted buttons, gated on `{{#if canDragFavorite}}`, reusing the plan-step handle's exact markup shape, CSS class (`combater-step-drag`), icon (`fa-grip-vertical`), and localization keys (`PF2E_COMBATER.Panel.DragToReorder`/`DragToReorderAria` — reused as-is, no new lang entries needed, the string is equally true here). The row's `data-drag-row="{{favoriteEntryKey}}"` attribute is likewise gated on `canDragFavorite`, so non-favorite rows are untouched. The favorites section's `.combater-alt-details` container gets `data-drag-list`, gated on `{{#if isFavoritesSection}}`.
 
 Appending the handle after the two action buttons (rather than prepending, where the plan-step handle sits) keeps it out of the row's fixed CSS grid tracks: each `.combater-action-row` is its own independent grid instance, so a 5th child on favorite rows spills into a new implicit column without shifting the 4 fixed tracks non-favorite rows still use.
 
-**Event wiring (`CombaterBrowser.js`):** this file (not `CombaterPanel.js`) owns the browser window's `_onRender` DOM wiring, including the existing `[data-favorite-action]` click handler — the new drag/drop block goes there, as a direct copy of the plan-step `dragstart`/`dragover`/`drop`/`dragend` wiring, scoped per `[data-drag-list]` container (so multiple Favorites blocks — one per tab — can coexist during a cross-tab search without cross-talk), calling `panel._reorderFavorite(draggingId, row.dataset.dragRow, before)` on drop.
+**Event wiring (`CombaterBrowser.js`):** this file (not `CombaterPanel.js`) owns the browser window's `_onRender` DOM wiring, including the existing `[data-favorite-action]` click handler — the new drag/drop block goes there, as a direct copy of the actual plan-step `dragstart`/`dragover`/`dragleave`/`drop`/`dragend` wiring (`CombaterPanel.js:1450-1484`), scoped per `[data-drag-list]` container (so multiple Favorites blocks — one per tab — can coexist during a cross-tab search without cross-talk), calling `panel._reorderFavorite(draggingId, row.dataset.dragRow)` on drop.
 
-**CSS (`combater.css`):** add `.combater-action-row` to the existing `.is-dragging` / `.drop-target-before` / `.drop-target-after` selector groups (currently only `.combater-header-step`, `.combater-step-group`, `.combater-uncounted-row`). No new selectors — `.combater-step-drag`'s hover/color styling is already generic.
+**CSS (`combater.css`):** add `.combater-action-row` to the existing `.is-dragging` and `.drop-target` selector groups (`combater.css:393-404`, currently only `.combater-header-step`, `.combater-step-group`, `.combater-uncounted-row`). No new selectors — `.combater-step-drag`'s hover/color styling is already generic.
 
 ## Explicitly not doing
 
@@ -58,7 +60,7 @@ Appending the handle after the two action buttons (rather than prepending, where
 
 Same source-text-assertion convention as the 2026-07-04 plan (`CombaterPanel`/`CombaterBrowser` are `ApplicationV2` subclasses that can't instantiate under plain Node):
 
-- `favorite-reorder.js`: real `assert.deepEqual` unit tests (reorder before/after a target, no-op on same key, no-op on an unknown key) — same shape as `draft-reorder.js`'s tests, minus the group cases.
+- `favorite-reorder.js`: real `assert.deepEqual` unit tests (swap two present keys, symmetric regardless of which side is later, no-op on same key, no-op on an unknown key) — same shape as `draft-reorder.js`'s tests, minus the group cases.
 - `action-favorites.js`: extend the existing localStorage-mocked block (`self-test.js:3350-3368`) with a multi-favorite scenario exercising `reorderActionFavorite` end to end (favorite three actions, reorder, confirm `readActionFavorites` reflects the new order).
 - `buildActionBuilderModel`: a test with `favorites: new Set([...])` containing multiple same-cost actions in a deliberately non-score order, asserting `tab.one.favorites` follows the Set's order rather than score/name.
 - Source-text assertions: `panelSource` defines `_reorderFavorite` and gates it the same way as `_toggleFavorite`; `browserSource` wires `dragstart`/`drop` on `[data-drag-favorite]`/`[data-drag-list]` calling `_reorderFavorite`; `panelTemplateSource` (browser half) includes `data-drag-favorite`, `canDragFavorite`, `isFavoritesSection`; `panelStyleSource` includes `.combater-action-row` in the `.is-dragging`/drop-target selectors.
