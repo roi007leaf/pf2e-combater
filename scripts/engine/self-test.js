@@ -21,6 +21,7 @@ import {
   currentTargetSelection,
   executeDraftStep,
   executionReadinessForStep,
+  isSelfCenteredAreaAction,
   nextPendingExecutionStep,
   plannedTargetSelection,
   requiresAreaMarkerForAction,
@@ -2602,14 +2603,19 @@ try {
   globalThis.canvas.grid.size = 10;
   try {
     const emanationMarker = { shape: "emanation", center: { x: 100, y: 200 }, distance: 60, label: "Emanation 60 ft" };
+    const selfCenteredEmanationAction = {
+      name: "Courageous Anthem",
+      slug: "courageous-anthem",
+      targetingProfile: { area: true, type: "emanation", distance: 60, selfCentered: true },
+    };
     const mediumEmanationRegion = createAreaRegionData({
       context: { token: { width: 1, height: 1, center: { x: 100, y: 200 } } },
-      action: executionAreaAction,
+      action: selfCenteredEmanationAction,
       marker: emanationMarker,
     });
     const largeEmanationRegion = createAreaRegionData({
       context: { token: { width: 2, height: 2, center: { x: 100, y: 200 } } },
-      action: executionAreaAction,
+      action: selfCenteredEmanationAction,
       marker: emanationMarker,
     });
     assert.equal(mediumEmanationRegion.shapes[0].type, "circle", "an emanation must resolve to a real Foundry region shape type, not the invalid literal \"emanation\"");
@@ -16149,6 +16155,41 @@ const baneClassification = classifySpell({
 assert.equal(baneClassification.role, "control");
 assert.equal(baneClassification.targetingProfile.selfCentered, true);
 assert.equal(baneClassification.targetingProfile.enemy, false);
+// Not every emanation is centered on the caster -- Circle of Protection is a "10-foot emanation
+// centered on a point in range", not on you. Same shape as Bane above but with a real range,
+// which is the only signal available to tell the two apart.
+const pointCenteredEmanationClassification = classifySpell({
+  name: "Bane at Range",
+  system: {
+    traits: { value: ["concentrate", "manipulate", "mental"] },
+    level: { value: 1 },
+    range: { value: "10 feet" },
+    area: { type: "emanation", value: 5 },
+    target: { value: "enemies in the area" },
+    defense: { save: { statistic: "will", basic: false } },
+    duration: { value: "1 minute" },
+    description: { value: "<p>Enemies in the area must succeed at a Will save.</p>" },
+  },
+});
+assert.equal(pointCenteredEmanationClassification.targetingProfile.selfCentered, undefined, "an emanation with a real range should not be marked self-centered");
+assert.equal(pointCenteredEmanationClassification.targetingProfile.maxRange, 10);
+assert.equal(pointCenteredEmanationClassification.targetingProfile.area, true, "the area info must still survive for a point-centered emanation, not just get dropped");
+assert.equal(pointCenteredEmanationClassification.targetingProfile.type, "emanation");
+assert.equal(
+  isSelfCenteredAreaAction({ targetingProfile: pointCenteredEmanationClassification.targetingProfile }),
+  false,
+  "a point-centered emanation (e.g. Circle of Protection) should not be treated as centered on the caster",
+);
+assert.deepEqual(
+  executionReadinessForStep({ instanceId: "point-emanation-needs-area" }, { targetingProfile: pointCenteredEmanationClassification.targetingProfile }).choices,
+  ["area"],
+  "a point-centered emanation should still need a manual area choice, unlike a self-centered one",
+);
+assert.equal(
+  computeAreaMarker({ token: { center: { x: 0, y: 0 } } }, { targetingProfile: pointCenteredEmanationClassification.targetingProfile }),
+  null,
+  "a point-centered emanation has no caster-derived location to auto-compute -- it must fall back to manual placement",
+);
 const baneScore = scoreCandidate({
   ...fighterContext,
   token: { center: { x: 0, y: 0 } },

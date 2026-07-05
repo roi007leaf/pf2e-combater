@@ -127,12 +127,18 @@ function readAreaProfile(spell) {
   };
 }
 
-function isSelfCenteredArea(areaProfile) {
-  return String(areaProfile?.type ?? "").toLowerCase() === "emanation";
+// Not every emanation is centered on the caster -- Circle of Protection is a 10-foot emanation
+// "centered on a point in range", not on you, and needs the same manual placement a burst/cone
+// does. A real reachable range (an explicit distance, or touch) means the emanation is centered on
+// a chosen point/target within that range; no range at all (or an explicit "self" range) means it
+// is always on the caster, like Dirge of Doom or Courageous Anthem.
+function isSelfCenteredArea(areaProfile, rangeProfile = {}) {
+  if (String(areaProfile?.type ?? "").toLowerCase() !== "emanation") return false;
+  return rangeProfile?.self === true || rangeProfile?.maxRange === undefined;
 }
 
 function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
-  if (isSelfCenteredArea(areaProfile)) {
+  if (isSelfCenteredArea(areaProfile, rangeProfile)) {
     return {
       ...areaProfile,
       ...rangeProfile,
@@ -156,7 +162,7 @@ function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
 // (see computeAreaMarker's "emanation" branch). Without this, area and non-area ally buffs were
 // indistinguishable and both prompted for a target, even though the area case never needs one.
 function allyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
-  if (isSelfCenteredArea(areaProfile)) {
+  if (isSelfCenteredArea(areaProfile, rangeProfile)) {
     return {
       ...areaProfile,
       ...rangeProfile,
@@ -167,7 +173,7 @@ function allyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
     };
   }
 
-  return { ally: true, self: true, ...rangeProfile };
+  return { ...(areaProfile ?? {}), ...rangeProfile, ally: true, self: true };
 }
 
 function readRangeProfile(spell) {

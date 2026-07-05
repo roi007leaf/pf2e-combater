@@ -161,9 +161,18 @@ function areaMarkerFromStep(step, choices = {}) {
   return choices.areaMarker ?? step?.areaMarker ?? null;
 }
 
-// An emanation is always centered on whoever cast it -- there is no other valid location to pick.
+// Not every emanation is centered on whoever cast it -- Circle of Protection is a 10-foot
+// emanation "centered on a point in range", not on the caster, and Ymeri's Mark-shaped effects can
+// anchor to a chosen creature instead. `selfCentered` (set by the spell classifier for cases like
+// Dirge of Doom/Courageous Anthem) is authoritative when present. Failing that, a curated action
+// with no separate range at all (e.g. the inventor's self-destructing Explode) still defaults to
+// self-centered, matching how it's always worked; one with a real reachable maxRange (a chosen
+// point/target within that range) does not.
 export function isSelfCenteredAreaAction(action) {
-  return String(action?.targetingProfile?.type ?? "").toLowerCase() === "emanation";
+  const targeting = action?.targetingProfile ?? {};
+  if (String(targeting.type ?? "").toLowerCase() !== "emanation") return false;
+  if (targeting.selfCentered === true) return true;
+  return targeting.maxRange === undefined;
 }
 
 // If execution reaches this point with no marker chosen yet (e.g. a draft added before the panel
@@ -1531,14 +1540,16 @@ export function createAreaRegionData({ context, action, marker }) {
   } else if (type === "cube" || type === "square") {
     shape = { ...baseShape, type: "rectangle", width: distancePx, height: distancePx, rotation };
   } else if (type === "emanation") {
-    // "emanation" is a PF2e rules concept (an aura measured from the edge of the caster's space),
+    // "emanation" is a PF2e rules concept (an aura measured from the edge of a creature's space),
     // not a real Foundry region shape -- unlike cone/line/ring/rectangle above, which are actual
     // shape primitives. Foundry's schema rejects an unrecognized shape type outright ("shape: may
-    // not be undefined"), so this must resolve to "circle" like the plain-burst fallback below,
-    // just with its radius grown by the token's own footprint to measure from its edge, not its
-    // center point.
-    const base = tokenBase(context);
-    const halfFootprint = Math.max(base.width, base.height) / 2;
+    // not be undefined"), so this must resolve to "circle" like the plain-burst fallback below.
+    // Only a self-centered emanation (e.g. Dirge of Doom) grows its radius by the caster's own
+    // footprint to measure from their edge rather than their center point -- a point-centered one
+    // (e.g. Circle of Protection, "centered on a point in range") has no creature there at all, so
+    // it stays a plain circle of exactly the stated distance, same as a burst.
+    const base = isSelfCenteredAreaAction(action) ? tokenBase(context) : null;
+    const halfFootprint = base ? Math.max(base.width, base.height) / 2 : 0;
     shape = { ...baseShape, type: "circle", radius: distancePx + halfFootprint };
   } else if (type === "ring") {
     shape = {
@@ -1577,11 +1588,13 @@ async function createAreaRegion({ context, action, marker }) {
   const scene = globalThis.canvas?.scene;
   const sceneId = scene?.id ?? scene?._id ?? null;
 
-  // An emanation is only correct when it moves with its caster and reaches from the edge of their
-  // actual space (not a plain circle around the center point) -- Foundry 14.353+ added exactly this
-  // as a native helper (createAreaRegionData's circle+footprint approximation below is the fallback
-  // for older Foundry versions or when no live token document can be resolved).
-  if (areaType(action, marker) === "emanation" && typeof globalThis.RegionDocument?.createTokenEmanation === "function") {
+  // A self-centered emanation is only correct when it moves with its caster and reaches from the
+  // edge of their actual space (not a plain circle around the center point) -- Foundry 14.353+
+  // added exactly this as a native helper (createAreaRegionData's circle+footprint approximation
+  // below is the fallback for older Foundry versions or when no live token document can be
+  // resolved). A point/target-centered emanation (e.g. Circle of Protection) must NOT attach to the
+  // caster's token -- it belongs wherever it was actually placed.
+  if (areaType(action, marker) === "emanation" && isSelfCenteredAreaAction(action) && typeof globalThis.RegionDocument?.createTokenEmanation === "function") {
     const tokenDocument = canvasTokenById(tokenId(context))?.document;
     if (tokenDocument) {
       const { shapes: _shapes, elevation: _elevation, ...regionDataWithoutGeometry } = data;

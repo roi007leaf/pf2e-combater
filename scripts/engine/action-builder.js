@@ -1,6 +1,6 @@
 import { confidenceLabel } from "./confidence.js";
 import { actionBudget } from "./planner.js";
-import { requiresAreaMarkerForAction } from "./action-executor.js";
+import { isSelfCenteredAreaAction, requiresAreaMarkerForAction } from "./action-executor.js";
 import { pf2eActionName, t } from "../i18n.js";
 
 export const ACTION_BUILDER_TABS = [
@@ -751,7 +751,7 @@ export function computeAreaMarker(context, action) {
   const width = areaMarkerWidth(action);
   const originTokenId = context?.token?.id ?? context?.token?.uuid ?? null;
 
-  if (type === "emanation") {
+  if (type === "emanation" && isSelfCenteredAreaAction(action)) {
     const center = casterCenter(context);
     if (!center) return null;
     return {
