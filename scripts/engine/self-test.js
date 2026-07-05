@@ -789,6 +789,16 @@ assert.ok(
   /_addUncountedAction\(actionKey\)[\s\S]*name: action\.name/.test(panelSource),
   "added uncounted steps should persist a display name",
 );
+// A self-centered area (an emanation) has only one possible location -- pre-fill it the same way
+// Auto-fill already does, instead of forcing a "Place template" prompt with no real choice to make.
+assert.ok(
+  /_addAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
+  "manually adding an action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
+);
+assert.ok(
+  /_addUncountedAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
+  "manually adding an uncounted action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
+);
 assert.ok(
   /_removeDraftStep\(instanceId\)[\s\S]*_writeActiveDraftPlan\(markManualDraft\(/.test(panelSource),
   "removing an action should sync updated player plan to GM",
@@ -11402,6 +11412,23 @@ const lineMarkerAction = {
 const lineMarker = computeAreaMarker(burstMarkerContext, lineMarkerAction);
 assert.deepEqual(lineMarker?.center, { x: 0, y: 0 });
 assert.equal(lineMarker?.rotation, 90);
+
+// An emanation needs no externally-chosen placement/aim point at all -- it's always centered on
+// the caster, unlike burst/line above which need a chosen center/aim point supplied via
+// activityProfile. This is the mechanism manually adding a self-centered ally-buff spell (e.g.
+// Courageous Anthem) relies on to skip the "Place template" prompt entirely.
+const emanationMarkerAction = {
+  id: "courageous-anthem",
+  name: "Courageous Anthem",
+  slug: "courageous-anthem",
+  role: "buff",
+  targetingProfile: { type: "emanation", distance: 60, area: true, ally: true, self: true, selfCentered: true },
+  activityProfile: { spell: true },
+};
+const emanationMarker = computeAreaMarker(burstMarkerContext, emanationMarkerAction);
+assert.equal(emanationMarker?.shape, "emanation");
+assert.deepEqual(emanationMarker?.center, { x: 0, y: 0 });
+assert.equal(emanationMarker?.distance, 60);
 
 const noPlacementAction = { ...burstMarkerAction, activityProfile: { spell: true, areaPlacementCenter: null, areaPlacementAimPoint: null } };
 assert.equal(computeAreaMarker(burstMarkerContext, noPlacementAction), null);

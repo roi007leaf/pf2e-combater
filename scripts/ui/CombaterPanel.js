@@ -1760,6 +1760,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     const draft = this._readActiveDraftPlan();
+    // A self-centered area (e.g. an emanation) needs no manual placement -- it's always centered on
+    // the caster, so pre-fill it here the same way Auto-fill already does, instead of forcing a
+    // "Place template" prompt for something with only one possible location.
+    const presetAreaMarker = computeAreaMarker(this._context, action);
     await this._writeActiveDraftPlan(markManualDraft({
       ...draft,
       steps: [
@@ -1772,6 +1776,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           name: action.name,
           actionCost: action.actionCost ?? action.cost,
           requiresDestination: requiresDestinationForAction(action),
+          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
         },
       ],
     }));
@@ -1786,6 +1791,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
     const draft = this._readActiveDraftPlan();
+    // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
+    const presetAreaMarker = computeAreaMarker(this._context, action);
     await this._writeActiveDraftPlan(markManualDraft({
       ...draft,
       uncounted: [
@@ -1798,6 +1805,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           name: action.name,
           actionCost: action.actionCost ?? action.cost,
           requiresDestination: requiresDestinationForAction(action),
+          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
         },
       ],
     }));
