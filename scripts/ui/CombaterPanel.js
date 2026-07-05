@@ -18,6 +18,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   isSelfCenteredAreaAction,
+  isTargetCenteredAreaAction,
   nextPendingExecutionStep,
   plannedTargetSelection,
   requiresAreaMarkerForAction,
@@ -625,10 +626,11 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const requiresDestination = requiresDestinationForAction(action ?? step);
   const requiresTarget = requiresTargetForAction(action ?? step);
   const requiresArea = requiresAreaMarkerForAction(action ?? step);
-  // A self-centered area (an emanation) is always centered on the caster -- there is nothing to
-  // manually place, so the template button only makes sense for burst/cone/line, which genuinely
-  // need a player-picked point/aim.
-  const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step);
+  // A self-centered area (an emanation) is always centered on the caster, and a target-centered one
+  // (e.g. Circle of Protection, "Range touch") resolves through the target-picker instead -- neither
+  // has anything to manually place, so the template button only makes sense for burst/cone/line,
+  // which genuinely need a player-picked point/aim.
+  const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step) && !isTargetCenteredAreaAction(action ?? step);
   const stepTraitChips = traitChips(action ?? step);
   const status = executionStatus(step);
   const isExecutionDone = status === "done";

@@ -127,14 +127,23 @@ function readAreaProfile(spell) {
   };
 }
 
-// Not every emanation is centered on the caster -- Circle of Protection is a 10-foot emanation
-// "centered on a point in range", not on you, and needs the same manual placement a burst/cone
-// does. A real reachable range (an explicit distance, or touch) means the emanation is centered on
-// a chosen point/target within that range; no range at all (or an explicit "self" range) means it
-// is always on the caster, like Dirge of Doom or Courageous Anthem.
+// Not every emanation is centered on the caster. No range at all (or an explicit "self" range)
+// means it is always on the caster, like Dirge of Doom or Courageous Anthem. A real reachable range
+// means it is NOT on the caster -- e.g. Circle of Protection and Ymeri's Mark are both "Range
+// touch", so their emanation radiates from whoever you touch, not from you (unless you touch
+// yourself, which the target picker already lets you do).
 function isSelfCenteredArea(areaProfile, rangeProfile = {}) {
   if (String(areaProfile?.type ?? "").toLowerCase() !== "emanation") return false;
   return rangeProfile?.self === true || rangeProfile?.maxRange === undefined;
+}
+
+// A touch-range emanation is anchored to whoever you touch -- there's no such thing as "touching a
+// point in empty space" in PF2e, so this always means a creature target, resolved through the same
+// target-picker any other touch spell uses, not a free-floating "Place template" point. A real
+// non-touch distance (if one exists) stays ambiguous between a chosen point and a chosen target, so
+// it's left to fall back to manual placement rather than guessed at here.
+function isTargetCenteredArea(areaProfile, rangeProfile = {}) {
+  return String(areaProfile?.type ?? "").toLowerCase() === "emanation" && rangeProfile?.touch === true;
 }
 
 function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
@@ -153,6 +162,7 @@ function enemyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
     ...(areaProfile ?? {}),
     ...rangeProfile,
     enemy: true,
+    ...(isTargetCenteredArea(areaProfile, rangeProfile) ? { centerOnTarget: true } : {}),
   };
 }
 
@@ -173,7 +183,13 @@ function allyEffectTargetingProfile(areaProfile, rangeProfile = {}) {
     };
   }
 
-  return { ...(areaProfile ?? {}), ...rangeProfile, ally: true, self: true };
+  return {
+    ...(areaProfile ?? {}),
+    ...rangeProfile,
+    ally: true,
+    self: true,
+    ...(isTargetCenteredArea(areaProfile, rangeProfile) ? { centerOnTarget: true } : {}),
+  };
 }
 
 function readRangeProfile(spell) {
@@ -183,7 +199,7 @@ function readRangeProfile(spell) {
 
   const raw = String(value ?? "").trim().toLowerCase();
   if (!raw) return {};
-  if (raw.includes("touch")) return { maxRange: 5 };
+  if (raw.includes("touch")) return { maxRange: 5, touch: true };
   if (raw.includes("self")) return { self: true };
   if (raw.includes("planetary") || raw.includes("unlimited") || raw.includes("interplanar")) return {};
 

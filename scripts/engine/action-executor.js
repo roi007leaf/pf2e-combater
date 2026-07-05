@@ -161,18 +161,25 @@ function areaMarkerFromStep(step, choices = {}) {
   return choices.areaMarker ?? step?.areaMarker ?? null;
 }
 
-// Not every emanation is centered on whoever cast it -- Circle of Protection is a 10-foot
-// emanation "centered on a point in range", not on the caster, and Ymeri's Mark-shaped effects can
-// anchor to a chosen creature instead. `selfCentered` (set by the spell classifier for cases like
-// Dirge of Doom/Courageous Anthem) is authoritative when present. Failing that, a curated action
-// with no separate range at all (e.g. the inventor's self-destructing Explode) still defaults to
-// self-centered, matching how it's always worked; one with a real reachable maxRange (a chosen
-// point/target within that range) does not.
+// Not every emanation is centered on whoever cast it -- Circle of Protection is "Range touch; Area
+// 10-foot emanation" (it radiates from whoever you touch, see isTargetCenteredAreaAction below),
+// not from the caster. `selfCentered` (set by the spell classifier for cases like Dirge of
+// Doom/Courageous Anthem, which have no separate range at all) is authoritative when present.
+// Failing that, a curated action with no separate range at all (e.g. the inventor's
+// self-destructing Explode) still defaults to self-centered, matching how it's always worked; one
+// with a real reachable maxRange (a chosen point/target within that range) does not.
 export function isSelfCenteredAreaAction(action) {
   const targeting = action?.targetingProfile ?? {};
   if (String(targeting.type ?? "").toLowerCase() !== "emanation") return false;
   if (targeting.selfCentered === true) return true;
   return targeting.maxRange === undefined;
+}
+
+// A touch-range emanation (e.g. Circle of Protection, Ymeri's Mark) radiates from whoever you
+// touch -- there's no such thing as touching a point in empty space in PF2e, so this is always a
+// creature target, resolved through the same target-picker any other touch spell uses.
+export function isTargetCenteredAreaAction(action) {
+  return action?.targetingProfile?.centerOnTarget === true;
 }
 
 // If execution reaches this point with no marker chosen yet (e.g. a draft added before the panel
@@ -192,6 +199,25 @@ function autoSelfCenteredAreaMarker(context, action) {
     width: numeric(action?.targetingProfile?.width, 5) || 5,
     rotation: 0,
     originTokenId: context?.token?.id ?? context?.token?.uuid ?? null,
+    label: `Emanation ${distance} ft`,
+  };
+}
+
+// Mirrors autoSelfCenteredAreaMarker for a touch-range creature-centered area: once a target is
+// resolved through the normal target-picker, the area is anchored to that target's position, not
+// the caster's, instead of also demanding a redundant manual "Place template" pick.
+function autoTargetCenteredAreaMarker(target, action) {
+  if (!isTargetCenteredAreaAction(action)) return null;
+  const center = point(target?.token?.center);
+  if (!center) return null;
+  const distance = numeric(action?.targetingProfile?.distance ?? action?.targetingProfile?.radius, 5) || 5;
+  return {
+    shape: "emanation",
+    center,
+    distance,
+    width: numeric(action?.targetingProfile?.width, 5) || 5,
+    rotation: 0,
+    originTokenId: target?.token?.id ?? target?.token?.uuid ?? null,
     label: `Emanation ${distance} ft`,
   };
 }
@@ -226,7 +252,11 @@ export function requiresAreaMarkerForAction(action) {
 }
 
 export function requiresTargetForAction(action) {
-  if (!action || requiresAreaMarkerForAction(action)) return false;
+  if (!action) return false;
+  // A target-centered area (e.g. Circle of Protection, "Range touch") is resolved through the
+  // target-picker, not "Place template" -- it must NOT be excluded by the area check below like
+  // every other area action is.
+  if (requiresAreaMarkerForAction(action) && !isTargetCenteredAreaAction(action)) return false;
   const slug = actionSlug(action);
   if (["stand", "retch", "stride", "step", "crawl"].includes(slug)) return false;
 
@@ -265,7 +295,12 @@ export function executionReadinessForStep(step, action = step?.action ?? step) {
   const choices = [];
   if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");
   if (requiresTargetForAction(resolvedAction) && !resolveTarget(step, resolvedAction)) choices.push("target");
-  if (requiresAreaMarkerForAction(resolvedAction) && !areaMarkerFromStep(step) && !isSelfCenteredAreaAction(resolvedAction)) choices.push("area");
+  if (
+    requiresAreaMarkerForAction(resolvedAction)
+    && !areaMarkerFromStep(step)
+    && !isSelfCenteredAreaAction(resolvedAction)
+    && !isTargetCenteredAreaAction(resolvedAction)
+  ) choices.push("area");
   const choiceLabels = choices.map((choice) => t(`Choice.${choice}`, choice));
   return {
     status: choices.length ? "needs-choice" : "ready",
@@ -1583,19 +1618,21 @@ function regionIdFromCreated(created) {
   return doc?.id ?? doc?._id ?? null;
 }
 
-async function createAreaRegion({ context, action, marker }) {
+async function createAreaRegion({ context, action, marker, target = null }) {
   const data = createAreaRegionData({ context, action, marker });
   const scene = globalThis.canvas?.scene;
   const sceneId = scene?.id ?? scene?._id ?? null;
 
-  // A self-centered emanation is only correct when it moves with its caster and reaches from the
-  // edge of their actual space (not a plain circle around the center point) -- Foundry 14.353+
-  // added exactly this as a native helper (createAreaRegionData's circle+footprint approximation
-  // below is the fallback for older Foundry versions or when no live token document can be
-  // resolved). A point/target-centered emanation (e.g. Circle of Protection) must NOT attach to the
-  // caster's token -- it belongs wherever it was actually placed.
-  if (areaType(action, marker) === "emanation" && isSelfCenteredAreaAction(action) && typeof globalThis.RegionDocument?.createTokenEmanation === "function") {
-    const tokenDocument = canvasTokenById(tokenId(context))?.document;
+  // A self- or target-centered emanation is only correct when it moves with whoever it's anchored
+  // to and reaches from the edge of their actual space (not a plain circle around the center point)
+  // -- Foundry 14.353+ added exactly this as a native helper (createAreaRegionData's circle
+  // approximation below is the fallback for older Foundry versions or when no live token document
+  // can be resolved). A point-centered emanation (if one exists) must NOT attach to any token --
+  // it belongs wherever it was actually placed.
+  const selfCentered = isSelfCenteredAreaAction(action);
+  const targetCentered = isTargetCenteredAreaAction(action);
+  if (areaType(action, marker) === "emanation" && (selfCentered || targetCentered) && typeof globalThis.RegionDocument?.createTokenEmanation === "function") {
+    const tokenDocument = selfCentered ? canvasTokenById(tokenId(context))?.document : target?.token?.document;
     if (tokenDocument) {
       const { shapes: _shapes, elevation: _elevation, ...regionDataWithoutGeometry } = data;
       const created = await globalThis.RegionDocument.createTokenEmanation(
@@ -2013,14 +2050,16 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     patch.targetLabel = target.label;
   }
 
-  const areaMarker = areaMarkerFromStep(step, choices) ?? autoSelfCenteredAreaMarker(context, resolvedAction);
+  const areaMarker = areaMarkerFromStep(step, choices)
+    ?? autoSelfCenteredAreaMarker(context, resolvedAction)
+    ?? autoTargetCenteredAreaMarker(target, resolvedAction);
   let regionOp = null;
   if (requiresAreaMarkerForAction(resolvedAction)) {
     if (!areaMarker) return { status: "needs-choice", choices: ["area"], patch };
     patch.areaMarker = areaMarker;
     // Only leave a persistent region for lingering areas; instantaneous bursts/cones just target.
     if (areaTemplatePersists(resolvedAction)) {
-      const region = await createAreaRegion({ context, action: resolvedAction, marker: areaMarker });
+      const region = await createAreaRegion({ context, action: resolvedAction, marker: areaMarker, target });
       if (region?.regionId) {
         const timer = await createAreaTimer({ context, action: resolvedAction, region });
         regionOp = {

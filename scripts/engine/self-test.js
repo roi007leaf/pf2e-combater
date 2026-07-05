@@ -22,6 +22,7 @@ import {
   executeDraftStep,
   executionReadinessForStep,
   isSelfCenteredAreaAction,
+  isTargetCenteredAreaAction,
   nextPendingExecutionStep,
   plannedTargetSelection,
   requiresAreaMarkerForAction,
@@ -800,11 +801,12 @@ assert.ok(
   /_addUncountedAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
   "manually adding an uncounted action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
 );
-// A self-centered area (an emanation) has nothing to manually place -- the "Place template" button
-// itself should never render for it, unlike a burst/cone/line, which genuinely needs a picked point.
+// A self-centered area (an emanation) or a target-centered one (e.g. Circle of Protection) has
+// nothing to manually place -- the "Place template" button itself should never render for either,
+// unlike a burst/cone/line, which genuinely needs a picked point.
 assert.ok(
-  panelSource.includes("const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step);"),
-  "decorateDraftStep should gate the manual area-placement button separately from requiresArea",
+  /const canChooseArea = requiresArea[\s\S]*?!isSelfCenteredAreaAction\(action \?\? step\)[\s\S]*?!isTargetCenteredAreaAction\(action \?\? step\)/.test(panelSource),
+  "decorateDraftStep should gate the manual area-placement button separately from requiresArea, excluding both self- and target-centered areas",
 );
 assert.equal(panelTemplateSource.includes("{{#if requiresArea}}"), false, "the template should gate the placement button on canChooseArea, not the raw requiresArea flag");
 assert.ok(
@@ -1449,6 +1451,7 @@ try {
   const targetToken = {
     id: "target-token",
     name: "Goblin",
+    center: { x: 300, y: 400 },
     document: {
       id: "target-token",
       uuid: "Scene.scene.Token.target-token",
@@ -2717,6 +2720,40 @@ try {
     assert.equal(tokenEmanationCalls[0].regionData.elevation, undefined, "elevation must be omitted per the native API's contract");
     const nativeEmanationRegionOp = nativeEmanationResult.patch.execution.revert.ops.find((op) => op.kind === "region");
     assert.equal(nativeEmanationRegionOp.regionId, "native-emanation-region-1", "the revert op should carry the region id the native API returned");
+  } finally {
+    delete globalThis.RegionDocument;
+  }
+
+  // Regression: a touch-range target-centered area (e.g. Circle of Protection) must resolve its
+  // target through the normal target-picker, then anchor the area (and the native token-emanation
+  // attachment) to THAT target's token -- not the caster's -- instead of blocking on a redundant
+  // manual "Place template" choice.
+  const touchWardTokenEmanationCalls = [];
+  globalThis.RegionDocument = {
+    createTokenEmanation: async (tokenDocument, range, regionData) => {
+      touchWardTokenEmanationCalls.push({ tokenDocument, range, regionData });
+      return { id: "touch-ward-region-1" };
+    },
+  };
+  try {
+    const touchWardResult = await executeDraftStep({
+      context: executionContext,
+      step: { instanceId: "touch-ward-step" },
+      action: {
+        name: "Circle of Protection",
+        slug: "circle-of-protection",
+        executable: "open-item",
+        source: "spell-inferred",
+        activityProfile: { spell: true, lastingDuration: true, duration: "1 minute" },
+        targetingProfile: { area: true, type: "emanation", distance: 10, maxRange: 5, touch: true, centerOnTarget: true, ally: true, self: true },
+      },
+      choices: { targetTokenIds: ["target-token"] },
+    });
+    assert.equal(touchWardResult.status, "done", "a touch-range target-centered emanation should resolve the target and execute, not block on a manual area choice");
+    assert.deepEqual(touchWardResult.patch.targetTokenIds, ["target-token"], "the resolved target should be recorded");
+    assert.deepEqual(touchWardResult.patch.areaMarker?.center, targetToken.center, "the area should be anchored to the target's position, not the caster's");
+    assert.equal(touchWardTokenEmanationCalls.length, 1, "a persistent target-centered emanation should use the native token-emanation path too");
+    assert.equal(touchWardTokenEmanationCalls[0].tokenDocument, targetToken.document, "the emanation should attach to the TARGET's token document, not the caster's");
   } finally {
     delete globalThis.RegionDocument;
   }
@@ -16156,8 +16193,11 @@ assert.equal(baneClassification.role, "control");
 assert.equal(baneClassification.targetingProfile.selfCentered, true);
 assert.equal(baneClassification.targetingProfile.enemy, false);
 // Not every emanation is centered on the caster -- Circle of Protection is a "10-foot emanation
-// centered on a point in range", not on you. Same shape as Bane above but with a real range,
-// which is the only signal available to tell the two apart.
+// centered on a point in range" (a hypothetical, since no confirmed PF2e example has this exact
+// shape) is a different case from a touch-range one (see the Circle-of-Protection-shaped test
+// below) -- either way, a real range (not "self", not "touch") is left to fall back to manual
+// placement rather than guessed at. Same shape as Bane above but with a real range, which is the
+// only signal available to tell the two apart.
 const pointCenteredEmanationClassification = classifySpell({
   name: "Bane at Range",
   system: {
@@ -16189,6 +16229,35 @@ assert.equal(
   computeAreaMarker({ token: { center: { x: 0, y: 0 } } }, { targetingProfile: pointCenteredEmanationClassification.targetingProfile }),
   null,
   "a point-centered emanation has no caster-derived location to auto-compute -- it must fall back to manual placement",
+);
+// Circle of Protection is real: "Range touch; Area 10-foot emanation... You ward a creature and
+// those nearby." Same shape as Bane again, but "touch" specifically -- there's no such thing as
+// touching a point in empty space in PF2e, so this must resolve through the target-picker, not
+// "Place template", and the emanation is anchored to whoever gets touched.
+const touchTargetCenteredEmanationClassification = classifySpell({
+  name: "Bane at Touch Range",
+  system: {
+    traits: { value: ["concentrate", "manipulate", "mental"] },
+    level: { value: 1 },
+    range: { value: "touch" },
+    area: { type: "emanation", value: 5 },
+    target: { value: "enemies in the area" },
+    defense: { save: { statistic: "will", basic: false } },
+    duration: { value: "1 minute" },
+    description: { value: "<p>Enemies in the area must succeed at a Will save.</p>" },
+  },
+});
+assert.equal(touchTargetCenteredEmanationClassification.targetingProfile.selfCentered, undefined);
+assert.equal(touchTargetCenteredEmanationClassification.targetingProfile.centerOnTarget, true, "a touch-range emanation should be flagged as anchored to whoever gets touched");
+assert.equal(touchTargetCenteredEmanationClassification.targetingProfile.area, true);
+assert.equal(touchTargetCenteredEmanationClassification.targetingProfile.type, "emanation");
+const touchTargetCenteredAction = { targetingProfile: touchTargetCenteredEmanationClassification.targetingProfile };
+assert.equal(isSelfCenteredAreaAction(touchTargetCenteredAction), false, "a touch-range emanation is not centered on the caster");
+assert.equal(isTargetCenteredAreaAction(touchTargetCenteredAction), true, "a touch-range emanation should be recognized as target-centered");
+assert.deepEqual(
+  executionReadinessForStep({ instanceId: "touch-emanation-needs-target" }, touchTargetCenteredAction).choices,
+  ["target"],
+  "a touch-range emanation (e.g. Circle of Protection) should need a target choice, not a manual area placement",
 );
 const baneScore = scoreCandidate({
   ...fighterContext,
