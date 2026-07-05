@@ -4,6 +4,21 @@ All notable changes to PF2e Combater are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7]
+
+### Fixed
+
+- **A self-centered ally-buff emanation (e.g. the bard's Courageous Anthem) incorrectly asked you to
+  pick a target.** It auto-affects every ally in its own area, the same way an enemy-affecting
+  emanation like Dirge of Doom already worked, but the buff-spell classifier didn't check for that
+  case — any ally-buff spell was treated as needing a manually-picked target, area or not. It now
+  resolves the same auto-centered area marker Dirge of Doom uses and never prompts for a target.
+- **Executing a feat or action with no special handling (e.g. the alchemist's Quick Alchemy) just
+  posted its description to chat**, instead of doing what the sheet's own "Use" button does —
+  spending Frequency, opening an embedded crafting ability's formula picker, applying a self-effect.
+  It now routes through the same system entry point real hotbar "Use" macros call, so abilities like
+  Quick Alchemy actually open their crafting prompt instead of silently no-opping.
+
 ## [1.0.6]
 
 ### Added
