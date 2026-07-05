@@ -6205,6 +6205,44 @@ assert.ok(
   "a divine spell should never get a synthetic Quickened Casting discount sibling",
 );
 
+// Auto-fill sequences Lingering Composition directly before the cantrip composition it extends
+// (never after): its own rules text is forward-looking ("if your next action is to cast a cantrip
+// composition..."), unlike a plain setupFor pairing bonus which doesn't care about order. Mirrors the
+// Quickened Casting combo above, but as a duration bonus instead of an action-cost discount.
+const plannerLingeringCompositionCandidate = {
+  id: "lingering-composition", slug: "lingering-composition", name: "Lingering Composition",
+  actionCost: 1, source: "generic", score: 20, confidence: "high",
+  activityProfile: { composition: true, compositionExtender: true },
+  reason: "Lingering Composition extends a cantrip composition cast right after it.",
+};
+const plannerCourageousAnthemCandidate = {
+  id: "courageous-anthem", slug: "courageous-anthem", name: "Courageous Anthem",
+  actionCost: 1, source: "generic", score: 90, confidence: "high",
+  activityProfile: { composition: true, ally: true, attackBuff: true },
+  targetingProfile: { ally: true, self: true },
+};
+const lingeringCompositionComboPlans = buildTurnPlans(fighterContext, [plannerLingeringCompositionCandidate, plannerCourageousAnthemCandidate]);
+const lingeringCompositionComboPlan = lingeringCompositionComboPlans.find((plan) =>
+  plan.steps.some((step) => step.id === "courageous-anthem-lingering-composition"));
+assert.ok(lingeringCompositionComboPlan, "auto-fill should offer a plan pairing Lingering Composition with the cantrip it extends");
+assert.deepEqual(
+  lingeringCompositionComboPlan.steps.map((step) => step.slug),
+  ["lingering-composition", "courageous-anthem"],
+  "Lingering Composition should be sequenced directly before the cantrip composition it extends",
+);
+
+const plannerCounterPerformanceCandidate = {
+  id: "counter-performance", slug: "counter-performance", name: "Counter Performance",
+  actionCost: 1, source: "generic", score: 90, confidence: "high",
+  activityProfile: { includes: ["defense"], reaction: true },
+  targetingProfile: { ally: true, self: true },
+};
+const noLingeringCompositionComboPlans = buildTurnPlans(fighterContext, [plannerLingeringCompositionCandidate, plannerCounterPerformanceCandidate]);
+assert.ok(
+  !noLingeringCompositionComboPlans.some((plan) => plan.steps.some((step) => step.id === "counter-performance-lingering-composition")),
+  "a non-composition action should never get a synthetic Lingering Composition extension sibling",
+);
+
 const speedProfile = readActorProfile({
   id: "speedy",
   name: "Speedy",

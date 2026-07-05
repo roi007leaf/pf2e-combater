@@ -5,6 +5,11 @@ export const BARD_ACTIONS = [
     activityProfile: {
       includes: ['setup'],
       composition: true,
+      // Its own rules text is forward-looking ("if your next action is to cast a cantrip
+      // composition..."), unlike a plain setupFor pairing bonus which doesn't care about order --
+      // this flag lets the planner require a cantrip composition immediately AFTER it, not just
+      // somewhere in the plan.
+      compositionExtender: true,
     },
     targetingProfile: {
       self: true,

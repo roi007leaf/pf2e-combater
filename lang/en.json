@@ -687,7 +687,8 @@
       "ReloadsBeforeFiring": "Reloads before firing {name}.",
       "MapPenalty": "{reason} MAP -{penalty}.",
       "VolleyMoved": "Volley -2 when fired from the moved-in position.",
-      "QuickenedCastingDiscount": "{name} costs 1 fewer action after Quickened Casting."
+      "QuickenedCastingDiscount": "{name} costs 1 fewer action after Quickened Casting.",
+      "LingeringCompositionExtend": "{name} lasts longer after Lingering Composition."
     },
     "Keybind": {
       "ToggleName": "Toggle PF2e Combater",

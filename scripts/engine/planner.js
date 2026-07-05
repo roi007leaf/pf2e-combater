@@ -477,6 +477,7 @@ function stepSatisfiesPreviousRequirement(step, requirement) {
   if (key === "strike" || key === "after-strike") return isStrikeLikeCandidate(step);
   if (key === "attack") return isAttackAction(step);
   if (key === "quickened-casting") return isActionDiscountCandidate(step);
+  if (key === "lingering-composition") return isCompositionExtenderCandidate(step);
   return false;
 }
 
@@ -1058,6 +1059,50 @@ function withQuickenedCastingDiscountCandidates(candidates) {
   });
 }
 
+function isCompositionExtenderCandidate(candidate) {
+  return candidate?.activityProfile?.compositionExtender === true;
+}
+
+// A cantrip composition Lingering Composition can extend -- curated bard actions tag themselves
+// `activityProfile.composition: true` when they cast one (e.g. Courageous Anthem, Vigorous
+// Anthem). Excludes Lingering Composition itself, which also carries `composition: true` (you
+// can't cast two compositions in one turn) but isn't a cantrip composition to extend.
+function isCompositionExtensionEligible(candidate) {
+  return candidate?.activityProfile?.composition === true && !isCompositionExtenderCandidate(candidate);
+}
+
+const LINGERING_COMPOSITION_BONUS = 8;
+
+// A sibling of an extendable composition cantrip candidate, legal only immediately after a
+// compositionExtender-flagged candidate (Lingering Composition) via the "lingering-composition"
+// previous-action requirement below -- mirrors projectedQuickenedCastingSpellCandidate above, but
+// for a duration bonus instead of an action-cost discount, since Lingering Composition's own rules
+// text is forward-looking ("if your next action is to cast a cantrip composition...").
+function projectedLingeringCompositionCantripCandidate(candidate) {
+  if (!isCompositionExtensionEligible(candidate)) return null;
+  return {
+    ...candidate,
+    id: `${candidate.id ?? candidate.slug ?? candidate.name}-lingering-composition`,
+    score: Number(candidate.score) + LINGERING_COMPOSITION_BONUS,
+    reason: t("Plan.LingeringCompositionExtend", "{name} lasts longer after Lingering Composition.", { name: candidate.name }),
+    activityProfile: {
+      ...(candidate.activityProfile ?? {}),
+      previousActionRequirements: ["lingering-composition"],
+    },
+  };
+}
+
+// Inserted right after the compositionExtender candidate itself (not after each cantrip) so its
+// pool index is always greater than the extender's -- same reasoning as
+// withQuickenedCastingDiscountCandidates above.
+function withLingeringCompositionCandidates(candidates) {
+  return candidates.flatMap((candidate) => {
+    if (!isCompositionExtenderCandidate(candidate)) return [candidate];
+    const extended = candidates.map(projectedLingeringCompositionCantripCandidate).filter(Boolean);
+    return extended.length ? [candidate, ...extended] : [candidate];
+  });
+}
+
 function withProjectedFollowUpStrikeCandidates(candidates) {
   return candidates.flatMap((candidate) => {
     const followUps = [
@@ -1111,6 +1156,17 @@ function hasAttackPathAvailable(context, candidates) {
 
 function hasPlanConflict(context, candidate, steps, attackPathAvailable = false) {
   if (candidate?.variantGroup && steps.some((step) => step?.variantGroup === candidate.variantGroup)) {
+    return true;
+  }
+
+  // Composition cantrips (Courageous Anthem, Vigorous Anthem) aren't spells, so they never get a
+  // variantGroup -- without this, the Lingering Composition extension sibling (same slug, new id so
+  // the DFS can pick it as a distinct node) could sit in a plan alongside the plain, un-extended
+  // version of the same cantrip, showing it twice.
+  if (
+    candidate?.activityProfile?.composition === true
+    && steps.some((step) => step?.activityProfile?.composition === true && step.slug === candidate.slug)
+  ) {
     return true;
   }
 
@@ -1263,8 +1319,10 @@ export function buildTurnPlans(context, candidates) {
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
     .toSorted((left, right) => right.score - left.score);
-  const sortedCandidates = withProjectedFollowUpStrikeCandidates(
-    withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
+  const sortedCandidates = withLingeringCompositionCandidates(
+    withProjectedFollowUpStrikeCandidates(
+      withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
+    ),
   );
 
   const plans = [];
