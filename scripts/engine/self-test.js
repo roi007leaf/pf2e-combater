@@ -799,6 +799,18 @@ assert.ok(
   /_addUncountedAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
   "manually adding an uncounted action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
 );
+// A self-centered area (an emanation) has nothing to manually place -- the "Place template" button
+// itself should never render for it, unlike a burst/cone/line, which genuinely needs a picked point.
+assert.ok(
+  panelSource.includes("const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step);"),
+  "decorateDraftStep should gate the manual area-placement button separately from requiresArea",
+);
+assert.equal(panelTemplateSource.includes("{{#if requiresArea}}"), false, "the template should gate the placement button on canChooseArea, not the raw requiresArea flag");
+assert.ok(
+  (panelTemplateSource.match(/data-choose-area="\{\{instanceId\}\}"/g) ?? []).length === 2
+    && (panelTemplateSource.match(/\{\{#if canChooseArea\}\}[\s\S]*?data-choose-area="\{\{instanceId\}\}"/g) ?? []).length === 2,
+  "both the step-chip and uncounted-row placement buttons should be gated on canChooseArea",
+);
 assert.ok(
   /_removeDraftStep\(instanceId\)[\s\S]*_writeActiveDraftPlan\(markManualDraft\(/.test(panelSource),
   "removing an action should sync updated player plan to GM",
@@ -2665,6 +2677,43 @@ try {
   assert.equal(noMarkerEmanationResult.status, "done", "a self-centered area with no marker chosen yet should auto-resolve and execute, not block on a manual choice");
   assert.equal(noMarkerEmanationResult.patch.areaMarker?.shape, "emanation");
   assert.deepEqual(noMarkerEmanationResult.patch.areaMarker?.center, executionContext.token.center, "the auto-resolved marker should be centered on the caster's own token");
+
+  // Regression: a persistent emanation must use Foundry's native RegionDocument.createTokenEmanation
+  // (14.353+) instead of the manual circle+footprint approximation, so it genuinely follows the
+  // caster if they move and uses Foundry's own correct edge-of-space geometry, not our fallback.
+  const tokenEmanationCalls = [];
+  globalThis.RegionDocument = {
+    createTokenEmanation: async (tokenDocument, range, regionData) => {
+      tokenEmanationCalls.push({ tokenDocument, range, regionData });
+      return { id: "native-emanation-region-1" };
+    },
+  };
+  try {
+    const regionCreatesBeforeNativeEmanation = regionCreates.length;
+    const nativeEmanationResult = await executeDraftStep({
+      context: executionContext,
+      step: { instanceId: "native-emanation-step" },
+      action: {
+        name: "Courageous Anthem",
+        slug: "courageous-anthem",
+        executable: "open-item",
+        source: "spell-inferred",
+        activityProfile: { spell: true, lastingDuration: true, duration: "1 round" },
+        targetingProfile: { area: true, type: "emanation", distance: 60, ally: true, self: true, selfCentered: true },
+      },
+    });
+    assert.equal(nativeEmanationResult.status, "done");
+    assert.equal(regionCreates.length, regionCreatesBeforeNativeEmanation, "the native token-emanation path should be used instead of the manual scene.createEmbeddedDocuments fallback");
+    assert.equal(tokenEmanationCalls.length, 1, "a persistent emanation should call the native RegionDocument.createTokenEmanation");
+    assert.equal(tokenEmanationCalls[0].tokenDocument, actorToken.document, "the emanation should attach to the caster's own live token document, not a snapshot");
+    assert.equal(tokenEmanationCalls[0].range, 60, "the native range argument should be the plain feet distance, not a pixel conversion");
+    assert.equal(tokenEmanationCalls[0].regionData.shapes, undefined, "shapes must be omitted -- the native API computes the geometry itself");
+    assert.equal(tokenEmanationCalls[0].regionData.elevation, undefined, "elevation must be omitted per the native API's contract");
+    const nativeEmanationRegionOp = nativeEmanationResult.patch.execution.revert.ops.find((op) => op.kind === "region");
+    assert.equal(nativeEmanationRegionOp.regionId, "native-emanation-region-1", "the revert op should carry the region id the native API returned");
+  } finally {
+    delete globalThis.RegionDocument;
+  }
 
   // Tokens whose center falls inside a placed template become targets.
   const burstMarker = { shape: "burst", center: { x: 100, y: 200 }, distance: 20 };

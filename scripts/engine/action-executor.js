@@ -162,7 +162,7 @@ function areaMarkerFromStep(step, choices = {}) {
 }
 
 // An emanation is always centered on whoever cast it -- there is no other valid location to pick.
-function isSelfCenteredAreaAction(action) {
+export function isSelfCenteredAreaAction(action) {
   return String(action?.targetingProfile?.type ?? "").toLowerCase() === "emanation";
 }
 
@@ -1576,6 +1576,26 @@ async function createAreaRegion({ context, action, marker }) {
   const data = createAreaRegionData({ context, action, marker });
   const scene = globalThis.canvas?.scene;
   const sceneId = scene?.id ?? scene?._id ?? null;
+
+  // An emanation is only correct when it moves with its caster and reaches from the edge of their
+  // actual space (not a plain circle around the center point) -- Foundry 14.353+ added exactly this
+  // as a native helper (createAreaRegionData's circle+footprint approximation below is the fallback
+  // for older Foundry versions or when no live token document can be resolved).
+  if (areaType(action, marker) === "emanation" && typeof globalThis.RegionDocument?.createTokenEmanation === "function") {
+    const tokenDocument = canvasTokenById(tokenId(context))?.document;
+    if (tokenDocument) {
+      const { shapes: _shapes, elevation: _elevation, ...regionDataWithoutGeometry } = data;
+      const created = await globalThis.RegionDocument.createTokenEmanation(
+        tokenDocument,
+        areaDistance(action, marker),
+        regionDataWithoutGeometry,
+      );
+      // Foundry's own hooks (e.g. preCreateRegion) can veto creation and return nothing -- fall
+      // through to the manual path below rather than silently reporting a fake success.
+      if (created) return { data, regionId: regionIdFromCreated(created), sceneId };
+    }
+  }
+
   if (typeof scene?.createEmbeddedDocuments === "function") {
     const created = await scene.createEmbeddedDocuments("Region", [data]);
     return { data, regionId: regionIdFromCreated(created), sceneId };

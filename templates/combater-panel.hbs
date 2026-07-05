@@ -45,7 +45,7 @@
                   </button>
                   {{/unless}}
                 {{/if}}
-                {{#if requiresArea}}
+                {{#if canChooseArea}}
                   {{#unless readonly}}
                   <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}">
                     <i class="fa-solid fa-draw-polygon"></i>
@@ -335,7 +335,7 @@
                     {{#if requiresDestination}}
                       <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.ChooseDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseDestinationAria" name=name}}"><i class="fa-solid fa-location-dot"></i></button>
                     {{/if}}
-                    {{#if requiresArea}}
+                    {{#if canChooseArea}}
                       <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.PlaceTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.PlaceTemplateAria" name=name}}"><i class="fa-solid fa-draw-polygon"></i></button>
                     {{/if}}
                     {{#if hasAreaMarker}}
