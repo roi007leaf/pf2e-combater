@@ -631,7 +631,7 @@ function hasInteractAction(actions) {
     || actionBuilderKey(action) === "interact");
 }
 
-function builderActionRows(actions, { includeSyntheticInteract = true } = {}) {
+function builderActionRows(actions, { includeSyntheticInteract = true, keepComposites = false } = {}) {
   const rows = [];
   let needsInteract = false;
   for (const action of Array.isArray(actions) ? actions : []) {
@@ -642,7 +642,12 @@ function builderActionRows(actions, { includeSyntheticInteract = true } = {}) {
       rows.push(activation);
       continue;
     }
-    if (isCompositeAtomicAction(action)) {
+    // A composite (e.g. Rush, Sudden Charge) can't be queued through this row's plain single-step
+    // add -- it needs builderAtomicActionsForStep's Stride/Strike split -- so it's normally kept out
+    // of the addable candidate list entirely. keepComposites is for the browse-only "why is this
+    // rejected" display, where the row is informational (or, per the caller, still added through
+    // that same atomizer) rather than a raw single-step push.
+    if (!keepComposites && isCompositeAtomicAction(action)) {
       needsInteract ||= needsSyntheticInteract(action);
       continue;
     }
@@ -1140,7 +1145,12 @@ function actionUnavailableReason(action) {
 // off-budget uncounted "+" ignores it. `disabled` stays false either way so
 // the row remains visible and interactive (e.g. hover preview, uncounted add).
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
-  if (action?.available === false || action?.disabled === true) {
+  // A rejected candidate (e.g. no attackable enemy target right now) keeps `available` true --
+  // only the ITEM's own usability is false/true, not whether this moment's context has a valid
+  // target -- so normalizeDraftOnlyActions' pre-computed disabledReason is the only signal that
+  // this row needs its warning surfaced instead of falling through to the budget checks below,
+  // which would silently overwrite it with an empty reason.
+  if (action?.available === false || action?.disabled === true || action?.disabledReason) {
     return {
       disabled: false,
       disabledReason: actionUnavailableReason(action),
@@ -1375,8 +1385,12 @@ export function buildActionBuilderModel({
   const favoriteSet = favorites instanceof Set ? favorites : new Set(favorites ?? []);
   // The dedicated sustained-spells section handles sustaining, so no "Sustain a Spell" action
   // is injected into the builder tabs.
-  const normalizedCandidates = builderActionRows(candidates ?? []);
-  const draftOnlyActions = builderActionRows(normalizeDraftOnlyActions(unavailableActions, rejected), { includeSyntheticInteract: false });
+  // Composites (Rush, Sudden Charge, ...) used to be hidden from Browse entirely because a manual
+  // "+" push had no way to split them into their Stride/Strike atoms -- CombaterPanel._addAction
+  // now atomizes on add the same way Auto-fill does (builderAtomicActionsForStep), so nothing is
+  // ever hidden from Browse just because the planner also knows how to use it.
+  const normalizedCandidates = builderActionRows(candidates ?? [], { keepComposites: true });
+  const draftOnlyActions = builderActionRows(normalizeDraftOnlyActions(unavailableActions, rejected), { includeSyntheticInteract: false, keepComposites: true });
   const { keyedActions, baseKeyCounts } = assignActionKeys(normalizedCandidates);
   const sortedKeyedActions = [...keyedActions].toSorted((left, right) => {
     const scoreDelta = scoreValue(right.action) - scoreValue(left.action);

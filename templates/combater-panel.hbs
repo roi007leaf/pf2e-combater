@@ -3,9 +3,11 @@
   {{#*inline "draftStepChip"}}
           <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
             <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if mapLabel}} ({{mapLabel}}){{/if}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
+              {{#unless isGroupChild}}
               <span class="combater-chip-cost" aria-label="{{costLabel}}">
                 <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
               </span>
+              {{/unless}}
               <span class="combater-step-main">
                 <span class="combater-step-headline">
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}

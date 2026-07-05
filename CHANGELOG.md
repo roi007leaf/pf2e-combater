@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.9]
+
+### Fixed
+
+- **A move-and-strike composite (e.g. a monster's Rush) could show its Strike atom with a "free
+  action" glyph and no indentation.** Auto-fill dropped the composite's mandatory Stride atom
+  whenever it "didn't improve position," which silently lost the whole ability's action cost and
+  orphaned the Strike atom from its group. The Stride atom is now kept even when it's a zero-distance
+  no-op, so the composite renders as a group header carrying the real action-cost glyph with its
+  Stride and Strike nested underneath.
+- Indented actions inside a group no longer show their own action-cost glyph — the group header
+  already carries the composite's real cost, so repeating it per atom looked like each step was free.
+- **Move-and-strike composites (Rush, Sudden Charge, and the like) never appeared in Browse**, even
+  when perfectly usable, because a manual "+" add had no way to split them into their Stride/Strike
+  parts. Adding one now atomizes it the same way Auto-fill does, so nothing the planner can use is
+  ever hidden from the list — including rejected/unavailable actions, which now show with their real
+  reason in red instead of vanishing.
+- **Take Cover was suggested just for standing near any wall**, even one behind the actor or
+  bounding an unrelated room with no enemy it actually blocked. It's now only offered after Drop
+  Prone, which is the only case this module can reliably call real tactical cover.
+
 ## [1.0.8]
 
 ### Fixed

@@ -243,7 +243,10 @@ const GENERIC_ACTION_DEFS = [
     slug: "take-cover",
     actionCost: 1,
     role: "defense",
-    requiresCover: true,
+    // Only offered after Drop Prone, not from mere wall proximity -- a wall merely near the
+    // token (behind it, or bounding an unrelated room) isn't real tactical cover, and this
+    // module has no reliable way to tell a relevant wall from an irrelevant one.
+    requiresProne: true,
     executable: "pf2e-action",
   },
   {

@@ -311,9 +311,10 @@ function readGenericActions(context) {
   return GENERIC_ACTIONS.filter((action) => !hideGenericActionForContext(action, context)).map((action) => {
     const itemAvailability = isGenericAvailable(action, context);
     const profile = contextProfile(context);
-    const proneCover = action.slug === "take-cover"
-      && hasCondition(profile, "prone")
-      && !hasAdjacentCover(context, profile);
+    // Wall proximity no longer grants Take Cover eligibility (see the catalog entry), so any
+    // prone-triggered Take Cover is inherently the "stay prone for cover" tactic -- it conflicts
+    // with also Standing up in the same plan (see requiresProneForCover in planner.js).
+    const proneCover = action.slug === "take-cover" && hasCondition(profile, "prone");
     return {
       ...action,
       name: pf2eActionName(action.slug, action.name),
@@ -2622,11 +2623,7 @@ function isGenericAvailable(action, context) {
     }
   }
   if (action.requiresCover) {
-    if (action.slug === "take-cover") {
-      if (!hasCondition(profile, "prone") && !hasAdjacentCover(context, profile)) {
-        return availability(false, t("Avail.NoWallCover", "No adjacent wall or cover."));
-      }
-    } else if (!hasCoverOrConcealment(profile, context)) {
+    if (!hasCoverOrConcealment(profile, context)) {
       return availability(false, t("Avail.NoCoverConcealment", "No cover or concealment detected."));
     }
   }
@@ -2806,19 +2803,6 @@ function pointToSegmentDistance(point, start, end) {
   return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
 }
 
-function pointToRectangleDistance(point, rectangle) {
-  const dx = Math.max(rectangle.x - point.x, point.x - (rectangle.x + rectangle.width), 0);
-  const dy = Math.max(rectangle.y - point.y, point.y - (rectangle.y + rectangle.height), 0);
-  return Math.hypot(dx, dy);
-}
-
-function pointInRectangle(point, rectangle) {
-  return point.x >= rectangle.x
-    && point.x <= rectangle.x + rectangle.width
-    && point.y >= rectangle.y
-    && point.y <= rectangle.y + rectangle.height;
-}
-
 function orientation(a, b, c) {
   const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
   if (Math.abs(value) < 0.0001) return 0;
@@ -2846,41 +2830,6 @@ function segmentsIntersect(a, b, c, d) {
   return false;
 }
 
-function rectangleEdges(rectangle) {
-  const topLeft = { x: rectangle.x, y: rectangle.y };
-  const topRight = { x: rectangle.x + rectangle.width, y: rectangle.y };
-  const bottomRight = { x: rectangle.x + rectangle.width, y: rectangle.y + rectangle.height };
-  const bottomLeft = { x: rectangle.x, y: rectangle.y + rectangle.height };
-  return [
-    [topLeft, topRight],
-    [topRight, bottomRight],
-    [bottomRight, bottomLeft],
-    [bottomLeft, topLeft],
-  ];
-}
-
-function segmentTouchesRectangle(start, end, rectangle) {
-  return pointInRectangle(start, rectangle)
-    || pointInRectangle(end, rectangle)
-    || rectangleEdges(rectangle).some(([edgeStart, edgeEnd]) => segmentsIntersect(start, end, edgeStart, edgeEnd));
-}
-
-function segmentToRectangleDistance(start, end, rectangle) {
-  if (segmentTouchesRectangle(start, end, rectangle)) return 0;
-
-  const endpointDistance = Math.min(
-    pointToRectangleDistance(start, rectangle),
-    pointToRectangleDistance(end, rectangle),
-  );
-  const cornerDistance = Math.min(
-    ...rectangleEdges(rectangle).flatMap(([edgeStart, edgeEnd]) => [
-      pointToSegmentDistance(edgeStart, start, end),
-      pointToSegmentDistance(edgeEnd, start, end),
-    ]),
-  );
-  return Math.min(endpointDistance, cornerDistance);
-}
-
 function wallSegment(wall) {
   const endpoints = wallEndpoints(wall);
   if (!endpoints) return null;
@@ -2899,31 +2848,6 @@ function wallSegmentsBlockMovement(from, to) {
     const segment = wallSegment(wall);
     return segment ? segmentsIntersect(from, to, segment[0], segment[1]) : false;
   });
-}
-
-function hasAdjacentCoverWall(context) {
-  const origin = centerPoint(context?.token);
-  const walls = globalThis.canvas?.walls?.placeables ?? [];
-  if (!origin || !Array.isArray(walls) || !walls.length) return false;
-
-  const metrics = movementGridMetrics();
-  const rectangle = rectangleForCenter(origin, tokenFootprintPixels(context?.token, metrics));
-  const threshold = Math.max(metrics.pixelsPerFoot * 0.5, 0.0001);
-  return walls.some((wall) => {
-    const segment = wallSegment(wall);
-    if (!segment) return false;
-    return segmentToRectangleDistance(segment[0], segment[1], rectangle) <= threshold;
-  });
-}
-
-function hasAdjacentCover(context, profile) {
-  return Boolean(
-    profile?.hasAdjacentCover
-    || context?.adjacentCover
-    || context?.battlefield?.hasAdjacentCover
-    || context?.battlefield?.adjacentCover
-    || hasAdjacentCoverWall(context),
-  );
 }
 
 function hasLockedCanvasDoorInReach(context, profile) {

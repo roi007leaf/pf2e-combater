@@ -925,6 +925,10 @@ function groupDraftSteps(steps) {
         ...member,
         name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
         canDragStep: false,
+        // The group header already shows the composite's real cost glyph; repeating a
+        // per-atom glyph on each child is misleading (atoms after the first are forced to
+        // cost 0, see builderAtomicActionsForStep) and reads as if the atom were free.
+        isGroupChild: true,
       })),
     });
     i = end;
@@ -1768,24 +1772,40 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     const draft = this._readActiveDraftPlan();
-    // A self-centered area (e.g. an emanation) needs no manual placement -- it's always centered on
-    // the caster, so pre-fill it here the same way Auto-fill already does, instead of forcing a
-    // "Place template" prompt for something with only one possible location.
-    const presetAreaMarker = computeAreaMarker(this._context, action);
+    // A composite (e.g. Rush, Sudden Charge) atomizes into its Stride/Strike parts, mirroring
+    // Auto-fill (_autoFillDraft) -- a raw single-step push would leave the whole ability un-split
+    // and unexecutable. A plain action passes straight through unchanged (same array, same
+    // reference), so action.key is kept for that common case instead of re-deriving it.
+    const atoms = builderAtomicActionsForStep(action);
+    const newSteps = atoms.length === 1 && atoms[0] === action
+      ? [action]
+      : atoms;
     await this._writeActiveDraftPlan(markManualDraft({
       ...draft,
       steps: [
         ...(draft.steps ?? []),
-        {
-          instanceId: draftStepId(),
-          actionKey: action.key,
-          // Persist a display name so the step still reads correctly if its action stops being
-          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-          name: action.name,
-          actionCost: action.actionCost ?? action.cost,
-          requiresDestination: requiresDestinationForAction(action),
-          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-        },
+        ...newSteps.map((atom) => {
+          // A self-centered area (e.g. an emanation) needs no manual placement -- it's always
+          // centered on the caster, so pre-fill it here the same way Auto-fill already does,
+          // instead of forcing a "Place template" prompt for something with only one possible
+          // location.
+          const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(this._context, atom) : null;
+          return {
+            instanceId: draftStepId(),
+            actionKey: atom === action ? action.key : this._actionKeyForStep(atom),
+            // Persist a display name so the step still reads correctly if its action stops being
+            // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+            name: atom?.name ?? atom?.action?.name,
+            actionCost: atom?.actionCost ?? atom?.cost,
+            requiresDestination: requiresDestinationForAction(atom),
+            ...(atom?.groupId
+              ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
+              : atom?.activityProfile?.requiresDistinctTargets
+                ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
+                : {}),
+            ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+          };
+        }),
       ],
     }));
     clearActionPreview();
@@ -2114,7 +2134,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
           // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
           // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
-          if (isBasicMove && movement?.destination
+          // A grouped Stride (e.g. Rush, Sudden Charge) is a mandatory component of a fixed-cost
+          // composite, not a discretionary reposition -- its own actionCost carries the whole
+          // ability's cost (see builderAtomicActionsForStep), so dropping it here would silently
+          // lose that cost and leave its sibling Strike atom looking free with no group to correct it.
+          if (isBasicMove && !step?.groupId && movement?.destination
             && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
             return null;
           }

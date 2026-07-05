@@ -3799,7 +3799,10 @@ const atomicBuilderModel = buildActionBuilderModel({
 });
 assert.equal(atomicBuilderModel.tabs.one.all.some((action) => action.name === "Stride"), true);
 assert.equal(atomicBuilderModel.tabs.one.all.some((action) => action.name === "Longsword"), true);
-assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Stride -> Longsword"), false);
+// A composite (e.g. "Stride -> Longsword") is never hidden from Browse just because it also
+// atomizes -- CombaterPanel._addAction atomizes a manual add the same way Auto-fill does, so
+// nothing needs to disappear from the list to stay safe to click.
+assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Stride -> Longsword"), true);
 assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Power Attack"), true);
 assert.equal(atomicBuilderModel.tabs.two.all.some((action) => action.name === "Sudden Charge"), true);
 assert.deepEqual(
@@ -12009,6 +12012,9 @@ const hiddenAction = readActionSources(fighterContext).find((action) => action.s
 assert.equal(hiddenAction.available, false);
 assert.equal(hiddenAction.unavailableReason, "No cover or concealment detected.");
 
+// Take Cover is only ever offered after Drop Prone -- the generic "hasCover" flag (which DOES
+// gate other cover-requiring actions like Hide) is deliberately irrelevant to it, since this
+// module has no reliable way to tell a tactically relevant wall from an irrelevant nearby one.
 const noAdjacentWallTakeCover = readActionSources({
   ...fighterContext,
   token: { center: { x: 0, y: 0 } },
@@ -12018,7 +12024,7 @@ const noAdjacentWallTakeCover = readActionSources({
   },
 }).find((action) => action.slug === "take-cover");
 assert.equal(noAdjacentWallTakeCover.available, false);
-assert.equal(noAdjacentWallTakeCover.unavailableReason, "No adjacent wall or cover.");
+assert.equal(noAdjacentWallTakeCover.unavailableReason, "Actor is not prone.");
 
 const systemTakeCoverNoWallCanvas = globalThis.canvas;
 try {
@@ -12073,11 +12079,26 @@ try {
       }],
     },
   };
+  // A wall merely adjacent to the token no longer grants Take Cover on its own -- it might be
+  // behind the actor, or bound an unrelated room, with no enemy it actually blocks. Only Drop
+  // Prone (see the noAdjacentWallTakeCover/takeCoverAfterDropProne cases) grants it now.
   const adjacentWallTakeCover = readActionSources({
     ...fighterContext,
     token: { center: { x: 0, y: 0 } },
   }).find((action) => action.slug === "take-cover");
-  assert.equal(adjacentWallTakeCover.available, true);
+  assert.equal(adjacentWallTakeCover.available, false);
+  assert.equal(adjacentWallTakeCover.unavailableReason, "Actor is not prone.");
+
+  // Prone still grants it even with a wall present -- the wall is simply irrelevant either way.
+  const proneWithWallTakeCover = readActionSources({
+    ...fighterContext,
+    token: { center: { x: 0, y: 0 } },
+    profile: {
+      ...fighterContext.profile,
+      conditions: { slugs: ["prone"], values: { prone: 1 } },
+    },
+  }).find((action) => action.slug === "take-cover");
+  assert.equal(proneWithWallTakeCover.available, true);
 } finally {
   globalThis.canvas = previousTakeCoverWallCanvas;
 }
