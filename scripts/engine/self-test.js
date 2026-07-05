@@ -6252,6 +6252,47 @@ assert.ok(
   "a non-composition action should never get a synthetic Lingering Composition extension sibling",
 );
 
+// Real spellcasting candidates never carry activityProfile.composition/compositionExtender booleans
+// -- spell-classifier.js tags them only with the real PF2e "composition" trait inside
+// activityProfile.traits (confirmed against a live buildTurnPlans dump), and Lingering Composition's
+// activityProfile has no distinguishing flag at all, just its fixed slug. The synthetic-flag
+// candidates above passed even when this exact shape still leaked the "extends nothing" bug.
+const realisticCourageousAnthemCandidate = {
+  id: "spell-xDSvnJ3NtV557OZx", slug: "courageous-anthem", name: "Courageous Anthem",
+  actionCost: 1, source: "spell-inferred", score: 90, confidence: "high",
+  activityProfile: {
+    includes: ["buff"], spell: true, cantrip: true,
+    traits: ["bard", "cantrip", "composition", "concentrate", "emotion", "mental"],
+    ally: true, attackBuff: true,
+  },
+  targetingProfile: { ally: true, self: true },
+};
+const realisticLingeringCompositionCandidate = {
+  id: "spell-T3O0SnybSYJvFN2D", slug: "lingering-composition", name: "Lingering Composition",
+  actionCost: 1, source: "spell-inferred", score: 20, confidence: "high",
+  activityProfile: {
+    includes: ["utility", "combat-utility"], spell: true, cantrip: false, focus: true,
+    traits: ["bard", "concentrate", "focus", "spellshape"],
+    utilitySubtype: "combat-utility",
+  },
+};
+const realisticLingeringComboPlans = buildTurnPlans(fighterContext, [realisticLingeringCompositionCandidate, realisticCourageousAnthemCandidate]);
+const realisticLingeringComboPlan = realisticLingeringComboPlans.find((plan) =>
+  plan.steps.some((step) => step.id === `${realisticCourageousAnthemCandidate.id}-lingering-composition`));
+assert.ok(realisticLingeringComboPlan, "auto-fill should extend a real spell-classified composition cantrip too, not just a curated one");
+assert.deepEqual(
+  realisticLingeringComboPlan.steps.map((step) => step.slug),
+  ["lingering-composition", "courageous-anthem"],
+  "Lingering Composition should be sequenced directly before a real spell-classified cantrip composition",
+);
+assert.ok(
+  !realisticLingeringComboPlans.some((plan) => {
+    const ids = new Set(plan.steps.map((step) => step.id));
+    return ids.has(realisticLingeringCompositionCandidate.id) && ids.has(realisticCourageousAnthemCandidate.id);
+  }),
+  "Lingering Composition should never pair with the plain, real spell-classified cantrip candidate",
+);
+
 const speedProfile = readActorProfile({
   id: "speedy",
   name: "Speedy",

@@ -1059,16 +1059,24 @@ function withQuickenedCastingDiscountCandidates(candidates) {
   });
 }
 
+// Real spell items (source "spell-<id>") never reach the curated bard.js catalog entry -- they're
+// classified generically by spell-classifier.js, which has no `compositionExtender` flag. Lingering
+// Composition's slug is fixed and unique, so match on that; the flag stays as a fallback for a
+// curated candidate that reaches this some other way.
 function isCompositionExtenderCandidate(candidate) {
-  return candidate?.activityProfile?.compositionExtender === true;
+  return candidate?.slug === "lingering-composition" || candidate?.activityProfile?.compositionExtender === true;
 }
 
-// A cantrip composition Lingering Composition can extend -- curated bard actions tag themselves
-// `activityProfile.composition: true` when they cast one (e.g. Courageous Anthem, Vigorous
-// Anthem). Excludes Lingering Composition itself, which also carries `composition: true` (you
-// can't cast two compositions in one turn) but isn't a cantrip composition to extend.
+// A cantrip composition Lingering Composition can extend. Same caveat as above: the generic
+// spell-classifier never sets `activityProfile.composition`, but it does carry the real PF2e
+// "composition" trait every bard cantrip composition has (Courageous/Rallying/Dirge/etc.) in
+// `activityProfile.traits` -- check that first, and keep the flag as a fallback for curated
+// candidates. Excludes Lingering Composition itself, which also has the trait/flag (you can't cast
+// two compositions in one turn) but isn't a cantrip composition to extend.
 function isCompositionExtensionEligible(candidate) {
-  return candidate?.activityProfile?.composition === true && !isCompositionExtenderCandidate(candidate);
+  if (isCompositionExtenderCandidate(candidate)) return false;
+  const traits = candidate?.activityProfile?.traits;
+  return (Array.isArray(traits) && traits.includes("composition")) || candidate?.activityProfile?.composition === true;
 }
 
 const LINGERING_COMPOSITION_BONUS = 8;
