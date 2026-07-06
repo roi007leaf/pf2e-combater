@@ -90,7 +90,7 @@ import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectableAlternativePlans, selectDisplayPlan } from "../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../ui/action-preview.js";
-import { clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showMovementPreview } from "../ui/movement-preview.js";
+import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../ui/destination-picker.js";
@@ -722,6 +722,20 @@ assert.ok(
   /_showDraftActionPreview\(element\)[\s\S]*movementPlan:\s*step\.movementPlan/.test(panelSource),
   "draft movement hover preview should include stored custom waypoint path, not only the final destination",
 );
+// _showHoverGhost must forward the hover candidate's own movementPlan (built by the picker's
+// candidatePlanFor, carrying whatever waypoints are already committed) through to showHoverGhost --
+// without it, movementPreviewForStep's hoverOnly branch has no way to know a waypoint bend already
+// exists, and validates/renders the hover point as if it were a direct line from the origin instead of
+// routing through that waypoint first (reported live: the ghost showed available/green for a
+// destination that only became beyond Speed once the mandatory waypoint detour was accounted for).
+assert.ok(
+  /_showHoverGhost\(instanceId, destination, metadata = \{\}\)[\s\S]*movementPlan:\s*metadata\.movementPlan/.test(panelSource),
+  "_showHoverGhost must forward the hover candidate's movementPlan (with any already-committed waypoints) to showHoverGhost",
+);
+assert.ok(
+  /this\._showHoverGhost\(instanceId, destination, metadata\)/.test(panelSource),
+  "the hoverOnly branch of onPreview must pass its own metadata through to _showHoverGhost",
+);
 assert.equal(
   GENERIC_ACTIONS.find((action) => action.slug === "raise-a-shield")?.uuid,
   "Compendium.pf2e.actionspf2e.Item.xjGwis0uaC2305pm",
@@ -807,21 +821,21 @@ assert.ok(
 // A persisted display name keeps a step readable after its action stops being generated (e.g. a
 // drawn weapon no longer offers its Draw action), instead of falling back to the raw action key.
 assert.ok(
-  /_addAction\(actionKey\)[\s\S]*name: action\.name/.test(panelSource),
+  /_addAction\(actionKey\)[\s\S]*name: atom\?\.name/.test(panelSource),
   "added plan steps should persist a display name",
 );
 assert.ok(
-  /_addUncountedAction\(actionKey\)[\s\S]*name: action\.name/.test(panelSource),
+  /_addUncountedAction\(actionKey\)[\s\S]*name: atom\?\.name/.test(panelSource),
   "added uncounted steps should persist a display name",
 );
 // A self-centered area (an emanation) has only one possible location -- pre-fill it the same way
 // Auto-fill already does, instead of forcing a "Place template" prompt with no real choice to make.
 assert.ok(
-  /_addAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
+  /_addAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, atom\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
   "manually adding an action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
 );
 assert.ok(
-  /_addUncountedAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, action\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
+  /_addUncountedAction\(actionKey\)[\s\S]*computeAreaMarker\(this\._context, atom\)[\s\S]*presetAreaMarker \? \{ areaMarker: presetAreaMarker \}/.test(panelSource),
   "manually adding an uncounted action should pre-fill a self-computable area marker (e.g. an emanation), not force a placement prompt",
 );
 // A self-centered area (an emanation) or a target-centered one (e.g. Circle of Protection) has
@@ -1141,6 +1155,13 @@ assert.deepEqual(
 
 assert.equal(requiresTargetForAction(executionTargetAction), true);
 assert.equal(requiresTargetForAction({ name: "Stand", slug: "stand", targetingProfile: { self: true } }), false);
+// stand-stride (Stand, then Stride toward the nearest enemy beyond reach) carries
+// targetingProfile.enemy purely to pick a direction to move -- it must not prompt for a target.
+assert.equal(
+  requiresTargetForAction({ name: "Stand -> Stride", slug: "stand-stride", targetingProfile: { enemy: true, preferredTargetId: "amiri" } }),
+  false,
+  "stand-stride is pure movement toward a direction, not an attack -- it must not require choosing a target",
+);
 // A self-directed suggested target (scoring assigns one to defense/self actions) must not
 // force the user to pick a target.
 assert.equal(
@@ -5638,6 +5659,14 @@ assert.equal(standStride.actionCost, 2);
 assert.equal(standStride.preferredTarget.name, "Ogre");
 const scoredStandStride = scoreCandidate(proneFarContext, standStride);
 assert.ok(scoredStandStride.reasons.includes("Closes distance toward the target."));
+// Pure movement toward a direction, not an attack -- must never prompt for a target, and must
+// atomize into its separate Stand/Stride parts (each its own 1-action row) like any other composite,
+// instead of surfacing as one bundled 2-action item that asks for a target it doesn't need.
+assert.equal(requiresTargetForAction(standStride), false);
+const standStrideAtoms = builderAtomicActionsForStep(standStride);
+assert.deepEqual(standStrideAtoms.map((atom) => atom.slug), ["stand", "stride"]);
+assert.ok(standStrideAtoms.every((atom) => atom.actionCost === 1));
+assert.ok(standStrideAtoms.every((atom) => requiresTargetForAction(atom) === false));
 
 // A generic Stride toward a target already within reach closes no distance, so it must score
 // negative — below the planner's unused-action penalty — or the planner pads a spare action with
@@ -7006,6 +7035,10 @@ assert.deepEqual(
   "PF2e greater difficult terrain should use system mitigation math, not a generic multiplier",
 );
 
+// The movement/destination overlay uses a fixed, meaning-based legend (green = available, gold =
+// the chosen destination, red = out of reach) -- it must NOT pick up the current user's own Foundry
+// color (game.user.color), which used to make the overlay a different, arbitrary hue per player and
+// carried no information about availability.
 const previousMovementColorGame = globalThis.game;
 try {
   globalThis.game = { user: { color: "#ff3366" } };
@@ -7020,13 +7053,13 @@ try {
   assert.equal(playerColorMovementPreview.destinationAvailable, true);
   assert.equal(
     playerColorMovementPreview.stridePath[0].color,
-    0xff3366,
-    "planned movement path should use the current user's Foundry color",
+    0xe0b35a,
+    "the chosen destination must always use the fixed gold, regardless of the player's own Foundry color",
   );
   assert.equal(
     playerColorMovementPreview.reachableMarkerColor,
-    0xff3366,
-    "planned movement grid highlights should use the current user's Foundry color",
+    0x66c78f,
+    "the reachable-area highlight must always use the fixed green, regardless of the player's own Foundry color",
   );
 } finally {
   globalThis.game = previousMovementColorGame;
@@ -7133,11 +7166,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        pointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") pointerHandler = handler;
       },
       off: (event, handler) => {
-        assert.equal(event, "pointerdown");
+        if (event !== "pointerdown") return;
         assert.equal(handler, pointerHandler);
         pointerRemoved = true;
         pointerHandler = null;
@@ -7175,6 +7208,140 @@ try {
   assert.equal(pointerRemoved, true);
   assert.equal(pointerHandler, null);
 
+  // Live hover preview: pointerdown/up only ever fire on an actual click -- without a dedicated
+  // pointermove listener, moving the mouse before clicking showed no preview at all (the ghost token,
+  // cost readout, and colored box only appeared once a click had already committed a candidate).
+  let hoverPointerHandler = null;
+  let hoverMoveHandler = null;
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "hover-actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "hover-actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 25 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") hoverPointerHandler = handler;
+        else hoverMoveHandler = handler;
+      },
+      off: () => { },
+    },
+  };
+  const hoverPreviews = [];
+  const hoverPicker = chooseDestination({
+    context: { token: { id: "hover-actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    onPreview: (destination, metadata) => hoverPreviews.push({ destination, metadata }),
+    onChoose: () => assert.fail("moving the mouse must never finalize a destination on its own"),
+  });
+  assert.ok(hoverPicker);
+  assert.equal(typeof hoverPointerHandler, "function");
+  assert.equal(typeof hoverMoveHandler, "function", "chooseDestination must register a live hover-preview listener");
+  hoverMoveHandler({ global: { x: 15, y: 5 } }); // one square east of origin (5,5); well within 25ft Speed
+  assert.equal(hoverPreviews.length, 1, "moving the mouse before any click should already preview a destination");
+  assert.deepEqual(hoverPreviews[0].destination, { x: 15, y: 5 });
+  assert.ok(hoverPreviews[0].metadata.movementPlan, "hover preview should include a movement plan for the ghost/cost readout");
+  assert.equal(hoverPreviews[0].metadata.hoverOnly, true,
+    "a live hover candidate must be flagged hoverOnly so the renderer keeps the full reachable-area grid visible instead of narrowing it");
+  // Snapping collapses most raw mouse movement onto the same grid square -- moving within it must not
+  // trigger a redundant re-render.
+  hoverMoveHandler({ global: { x: 16, y: 6 } });
+  assert.equal(hoverPreviews.length, 1, "moving within the same snapped grid square must not trigger a redundant preview");
+  // Moving to a genuinely different square must still update the preview.
+  hoverMoveHandler({ global: { x: 25, y: 5 } });
+  assert.equal(hoverPreviews.length, 2, "moving to a different grid square should trigger a new preview");
+  assert.deepEqual(hoverPreviews[1].destination, { x: 25, y: 5 });
+
+  // A hover candidate is always flagged hoverOnly (asserted above), which the renderer (CombaterPanel's
+  // _showHoverGhost) routes to a lightweight ghost-only overlay that never touches the persistent
+  // reachable-area grid -- so, unlike before that separation existed, hovering after a waypoint is
+  // already committed no longer risks narrowing the grid and can keep live-tracking the cursor.
+  let waypointHoverPointerHandler = null;
+  let waypointHoverMoveHandler = null;
+  globalThis.canvas.stage = {
+    on: (event, handler) => {
+      assert.ok(event === "pointerdown" || event === "pointermove");
+      if (event === "pointerdown") waypointHoverPointerHandler = handler;
+      else waypointHoverMoveHandler = handler;
+    },
+    off: () => { },
+  };
+  const waypointHoverPreviews = [];
+  const waypointHoverPicker = chooseDestination({
+    context: { token: { id: "hover-actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onPreview: (destination, metadata) => waypointHoverPreviews.push({ destination, metadata }),
+    onChoose: () => assert.fail("this scenario should never finalize a destination"),
+  });
+  assert.ok(waypointHoverPicker);
+  // Commit a real waypoint via a shift-click (not a hover).
+  waypointHoverPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 15, y: 5 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  const previewsAfterWaypoint = waypointHoverPreviews.length;
+  assert.ok(previewsAfterWaypoint > 0, "sanity: placing a waypoint should itself preview");
+  // Hovering elsewhere afterward must still keep tracking the cursor -- the ghost overlay is
+  // independent of the grid, so there's no longer any reason to stop live-updating it mid-path.
+  waypointHoverMoveHandler({ global: { x: 55, y: 5 } });
+  assert.equal(waypointHoverPreviews.length, previewsAfterWaypoint + 1,
+    "hovering after a waypoint is already committed must still live-update the hover ghost");
+  const midPathHoverPreview = waypointHoverPreviews.at(-1);
+  assert.deepEqual(midPathHoverPreview.destination, { x: 55, y: 5 });
+  assert.equal(midPathHoverPreview.metadata.hoverOnly, true,
+    "mid-path hover previews must still be flagged hoverOnly so they route to the ghost-only overlay, not the grid");
+
+  // A Large-or-bigger (even-cell) footprint's correctly-grid-aligned center sits on a grid VERTEX,
+  // not a cell center -- unlike a 1x1 Medium token (the case just above), which centers on a cell.
+  // Blindly snapping every click to the nearest cell center regardless of footprint put an even-sized
+  // token's destination box half a cell off the grid. Same click point as above (12, 18), same grid,
+  // but a 2x2 token: the correct destination is the nearest vertex (10, 20), not the cell center (15, 15).
+  let largeTokenPointerHandler = null;
+  globalThis.canvas = {
+    grid: { size: 10 },
+    tokens: {
+      placeables: [{
+        id: "large-actor-token",
+        document: { id: "large-actor-token", width: 2, height: 2 },
+        planMovement: () => assert.fail("destination click picker should not use token.planMovement by default"),
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") largeTokenPointerHandler = handler;
+      },
+      off: (event) => {
+        if (event === "pointerdown") largeTokenPointerHandler = null;
+      },
+    },
+  };
+  const largeTokenDestinations = [];
+  const largeTokenPicker = chooseDestination({
+    context: { token: { id: "large-actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    onChoose: (destination) => largeTokenDestinations.push(destination),
+  });
+  assert.ok(largeTokenPicker);
+  largeTokenPointerHandler({
+    button: 0,
+    global: { x: 12, y: 18 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(largeTokenDestinations, [{ x: 10, y: 20 }],
+    "a 2x2 token's destination must snap to the nearest grid vertex, not the nearest cell center");
+
   let projectedOriginPointerHandler = null;
   const projectedOriginWarnings = [];
   globalThis.ui = { notifications: { warn: (message) => projectedOriginWarnings.push(message) } };
@@ -7191,11 +7358,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        projectedOriginPointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") projectedOriginPointerHandler = handler;
       },
-      off: () => {
-        projectedOriginPointerHandler = null;
+      off: (event) => {
+        if (event === "pointerdown") projectedOriginPointerHandler = null;
       },
     },
   };
@@ -7240,11 +7407,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        waypointPointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") waypointPointerHandler = handler;
       },
       off: (event, handler) => {
-        assert.equal(event, "pointerdown");
+        if (event !== "pointerdown") return;
         assert.equal(handler, waypointPointerHandler);
         waypointPointerRemoved = true;
         waypointPointerHandler = null;
@@ -7404,11 +7571,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        diagonalCostPointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") diagonalCostPointerHandler = handler;
       },
-      off: () => {
-        diagonalCostPointerHandler = null;
+      off: (event) => {
+        if (event === "pointerdown") diagonalCostPointerHandler = null;
       },
     },
   };
@@ -7447,6 +7614,64 @@ try {
     "waypoint picker range budget should use PF2e 5-10-5 diagonal movement",
   );
 
+  // A bent waypoint path landing EXACTLY on the actor's full Speed (not a single foot over) must
+  // still be allowed -- reported live: a 20ft-Speed actor placed one waypoint 15ft away (3 straight
+  // cells, no diagonals) then finalized 5ft further (1 diagonal cell, the cumulative diagonal count's
+  // first-ever diagonal step, costing the normal 5ft under PF2e's 5-10-5 rule) for an exact 20ft
+  // total, and was incorrectly rejected as "beyond movement range".
+  let exactBudgetPointerHandler = null;
+  const exactBudgetWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => exactBudgetWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: { grid: { distance: 5 } },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 5 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { land: { value: 20 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") exactBudgetPointerHandler = handler;
+      },
+      off: (event) => {
+        if (event === "pointerdown") exactBudgetPointerHandler = null;
+      },
+    },
+  };
+  const exactBudgetDestinations = [];
+  const exactBudgetPicker = chooseDestination({
+    context: { token: { id: "actor-token" } },
+    action: { name: "Stride", slug: "stride" },
+    enableWaypoints: true,
+    onChoose: (destination, metadata) => exactBudgetDestinations.push({ destination, metadata }),
+  });
+  assert.ok(exactBudgetPicker);
+  // Leg 1: origin (5,5) -> (35,5), 3 straight cells east, no diagonals -- 15ft.
+  exactBudgetPointerHandler({
+    button: 0,
+    shiftKey: true,
+    global: { x: 33, y: 7 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.equal(exactBudgetWarnings.length, 0, "sanity: placing the first (15ft) waypoint must not itself warn");
+  // Leg 2 (finalize, plain click): (35,5) -> (45,15), 1 diagonal cell -- the first diagonal step of
+  // the whole path, costing the normal (not doubled) 5ft -- for an exact 20ft total.
+  exactBudgetPointerHandler({
+    button: 0,
+    global: { x: 47, y: 13 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.deepEqual(exactBudgetWarnings, [], "a bent path costing exactly the full Speed must not be rejected as beyond range");
+  assert.equal(exactBudgetDestinations.length, 1, "the exact-budget destination must finalize");
+  assert.deepEqual(exactBudgetDestinations[0]?.destination, { x: 45, y: 15 });
+
   let terrainCostPointerHandler = null;
   const terrainCostWarnings = [];
   globalThis.ui = { notifications: { warn: (message) => terrainCostWarnings.push(message) } };
@@ -7472,11 +7697,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        terrainCostPointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") terrainCostPointerHandler = handler;
       },
-      off: () => {
-        terrainCostPointerHandler = null;
+      off: (event) => {
+        if (event === "pointerdown") terrainCostPointerHandler = null;
       },
     },
   };
@@ -7547,11 +7772,11 @@ try {
     },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        detourPointerHandler = handler;
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") detourPointerHandler = handler;
       },
-      off: () => {
-        detourPointerHandler = null;
+      off: (event) => {
+        if (event === "pointerdown") detourPointerHandler = null;
       },
     },
   };
@@ -7577,17 +7802,74 @@ try {
   assert.deepEqual(detourChosen[0]?.destination, { x: 35, y: 15 });
   assert.equal(detourChosen[0]?.metadata.movementPlan.cost, 20);
 
+  // The same detour must work for a vertical (fly/burrow) Stride too, as long as the click hasn't
+  // actually changed height yet (no Shift+scroll) -- a level fly-stride is still just "go here", and
+  // the horizontal-only BFS answers it exactly the same way it would for a walking Stride.
+  let flyDetourPointerHandler = null;
+  const flyDetourWarnings = [];
+  globalThis.ui = { notifications: { warn: (message) => flyDetourWarnings.push(message) } };
+  globalThis.canvas = {
+    grid: { size: 10 },
+    scene: {
+      grid: { distance: 5 },
+      regions: [{
+        shapes: [{ type: "rectangle", x: 10, y: 10, width: 20, height: 10 }],
+        behaviors: [{
+          type: "modifyMovementCost",
+          system: { difficulties: { fly: 2 } },
+        }],
+      }],
+    },
+    tokens: {
+      placeables: [{
+        id: "actor-token",
+        center: { x: 5, y: 15 },
+        document: { id: "actor-token", width: 1, height: 1 },
+        actor: { system: { movement: { speeds: { fly: { value: 20 }, land: { value: 20 } } } } },
+      }],
+    },
+    stage: {
+      on: (event, handler) => {
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") flyDetourPointerHandler = handler;
+      },
+      off: (event) => {
+        if (event === "pointerdown") flyDetourPointerHandler = null;
+      },
+    },
+  };
+  const flyDetourChosen = [];
+  const flyDetourPicker = chooseDestination({
+    context: { token: { id: "actor-token" }, actor: { profile: { speed: 20 } } },
+    action: { name: "Fly Stride", slug: "stand-stride", movementAction: "fly" },
+    enableWaypoints: true,
+    onPreview: () => { },
+    onChoose: (destination, metadata) => flyDetourChosen.push({ destination, metadata }),
+  });
+  assert.ok(flyDetourPicker);
+  flyDetourPointerHandler({
+    button: 0,
+    global: { x: 35, y: 15 },
+    preventDefault: () => { },
+    stopPropagation: () => { },
+  });
+  assert.equal(flyDetourWarnings.length, 0,
+    "a level fly-stride onto a square reachable via a terrain-avoiding detour must not warn 'beyond movement range'");
+  assert.equal(flyDetourChosen.length, 1,
+    "the fly click must finalize the destination once the BFS confirms a route within budget");
+  assert.equal(flyDetourChosen[0]?.metadata.movementPlan.cost, 20);
+
   let doubleClickPointerHandler = null;
   let doubleClickPointerRemoved = false;
   globalThis.canvas.tokens.placeables[0].actor.system.movement.speeds.land.value = 15;
   globalThis.canvas.scene.regions = [];
   globalThis.canvas.stage = {
     on: (event, handler) => {
-      assert.equal(event, "pointerdown");
-      doubleClickPointerHandler = handler;
+      assert.ok(event === "pointerdown" || event === "pointermove");
+      if (event === "pointerdown") doubleClickPointerHandler = handler;
     },
     off: (event, handler) => {
-      assert.equal(event, "pointerdown");
+      if (event !== "pointerdown") return;
       assert.equal(handler, doubleClickPointerHandler);
       doubleClickPointerRemoved = true;
       doubleClickPointerHandler = null;
@@ -7633,11 +7915,11 @@ try {
   let directWaypointPointerHandler = null;
   globalThis.canvas.stage = {
     on: (event, handler) => {
-      assert.equal(event, "pointerdown");
-      directWaypointPointerHandler = handler;
+      assert.ok(event === "pointerdown" || event === "pointermove");
+      if (event === "pointerdown") directWaypointPointerHandler = handler;
     },
-    off: () => {
-      directWaypointPointerHandler = null;
+    off: (event) => {
+      if (event === "pointerdown") directWaypointPointerHandler = null;
     },
   };
   const directWaypointDestinations = [];
@@ -7683,6 +7965,8 @@ try {
         domDoubleClickHandler = handler;
       } else if (event === "contextmenu") {
         domContextHandler = handler;
+      } else if (event === "pointermove") {
+        // hover-preview listener; not exercised by these destination-picker tests
       } else {
         assert.fail(`unexpected destination picker event listener: ${event}`);
       }
@@ -7708,6 +7992,8 @@ try {
         assert.equal(handler, domContextHandler);
         domContextRemoved = true;
         domContextHandler = null;
+      } else if (event === "pointermove") {
+        // hover-preview listener; not exercised by these destination-picker tests
       } else {
         assert.fail(`unexpected destination picker event cleanup: ${event}`);
       }
@@ -7725,8 +8011,8 @@ try {
     grid: { size: 10 },
     stage: {
       on: (event, handler) => {
-        assert.equal(event, "pointerdown");
-        ignoredStageHandlers.push(handler);
+        assert.ok(event === "pointerdown" || event === "pointermove");
+        if (event === "pointerdown") ignoredStageHandlers.push(handler);
       },
       off: () => { },
     },
@@ -8583,8 +8869,8 @@ try {
     beginFill(color, alpha) {
       previewDrawCalls.push({ type: "beginFill", color, alpha });
     }
-    drawRect() {
-      previewDrawCalls.push({ type: "drawRect" });
+    drawRect(x, y, width, height) {
+      previewDrawCalls.push({ type: "drawRect", x, y, width, height });
     }
     drawCircle(x, y, radius) {
       previewDrawCalls.push({ type: "drawCircle", x, y, radius });
@@ -8611,6 +8897,14 @@ try {
       previewDrawCalls.push({ type: "text", text: this.text, style });
     }
   }
+  class TestSprite {
+    constructor(texture) {
+      this.texture = texture;
+      this.anchor = { set: (x, y = x) => { this.anchorValue = { x, y }; } };
+      this.position = { set: (x, y) => { this.positionValue = { x, y }; } };
+      previewDrawCalls.push({ type: "sprite", texture });
+    }
+  }
   const layer = {
     children: [],
     sortableChildren: false,
@@ -8623,7 +8917,9 @@ try {
       child.parent = null;
     },
   };
-  globalThis.PIXI = { Graphics: TestGraphics, Text: TestText };
+  const calderTexture = { id: "calder-texture" };
+  const TestTexture = { from: (src) => (src === "tokens/calder.webp" ? calderTexture : { id: `texture:${src}` }) };
+  globalThis.PIXI = { Graphics: TestGraphics, Text: TestText, Sprite: TestSprite, Texture: TestTexture };
   globalThis.canvas = {
     scene: { grid: { distance: 5 } },
     grid: { size: 100 },
@@ -8631,7 +8927,18 @@ try {
       placeables: [{
         id: "calder-token",
         center: { x: 200, y: 200 },
-        document: { id: "calder-token", uuid: "Scene.Token.calder-token", width: 1, height: 1 },
+        // A Token is a container with many OTHER textured children (status icons, ring decoration,
+        // target reticle) -- this decoy proves the ghost doesn't accidentally grab one of those.
+        children: [{ texture: { id: "decoy-status-icon-texture" } }],
+        // Deliberately way off from document.width/height * gridSize (100) -- a live Token's own
+        // .w/.h can be stale, pixel-space, or otherwise unreliable (this file has hit that bug more
+        // than once), so the ghost sprite's size must come from the document, not these.
+        w: 9999,
+        h: 9999,
+        document: {
+          id: "calder-token", uuid: "Scene.Token.calder-token", width: 1, height: 1,
+          texture: { src: "tokens/calder.webp" },
+        },
       }, {
         id: "mitflit-token",
         center: { x: 300, y: 200 },
@@ -8681,6 +8988,7 @@ try {
   }, { slug: "stride" });
   assert.equal(plannedCenterPreview.enabled, true);
   assert.deepEqual(plannedCenterPreview.origin, { x: 5, y: 10 });
+  previewDrawCalls.length = 0;
   const waypointIndicatorPreview = showMovementPreview({
     token: { id: "calder-token" },
     actor: { profile: { speed: 25 } },
@@ -8736,6 +9044,207 @@ try {
   assert.ok(previewDrawCalls.some((call) =>
     call.type === "beginFill" && call.alpha > 0 && call.alpha <= 0.08),
     "movement preview square fill should stay light so border is primary");
+  // A reachable landing square shows ONLY the actor's own ghost token now, not a colored box/X on
+  // top of it -- the two together read as clutter once the ghost already marks the exact spot.
+  // A translucent ghost of the actor's own token art shows what's actually landing there, not just
+  // an abstract colored box -- built from the live token's real texture/size, positioned at the
+  // exact destination pixel (a round trip through this preview's own scene<->pixel scale).
+  const ghostSprite = previewDrawCalls.find((call) => call.type === "sprite");
+  assert.ok(ghostSprite, "a ghost token sprite should be drawn at the destination");
+  assert.equal(ghostSprite.texture, calderTexture, "ghost sprite should use the acting token's own texture");
+  const ghostChild = layer.children[0]?.children.find((child) => child.texture === calderTexture);
+  assert.deepEqual(ghostChild?.positionValue, { x: 300, y: 300 }, "ghost sprite should sit exactly at the destination pixel");
+  // The ghost's size must come from the SAME placement object the (no-longer-drawn) destination box
+  // would have used -- derived from the document's real grid-unit footprint, not a live placeable's
+  // own (unreliable) .w/.h, and not a separately recomputed value that could drift out of sync.
+  const previewScale = 100 / 5; // canvas.grid.size / scene.grid.distance, as set up above
+  assert.equal(ghostChild?.width, waypointIndicatorPreview.destinationPlacement.width * previewScale,
+    "ghost sprite width must exactly match the destination placement's own width");
+  assert.equal(ghostChild?.height, waypointIndicatorPreview.destinationPlacement.height * previewScale,
+    "ghost sprite height must exactly match the destination placement's own height");
+  // No destination box/X for a reachable square -- only the ghost marks it. (A box/X still exists
+  // only for an UNREACHABLE destination.)
+  assert.equal(
+    previewDrawCalls.some((call) => call.type === "lineStyle" && call.color === 0xf0eee8),
+    false,
+    "a reachable single destination must not also draw the destination box's bright highlight border",
+  );
+  // Only the final destination gets a ghost -- an intermediate waypoint stays a plain dot, not a
+  // second overlapping token image piled on top of the path/labels.
+  assert.equal(
+    previewDrawCalls.filter((call) => call.type === "sprite").length,
+    1,
+    "only the final destination should draw a ghost -- intermediate waypoints must not pile up their own ghosts too",
+  );
+
+  // An unreachable destination has no real "landing" to ghost -- it keeps the plain red box/X
+  // instead of a ghost token, unlike the reachable case just above.
+  previewDrawCalls.length = 0;
+  const unreachableExplicitPreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 5 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 1000, y: 1000 },
+  });
+  assert.equal(unreachableExplicitPreview.destinationAvailable, false, "sanity: destination is far beyond a 5ft Speed");
+  assert.equal(
+    previewDrawCalls.some((call) => call.type === "sprite"),
+    false,
+    "an unreachable destination must not draw a ghost token",
+  );
+  assert.ok(
+    previewDrawCalls.some((call) => call.type === "beginFill" && call.color === 0xc94f4f),
+    "an unreachable destination should still draw its red box",
+  );
+
+  // A Dynamic Token Ring (Foundry v12+) draws the actor's portrait sprite bigger than the ring's own
+  // frame (fixed to the grid footprint) -- but the raw document.ring.subject.scale a module author
+  // configures is only an INPUT to a further internal computation. The LIVE, rendered `Token#ring`
+  // (a TokenRing instance, distinct from the raw document.ring flags) exposes Foundry's actual final
+  // multiplier as scaleCorrection * subjectScaleAdjustment * scaleAdjustmentX/Y -- subjectScaleAdjustment
+  // in particular compensates for however much of the frame the ring's own decorative border art eats
+  // into, a factor with no equivalent anywhere in the raw document fields. Console-verified against a
+  // real token: document.ring.subject.scale was 2, but the live ring's true combined multiplier was
+  // 2 * 1.31897... = 2.638, matching the token's actual rendered mesh size exactly -- so this test
+  // deliberately sets document.ring.subject.scale to a DIFFERENT, wrong-looking value (1.6) to prove
+  // the ghost reads the live ring's own numbers, not that raw config field.
+  // The ring also pairs its scale with its OWN dedicated subject.texture (often a different image,
+  // cropped/composed specifically to fill correctly at that scale) -- applying it to the generic
+  // document.texture.src instead mismatches the scale factor with the wrong source image.
+  const ringSubjectTexture = { id: "ring-subject-texture" };
+  TestTexture.from = (src) => (
+    src === "modules/pack/ring-subjects/calder.webp" ? ringSubjectTexture
+      : src === "tokens/calder.webp" ? calderTexture
+        : { id: `texture:${src}` }
+  );
+  globalThis.canvas.tokens.placeables[0].document.ring = {
+    enabled: true,
+    subject: { scale: 1.6, texture: "modules/pack/ring-subjects/calder.webp" },
+  };
+  globalThis.canvas.tokens.placeables[0].ring = {
+    scaleCorrection: 2,
+    subjectScaleAdjustment: 1.5,
+    scaleAdjustmentX: 1,
+    scaleAdjustmentY: 1,
+  };
+  previewDrawCalls.length = 0;
+  const ringedGhostPreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 200, y: 300 },
+  });
+  assert.equal(ringedGhostPreview.destinationAvailable, true, "sanity: destination is within a 25ft Speed");
+  const ringedGhostChild = layer.children[0]?.children.find((child) => child.texture === ringSubjectTexture);
+  assert.ok(ringedGhostChild, "ghost sprite must use the ring's own subject texture, not the generic token texture, when a ring is enabled");
+  assert.equal(ringedGhostChild?.width, ringedGhostPreview.destinationPlacement.width * previewScale * 3,
+    "ghost sprite width must apply the live ring's scaleCorrection * subjectScaleAdjustment, not the raw document.ring.subject.scale");
+  assert.equal(ringedGhostChild?.height, ringedGhostPreview.destinationPlacement.height * previewScale * 3,
+    "ghost sprite height must apply the live ring's scaleCorrection * subjectScaleAdjustment, not the raw document.ring.subject.scale");
+
+  // document.texture.scaleX/scaleY (Foundry's "Image Scale" field, on the Token Configuration sheet)
+  // is the ring-INDEPENDENT baseline for how a token's art is sized -- but once a ring is enabled,
+  // Foundry's ring rendering takes over sizing the subject entirely, so an exaggerated, mismatched
+  // texture.scaleX/scaleY here (5, nothing like the live ring's combined 3x above) must be ignored.
+  globalThis.canvas.tokens.placeables[0].document.texture = {
+    src: "tokens/calder.webp",
+    scaleX: 5,
+    scaleY: 5,
+  };
+  previewDrawCalls.length = 0;
+  const ringOverridesTextureScalePreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 200, y: 300 },
+  });
+  assert.equal(ringOverridesTextureScalePreview.destinationAvailable, true, "sanity: destination is within a 25ft Speed");
+  const ringOverridesTextureScaleChild = layer.children[0]?.children.find((child) => child.texture === ringSubjectTexture);
+  assert.ok(ringOverridesTextureScaleChild, "sanity: ghost sprite still present with texture.scaleX/scaleY also set");
+  assert.equal(
+    ringOverridesTextureScaleChild?.width,
+    ringOverridesTextureScalePreview.destinationPlacement.width * previewScale * 3,
+    "while a ring is enabled, the live ring's own multiplier must govern ghost width -- texture.scaleX must not also multiply in",
+  );
+  assert.equal(
+    ringOverridesTextureScaleChild?.height,
+    ringOverridesTextureScalePreview.destinationPlacement.height * previewScale * 3,
+    "while a ring is enabled, the live ring's own multiplier must govern ghost height -- texture.scaleY must not also multiply in",
+  );
+
+  // Without a ring at all, texture.scaleX/scaleY is the only sizing factor there is -- it must still
+  // apply so a plain (non-ringed) but manually resized token's ghost matches its real rendered size.
+  // A stale live `ring` object lingering on the placeable (as set above) must be ignored once
+  // document.ring.enabled is false -- only the enabled flag decides which sizing path applies.
+  globalThis.canvas.tokens.placeables[0].document.ring = { enabled: false };
+  globalThis.canvas.tokens.placeables[0].document.texture.scaleX = 3;
+  globalThis.canvas.tokens.placeables[0].document.texture.scaleY = 3;
+  previewDrawCalls.length = 0;
+  const unringedTextureScalePreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 200, y: 300 },
+  });
+  assert.equal(unringedTextureScalePreview.destinationAvailable, true, "sanity: destination is within a 25ft Speed");
+  const unringedTextureScaleChild = layer.children[0]?.children.find((child) => child.texture === calderTexture);
+  assert.ok(unringedTextureScaleChild, "sanity: ghost sprite present, using the generic texture now that the ring is disabled");
+  assert.equal(
+    unringedTextureScaleChild?.width,
+    unringedTextureScalePreview.destinationPlacement.width * previewScale * 3,
+    "with no ring enabled, ghost width must fall back to document.texture.scaleX, ignoring any stale live ring object",
+  );
+  assert.equal(
+    unringedTextureScaleChild?.height,
+    unringedTextureScalePreview.destinationPlacement.height * previewScale * 3,
+    "with no ring enabled, ghost height must fall back to document.texture.scaleY, ignoring any stale live ring object",
+  );
+
+  // showHoverGhost must live on its own graphics object, entirely separate from the persistent
+  // reachable-area grid showMovementPreview mounts -- redrawing/clearing the whole grid on every
+  // mouse-move frame is what made it visibly shrink to just the area near the cursor instead of
+  // staying a stable, full view. Prove the grid's own graphics instance is never touched across
+  // repeated hover calls, and that clearing the hover ghost alone leaves the grid mounted untouched.
+  const hoverGridContext = {
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  };
+  const hoverGridPreview = showMovementPreview(hoverGridContext, { slug: "stride" });
+  assert.equal(hoverGridPreview.enabled, true);
+  assert.equal(layer.children.length, 1, "sanity: only the grid graphics object is mounted after showMovementPreview");
+  const hoverGridGraphics = layer.children[0];
+
+  const firstHoverPreview = showHoverGhost(hoverGridContext, { slug: "stride" }, { x: 200, y: 300 });
+  assert.equal(firstHoverPreview?.destinationAvailable, true, "sanity: hover destination is within a 25ft Speed");
+  assert.equal(layer.children.length, 2, "hover ghost must mount as its own graphics object alongside the grid, not replace it");
+  assert.equal(layer.children[0], hoverGridGraphics, "hovering must not recreate or touch the persistent grid graphics object");
+  const firstHoverGraphics = layer.children[1];
+  assert.ok(
+    firstHoverGraphics.children.some((child) => child.texture),
+    "hover ghost graphics must contain the ghost token sprite",
+  );
+
+  const secondHoverPreview = showHoverGhost(hoverGridContext, { slug: "stride" }, { x: 300, y: 100 });
+  assert.equal(secondHoverPreview?.destinationAvailable, true, "sanity: second hover destination is also within a 25ft Speed");
+  assert.equal(layer.children.length, 2, "a second hover frame must still only ever add one ghost overlay, not stack another");
+  assert.equal(layer.children[0], hoverGridGraphics, "a second hover frame must still leave the grid graphics object untouched");
+  assert.notEqual(layer.children[1], firstHoverGraphics, "a second hover frame must replace the previous hover ghost graphics object");
+
+  clearHoverGhost();
+  assert.equal(layer.children.length, 1, "clearing the hover ghost must leave the persistent grid mounted");
+  assert.equal(layer.children[0], hoverGridGraphics, "clearing the hover ghost must not touch the grid graphics object");
+
+  clearMovementPreview();
+  assert.equal(layer.children.length, 0, "clearing the movement preview must also clear any hover ghost");
 } finally {
   clearMovementPreview();
   globalThis.canvas = previousScaledPreviewCanvas;
@@ -9081,6 +9590,143 @@ assert.ok(hugeStridePreview.reachableMarkers.length <= 500);
 // already reaches well past 48 cells, so it must not be truncated to exactly (or under) that count.
 assert.ok(hugeStridePreview.reachableMarkers.length > 48,
   "a 25ft Speed reaches far more than 48 cells -- the render cap must not silently clip a Stride's highlighted area below its actual Speed");
+
+// An even footprint (2x2 Large, 4x4 Gargantuan, ...) naturally centers on a grid VERTEX when
+// correctly placed -- unlike Huge above (odd, cell-center-aligned), a Large token's real center at
+// document (0,0) with a 5ft grid is (5,5), an exact multiple of gridSize. The old reachableMarkers
+// math (`center - gridSize/2`, assuming a cell-center) offsets every marker in the highlighted area
+// by half a cell for exactly this case -- the same root cause as destination-picker.js's click bug,
+// recurring in the hover-preview's own reachable-area rendering.
+const largeStridePreview = movementPreviewForStep({
+  token: { center: { x: 5, y: 5 }, width: 2, height: 2 },
+  actor: { profile: { speed: 10 } },
+  battlefield: {},
+}, { slug: "stride" }, { gridSize: 5 });
+assert.ok(largeStridePreview.reachableMarkers.length > 0, "sanity: a 10ft Speed reaches at least one square");
+for (const marker of largeStridePreview.reachableMarkers) {
+  assert.ok(Number.isInteger(marker.x / 5), `reachable marker x=${marker.x} must land on a grid line (multiple of gridSize), not straddle it`);
+  assert.ok(Number.isInteger(marker.y / 5), `reachable marker y=${marker.y} must land on a grid line (multiple of gridSize), not straddle it`);
+}
+
+// A hover candidate previews "what would clicking HERE cost" -- it must NOT narrow the reachable-area
+// grid down to "remaining budget after landing there" the way a real committed destination correctly
+// does. Speed 25ft; the hover candidate (20, 0) alone costs 20ft, which would leave only 5ft of
+// "remaining" reachable area if narrowed -- the hover-only preview must instead keep showing the FULL
+// 25ft reachable area, identical to a plain no-destination preview, regardless of where the cursor is.
+const bareReachablePreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+}, { slug: "stride" }, { gridSize: 5 });
+const hoverOnlyPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+}, { slug: "stride", hoverOnly: true, destination: { x: 20, y: 0 } }, { gridSize: 5 });
+assert.equal(
+  hoverOnlyPreview.reachableCenters.length,
+  bareReachablePreview.reachableCenters.length,
+  "a hover-only candidate must not shrink the reachable-area grid based on the candidate's own cost",
+);
+assert.ok(
+  hoverOnlyPreview.reachableCenters.some((center) => center.x === 20 && center.y === 0),
+  "a hover-only preview's reachable area should still include squares near the hover candidate itself",
+);
+// The hover candidate itself still gets its own ghost/cost data for rendering.
+assert.equal(hoverOnlyPreview.explicitDestination, true);
+assert.deepEqual(hoverOnlyPreview.destinationCenter, { x: 20, y: 0 });
+assert.equal(hoverOnlyPreview.destinationAvailable, true, "the hover candidate (20,0) is well within a 25ft Speed");
+
+// Reported live: once a waypoint is already committed, hovering toward a further point showed the
+// ghost as "available" (green) even though the REAL click correctly rejected it -- because the
+// hover-only reachability check tested "is this point within Speed of the ORIGIN directly", entirely
+// ignoring the mandatory detour through the already-placed waypoint. A point that's well within a
+// direct line from the origin can easily exceed Speed once forced through an out-of-the-way waypoint
+// first (extra distance, and often worse PF2e 5-10-5 diagonal parity too).
+//
+// The real caller (destination-picker.js's candidatePlanFor) builds movementPlan.waypoints as
+// [...committedWaypoints, thisHoverDestination] -- the destination is ALREADY the trailing entry, not
+// a separate field layered on top of a destination-free waypoints array. An earlier version of this
+// fix assumed the array held only prior/committed points, which happened to pass in hand-written
+// tests shaped that way but broke against the real wiring's shape: treating the trailing destination
+// as if it were itself a second "committed" waypoint re-centered the remaining-budget grid on wherever
+// the cursor currently was, instead of leaving it anchored to the last REAL commit.
+const waypointAwareHoverPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 20 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: 20, y: 0 },
+  movementPlan: { waypoints: [{ x: 0, y: 20 }, { x: 20, y: 0 }] },
+}, { gridSize: 5 });
+assert.equal(
+  waypointAwareHoverPreview.destinationAvailable,
+  false,
+  "a hover candidate must validate the full path through any already-committed waypoints, not just direct range from the origin",
+);
+// The general reachable-area GRID (the green highlighted cells, independent of wherever the cursor
+// currently is) must be similarly waypoint-aware -- reported live: one diagonal cell correctly showed
+// red/unavailable when hovered directly (the destinationCenter fix above), but a symmetric diagonal
+// cell nearby still rendered green as part of the general grid, because the grid itself was still the
+// origin-only bareReachablePreview. Once a waypoint costing all 20ft of a 20ft Speed is committed, NO
+// further cells should be highlighted reachable at all -- not even ones well within direct origin range.
+assert.equal(
+  waypointAwareHoverPreview.reachableCenters.some((center) => center.x === 20 && center.y === 0),
+  false,
+  "the reachable-area grid must not include cells beyond the remaining budget from the last committed waypoint, even when they're within direct range of the origin",
+);
+
+const zeroBudgetAfterWaypointPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 20 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: 5, y: 0 },
+  movementPlan: { waypoints: [{ x: 0, y: 20 }, { x: 5, y: 0 }] },
+}, { gridSize: 5 });
+assert.equal(
+  zeroBudgetAfterWaypointPreview.reachableCenters.length,
+  0,
+  "a waypoint that already spends the full Speed must leave the grid showing zero further reachable cells",
+);
+
+// The remaining-budget grid must stay anchored to the last COMMITTED waypoint, not shift to follow
+// wherever the cursor currently hovers -- two hover candidates in totally different directions, with
+// the same committed waypoint and unchanged Speed, must produce the IDENTICAL grid.
+const committedWaypoint = { x: 0, y: 15 };
+const gridStabilityPreviewA = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: 100, y: 100 },
+  movementPlan: { waypoints: [committedWaypoint, { x: 100, y: 100 }] },
+}, { gridSize: 5 });
+const gridStabilityPreviewB = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: -100, y: -100 },
+  movementPlan: { waypoints: [committedWaypoint, { x: -100, y: -100 }] },
+}, { gridSize: 5 });
+assert.deepEqual(
+  gridStabilityPreviewA.reachableCenters,
+  gridStabilityPreviewB.reachableCenters,
+  "the remaining-budget grid must stay anchored to the last committed waypoint regardless of the current hover destination",
+);
+assert.ok(
+  gridStabilityPreviewA.reachableCenters.some((center) => center.x === committedWaypoint.x && center.y === committedWaypoint.y + 5),
+  "sanity: the grid should include cells actually near the committed waypoint",
+);
 
 const battlefieldTargetPlan = bestTurnPlan({
   ...fighterContext,
@@ -12138,13 +12784,14 @@ const dropProneMeleeThreatContext = {
     { id: "goblin", name: "Goblin", center: { x: 5, y: 0 }, token: { center: { x: 5, y: 0 }, width: 1, height: 1 } },
   ] },
 };
-// An adjacent melee threat gets no attack-roll penalty against a prone target, so dropping prone
-// right next to one is a pure downside (this is the exact bug an Animated Broom hit: it dropped
-// prone with a PC standing right next to it on round 1, for no defensive benefit at all).
+// An adjacent melee threat gets no attack-roll penalty (nor any circumstance bonus) against a prone
+// target under the current (remaster) rules, so dropping prone right next to one is a pure downside
+// (this is the exact bug an Animated Broom hit: it dropped prone with a PC standing right next to it
+// on round 1, for no defensive benefit at all).
 const meleeThreatDropProneScored = scoreCandidate(dropProneMeleeThreatContext, dropProneAction);
 assert.equal(
   meleeThreatDropProneScored.reason,
-  "An adjacent melee threat gets no penalty against a prone target, so this is a pure downside.",
+  "Off-Guard applies to every attacker alike, so dropping prone gives no defensive benefit against melee or ranged on its own.",
 );
 assert.ok(
   meleeThreatDropProneScored.score < meleeDropProneScored.score,
@@ -12158,16 +12805,17 @@ const dropProneRangedThreatContext = {
     { id: "archer", name: "Archer", center: { x: 30, y: 0 }, token: { center: { x: 30, y: 0 }, width: 1, height: 1 } },
   ] },
 };
-// A threat that can only reach at range (not adjacent) is the one case dropping prone is a real
-// defensive upgrade -- this must still reuse the original "gives cover" reason and score.
+// Prone's Off-Guard status applies uniformly to every attacker -- there is no rules-based ranged-vs-
+// melee distinction (that was removed in the remaster), so a ranged-only threat scores identically to
+// an adjacent melee one: a pure downside either way, with no defensive upside from Prone alone.
 const rangedThreatDropProneScored = scoreCandidate(dropProneRangedThreatContext, dropProneAction);
 assert.equal(
   rangedThreatDropProneScored.reason,
-  "Dropping prone gives cover but penalizes the actor's own attacks.",
+  "Off-Guard applies to every attacker alike, so dropping prone gives no defensive benefit against melee or ranged on its own.",
 );
-assert.ok(
-  rangedThreatDropProneScored.score > meleeThreatDropProneScored.score,
-  "a ranged-only threat must score Drop Prone higher than an adjacent melee threat",
+assert.equal(
+  rangedThreatDropProneScored.score, meleeThreatDropProneScored.score,
+  "a ranged-only threat must score Drop Prone the same as an adjacent melee threat -- Prone alone has no ranged-specific defense",
 );
 
 const medicineSources = readActionSources({

@@ -1606,7 +1606,7 @@ function readDropProneAction(actor, context) {
     role: "defense",
     activityProfile: { appliesConditions: ["prone"] },
     targetingProfile: { self: true },
-    reasons: [t("Reason.DropProneCover", "Drop Prone for cover against ranged attackers.")],
+    reasons: [t("Reason.DropProneCover", "Drop Prone to set up Take Cover's ranged defense bonus.")],
     traits: [],
     attackTrait: false,
   }];

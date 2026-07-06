@@ -48,7 +48,7 @@ import {
 } from "../state/draft-plans.js";
 import { clearActionPreview, showActionPreview } from "./action-preview.js";
 import { CombaterBrowser } from "./CombaterBrowser.js";
-import { showMovementPreview, recommendedMovementForStep } from "./movement-preview.js";
+import { showMovementPreview, showHoverGhost, recommendedMovementForStep } from "./movement-preview.js";
 import { displayStepEntries } from "./display-steps.js";
 import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "./plan-selection.js";
 import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
@@ -1861,22 +1861,34 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const action = this._findBuilderAction(actionKey);
     if (!this._context || !action) return;
     const draft = this._readActiveDraftPlan();
-    // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
-    const presetAreaMarker = computeAreaMarker(this._context, action);
+    // A composite (e.g. Stand -> Stride, Rush, Sudden Charge) atomizes into its separate parts,
+    // mirroring _addAction -- a raw single-step push left the whole bundled ability as one
+    // multi-action uncounted entry, asking for a target/destination the parts don't individually need.
+    const atoms = builderAtomicActionsForStep(action);
+    const newAtoms = atoms.length === 1 && atoms[0] === action ? [action] : atoms;
     await this._writeActiveDraftPlan(markManualDraft({
       ...draft,
       uncounted: [
         ...(draft.uncounted ?? []),
-        {
-          instanceId: draftStepId(),
-          actionKey: action.key,
-          // Persist a display name so the step still reads correctly if its action stops being
-          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-          name: action.name,
-          actionCost: action.actionCost ?? action.cost,
-          requiresDestination: requiresDestinationForAction(action),
-          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-        },
+        ...newAtoms.map((atom) => {
+          // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
+          const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(this._context, atom) : null;
+          return {
+            instanceId: draftStepId(),
+            actionKey: atom === action ? action.key : this._actionKeyForStep(atom),
+            // Persist a display name so the step still reads correctly if its action stops being
+            // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+            name: atom?.name ?? atom?.action?.name,
+            actionCost: atom?.actionCost ?? atom?.cost,
+            requiresDestination: requiresDestinationForAction(atom),
+            ...(atom?.groupId
+              ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
+              : atom?.activityProfile?.requiresDistinctTargets
+                ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
+                : {}),
+            ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+          };
+        }),
       ],
     }));
     clearActionPreview();
@@ -2355,6 +2367,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return projectContextForDraftStepOrigin(this._context, this._draftForOrigin(), instanceId);
   }
 
+  // The persistent reachable-area grid -- drawn once when the picker starts, and again after a real
+  // click commits a waypoint/destination (to show remaining budget), but NEVER for a mere hover.
+  // Hovering only ever touches the separate, lightweight overlay in _showHoverGhost below; redrawing
+  // this grid's couple hundred individual rectangles on every mouse-move frame is what made it
+  // flicker down to just whatever was near the cursor instead of staying a stable, full view.
   _showDestinationPickerPreview(instanceId = this._destinationPicker?.instanceId) {
     const step = this._findDraftStep(instanceId);
     if (!this._context || !step) return false;
@@ -2369,6 +2386,23 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...(Number.isFinite(preview?.elevation) ? { plannedElevation: preview.elevation } : {}),
       requiresDestination: true,
     });
+    return true;
+  }
+
+  // The cursor-following ghost/cost overlay -- independent of the grid above, so hovering never
+  // touches (or waits on) that larger, persistent render. The candidate's own movementPlan (built by
+  // the picker's candidatePlanFor, carrying whatever waypoints are already committed) must ride along
+  // here -- without it, movementPreviewForStep's hoverOnly branch has no way to know a waypoint bend
+  // already exists, and validates the hover point as if it were a direct line from the origin instead
+  // of routing through that waypoint first.
+  _showHoverGhost(instanceId, destination, metadata = {}) {
+    const step = this._findDraftStep(instanceId);
+    if (!this._context || !step || !destination) return false;
+    showHoverGhost(this._contextForDraftStep(instanceId), {
+      ...(step.action ?? step),
+      requiresDestination: true,
+      ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}),
+    }, destination);
     return true;
   }
 
@@ -2406,6 +2440,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       action: step.action ?? step,
       enableWaypoints: true,
       onPreview: (destination, metadata = {}) => {
+        // A hover candidate updates only its own small overlay, not the persistent grid's stored
+        // state -- storing it here would make a later, unrelated panel re-render (which redraws the
+        // grid from this state) treat a transient cursor position as if it were really committed.
+        if (metadata.hoverOnly) {
+          this._showHoverGhost(instanceId, destination, metadata);
+          return;
+        }
         this._destinationPicker = {
           ...(this._destinationPicker ?? {}),
           instanceId,

@@ -2272,20 +2272,18 @@ export function scoreCandidate(context, action, siblingSpells = []) {
   }
 
   if (isCurated(action) && role === "defense" && action.slug === "drop-prone") {
-    // Drop Prone is only a defensive upgrade against attackers who aren't adjacent -- an already-
-    // adjacent melee threat gets no penalty attacking a prone target, so dropping prone right next
-    // to one is a pure downside (worse AC from flat-footed, worse own attacks, no compensating
-    // benefit). The old scoring never checked this and would drop prone next to a melee PC on
-    // round 1 just because HP was full.
+    // Prone only grants Off-Guard (a flat -2 circumstance penalty to the prone creature's own AC
+    // against every attacker alike) -- the remaster removed the old rule where ranged attacks
+    // against a prone target took a penalty and melee attacks gained a bonus. So dropping prone with
+    // any live threat nearby (melee or ranged) is a pure downside on its own: worse AC, worse own
+    // attacks, nothing offsetting it. The only real defensive payoff is a follow-up Take Cover
+    // (+4 circumstance AC vs ranged specifically), which is scored separately when actually taken.
     // The actor's own ranged attacks are worse while prone regardless of why it dropped prone,
     // so this penalty applies uniformly across every branch below.
     const rangedAttackPenalty = profile.equippedRangedWeapon ? -10 : 0;
-    if (pressure.inMeleeThreat) {
+    if (pressure.inMeleeThreat || pressure.hasOpenEnemyLine) {
       score += rangedAttackPenalty - 30;
-      reasons.unshift(t("ScoreReason.ProneUselessAdjacentMelee", "An adjacent melee threat gets no penalty against a prone target, so this is a pure downside."));
-    } else if (pressure.hasOpenEnemyLine) {
-      score += rangedAttackPenalty + (hpPercent(profile) < 0.5 ? 34 : 18);
-      reasons.unshift(t("ScoreReason.DropsProneForCover", "Dropping prone gives cover but penalizes the actor's own attacks."));
+      reasons.unshift(t("ScoreReason.ProneNoDefenseBenefit", "Off-Guard applies to every attacker alike, so dropping prone gives no defensive benefit against melee or ranged on its own."));
     } else {
       score += rangedAttackPenalty - 10;
       reasons.unshift(t("ScoreReason.NoThreatForProne", "No current threat makes dropping prone worthwhile."));

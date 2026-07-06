@@ -507,8 +507,32 @@ function placementForCenter(center, footprint, gridSize) {
   };
 }
 
+// A hint box is deliberately always exactly 1 cell (not the actor's real footprint) -- drawing the
+// full footprint at every reachable square would heavily overlap for a fast, Large-or-bigger actor.
+// `placementForCenter`'s `center - gridSize/2` math assumes `center` is a cell CENTER, which only
+// holds for an odd footprint (1x1, 3x3, ...); an even one (2x2 Large, 4x4 Gargantuan, ...) naturally
+// lands its own BFS candidate centers on grid VERTICES instead (same parity split as
+// destination-picker.js's snapAxisToFootprint), which that formula offsets by half a cell. Flooring
+// to the containing cell's top-left is correct for either parity: for an odd footprint's cell-center
+// input it reproduces the exact same box as before; for an even footprint's vertex input it picks
+// one of the 4 touching cells (a deterministic, always-valid choice for what's just a visual hint).
+// A hint box is deliberately always exactly 1 cell (not the actor's real footprint) -- drawing the
+// full footprint at every reachable square would heavily overlap for a fast, Large-or-bigger actor.
+// `placementForCenter`'s `center - gridSize/2` math assumes `center` is a cell CENTER, which only
+// holds for an odd footprint (1x1, 3x3, ...); an even one (2x2 Large, 4x4 Gargantuan, ...) naturally
+// lands its own BFS candidate centers on grid VERTICES instead (same parity split as
+// destination-picker.js's snapAxisToFootprint), which that formula offsets by half a cell. Flooring
+// to the containing cell's top-left is correct for either parity: for an odd footprint's cell-center
+// input it reproduces the exact same box as before; for an even footprint's vertex input it picks
+// one of the 4 touching cells (a deterministic, always-valid choice for what's just a visual hint).
 function markerForCenter(center, gridSize) {
-  return placementForCenter(center, { widthCells: 1, heightCells: 1 }, gridSize);
+  return {
+    center,
+    x: Math.floor(center.x / gridSize) * gridSize,
+    y: Math.floor(center.y / gridSize) * gridSize,
+    width: gridSize,
+    height: gridSize,
+  };
 }
 
 function xMarkerForPlacement(placement) {
@@ -713,28 +737,20 @@ function strikeReachableCenters(context, step, reachable, footprint, gridSize, o
 }
 
 const STRIDE_COLORS = [0x5aa0e0, 0xe0b35a, 0x9b6dd6];
-
-function colorNumber(value) {
-  if (Number.isFinite(Number(value))) {
-    const numericColor = Number(value);
-    return numericColor >= 0 && numericColor <= 0xffffff ? numericColor : null;
-  }
-
-  const text = String(value ?? "").trim();
-  const match = text.match(/^#?([a-f\d]{3}|[a-f\d]{6})$/i);
-  if (!match) return null;
-  const hex = match[1].length === 3
-    ? match[1].split("").map((part) => `${part}${part}`).join("")
-    : match[1];
-  return Number.parseInt(hex, 16);
-}
-
-function movementColor(fallback = STRIDE_COLORS[0]) {
-  return colorNumber(globalThis.game?.user?.color) ?? fallback;
-}
+// Border for a landing-square box (an intermediate stop along a path -- the final landing square
+// gets a ghost token instead), always this bright cream regardless of the fill color, which can
+// match the path/stride-index color and make the box hard to pick out from the surrounding grid.
+const DESTINATION_BORDER_COLOR = 0xf0eee8;
+// Fixed, meaning-based colors for the movement/destination overlay -- not tied to the player's own
+// Foundry color (game.user.color previously drove this), so the overlay reads the same legend for
+// every user: green for anywhere reachable, gold for the specific square you're about to commit to,
+// red for anywhere out of reach.
+const AVAILABLE_COLOR = 0x66c78f;
+const DESTINATION_COLOR = 0xe0b35a;
+const UNAVAILABLE_COLOR = 0xc94f4f;
 
 function strideMovementColor(index) {
-  return movementColor(STRIDE_COLORS[index % STRIDE_COLORS.length]);
+  return STRIDE_COLORS[index % STRIDE_COLORS.length];
 }
 
 function isStrideStrikeStep(step) {
@@ -859,7 +875,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   const destinationCenter = explicitDestination(step);
   if (!destinationCenter) return null;
 
-  const color = movementColor();
+  const color = DESTINATION_COLOR;
   const destinationVisible = pointVisible(destinationCenter, options);
   const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
   const destinationMarker = xMarkerForPlacement(destinationPlacement);
@@ -925,7 +941,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       reachableCenters: remainingCenters,
       reachablePlacements: remainingPlacements,
       reachableMarkers: remainingMarkers,
-      reachableMarkerColor: color,
+      reachableMarkerColor: AVAILABLE_COLOR,
       recommendedCenter: destinationAvailable ? destinationCenter : null,
       recommendedPlacement: destinationAvailable ? destinationPlacement : null,
       recommendedMarker: destinationAvailable ? destinationMarker : null,
@@ -994,7 +1010,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
     reachableCenters: [],
     reachablePlacements: [],
     reachableMarkers: [],
-    reachableMarkerColor: color,
+    reachableMarkerColor: AVAILABLE_COLOR,
     recommendedCenter: destinationAvailable ? destinationCenter : null,
     recommendedPlacement: destinationAvailable ? destinationPlacement : null,
     recommendedMarker: destinationAvailable ? destinationMarker : null,
@@ -1014,7 +1030,7 @@ function teleportRangeFeet(step) {
 // draw, and the per-square cap made it look far shorter than it is), the preview is a range ring
 // marking the boundary plus the chosen destination.
 function teleportPreview(step, origin, footprint, gridSize, options = {}) {
-  const color = movementColor();
+  const color = DESTINATION_COLOR;
   const range = teleportRangeFeet(step);
   const hasRange = Number.isFinite(range) && range > 0;
   const inRange = (center) => !hasRange
@@ -1045,7 +1061,7 @@ function teleportPreview(step, origin, footprint, gridSize, options = {}) {
       : "",
     reachableCenters: [],
     reachableMarkers: [],
-    reachableMarkerColor: color,
+    reachableMarkerColor: AVAILABLE_COLOR,
     movementColor: color,
   };
 }
@@ -1085,16 +1101,13 @@ export function movementPreviewForStep(context, step, options = {}) {
   const elevationDelta = verticalElevationDelta(step, collisionToken);
   const originElevation = numeric(collisionToken?.document?.elevation, 0) || 0;
   const footprint = tokenFootprint(context?.token);
-  const explicitPreview = explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, movementOptions);
-  if (explicitPreview) return { ...explicitPreview, elevationDelta, originElevation };
-
-  const color = movementColor();
+  const color = AVAILABLE_COLOR;
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
   const placements = centers.map((center) => placementForCenter(center, footprint, gridSize));
   const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize);
   const markers = reachableMarkers(origin, centers, recommendation, gridSize);
   const recommendedMarker = xMarkerForPlacement(recommendation);
-  return {
+  const bareReachablePreview = {
     enabled: true,
     slug: step.slug,
     origin,
@@ -1111,6 +1124,77 @@ export function movementPreviewForStep(context, step, options = {}) {
     recommendedMarker,
     movementColor: color,
   };
+
+  // A hover candidate previews "what would clicking HERE cost" without collapsing the reachable-area
+  // grid down to "remaining budget after landing there" -- unlike a real committed destination
+  // (explicitMovementPreview below), which intentionally narrows since the player has actually
+  // committed to ending movement there. The grid stays exactly the general/unnarrowed view; only the
+  // candidate's own ghost/cost data is layered on top of it.
+  if (step?.hoverOnly === true) {
+    const destinationCenter = explicitDestination(step);
+    if (!destinationCenter) return bareReachablePreview;
+    const destinationVisible = pointVisible(destinationCenter, movementOptions);
+    const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
+    // Once at least one waypoint is already committed, "is this point within Speed of the ORIGIN
+    // directly" ignores the mandatory detour through that waypoint entirely -- a point well within
+    // direct range can easily exceed Speed once forced through an out-of-the-way waypoint first
+    // (extra distance, and often worse PF2e 5-10-5 diagonal parity too). Validate the FULL bent path
+    // in that case; only fall back to the plain origin BFS membership check (which also accounts for
+    // wall/obstacle detours a straight-line check would miss) when there's no waypoint yet to route
+    // through. The general reachable-area GRID needs the same correction -- it must reflect what's
+    // still reachable from the LAST COMMITTED waypoint with whatever budget remains after it, not the
+    // origin's full, unconstrained Speed. This grid depends only on the committed waypoints (never on
+    // wherever the cursor currently is), so it still stays stable while hovering, exactly like the
+    // origin-only bareReachablePreview did before any waypoint existed.
+    //
+    // The caller's own movementPlan.waypoints (destination-picker.js's candidatePlanFor) already ends
+    // with this same hover destination -- explicitWaypointCenters' own dedup (via samePoint) means
+    // passing destinationCenter here is safe whether or not the caller already included it, so slicing
+    // off the last entry reliably yields ONLY the truly prior/committed waypoints either way. Passing
+    // `null` instead (as if the destination were never in that array) double-counted the destination as
+    // its own "committed" waypoint, which both silently self-cancelled in the cost check (a harmless
+    // zero-length repeat) AND made the grid re-center on wherever the cursor currently was instead of
+    // staying anchored to the last REAL commit.
+    const allWaypointCenters = explicitWaypointCenters(step, destinationCenter);
+    const priorWaypointCenters = allWaypointCenters?.length > 1 ? allWaypointCenters.slice(0, -1) : null;
+    if (priorWaypointCenters?.length) {
+      const priorValidation = validateWaypointPath(origin, priorWaypointCenters, distanceFeet, gridSize, movementOptions);
+      const remainingDistanceFeet = priorValidation.available ? Math.max(0, distanceFeet - priorValidation.cost) : 0;
+      const waypointOrigin = priorWaypointCenters.at(-1);
+      const remainingCenters = priorValidation.available && remainingDistanceFeet > 0
+        ? reachableMovementCenters(waypointOrigin, remainingDistanceFeet, gridSize, movementOptions)
+        : [];
+      const remainingPlacements = remainingCenters.map((center) => placementForCenter(center, footprint, gridSize));
+      const remainingMarkers = reachableMarkers(waypointOrigin, remainingCenters, null, gridSize);
+      const reachable = priorValidation.available
+        && validateWaypointPath(origin, [...priorWaypointCenters, destinationCenter], distanceFeet, gridSize, movementOptions).available;
+      return {
+        ...bareReachablePreview,
+        reachableCenters: remainingCenters,
+        reachablePlacements: remainingPlacements,
+        reachableMarkers: remainingMarkers,
+        explicitDestination: true,
+        destinationCenter,
+        destinationPlacement,
+        destinationMarker: xMarkerForPlacement(destinationPlacement),
+        destinationAvailable: destinationVisible && reachable,
+      };
+    }
+    const reachable = centers.some((center) => center.x === destinationCenter.x && center.y === destinationCenter.y);
+    return {
+      ...bareReachablePreview,
+      explicitDestination: true,
+      destinationCenter,
+      destinationPlacement,
+      destinationMarker: xMarkerForPlacement(destinationPlacement),
+      destinationAvailable: destinationVisible && reachable,
+    };
+  }
+
+  const explicitPreview = explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, movementOptions);
+  if (explicitPreview) return { ...explicitPreview, elevationDelta, originElevation };
+
+  return bareReachablePreview;
 }
 
 function canvasTokenById(id) {
@@ -1226,6 +1310,98 @@ function drawOriginMarker(graphics, origin, footprint, scale, color = 0x66c78f) 
   graphics.endFill();
 }
 
+// The token's own portrait texture, loaded from its document's canonical image path rather than
+// introspecting the live placeable's internal mesh/children -- a Token is a container with many
+// other textured children (status icons, target reticle, ring decoration, bars), so grabbing "any
+// child with a .texture" risked silently matching one of those instead of the actual portrait,
+// producing a ghost with the wrong size/art entirely. The image is already loaded (the real token
+// is on screen using it), so PIXI.Texture.from() returns the cached texture immediately, no reload.
+//
+// A Dynamic Token Ring pairs its own dedicated ring.subject.texture with ring.subject.scale -- that
+// image is prepared (cropped/composed) specifically to fill correctly at that scale, and can be a
+// different image entirely from the generic document.texture.src. Applying subject.scale to the
+// generic texture instead mismatches a scale factor with the wrong source image, which is what
+// produced a ghost that was sized closer but still visibly off. Use the ring's own subject texture
+// whenever the ring is enabled, matching exactly what Foundry itself renders inside the ring.
+function liveTokenTexture(token) {
+  const ring = token?.document?.ring;
+  const src = (ring?.enabled === true && ring?.subject?.texture) || token?.document?.texture?.src;
+  if (!src) return null;
+  const Texture = globalThis.PIXI?.Texture;
+  if (typeof Texture?.from !== "function") return null;
+  try {
+    return Texture.from(src);
+  } catch (_error) {
+    return null;
+  }
+}
+
+// document.texture.scaleX/scaleY is Foundry's own "Image Scale" field on the Token Configuration
+// sheet -- the ring-independent baseline for how large a token's art renders, always present whether
+// or not a ring is enabled. Once a Dynamic Token Ring (Foundry v12+) IS enabled, Foundry's ring
+// rendering takes over sizing the portrait entirely instead: the raw document.ring.subject.scale a
+// module author configures is only an INPUT to a further internal computation (the live, rendered
+// `Token#ring` -- a TokenRing instance, distinct from the raw document.ring flags -- exposes the
+// actual final multiplier Foundry derived from it as `scaleCorrection * subjectScaleAdjustment *
+// scaleAdjustmentX/Y`). subjectScaleAdjustment in particular compensates for however much of the
+// frame the ring's own decorative border art eats into, a factor with no equivalent anywhere in the
+// raw document flags -- there is no way to reproduce it by formula from document data alone. Confirmed
+// against a real token (console-verified): document.ring.subject.scale was 2, but the live ring's
+// true combined multiplier was 2 * 1.31897... = 2.638, matching the token's actual rendered mesh
+// width/height exactly. Read the live values directly rather than re-deriving them.
+function ghostSpriteScale(token) {
+  const ring = token?.ring;
+  if (token?.document?.ring?.enabled === true && ring) {
+    const correction = numeric(ring.scaleCorrection, 1) || 1;
+    const subjectAdjustment = numeric(ring.subjectScaleAdjustment, 1) || 1;
+    const adjustX = numeric(ring.scaleAdjustmentX, 1) || 1;
+    const adjustY = numeric(ring.scaleAdjustmentY, 1) || 1;
+    return { x: correction * subjectAdjustment * adjustX, y: correction * subjectAdjustment * adjustY };
+  }
+  const x = numeric(token?.document?.texture?.scaleX, 1);
+  const y = numeric(token?.document?.texture?.scaleY, 1);
+  return { x: x > 0 ? x : 1, y: y > 0 ? y : 1 };
+}
+
+// A translucent copy of the actor's own token art at a candidate landing square, so the preview
+// shows what will actually be there instead of only an abstract colored box. Best-effort: silently
+// omitted (never a hard error) if this Foundry version doesn't expose a token texture the way any of
+// the above paths expect, or PIXI.Sprite isn't available (e.g. this file's own headless self-tests).
+// `placement` is the SAME {x, y, width, height} (scene units) object drawPlacement/drawXMarker
+// already render the destination box/X from -- reusing it (rather than separately recomputing a size
+// from footprint * gridSize) guarantees the ghost's un-ringed footprint size is pixel-identical to
+// that box; the ring subject scale on top of it then matches the real token's rendered size.
+function drawGhostToken(graphics, token, center, placement, scale) {
+  if (!center || !placement || typeof graphics.addChild !== "function") return;
+  const Sprite = globalThis.PIXI?.Sprite;
+  if (typeof Sprite !== "function") return;
+  const texture = liveTokenTexture(token);
+  if (!texture) return;
+
+  try {
+    const sprite = new Sprite(texture);
+    sprite.eventMode = "none";
+    sprite.interactive = false;
+    sprite.alpha = 0.55;
+    sprite.anchor?.set?.(0.5, 0.5);
+    const spriteScale = ghostSpriteScale(token);
+    const width = numeric(placement.width, 0) * scale * spriteScale.x;
+    const height = numeric(placement.height, 0) * scale * spriteScale.y;
+    if (width > 0) sprite.width = width;
+    if (height > 0) sprite.height = height;
+    const rotation = numeric(token?.document?.rotation, 0);
+    if (rotation) sprite.rotation = (rotation * Math.PI) / 180;
+    if (typeof sprite.position?.set === "function") sprite.position.set(center.x * scale, center.y * scale);
+    else {
+      sprite.x = center.x * scale;
+      sprite.y = center.y * scale;
+    }
+    graphics.addChild(sprite);
+  } catch (_error) {
+    // Best-effort visual flourish -- never let a texture/sprite quirk break the rest of the preview.
+  }
+}
+
 // Label text for a point sitting at `elevation` (absolute feet) — the elevation itself, marked ▲/▼
 // for above/below the start. Returns null when the point is at the start elevation (unchanged), so
 // only points whose height actually changed get tagged.
@@ -1334,9 +1510,11 @@ function drawSegmentLabels(graphics, labels, scale) {
   }
 }
 
-function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0) {
+function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0, liveToken = null) {
   let from = origin;
-  for (const waypoint of stridePath) {
+  for (let index = 0; index < stridePath.length; index += 1) {
+    const waypoint = stridePath[index];
+    const isFinalLanding = index === stridePath.length - 1;
     const trail = waypoint.trail?.length ? waypoint.trail : [waypoint.center];
     // Dark outline first so the thicker stride line stays legible over busy maps.
     let outlineFrom = from;
@@ -1352,8 +1530,15 @@ function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0
       graphics.lineTo(point.x * scale, point.y * scale);
       from = point;
     }
-    drawPlacement(graphics, waypoint.placement, scale, waypoint.color, 0.05, waypoint.color, 0.96, 3);
-    drawXMarker(graphics, waypoint.marker, scale, waypoint.color);
+    // Only the final landing square gets the actor's own ghost token -- one per intermediate stop
+    // (each stride of a composite, or each waypoint of a custom path) piled up as overlapping token
+    // art on top of the trail lines/labels, which read as confusing clutter, not helpful information.
+    if (isFinalLanding) {
+      drawGhostToken(graphics, liveToken, waypoint.center, waypoint.placement, scale);
+    } else {
+      drawPlacement(graphics, waypoint.placement, scale, waypoint.color, 0.05, DESTINATION_BORDER_COLOR, 0.96, 3);
+      drawXMarker(graphics, waypoint.marker, scale, waypoint.color);
+    }
     drawWaypointIndicators(graphics, waypoint.waypoints, scale, waypoint.color);
     // Label intermediate waypoints with their own heights; the final point (destination) is labelled
     // by the live readout above, so drop it here to avoid a doubled tag.
@@ -1363,6 +1548,7 @@ function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0
 }
 
 export function clearMovementPreview() {
+  clearHoverGhost();
   if (!previewGraphics) return;
   const graphics = previewGraphics;
   previewGraphics = null;
@@ -1507,47 +1693,67 @@ export function showMovementPreview(context, step) {
   const { preview, scale } = computeMovementPreview(context, step);
   if (!preview.enabled) return null;
 
+  const liveToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
   const graphics = new PIXI.Graphics();
   if (preview.teleport) {
-    // Range ring marking how far the teleport reaches, plus the chosen destination X (red if out of range).
-    const ringColor = preview.movementColor ?? 0x66c78f;
+    // Range ring marking how far the teleport reaches (green, matching "available"), plus the
+    // chosen destination box (gold if reachable, red if beyond the spell's range).
     if (Number.isFinite(preview.teleportRange) && preview.teleportRange > 0 && typeof graphics.drawCircle === "function") {
       const cx = preview.origin.x * scale;
       const cy = preview.origin.y * scale;
       const radius = preview.teleportRange * scale;
-      graphics.beginFill(ringColor, 0.04);
+      graphics.beginFill(AVAILABLE_COLOR, 0.04);
       graphics.lineStyle(6, 0x101418, 0.6);
       graphics.drawCircle(cx, cy, radius);
-      graphics.lineStyle(3, ringColor, 0.9);
+      graphics.lineStyle(3, AVAILABLE_COLOR, 0.9);
       graphics.drawCircle(cx, cy, radius);
       graphics.endFill();
     }
     if (preview.destinationPlacement) {
-      const color = preview.destinationAvailable === false ? 0xc94f4f : (preview.movementColor ?? 0xe0b35a);
-      drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.06, color, 1, 3);
-      drawXMarker(graphics, preview.destinationMarker, scale, color);
+      // A reachable destination shows only the actor's own ghost token -- the box/X was redundant
+      // once the ghost already marks the spot, and reusing them together read as visual clutter. An
+      // unreachable one has no real "landing" to ghost, so it keeps the plain red box/X instead.
+      if (preview.destinationAvailable === false) {
+        drawPlacement(graphics, preview.destinationPlacement, scale, UNAVAILABLE_COLOR, 0.06, UNAVAILABLE_COLOR, 1, 3);
+        drawXMarker(graphics, preview.destinationMarker, scale, UNAVAILABLE_COLOR);
+      } else {
+        drawGhostToken(graphics, liveToken, preview.destinationCenter, preview.destinationPlacement, scale);
+      }
     }
   } else if (preview.stridePath?.length) {
-    drawStridePath(graphics, preview.origin, preview.stridePath, scale, preview.originElevation);
-    const markerColor = preview.reachableMarkerColor ?? preview.movementColor ?? 0x66c78f;
+    // The remaining reachable area after the path is always green, matching every other
+    // "available" square. drawStridePath itself ghosts the final landing square only
+    // (stridePath is only ever populated with a legal, reachable route).
+    drawStridePath(graphics, preview.origin, preview.stridePath, scale, preview.originElevation, liveToken);
     for (const marker of preview.reachableMarkers ?? []) {
-      drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
+      drawPlacement(graphics, marker, scale, AVAILABLE_COLOR, 0.025, AVAILABLE_COLOR, 0.88, 2);
     }
-  } else if (preview.explicitDestination && preview.destinationPlacement) {
-    const color = preview.destinationAvailable ? (preview.movementColor ?? 0xe0b35a) : 0xc94f4f;
-    drawPlacement(graphics, preview.destinationPlacement, scale, color, 0.06, color, 1, 3);
-    drawXMarker(graphics, preview.destinationMarker, scale, color);
+  } else if (preview.explicitDestination) {
+    // A hover-only candidate keeps the general reachable-area grid fully visible underneath its own
+    // ghost/box -- for a real committed destination this array is always empty, so the loop is a
+    // no-op there.
+    for (const marker of preview.reachableMarkers ?? []) {
+      drawPlacement(graphics, marker, scale, AVAILABLE_COLOR, 0.025, AVAILABLE_COLOR, 0.88, 2);
+    }
+    if (preview.destinationPlacement) {
+      // Same box-vs-ghost split as the teleport branch above.
+      if (!preview.destinationAvailable) {
+        drawPlacement(graphics, preview.destinationPlacement, scale, UNAVAILABLE_COLOR, 0.06, UNAVAILABLE_COLOR, 1, 3);
+        drawXMarker(graphics, preview.destinationMarker, scale, UNAVAILABLE_COLOR);
+      } else {
+        drawGhostToken(graphics, liveToken, preview.destinationCenter, preview.destinationPlacement, scale);
+      }
+    }
   } else {
     // Show only the reachable squares — no recommended-destination X. The X read as a
     // selection even though the player hadn't chosen a destination yet.
-    const markerColor = preview.reachableMarkerColor ?? preview.movementColor ?? 0x66c78f;
     for (const marker of preview.reachableMarkers ?? []) {
-      drawPlacement(graphics, marker, scale, markerColor, 0.025, markerColor, 0.88, 2);
+      drawPlacement(graphics, marker, scale, AVAILABLE_COLOR, 0.025, AVAILABLE_COLOR, 0.88, 2);
     }
   }
 
   // Circle the Stride's starting square so it's clear where the movement begins.
-  drawOriginMarker(graphics, preview.origin, preview.footprint, scale, preview.movementColor ?? 0x66c78f);
+  drawOriginMarker(graphics, preview.origin, preview.footprint, scale, AVAILABLE_COLOR);
   // Pin the live readout to the point being placed (destination), showing the elevation it lands at.
   const pendingElevation = Number.isFinite(preview.elevationDelta)
     ? (Number(preview.originElevation) || 0) + preview.elevationDelta
@@ -1558,5 +1764,53 @@ export function showMovementPreview(context, step) {
   layer.sortableChildren = true;
   layer.addChild(graphics);
   previewGraphics = graphics;
+  return preview;
+}
+
+let hoverGraphics = null;
+
+export function clearHoverGhost() {
+  if (!hoverGraphics) return;
+  const graphics = hoverGraphics;
+  hoverGraphics = null;
+  graphics.parent?.removeChild?.(graphics);
+  graphics.destroy?.({ children: true });
+}
+
+// A lightweight, independently-updated overlay for the destination candidate under the cursor --
+// deliberately separate from showMovementPreview's persistent reachable-area grid (a couple hundred
+// individual rectangles for a typical Speed), which must never be cleared/redrawn on every
+// mouse-move frame -- doing so made the grid appear to flicker down to just whatever was near the
+// cursor instead of staying a stable, full view. Hovering only ever touches this small, separate
+// graphics object; the grid stays exactly as it was until a real click commits a destination/
+// waypoint (which calls showMovementPreview again, replacing this ghost with its own).
+export function showHoverGhost(context, step, destinationPoint) {
+  clearHoverGhost();
+
+  const PIXI = globalThis.PIXI;
+  const layer = previewLayer();
+  if (!PIXI?.Graphics || !layer?.addChild || !destinationPoint) return null;
+
+  const queryStep = { ...(step ?? {}), destination: destinationPoint, hoverOnly: true };
+  const { preview, scale } = computeMovementPreview(context, queryStep);
+  if (!preview?.enabled || !preview.destinationPlacement) return null;
+
+  const liveToken = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
+  const graphics = new PIXI.Graphics();
+  if (preview.destinationAvailable === false) {
+    drawPlacement(graphics, preview.destinationPlacement, scale, UNAVAILABLE_COLOR, 0.06, UNAVAILABLE_COLOR, 1, 3);
+    drawXMarker(graphics, preview.destinationMarker, scale, UNAVAILABLE_COLOR);
+  } else {
+    drawGhostToken(graphics, liveToken, preview.destinationCenter, preview.destinationPlacement, scale);
+  }
+  const pendingElevation = Number.isFinite(preview.elevationDelta)
+    ? (Number(preview.originElevation) || 0) + preview.elevationDelta
+    : NaN;
+  drawElevationLabel(graphics, preview.destinationCenter, pendingElevation, preview.originElevation, preview.footprint, scale);
+
+  graphics.zIndex = 10_001; // above the persistent reachable-area grid (10_000)
+  layer.sortableChildren = true;
+  layer.addChild(graphics);
+  hoverGraphics = graphics;
   return preview;
 }

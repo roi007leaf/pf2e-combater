@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.0.12]
+
+### Added
+
+- **Stride/Crawl destination previews now show a translucent ghost of the actor's own token art**,
+  sized to match how it actually renders (including Dynamic Token Rings and any manual Image Scale),
+  instead of only a colored box.
+- **A live preview now follows the cursor while picking a destination**, showing the ghost and
+  remaining-range readout before you even click — including mid-waypoint-path — without interrupting
+  or redrawing the reachable-area grid underneath it.
+
+### Fixed
+
+- **Hovering toward a destination could show it as reachable (green) even when it wasn't**, once at
+  least one waypoint was already placed — the preview measured straight-line range from the starting
+  square instead of the actual route through the waypoint, so clicking that same square then correctly
+  warned "beyond movement range." Both the highlighted grid and the specific hovered square now account
+  for the full routed path.
+- **Drop Prone's scoring assumed the old, pre-remaster rule** that ranged attacks against a prone
+  target take a penalty and melee attacks gain a bonus. Prone actually grants a flat Off-Guard penalty
+  against every attacker alike, so it's now scored as a pure downside on its own, with the real
+  defensive payoff (Take Cover's ranged bonus) scored separately when actually taken.
+- **"Stand, Stride into reach, and Strike" could incorrectly ask the player to pick a target** — its
+  internal enemy-direction marker (used only to choose which way to Stride) was mistaken for an attack
+  target.
+
 ## [1.0.11]
 
 ### Added

@@ -258,7 +258,9 @@ export function requiresTargetForAction(action) {
   // every other area action is.
   if (requiresAreaMarkerForAction(action) && !isTargetCenteredAreaAction(action)) return false;
   const slug = actionSlug(action);
-  if (["stand", "retch", "stride", "step", "crawl"].includes(slug)) return false;
+  // stand-stride (Stand, then Stride toward the nearest enemy beyond reach) carries a
+  // targetingProfile.enemy marker purely to pick which direction to Stride -- not an attack target.
+  if (["stand", "retch", "stride", "step", "crawl", "stand-stride"].includes(slug)) return false;
 
   const targeting = actionTargeting(action);
   const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;

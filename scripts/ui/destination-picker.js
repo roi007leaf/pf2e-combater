@@ -104,22 +104,32 @@ function pointerTargets() {
   );
 }
 
-function snappedCenter(rawPoint) {
+// A token's footprint must have its TOP-LEFT on a grid line to align with the grid. For an odd
+// footprint (1x1, 3x3, ...) that puts the CENTER on a cell center, but for an even one (2x2 Large,
+// 4x4 Gargantuan, ...) the correctly-aligned center sits on a grid VERTEX instead -- always snapping
+// to the nearest cell center (as this used to, regardless of footprint) put an even-sized token's
+// box half a cell off the grid. `topLeftValue` is the near edge of the cell containing `rawValue`.
+function snapAxisToFootprint(rawValue, topLeftValue, size, cells) {
+  if (cells % 2 !== 0) return topLeftValue + size / 2;
+  return rawValue - topLeftValue < size / 2 ? topLeftValue : topLeftValue + size;
+}
+
+function snappedCenter(rawPoint, footprint = { width: 1, height: 1 }) {
   const grid = globalThis.canvas?.grid;
-  const center = callGrid(grid?.getCenterPoint?.bind(grid), rawPoint);
-  if (center) return center;
-
-  const centerMode = globalThis.CONST?.GRID_SNAPPING_MODES?.CENTER;
-  const snapped = callGrid(grid?.getSnappedPoint?.bind(grid), rawPoint, { mode: centerMode });
-  if (snapped) return snapped;
-
-  const topLeft = callGrid(grid?.getTopLeftPoint?.bind(grid), rawPoint);
   const size = gridSize();
-  if (topLeft) return { x: topLeft.x + size / 2, y: topLeft.y + size / 2 };
-
+  const topLeft = callGrid(grid?.getTopLeftPoint?.bind(grid), rawPoint)
+    ?? { x: Math.floor(rawPoint.x / size) * size, y: Math.floor(rawPoint.y / size) * size };
   return {
-    x: Math.floor(rawPoint.x / size) * size + size / 2,
-    y: Math.floor(rawPoint.y / size) * size + size / 2,
+    x: snapAxisToFootprint(rawPoint.x, topLeft.x, size, footprint.width),
+    y: snapAxisToFootprint(rawPoint.y, topLeft.y, size, footprint.height),
+  };
+}
+
+function tokenFootprintCells(token) {
+  const document = token?.document ?? token ?? {};
+  return {
+    width: Math.max(1, numeric(document.width ?? token?.width) ?? 1),
+    height: Math.max(1, numeric(document.height ?? token?.height) ?? 1),
   };
 }
 
@@ -235,6 +245,48 @@ function addStagePointerHandler(handler) {
 
 function addPointerHandler(handler, allowPointerEvent = isPrimaryPointerEvent) {
   return addDomPointerHandler(handler, allowPointerEvent) ?? addStagePointerHandler(handler);
+}
+
+// Live hover preview (the ghost/cost readout tracking the cursor before a click commits it) needs
+// its own listener -- pointerdown/up only fire on an actual click, never as the mouse moves over
+// the grid beforehand.
+function addDomPointerMoveHandler(handler) {
+  const cleanups = [];
+  for (const target of pointerTargets()) {
+    if (typeof target?.addEventListener !== "function") continue;
+    const onPointerMove = (event) => {
+      if (!eventTargetsCanvas(event)) return;
+      handler(event);
+    };
+    target.addEventListener("pointermove", onPointerMove, { capture: true });
+    cleanups.push(() => target.removeEventListener?.("pointermove", onPointerMove, { capture: true }));
+  }
+  if (!cleanups.length) return null;
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
+}
+
+function addStagePointerMoveHandler(handler) {
+  const cleanups = [];
+  for (const target of pointerTargets()) {
+    if (typeof target?.addEventListener === "function") continue;
+    if (typeof target?.on === "function") {
+      target.on("pointermove", handler);
+      cleanups.push(() => {
+        if (typeof target.off === "function") target.off("pointermove", handler);
+        else target.removeListener?.("pointermove", handler);
+      });
+    }
+  }
+  if (!cleanups.length) return null;
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
+}
+
+function addPointerMoveHandler(handler) {
+  return addDomPointerMoveHandler(handler) ?? addStagePointerMoveHandler(handler);
 }
 
 // Vertical movement (fly/burrow) lets the player raise/lower the target elevation while picking by
@@ -619,6 +671,7 @@ export function chooseDestination({
   }
 
   const token = canvasTokenById(tokenId(context));
+  const footprint = tokenFootprintCells(token);
   const vertical = verticalMovementForAction(action);
   const originElevation = vertical ? tokenElevation(token) : 0;
   // Working elevation: the height of the active (last-placed) waypoint, or — before any waypoint —
@@ -637,6 +690,31 @@ export function chooseDestination({
     ...(points.length ? { movementPlan: planForWaypoints(points) } : {}),
     ...(vertical ? { elevation: pendingElevation } : {}),
   });
+  // Shared by the click handler and the live hover preview below -- both need to answer "what would
+  // committing to this destination right now cost". Before falling back to a naive straight-line
+  // cost, ask the same obstacle/terrain-avoiding BFS that drives the reachable-area overlay whether
+  // it already found a (possibly bent, cheaper) route here -- otherwise a square the overlay
+  // highlights as reachable via a detour around difficult terrain gets rejected as "beyond movement
+  // range" for assuming a direct line. Only applies to a still-straight, no-bend-yet candidate: once
+  // waypoints exist and this is the next one being placed, that segment is a real drawn line and
+  // must cost as one. A vertical (fly/burrow) pick still qualifies as long as it hasn't actually
+  // changed height yet (no Shift+scroll used) -- the BFS is horizontal-only, so a real climb/descent
+  // falls back to the straight-line-plus-vertical-cost path below, which already accounts for it.
+  const candidatePlanFor = (candidateWaypoints, destination) => {
+    const routedCandidate = (!vertical || pendingElevation === originElevation) && candidateWaypoints.length <= 1
+      ? movementRouteToPoint(context, action, destination)
+      : null;
+    return routedCandidate
+      ? {
+        native: false,
+        waypoints: routedCandidate.waypoints?.length ? routedCandidate.waypoints : [destination],
+        cost: routedCandidate.cost,
+        maxCost: actorSpeed(context, token, action),
+      }
+      : enableWaypoints
+        ? planForWaypoints(candidateWaypoints)
+        : planForWaypoints([destination]);
+  };
 
   const allowPickerPointerEvent = (event) =>
     isPrimaryPointerEvent(event) || (enableWaypoints && eventShiftKey(event) && eventButton(event) === 2);
@@ -659,7 +737,7 @@ export function chooseDestination({
 
       const rawPoint = eventCanvasPoint(event);
       if (!rawPoint) return;
-      const destination = withElevation(snappedCenter(rawPoint));
+      const destination = withElevation(snappedCenter(rawPoint, footprint));
       const waypointPick = enableWaypoints && eventShiftKey(event);
       const waypointFinalize = waypointPick && eventClickCount(event) >= 2;
       const candidateWaypoints = enableWaypoints
@@ -670,25 +748,7 @@ export function chooseDestination({
       // Even outside waypoint mode, a single click already picks a real destination -- compute its
       // plan too (as a one-point path) so the distance/cost readout shows without requiring the
       // player to lay down an actual waypoint first.
-      // Before falling back to a naive straight-line cost, ask the same obstacle/terrain-avoiding
-      // BFS that drives the reachable-area overlay whether it already found a (possibly bent, cheaper)
-      // route here -- otherwise a square the overlay highlights as reachable via a detour around
-      // difficult terrain gets rejected here as "beyond movement range" for assuming a direct line.
-      // Only applies to a still-straight, no-bend-yet candidate: once the player has manually laid a
-      // waypoint and is placing the next one, that segment is a real drawn line and must cost as one.
-      const routedCandidate = !vertical && candidateWaypoints.length <= 1
-        ? movementRouteToPoint(context, action, destination)
-        : null;
-      const candidateMovementPlan = routedCandidate
-        ? {
-          native: false,
-          waypoints: routedCandidate.waypoints?.length ? routedCandidate.waypoints : [destination],
-          cost: routedCandidate.cost,
-          maxCost: actorSpeed(context, token, action),
-        }
-        : enableWaypoints
-          ? planForWaypoints(candidateWaypoints)
-          : planForWaypoints([destination]);
+      const candidateMovementPlan = candidatePlanFor(candidateWaypoints, destination);
       const metadata = {
         ...(candidateMovementPlan ? { movementPlan: candidateMovementPlan } : {}),
         ...(vertical ? { elevation: pendingElevation } : {}),
@@ -717,6 +777,32 @@ export function chooseDestination({
   const cleanup = addPointerHandler(handler, allowPickerPointerEvent);
   if (!cleanup) return null;
 
+  // Live hover preview: pointerdown/up (the handler above) only ever fire on an actual click, so
+  // without this the destination overlay (ghost token, cost readout, colored box) only updated once
+  // a waypoint was placed -- moving the mouse beforehand showed nothing. This tracks the cursor and
+  // re-runs the same preview computation the click handler uses, without committing anything.
+  // Always flagged hoverOnly (below), so the renderer routes it to a ghost-only overlay that never
+  // touches the persistent reachable-area grid -- safe to keep live-tracking the cursor even mid-path.
+  let lastHoverKey = null;
+  const hoverCleanup = addPointerMoveHandler((event) => {
+    if (handled) return;
+    const rawPoint = eventCanvasPoint(event);
+    if (!rawPoint) return;
+    const destination = withElevation(snappedCenter(rawPoint, footprint));
+    // Snapping already collapses most raw mouse movement onto the same grid square -- skip
+    // redundant recompute/re-render when the cursor hasn't actually left it.
+    const key = `${destination.x},${destination.y},${destination.elevation ?? ""}`;
+    if (key === lastHoverKey) return;
+    lastHoverKey = key;
+    const candidateWaypoints = enableWaypoints ? [...waypoints, destination] : [];
+    const candidateMovementPlan = candidatePlanFor(candidateWaypoints, destination);
+    onPreview?.(destination, {
+      hoverOnly: true,
+      ...(candidateMovementPlan ? { movementPlan: candidateMovementPlan } : {}),
+      ...(vertical ? { elevation: pendingElevation } : {}),
+    });
+  });
+
   // Shift+scroll adjusts the elevation of the active (last-placed) waypoint in place, in one-grid-step
   // increments while flying/burrowing. Placing the next waypoint (or double-clicking to finalize)
   // locks that height; the next waypoint then starts from it and becomes the one the wheel edits.
@@ -737,13 +823,17 @@ export function chooseDestination({
         return;
       }
       const rawPoint = point(globalThis.canvas?.mousePosition);
-      const hover = rawPoint ? withElevation(snappedCenter(rawPoint)) : null;
-      onPreview?.(hover, previewMetadata(waypoints));
+      const hover = rawPoint ? withElevation(snappedCenter(rawPoint, footprint)) : null;
+      // Same reasoning as the pointermove hover handler above: before any waypoint is placed, this is
+      // still just a preview of the first point's height, not a real commit -- it must not narrow the
+      // reachable-area grid.
+      onPreview?.(hover, { hoverOnly: true, ...previewMetadata(waypoints) });
     })
     : null;
 
   activeCleanup = () => {
     cleanup();
+    hoverCleanup?.();
     wheelCleanup?.();
   };
   activeOnCancel = typeof onCancel === "function" ? onCancel : null;
