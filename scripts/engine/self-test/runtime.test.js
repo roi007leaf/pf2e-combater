@@ -65,6 +65,7 @@ import { classifySpell } from "../spell/classifier.js";
 import { findCuratedSpell } from "../../catalog/spells/index.js";
 import { spellCatalogAuditForItems, spellCatalogAuditMarkdown } from "../../dev/spell-catalog-audit.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../../readers/action/reader.js";
+import { reachableAttackCenters } from "../../readers/action/reach.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../../readers/actor-profile.js";
 import { readConsumableSpellActions, readSpellActions } from "../../readers/spell-reader.js";
 import {
@@ -12728,6 +12729,61 @@ assert.notDeepEqual(
   occupancyBestSquare,
   "attackCenter must not land on a square another creature already occupies",
 );
+
+// Regression: reachableAttackCenters (which picks a move-and-strike composite's attackCenter, e.g.
+// "Stride -> Tentacle") filtered candidate squares by gridReachDistanceFeet, a Chebyshev-style
+// edge-gap-plus-one-grid-unit approximation. Confirmed live against Foundry's real PF2e engine
+// (canvas.grid.measurePath): a diagonal one-square gap prices at 15 ft under the real 5-10-5
+// alternating-diagonal rule, but the Chebyshev approximation says 10 ft -- so a 10-ft-reach Strike's
+// attackCenter could land on a square that LOOKS in reach but genuinely isn't, while a real
+// same-cost orthogonal square that IS in reach sits unused. reachableAttackCenters must filter by
+// the real, footprint-aware measurePath distance instead.
+const previousReachCentersCanvas = globalThis.canvas;
+try {
+  const gridSize = 5;
+  const gridDistance = 5;
+  globalThis.canvas = {
+    grid: {
+      size: gridSize,
+      measurePath: ([from, to]) => {
+        const dx = Math.abs(to.x - from.x);
+        const dy = Math.abs(to.y - from.y);
+        const diagonalSteps = Math.round(Math.min(dx, dy) / gridSize);
+        const straightSteps = Math.round((Math.max(dx, dy) - Math.min(dx, dy)) / gridSize);
+        let diagonalCost = 0;
+        for (let step = 0; step < diagonalSteps; step += 1) {
+          diagonalCost += step % 2 === 0 ? gridDistance : gridDistance * 2;
+        }
+        return { distance: diagonalCost + straightSteps * gridDistance };
+      },
+    },
+    scene: { grid: { distance: gridDistance } },
+    walls: { placeables: [] },
+  };
+  const reachContext = {
+    token: { id: "reach-actor-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+    battlefield: { allies: [], enemies: [] },
+  };
+  const reachTarget = { id: "calder", name: "Calder", token: { center: { x: 15, y: 15 }, width: 1, height: 1 } };
+
+  const centers = reachableAttackCenters(reachContext, reachTarget, 25, 10);
+  assert.equal(
+    centers.some((center) => center.x === 5 && center.y === 5),
+    false,
+    "a diagonal one-square gap (real distance 15 ft) must not qualify for a 10-ft reach",
+  );
+  assert.equal(
+    centers.some((center) => center.x === 5 && center.y === 15),
+    true,
+    "a same-cost orthogonal square (real distance 10 ft) must qualify for a 10-ft reach",
+  );
+} finally {
+  if (previousReachCentersCanvas === undefined) {
+    delete globalThis.canvas;
+  } else {
+    globalThis.canvas = previousReachCentersCanvas;
+  }
+}
 
 // reachableMovementCenters (the BFS behind the interactive movement-preview overlay in
 // movement-preview.js) has the same missing-occupancy-check gap as the scoring engine's

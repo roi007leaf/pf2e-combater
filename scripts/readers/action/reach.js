@@ -10,6 +10,7 @@ import {
   hasMovementCollisionLayer,
   rectangleDistanceFeet,
 } from "../../rules/canvas-geometry.js";
+import { footprintPathDistanceFeet } from "../../rules/token-geometry.js";
 import { compareTacticalCenters } from "../../rules/battlefield-analysis.js";
 
 function numeric(value, fallback = 0) {
@@ -142,10 +143,17 @@ export function reachableAttackCenters(context, target, distanceFeet, reachFeet)
   const metrics = movementGridMetrics();
   const attackerFootprint = movementFootprintForToken(context?.token);
   const targetRectangle = tokenPlacementForCenter(targetCenter, target, metrics);
+  // gridReachDistanceFeet is a Chebyshev-style edge-gap-plus-one-grid-unit approximation -- it
+  // agrees with PF2e's real distance rule for a direct-adjacency or purely-orthogonal check, but
+  // confirmed live against Foundry's own engine (canvas.grid.measurePath), a diagonal one-square
+  // gap prices at 15 ft under the real 5-10-5 alternating-diagonal rule, not the 10 ft the
+  // approximation reports -- so it could accept an attackCenter that only *looks* in reach.
+  // footprintPathDistanceFeet uses the real, footprint-aware measurePath distance instead.
   const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken, context)
     .filter((center) => {
       const attackerRectangle = tokenPlacementForCenter(center, attackerFootprint, metrics);
-      return gridReachDistanceFeet(attackerRectangle, targetRectangle, metrics) <= reachFeet
+      const distance = footprintPathDistanceFeet(center, attackerFootprint, targetCenter, target, metrics.pixelSize);
+      return Number.isFinite(distance) && distance <= reachFeet
         && canReachPlacementPerimeter(attackerRectangle, targetRectangle, metrics.pixelSize, { pathBlocked: attackPathBlocked });
     });
   reachableAttackCentersCache.set(cacheKey, result);
