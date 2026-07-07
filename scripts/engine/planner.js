@@ -79,6 +79,8 @@ const AC_PENALTY_FIELDS = [
   "targetAcPenalty",
   "targetDefensePenalty",
 ];
+const PLANNER_EXCLUDED_UTILITY_ROLES = new Set(["exploration-utility"]);
+const PLANNER_EXCLUDED_COMBAT_USE = new Set(["browse-only", "context-only", "never-auto-fill"]);
 
 function emptyPlan(context) {
   return {
@@ -122,6 +124,17 @@ function candidateCategory(candidate) {
   if (candidate?.skill || SKILL_ACTION_SLUGS.has(candidate?.slug)) return "skill";
   if (["custom-curated", "system-inferred"].includes(candidate?.source)) return "class";
   return "other";
+}
+
+function autoFillEligibleCandidate(candidate) {
+  const combatUse = String(candidate?.combatUse ?? candidate?.activityProfile?.combatUse ?? "auto").toLowerCase();
+  const role = String(candidate?.role ?? "").toLowerCase();
+  const utilitySubtype = String(candidate?.activityProfile?.utilitySubtype ?? "").toLowerCase();
+  const confidence = String(candidate?.confidence ?? "").toLowerCase();
+  if (PLANNER_EXCLUDED_COMBAT_USE.has(combatUse)) return false;
+  if (PLANNER_EXCLUDED_UTILITY_ROLES.has(role) || PLANNER_EXCLUDED_UTILITY_ROLES.has(utilitySubtype)) return false;
+  if (["utility", "combat-utility"].includes(role) && confidence === "low") return false;
+  return true;
 }
 
 function selectPlanningCandidates(sortedCandidates) {
@@ -360,6 +373,7 @@ export function buildTurnPlans(context, candidates) {
   // all, so it can never appear in any generated plan or alt-plan cycle slot — keep the full,
   // pre-narrowing list around so the coverage backfill below can still reach it.
   const eligibleCandidates = candidates
+    .filter(autoFillEligibleCandidate)
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))

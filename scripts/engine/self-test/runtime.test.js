@@ -62,6 +62,8 @@ import { contextAllies, contextEnemies, contextTargets, firstContextTarget, self
 import { buildCandidates } from "../candidates.js";
 import { classifySystemAction } from "../action/classifier.js";
 import { classifySpell } from "../spell/classifier.js";
+import { findCuratedSpell } from "../../catalog/spells/index.js";
+import { spellCatalogAuditForItems, spellCatalogAuditMarkdown } from "../../dev/spell-catalog-audit.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../../readers/action/reader.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../../readers/actor-profile.js";
 import { readConsumableSpellActions, readSpellActions } from "../../readers/spell-reader.js";
@@ -108,6 +110,8 @@ import { GENERIC_ACTIONS } from "../../catalog/generic-actions.js";
 import { findCustomAction } from "../../catalog/custom-actions.js";
 import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectableAlternativePlans, selectDisplayPlan } from "../../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../../ui/action/preview.js";
+import { draftForAutoFillGap, draftNormalActionCost } from "../../ui/panel/draft-helpers.js";
+import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../../ui/range-overlay.js";
@@ -5010,7 +5014,7 @@ assert.ok(strideTowardPlannedTarget && strideTowardPlannedTarget.destination.x >
     const fillGapPanel = {
       ...panel,
       _autoFillInFlight: false,
-      _readActiveDraftPlan: () => ({ steps: [{ instanceId: "manual-step", name: "Manual Step", actionKey: "manual-step" }], source: "manual" }),
+      _readActiveDraftPlan: () => ({ steps: [{ instanceId: "manual-step", name: "Manual Step", actionKey: "manual-step", actionCost: 1 }], source: "manual" }),
       _fillDraftGap(options = {}) {
         return runFillPanelDraftGap(this, options);
       },
@@ -5023,6 +5027,11 @@ assert.ok(strideTowardPlannedTarget && strideTowardPlannedTarget.destination.x >
       _writeActiveDraftPlan: async (draft) => { fillGapDraft = draft; },
     };
     await runAutoFillPanelDraft(fillGapPanel, { plan: { ...stalePlan, id: "stale-expel-signature-only" } });
+    assert.equal(
+      fillGapDraft?.steps?.[0]?.instanceId,
+      "manual-step",
+      "pressing Auto-fill with manual steps should keep existing selected steps in place",
+    );
     const fillGapExpelStep = fillGapDraft?.steps?.find((step) => step.name === "Expel Infestation");
     assert.equal(
       fillGapExpelStep?.areaMarker?.rotation,
@@ -5030,9 +5039,36 @@ assert.ok(strideTowardPlannedTarget && strideTowardPlannedTarget.destination.x >
       "manual-draft fill-gap Auto-fill should remap stale shuffled plans to the selected-target plan before storing the template",
     );
     assert.equal(
+      fillGapExpelStep?.autoFillGenerated,
+      true,
+      "fill-gap Auto-fill should tag appended steps so later shuffles can replace the generated segment",
+    );
+    assert.deepEqual(
+      draftForAutoFillGap(fillGapDraft).steps.map((step) => step.instanceId ?? step.name),
+      ["manual-step"],
+      "generated fill steps should not count as locked manual steps for the next Auto-fill/shuffle",
+    );
+    assert.equal(
+      draftNormalActionCost(fillGapDraft),
+      1,
+      "generated fill steps should not consume the remaining-budget search used by the shuffle button",
+    );
+    assert.equal(
       fillGapDraft?.steps?.some((step) => step.name === "Decoy"),
       false,
       "manual-draft fill-gap Auto-fill should not fall back to the first fill plan when a selected-target plan has the same step signature",
+    );
+    const previousFillGapDraft = fillGapDraft;
+    await runAutoFillPanelDraft({
+      ...fillGapPanel,
+      _autoFillInFlight: false,
+      _readActiveDraftPlan: () => previousFillGapDraft,
+      _writeActiveDraftPlan: async (draft) => { fillGapDraft = draft; },
+    }, { plan: { ...stalePlan, id: "stale-expel-signature-only" } });
+    assert.equal(
+      fillGapDraft?.steps?.filter((step) => step.name === "Expel Infestation").length,
+      1,
+      "pressing Auto-fill again should replace the generated fill segment, not treat it as locked selected steps",
     );
   } finally {
     globalThis.game = previousGame;
@@ -6176,6 +6212,34 @@ assert.equal(bestAutoFillPlan(displayPlans).id, "main");
 assert.equal(selectDisplayPlan(displayPlans, null).id, "main");
 assert.equal(selectDisplayPlan(displayPlans, "alt").id, "alt");
 assert.equal(selectDisplayPlan(displayPlans, "missing").id, "main");
+{
+  const previousGame = globalThis.game;
+  try {
+    const northTarget = { id: "north", name: "North Foe", token: { id: "north-token" } };
+    const southTarget = { id: "south", name: "South Foe", token: { id: "south-token" } };
+    globalThis.game = { user: { targets: new Set([{ id: "south-token", name: "South Foe" }]) } };
+    const focusedAutoFillContext = contextWithCurrentAutoFillTargets({
+      targets: [northTarget, southTarget],
+      enemies: [northTarget, southTarget],
+      battlefield: {
+        targets: [northTarget, southTarget],
+        enemies: [northTarget, southTarget],
+      },
+    });
+    assert.deepEqual(
+      focusedAutoFillContext.battlefield.targets.map((target) => target.id),
+      ["south"],
+      "selected-target Auto-fill context should keep the shuffle cycle scoped to the current target",
+    );
+    assert.deepEqual(
+      focusedAutoFillContext.battlefield.enemies.map((target) => target.id),
+      ["south"],
+      "selected-target Auto-fill context should not leave broader enemy plans in the displayed cycle",
+    );
+  } finally {
+    globalThis.game = previousGame;
+  }
+}
 assert.deepEqual(
   selectableAlternativePlans(displayPlans, displayPlans[1]).map((plan) => plan.id),
   ["main", "third"],
@@ -17704,6 +17768,27 @@ const utilitySpellNotBuff = classifySpell({
 assert.equal(utilitySpellNotBuff.role, "exploration-utility");
 assert.equal(utilitySpellNotBuff.activityProfile.utilitySubtype, "exploration-utility");
 assert.notEqual(utilitySpellNotBuff.role, "buff");
+const mageHandClassification = classifySpell({
+  name: "Mage Hand",
+  system: {
+    traits: { value: ["cantrip", "concentrate", "manipulate"] },
+    level: { value: 0 },
+    range: { value: "30 feet" },
+    target: { value: "1 unattended object of light Bulk or less" },
+    duration: { value: "sustained up to 1 minute", sustained: true },
+    time: { value: "2" },
+    description: { value: "<p>You create a magical hand that grabs and manipulates an unattended object, moving it slowly within range.</p>" },
+  },
+});
+const mageHandCurated = findCuratedSpell("mage-hand");
+assert.equal(mageHandCurated?.combatUse, "browse-only", "Mage Hand should be catalogued as manual Browse utility, not Auto-fill material");
+assert.equal(mageHandCurated?.role, "exploration-utility");
+assert.equal(
+  mageHandClassification.role,
+  "exploration-utility",
+  "object-only Mage Hand should be exploration utility, not a combat-utility Auto-fill candidate",
+);
+assert.equal(mageHandClassification.activityProfile.utilitySubtype, "exploration-utility");
 const detectMagicScore = scoreCandidate(spellcasterSpellPriorityContext, {
   id: "detect-magic",
   name: "Detect Magic",
@@ -17713,6 +17798,144 @@ const detectMagicScore = scoreCandidate(spellcasterSpellPriorityContext, {
   ...utilitySpellNotBuff,
 });
 assert.ok(detectMagicScore.score < cantripDamageScore.score);
+const mageHandScore = scoreCandidate(spellcasterSpellPriorityContext, {
+  id: "mage-hand",
+  name: "Mage Hand",
+  slug: "mage-hand",
+  actionCost: 2,
+  source: "spell-inferred",
+  ...mageHandClassification,
+});
+const mageHandBrowseModel = buildActionBuilderModel({
+  context: spellcasterSpellPriorityContext,
+  candidates: [mageHandScore],
+  draft: { steps: [] },
+});
+assert.equal(
+  mageHandBrowseModel.tabs.two.all.some((action) => action.slug === "mage-hand"),
+  true,
+  "Mage Hand should remain manually selectable in Browse even when Auto-fill ignores it",
+);
+assert.equal(
+  buildTurnPlans(spellcasterSpellPriorityContext, [mageHandScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "mage-hand")),
+  false,
+  "Auto-fill/shuffle plans should not spend actions on object-only Mage Hand",
+);
+const browseOnlyCombatUseScore = {
+  id: "browse-only-damage",
+  name: "Browse Only Damage",
+  slug: "browse-only-damage",
+  actionCost: 1,
+  source: "spell-curated",
+  role: "damage",
+  combatUse: "browse-only",
+  confidence: "high",
+  score: 999,
+  activityProfile: { includes: ["damage"] },
+  targetingProfile: { enemy: true, maxRange: 30 },
+};
+assert.equal(
+  buildTurnPlans(spellcasterSpellPriorityContext, [browseOnlyCombatUseScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "browse-only-damage")),
+  false,
+  "Auto-fill/shuffle plans should honor catalog combatUse=browse-only even when the spell otherwise looks damaging",
+);
+const contextOnlyCombatUseScore = {
+  ...browseOnlyCombatUseScore,
+  id: "context-only-damage",
+  name: "Context Only Damage",
+  slug: "context-only-damage",
+  combatUse: "context-only",
+};
+assert.equal(
+  buildTurnPlans(spellcasterSpellPriorityContext, [contextOnlyCombatUseScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "context-only-damage")),
+  false,
+  "Auto-fill/shuffle plans should not spend actions on context-only spell candidates without a matched context rule",
+);
+const autoCombatUseScore = {
+  ...browseOnlyCombatUseScore,
+  id: "auto-damage",
+  name: "Auto Damage",
+  slug: "auto-damage",
+  combatUse: "auto",
+};
+assert.equal(
+  buildTurnPlans(spellcasterSpellPriorityContext, [autoCombatUseScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "auto-damage")),
+  true,
+  "Auto-fill/shuffle plans should still use catalog combatUse=auto spell candidates",
+);
+
+const spellCatalogAudit = spellCatalogAuditForItems([
+  {
+    type: "spell",
+    name: "Mage Hand",
+    slug: "mage-hand",
+    system: {
+      traits: { value: ["cantrip", "concentrate", "manipulate"] },
+      level: { value: 0 },
+      range: { value: "30 feet" },
+      target: { value: "1 unattended object of light Bulk or less" },
+      duration: { value: "sustained up to 1 minute", sustained: true },
+      time: { value: "2" },
+      description: { value: "<p>You create a magical hand that manipulates an unattended object.</p>" },
+    },
+  },
+  {
+    type: "spell",
+    name: "Fireball",
+    slug: "fireball",
+    system: {
+      traits: { value: ["fire", "manipulate", "concentrate"] },
+      level: { value: 3 },
+      area: { type: "burst", value: 20 },
+      range: { value: "500 feet" },
+      save: { basic: "reflex", value: "reflex" },
+      damage: { a: { formula: "6d6", type: "fire" } },
+      time: { value: "2" },
+      description: { value: "<p>A burst of fire deals 6d6 fire damage with a basic Reflex save.</p>" },
+    },
+  },
+]);
+assert.equal(spellCatalogAudit.total, 2);
+assert.equal(spellCatalogAudit.byCombatUse["browse-only"], 1);
+assert.equal(spellCatalogAudit.byCombatUse.auto, 1);
+assert.equal(spellCatalogAudit.buckets.browseOnly[0]?.slug, "mage-hand");
+assert.equal(spellCatalogAudit.buckets.auto[0]?.slug, "fireball");
+const manyAuditEntries = Array.from({ length: 121 }, (_, index) => ({
+  name: `Audit Spell ${index}`,
+  slug: `audit-spell-${index}`,
+  rank: 1,
+  role: "damage",
+  confidence: "high",
+}));
+const untruncatedSpellCatalogMarkdown = spellCatalogAuditMarkdown({
+  total: manyAuditEntries.length,
+  activeCount: manyAuditEntries.length,
+  skippedCount: 0,
+  byCombatUse: {
+    auto: manyAuditEntries.length,
+    "browse-only": 0,
+    "context-only": 0,
+    "never-auto-fill": 0,
+    review: 0,
+  },
+  buckets: {
+    auto: manyAuditEntries,
+    browseOnly: [],
+    contextOnly: [],
+    neverAutoFill: [],
+    review: [],
+    unknown: [],
+    lowConfidence: [],
+    utilityFallback: [],
+    curatedOverrides: [],
+  },
+});
+assert.equal(untruncatedSpellCatalogMarkdown.includes("... 1 more"), false);
+assert.equal(untruncatedSpellCatalogMarkdown.includes("Audit Spell 120"), true);
 
 const buffActionClassification = classifySystemAction({
   name: "Inspiring Banner",

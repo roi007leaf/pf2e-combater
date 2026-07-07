@@ -16,6 +16,28 @@ import {
 
 const AUTO_FILL_BASIC_MOVE_SLUGS = new Set(["stride", "step", "stand-stride"]);
 
+export function isAutoFillGeneratedStep(step) {
+  return step?.autoFillGenerated === true;
+}
+
+export function draftForAutoFillGap(draft) {
+  return {
+    ...(draft ?? {}),
+    steps: (draft?.steps ?? []).filter((step) => !isAutoFillGeneratedStep(step)),
+  };
+}
+
+export function hasLockedDraftSteps(draft) {
+  return draftForAutoFillGap(draft).steps.length > 0;
+}
+
+export function draftNormalActionCost(draft) {
+  return draftForAutoFillGap(draft).steps.reduce((total, step) => {
+    const cost = Number(step?.actionCost ?? step?.cost ?? step?.action?.actionCost ?? step?.action?.cost ?? 0);
+    return Number.isFinite(cost) && cost > 0 ? total + cost : total;
+  }, 0);
+}
+
 export function isBasicAutoFillMove(stepOrSlug) {
   const slug = typeof stepOrSlug === "string"
     ? stepOrSlug

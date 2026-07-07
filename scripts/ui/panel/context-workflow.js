@@ -15,6 +15,7 @@ import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { actorStrikeOptions } from "../../readers/action/reader.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
+import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
 import { autoFillCyclePlans, selectDisplayPlan } from "../plan-selection.js";
 import {
   debugAction,
@@ -132,6 +133,8 @@ export function preparePanelContext(panel) {
       : draft;
 
   const baseBuild = buildCandidates(context);
+  const autoFillContext = contextWithCurrentAutoFillTargets(context);
+  const autoFillBuild = autoFillContext === context ? baseBuild : buildCandidates(autoFillContext);
   const planningContext = projectContextForDraftDestination(context, activeDraft);
   panel._planningContext = planningContext;
   const candidateBuild = planningContext === context ? baseBuild : buildCandidates(planningContext);
@@ -143,7 +146,7 @@ export function preparePanelContext(panel) {
     action: withBuilderActionFields(entry?.action),
   }));
   const draftStepActions = projectedDraftStepActions(context, activeDraft);
-  const autoFillPlans = buildTurnPlans(context, baseBuilderCandidates);
+  const autoFillPlans = buildTurnPlans(autoFillContext, autoFillBuild.candidates.map(withBuilderActionFields));
   const plans = buildTurnPlans(planningContext, builderCandidates);
   if (panel._pinnedPlanId && !autoFillPlans.some((candidatePlan) => candidatePlan?.id === panel._pinnedPlanId)) {
     panel._pinnedPlanId = null;

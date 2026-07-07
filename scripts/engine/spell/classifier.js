@@ -398,8 +398,15 @@ function readUtilityProfile(spell, { controlFacts = null } = {}) {
     };
   }
 
+  const target = targetText(spell);
+  const objectOnlyUtility = (
+    /\b(unattended|loose|small) objects?\b|\bobjects? of .*bulk\b|\bmanipulat(?:e|es|ing) objects?\b/.test(`${target} ${text}`)
+    || /\bmage hand\b|\btelekinetic hand\b/.test(text)
+  ) && !/\bcreature\b|\benemy\b|\bfoe\b|\battack\b|\bsaving throw\b|\bdamage\b|\bshove\b|\bdisarm\b|\bsteal\b|\bgrapple\b|\brestrain\b|\bimmobilize\b/.test(`${target} ${text}`);
+
   if (
-    traits.includes("detection")
+    objectOnlyUtility
+    || traits.includes("detection")
     || /\bdetect magic\b|\bread aura\b|\bidentify magic\b|\btranslate\b|\blanguage\b|\blight\b|\bclean\b|\bfood\b|\bwater\b|\btravel\b|\blocate\b|\bmending\b/.test(text)
   ) {
     return {

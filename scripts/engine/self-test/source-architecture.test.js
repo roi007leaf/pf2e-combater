@@ -137,6 +137,7 @@ const panelTemplateSource = [
 const panelSource = readFileSync(new URL("../../ui/CombaterPanel.js", import.meta.url), "utf8");
 const panelContextWorkflowSource = readFileSync(new URL("../../ui/panel/context-workflow.js", import.meta.url), "utf8");
 const panelViewModelSource = readFileSync(new URL("../../ui/panel/view-model.js", import.meta.url), "utf8");
+const panelAutoFillContextSource = readFileSync(new URL("../../ui/panel/auto-fill-context.js", import.meta.url), "utf8");
 const browserSource = readFileSync(new URL("../../ui/CombaterBrowser.js", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../../settings.js", import.meta.url), "utf8");
@@ -725,6 +726,14 @@ assert.ok(panelStyleSource.includes(".is-dragging"), "dragged rows should get a 
 assert.ok(panelStyleSource.includes(".drop-target"), "drop targets should show a visual indicator");
 assert.ok(panelSource.includes("_cycleAutoFillDraft"), "panel should cycle through auto-fill alternative plans");
 assert.ok(panelEventBindingsSource.includes("contextmenu"), "shuffle right-click should cycle backward instead of opening the browser menu");
+assert.ok(
+  panelAutoFillContextSource.includes("export function contextWithCurrentAutoFillTargets")
+    && panelContextWorkflowSource.includes("const autoFillContext = contextWithCurrentAutoFillTargets(context)")
+    && panelContextWorkflowSource.includes("buildTurnPlans(autoFillContext")
+    && panelSource.includes("contextWithCurrentAutoFillTargets(this._context)")
+    && panelDraftWorkflowSource.includes("contextWithCurrentAutoFillTargets(context)"),
+  "render, shuffle, and fill-gap Auto-fill plan lists should share selected-target focusing so the shuffle counter does not jump between broad and target-scoped cycles",
+);
 assert.equal(
   panelTemplateSource.includes("data-load-shared-draft"),
   false,

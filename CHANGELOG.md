@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.1.1]
+
+### Summary
+
+- **Auto-fill is now safer around partial plans, shuffle, selected targets, and spell utilities.**
+  Manual steps stay locked when filling the rest of the turn, generated fill steps can still be
+  reshuffled after deletes, and Browse-only/context-only spells no longer leak into generated plans.
+- **Spell catalog work is now split between runtime tactics and audit data.** Runtime catalogue
+  entries add Combater-specific tactical meaning on top of PF2e system spells, such as whether a
+  spell is safe for Auto-fill, Browse-only, context-only, or never-Auto-fill. The dev audit scans
+  every local system spell into full Markdown and JSON buckets so future recataloguing can target
+  weak utility, context-only, and curated override gaps directly.
+
+### Added
+
+- **A spell catalog audit can now scan the local PF2e system spell pack and bucket spells by combat
+  use.** `scripts/dev/run-spell-catalog-audit.mjs` writes `docs/spell-catalog-audit.md` and JSON.
+  This report is not runtime behavior; it is the recataloguing map for finding weak utility,
+  context-only, low-confidence, and missing curated override gaps. The Markdown report lists every
+  spell in each bucket instead of truncating rows behind "... more" placeholders.
+
+### Fixed
+
+- **Pressing Auto-fill with already-selected steps keeps those steps locked in place and fills only
+  the remaining action budget.** The selected target still steers the appended recommendations.
+- **The Auto-fill shuffle button stays available after refilling a deleted step.** Generated fill
+  steps are tracked separately so later Auto-fill/shuffle presses can replace that generated tail
+  instead of treating the turn as fully locked manual content.
+- **Auto-fill no longer spends actions on object-only utility spells like Mage Hand.** These spells
+  remain manually selectable in Browse, but exploration utility and low-confidence utility fillers no
+  longer enter shuffle/Auto-fill plans.
+- **Auto-fill and shuffle now honor runtime spell-catalog combat-use metadata.** Runtime catalogue
+  entries can override generic spell heuristics for tactical planning, so Browse-only, context-only,
+  or never-Auto-fill spells are filtered from generated plans even if they have a high score.
+
 ## [1.1.0]
 
 ### Added

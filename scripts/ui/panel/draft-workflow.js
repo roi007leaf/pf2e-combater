@@ -8,10 +8,9 @@ import {
   projectContextForDraftDestination,
 } from "../../engine/action/builder.js";
 import { requiresDestinationForAction } from "../../engine/action/requirements.js";
-import { currentTargetSelection, plannedTargetSelection } from "../../engine/action/executor.js";
+import { plannedTargetSelection } from "../../engine/action/executor.js";
 import { buildCandidates } from "../../engine/candidates.js";
 import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
-import { contextTargets } from "../../engine/target-pool.js";
 import { swapDraftSteps } from "../../engine/draft-reorder.js";
 import { reorderActionFavorite, toggleActionFavorite } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
@@ -30,12 +29,15 @@ import { shareDraftPlan } from "../../socket.js";
 import { clearActionPreview } from "../action/preview.js";
 import { recommendedMovementForStep } from "../movement-preview.js";
 import { bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "../plan-selection.js";
+import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
 import {
   autoFillAppliesProne,
   autoFillStrideOverSpeed,
   autoFillTargetCenter,
+  draftForAutoFillGap,
   draftStepId,
   findProjectedDraftAction,
+  hasLockedDraftSteps,
   isBasicAutoFillMove,
   isRedundantAutoFillMove,
   strideImprovesPosition,
@@ -417,33 +419,6 @@ function refreshedPlanForStaleSelection(plan, plans) {
   return plans.find((candidate) => planStepSignature(candidate) === signature) ?? null;
 }
 
-function targetIdentityValues(target) {
-  return [
-    target?.id,
-    target?.uuid,
-    target?.token?.id,
-    target?.token?.uuid,
-  ].filter(Boolean).map(String);
-}
-
-function contextWithCurrentAutoFillTargets(context) {
-  const selectedIds = new Set(currentTargetSelection().targetTokenIds.map(String));
-  if (!selectedIds.size) return context;
-  const selectedTargets = contextTargets(context)
-    .filter((target) => targetIdentityValues(target).some((id) => selectedIds.has(id)));
-  if (!selectedTargets.length) return context;
-  return {
-    ...context,
-    targets: selectedTargets,
-    enemies: selectedTargets,
-    battlefield: {
-      ...(context.battlefield ?? {}),
-      targets: selectedTargets,
-      enemies: selectedTargets,
-    },
-  };
-}
-
 export async function autoFillPanelDraft(panel, { plan = null } = {}) {
   // A fast double-click fired two overlapping runs of this function, and their interleaved
   // async steps (each racing on panel._context/panel._autoFillPlans as they awaited in turn)
@@ -458,9 +433,9 @@ export async function autoFillPanelDraft(panel, { plan = null } = {}) {
     if (game?.user?.isGM !== true && settingOrDefault(SETTINGS.hideAutoFillFromPlayers, false)) return;
     if (!panel._context) return;
     const draft = panel._readActiveDraftPlan();
-    const refreshed = refreshPanelAutoFillContext(panel, draft);
     const replacingDraft = (draft.steps?.length ?? 0) > 0;
-    const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
+    const replacingManualDraft = replacingDraft && draft.source !== "auto-fill" && hasLockedDraftSteps(draft);
+    const refreshed = refreshPanelAutoFillContext(panel, replacingManualDraft ? draftForAutoFillGap(draft) : draft);
     // Manual steps are already in the draft -- fill the remaining budget around them instead of
     // discarding what the player chose (see _fillDraftGap).
     if (replacingManualDraft) {
@@ -504,17 +479,19 @@ export async function fillPanelDraftGap(panel, { plan, draft }) {
   const fillPlans = panel._fillGapPlans();
   if (!fillPlans.length) return;
   if (!plan) panel._pinnedFillPlanId = null;
+  const lockedDraft = draftForAutoFillGap(draft);
   // A cycled plan id is scoped to the remaining-budget search that produced it -- if the draft
   // changed since (a step was added/removed) it may no longer appear, so fall back to best.
   const fillPlan = refreshedPlanForStaleSelection(plan, fillPlans) ?? bestAutoFillPlan(fillPlans);
   if (!fillPlan?.steps?.length) return;
   if (plan) panel._pinnedFillPlanId = fillPlan.id ?? null;
   const movementContext = panel._planningContext ?? panel._context;
-  const addedSteps = panel._atomizeAutoFillSteps(fillPlan, movementContext, draft.steps);
+  const addedSteps = panel._atomizeAutoFillSteps(fillPlan, movementContext, lockedDraft.steps)
+    .map((step) => ({ ...step, autoFillGenerated: true }));
   if (!addedSteps.length) return;
   await panel._writeActiveDraftPlan({
-    ...draft,
-    steps: [...draft.steps, ...addedSteps],
+    ...lockedDraft,
+    steps: [...lockedDraft.steps, ...addedSteps],
   });
   clearActionPreview();
   await panel.render({ force: true });
@@ -640,7 +617,8 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
 
 export async function cyclePanelAutoFillDraft(panel, direction = 1) {
   const draft = panel._readActiveDraftPlan?.() ?? null;
-  refreshPanelAutoFillContext(panel, draft);
+  const useFillGap = draft?.source !== "auto-fill" && hasLockedDraftSteps(draft);
+  refreshPanelAutoFillContext(panel, useFillGap ? draftForAutoFillGap(draft) : draft);
   const plans = panel._activeAutoFillPlans();
   const pinnedId = panel._activePinnedPlanId();
   const current = selectDisplayPlan(plans, pinnedId);

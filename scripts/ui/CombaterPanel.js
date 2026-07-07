@@ -1,6 +1,6 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 import { SETTINGS, playerAccessAllowed, settingOrDefault } from "../settings.js";
-import { SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder.js";
+import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder.js";
 import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { actionBudget } from "../engine/action/budget.js";
@@ -32,6 +32,12 @@ import {
   writePanelActiveDraftPlan,
   writePanelActiveSharedDraft,
 } from "./panel/draft-workflow.js";
+import {
+  draftForAutoFillGap,
+  draftNormalActionCost,
+  hasLockedDraftSteps,
+} from "./panel/draft-helpers.js";
+import { contextWithCurrentAutoFillTargets } from "./panel/auto-fill-context.js";
 import {
   cancelPanelPickers,
   choosePanelArea,
@@ -276,7 +282,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   // which pin apply depends on which mode is active.
   _hasManualDraftContent() {
     const draft = this._builder?.draft ?? {};
-    return (draft.steps?.length ?? 0) > 0 && draft.source !== "auto-fill";
+    return draft.source !== "auto-fill" && hasLockedDraftSteps(draft);
   }
 
   _activeAutoFillPlans() {
@@ -292,12 +298,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   // turn-start -- the counterpart to this._autoFillPlans (always a fresh full-turn search) used
   // once the draft already has manual content that must not be discarded.
   _fillGapPlans() {
-    const context = this._planningContext ?? this._context;
-    if (!context) return [];
-    const remainingTotal = Number(this._builder?.remainingTotalActions ?? 0);
+    if (!this._context) return [];
+    const lockedDraft = draftForAutoFillGap(this._builder?.draft ?? {});
+    const focusedContext = contextWithCurrentAutoFillTargets(this._context);
+    const context = projectContextForDraftDestination(focusedContext, lockedDraft);
+    const remainingTotal = Math.max(0, actionBudget(context).normalActions - draftNormalActionCost(lockedDraft));
     if (remainingTotal <= 0) return [];
     const planningBudget = actionBudget(context);
-    const usedNormal = Math.max(0, planningBudget.normalActions - Number(this._builder?.remainingNormalActions ?? 0));
+    const usedNormal = draftNormalActionCost(lockedDraft);
     const remainingContext = usedNormal > 0
       ? {
         ...context,
