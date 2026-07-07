@@ -1,6 +1,7 @@
-import { pf2eMovementSegmentCost } from "../rules/movement-cost.js";
-import { movementRouteToPoint } from "./movement-preview.js";
+import { movementBudgetForStep, movementFootprintForToken, movementPlanForDestination as engineMovementPlanForDestination, movementPlanForWaypoints as engineMovementPlanForWaypoints } from "../engine/movement-route.js";
 import { t } from "../i18n.js";
+import { canvasGridDistance as gridDistance, canvasGridSize as gridSize, canvasTokenById, contextTokenId as tokenId } from "../rules/canvas-geometry.js";
+import { pf2eTokenMovementActionForStep } from "../rules/movement-cost.js";
 
 let activeCleanup = null;
 let activeOnCancel = null;
@@ -18,40 +19,6 @@ function point(value) {
 
 function samePoint(left, right) {
   return !!left && !!right && left.x === right.x && left.y === right.y;
-}
-
-function tokenId(context) {
-  return context?.token?.id
-    ?? context?.token?.uuid
-    ?? context?.combatant?.tokenId
-    ?? context?.combatant?.token?.id
-    ?? context?.combatant?.token?.uuid
-    ?? null;
-}
-
-function canvasTokenById(id) {
-  if (!id) return null;
-  return (globalThis.canvas?.tokens?.placeables ?? []).find((token) => {
-    const document = token?.document ?? token;
-    return token?.id === id
-      || token?.uuid === id
-      || document?.id === id
-      || document?.uuid === id;
-  }) ?? null;
-}
-
-function gridSize() {
-  const size = numeric(globalThis.canvas?.grid?.size);
-  return size && size > 0 ? size : 1;
-}
-
-function gridDistance() {
-  const distance = numeric(
-    globalThis.canvas?.dimensions?.distance
-    ?? globalThis.canvas?.scene?.grid?.distance
-    ?? globalThis.canvas?.grid?.distance,
-  );
-  return distance && distance > 0 ? distance : 5;
 }
 
 function callGrid(method, ...args) {
@@ -122,14 +89,6 @@ function snappedCenter(rawPoint, footprint = { width: 1, height: 1 }) {
   return {
     x: snapAxisToFootprint(rawPoint.x, topLeft.x, size, footprint.width),
     y: snapAxisToFootprint(rawPoint.y, topLeft.y, size, footprint.height),
-  };
-}
-
-function tokenFootprintCells(token) {
-  const document = token?.document ?? token ?? {};
-  return {
-    width: Math.max(1, numeric(document.width ?? token?.width) ?? 1),
-    height: Math.max(1, numeric(document.height ?? token?.height) ?? 1),
   };
 }
 
@@ -316,7 +275,7 @@ function addWheelHandler(handler) {
 
 // The two PF2e Speeds that move through three dimensions, so the picker offers a vertical control.
 function verticalMovementForAction(action) {
-  return ["fly", "burrow"].includes(movementActionForAction(action));
+  return ["fly", "burrow"].includes(pf2eTokenMovementActionForStep(action));
 }
 
 function tokenElevation(token) {
@@ -376,66 +335,25 @@ function suppressPointerEvent(event) {
   event?.originalEvent?.stopImmediatePropagation?.();
 }
 
-function actionSlug(action) {
-  return String(action?.slug ?? action?.action?.slug ?? action?.actionKey ?? "").toLowerCase();
-}
-
-function movementActionForAction(action) {
-  const requested = String(action?.movementAction ?? action?.action?.movementAction ?? "").toLowerCase();
-  if (requested === "step") return "walk";
-  if (requested) return requested;
-
-  const slug = actionSlug(action);
-  if (slug === "crawl") return "crawl";
-  return "walk";
-}
-
 function movementActionAllowed(action) {
   const actions = globalThis.CONFIG?.Token?.movement?.actions;
   return !actions || Object.prototype.hasOwnProperty.call(actions, action);
 }
 
-// The actor's speed (feet) for a given movement-action key, read from the prepared PF2e creature
-// speeds (system.movement.speeds, keyed by type; "walk" maps to "land"). Returns null when the
-// actor has no such speed so the caller can fall back to the land speed.
-function typedMovementSpeed(token, movementAction) {
-  const speeds = token?.actor?.system?.movement?.speeds;
-  if (!speeds || typeof speeds !== "object") return null;
-  const type = movementAction === "walk" ? "land" : movementAction;
-  const entry = speeds[type];
-  const value = numeric(entry?.total ?? entry?.value ?? entry?.base);
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
 function actorSpeed(context, token, action) {
-  const slug = actionSlug(action);
-  if (slug === "crawl" || slug === "step") return 5;
-
-  // Teleportation (e.g. Translocate) is bounded by the spell's range, not movement speed. Fall back
-  // to a large allowance when the range can't be read so it never blocks on speed.
-  if (action?.activityProfile?.teleport === true) {
-    const range = numeric(action?.targetingProfile?.maxRange ?? action?.maxRange ?? action?.range?.max);
-    return Number.isFinite(range) && range > 0 ? range : 1000;
-  }
-
-  // A Stride travelling on a non-walking speed (fly/burrow/swim/climb) reaches as far as that
-  // speed allows, not the land Speed. The chosen movement type rides on the step/action.
-  const typed = typedMovementSpeed(token, movementActionForAction(action));
-  if (typed !== null) return typed;
-
-  const tokenSpeeds = token?.actor?.system?.movement?.speeds;
-  const profile = context?.actor?.profile ?? context?.profile ?? {};
-  const speed = tokenSpeeds?.land?.value
-    ?? profile.speed?.value
-    ?? profile.speed
-    ?? profile.landSpeed
-    ?? action?.movementDistance
-    ?? action?.distance;
-  return numeric(speed) ?? 25;
+  const movementAction = pf2eTokenMovementActionForStep(action);
+  const budget = movementBudgetForStep(context, {
+    ...(action ?? {}),
+    movementAction,
+  }, {
+    collisionToken: token,
+    teleportFallback: 1000,
+  });
+  return Number.isFinite(budget) ? budget : 1000;
 }
 
 function planMovementOptions({ context, action, token }) {
-  const movementAction = movementActionForAction(action);
+  const movementAction = pf2eTokenMovementActionForStep(action);
   const distance = actorSpeed(context, token, action);
   return {
     ...(movementActionAllowed(movementAction) ? { allowedActions: [movementAction] } : {}),
@@ -477,87 +395,6 @@ function destinationCenter(position, token) {
   return {
     x: topLeft.x + (width * size) / 2,
     y: topLeft.y + (height * size) / 2,
-  };
-}
-
-function tokenCenter(context, token) {
-  const center = point(context?.token?.plannedCenter)
-    ?? point(context?.token?.center)
-    ?? point(token?.center);
-  if (center) return center;
-
-  const document = token?.document ?? context?.token?.document ?? {};
-  const x = numeric(document.x ?? token?.x ?? context?.token?.x);
-  const y = numeric(document.y ?? token?.y ?? context?.token?.y);
-  if (x === null || y === null) return null;
-
-  const size = gridSize();
-  const width = Math.max(1, numeric(document.width ?? token?.width ?? context?.token?.width, 1) || 1);
-  const height = Math.max(1, numeric(document.height ?? token?.height ?? context?.token?.height, 1) || 1);
-  return {
-    x: x + (width * size) / 2,
-    y: y + (height * size) / 2,
-  };
-}
-
-function movementSegmentCost(from, to, startingDiagonalCount = 0, options = {}) {
-  if (!from || !to) return { cost: 0, diagonalCount: startingDiagonalCount };
-  return pf2eMovementSegmentCost(from, to, {
-    ...options,
-    gridSize: gridSize(),
-    gridDistance: gridDistance(),
-    startingDiagonalCount,
-  });
-}
-
-function waypointPathCost(origin, waypoints, options = {}) {
-  let cost = 0;
-  let from = origin;
-  let diagonalCount = 0;
-  for (const waypoint of waypoints) {
-    const movement = movementSegmentCost(from, waypoint, diagonalCount, options);
-    cost += movement.cost;
-    diagonalCount = movement.diagonalCount;
-    from = waypoint;
-  }
-  return cost;
-}
-
-// Total feet of vertical travel along origin -> wp1 -> wp2 -> ..., where each waypoint carries its
-// own target elevation (so a path can climb, level off, then descend). Waypoints without an
-// elevation hold the previous height.
-function verticalPathCost(waypoints, originElevation = 0) {
-  let cost = 0;
-  let previous = numeric(originElevation) ?? 0;
-  for (const waypoint of waypoints) {
-    const elevation = numeric(waypoint?.elevation);
-    const next = elevation === null ? previous : elevation;
-    cost += Math.abs(next - previous);
-    previous = next;
-  }
-  return cost;
-}
-
-function movementPlanForWaypoints(context, action, token, waypoints, { originElevation = 0 } = {}) {
-  // Preserve each waypoint's own elevation so the executor can climb/descend per leg.
-  const cleanWaypoints = waypoints.map((waypoint) => {
-    const elevation = numeric(waypoint?.elevation);
-    return elevation === null ? { x: waypoint.x, y: waypoint.y } : { x: waypoint.x, y: waypoint.y, elevation };
-  });
-  const maxCost = actorSpeed(context, token, action);
-  const movementAction = movementActionForAction(action);
-  const horizontalCost = waypointPathCost(tokenCenter(context, token), cleanWaypoints, {
-    actor: token?.actor ?? context?.actor,
-    collisionToken: token,
-    movementAction,
-  });
-  return {
-    native: false,
-    waypoints: cleanWaypoints,
-    // Flying/burrowing up or down counts toward Speed: every foot of elevation change along the path
-    // costs a foot of movement, added on top of the horizontal distance.
-    cost: horizontalCost + verticalPathCost(cleanWaypoints, originElevation),
-    maxCost,
   };
 }
 
@@ -671,7 +508,8 @@ export function chooseDestination({
   }
 
   const token = canvasTokenById(tokenId(context));
-  const footprint = tokenFootprintCells(token);
+  const movementFootprint = movementFootprintForToken(token);
+  const footprint = { width: movementFootprint.widthCells, height: movementFootprint.heightCells };
   const vertical = verticalMovementForAction(action);
   const originElevation = vertical ? tokenElevation(token) : 0;
   // Working elevation: the height of the active (last-placed) waypoint, or — before any waypoint —
@@ -684,8 +522,20 @@ export function chooseDestination({
   // Stamp the working elevation onto a freshly placed point so it flows to persistence/execution.
   const withElevation = (destination) =>
     vertical && destination ? { ...destination, elevation: pendingElevation } : destination;
-  const planForWaypoints = (points) =>
-    movementPlanForWaypoints(context, action, token, points, { originElevation });
+  const planForWaypoints = (points) => {
+    const movementAction = pf2eTokenMovementActionForStep(action);
+    return engineMovementPlanForWaypoints(context, {
+      ...(action ?? {}),
+      movementAction,
+    }, points, {
+      actor: token?.actor ?? context?.actor,
+      collisionToken: token,
+      gridSize: gridSize(),
+      gridDistance: gridDistance(),
+      movementAction,
+      originElevation,
+    });
+  };
   const previewMetadata = (points) => ({
     ...(points.length ? { movementPlan: planForWaypoints(points) } : {}),
     ...(vertical ? { elevation: pendingElevation } : {}),
@@ -701,16 +551,22 @@ export function chooseDestination({
   // changed height yet (no Shift+scroll used) -- the BFS is horizontal-only, so a real climb/descent
   // falls back to the straight-line-plus-vertical-cost path below, which already accounts for it.
   const candidatePlanFor = (candidateWaypoints, destination) => {
+    const movementAction = pf2eTokenMovementActionForStep(action);
     const routedCandidate = (!vertical || pendingElevation === originElevation) && candidateWaypoints.length <= 1
-      ? movementRouteToPoint(context, action, destination)
+      ? engineMovementPlanForDestination(context, {
+        ...(action ?? {}),
+        movementAction,
+      }, destination, {
+        actor: token?.actor ?? context?.actor,
+        collisionToken: token,
+        gridSize: gridSize(),
+        gridDistance: gridDistance(),
+        movementAction,
+        originElevation,
+      })
       : null;
     return routedCandidate
-      ? {
-        native: false,
-        waypoints: routedCandidate.waypoints?.length ? routedCandidate.waypoints : [destination],
-        cost: routedCandidate.cost,
-        maxCost: actorSpeed(context, token, action),
-      }
+      ? routedCandidate
       : enableWaypoints
         ? planForWaypoints(candidateWaypoints)
         : planForWaypoints([destination]);

@@ -1,0 +1,695 @@
+import { MODULE_ID } from "../../constants.js";
+import { SETTINGS, settingOrDefault } from "../../settings.js";
+import {
+  actionBuilderKey,
+  builderAtomicActionsForStep,
+  computeAreaMarker,
+  isUnreachableStrikeStep,
+  projectContextForDraftDestination,
+} from "../../engine/action/builder.js";
+import { requiresDestinationForAction } from "../../engine/action/requirements.js";
+import { currentTargetSelection, plannedTargetSelection } from "../../engine/action/executor.js";
+import { buildCandidates } from "../../engine/candidates.js";
+import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
+import { contextTargets } from "../../engine/target-pool.js";
+import { swapDraftSteps } from "../../engine/draft-reorder.js";
+import { reorderActionFavorite, toggleActionFavorite } from "../../state/action-favorites.js";
+import { readCombatContext } from "../../state/combat-context.js";
+import {
+  readDraftPlan,
+  readSharedDraftPlan,
+  sharedDraftPlanKey,
+  writeDraftPlan,
+  writeSharedDraftPlan,
+  upsertDraftStep,
+  draftListForInstance,
+  writeSharedDraftPlanActorFlag,
+} from "../../state/draft-plans.js";
+import { bestReadyStrike } from "../../readers/action/reader.js";
+import { shareDraftPlan } from "../../socket.js";
+import { clearActionPreview } from "../action/preview.js";
+import { recommendedMovementForStep } from "../movement-preview.js";
+import { bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "../plan-selection.js";
+import {
+  autoFillAppliesProne,
+  autoFillStrideOverSpeed,
+  autoFillTargetCenter,
+  draftStepId,
+  findProjectedDraftAction,
+  isBasicAutoFillMove,
+  isRedundantAutoFillMove,
+  strideImprovesPosition,
+  strideStepTowardPlannedTarget,
+} from "./draft-helpers.js";
+import {
+  executionStatus,
+  markManualDraft,
+  stepMovementAction,
+  sustainedSpellDraftFields,
+} from "./view-model.js";
+import { t } from "../../i18n.js";
+
+// Reads/writes route to the shared draft when the GM is executing a player plan, otherwise to the
+// local per-user draft.
+export function readPanelActiveDraftPlan(panel) {
+  return panel._gmExecuteMode === true
+    ? readSharedDraftPlan(panel._context)
+    : readDraftPlan(panel._context);
+}
+
+export async function persistPanelActiveDraftStep(panel, step, listKey) {
+  const targetList = listKey ?? draftListForInstance(panel._readActiveDraftPlan(), step.instanceId);
+  if (panel._gmExecuteMode === true) {
+    const draft = readSharedDraftPlan(panel._context);
+    const list = [...(draft[targetList] ?? [])];
+    const index = list.findIndex((entry) => entry.instanceId === step.instanceId);
+    if (index >= 0) list[index] = step;
+    else list.push(step);
+    await panel._writeActiveSharedDraft({ ...draft, [targetList]: list });
+    return;
+  }
+  upsertDraftStep(panel._context, step, targetList);
+  await panel._syncDraftToGM();
+}
+
+export async function writePanelActiveDraftPlan(panel, draft) {
+  if (panel._gmExecuteMode === true) {
+    await panel._writeActiveSharedDraft(draft);
+    return;
+  }
+  writeDraftPlan(panel._context, draft);
+  await panel._syncDraftToGM();
+}
+
+// Preserve the player's ownership fields; only the steps / execution state changes.
+export async function writePanelActiveSharedDraft(panel, draft) {
+  writeSharedDraftPlan(panel._context, draft);
+  await writeSharedDraftPlanActorFlag(panel._context, draft);
+}
+
+export async function addPanelAction(panel, actionKey) {
+  if (!panel._canEditDraft()) return;
+  const action = panel._findBuilderAction(actionKey);
+  if (!panel._context || !action) return;
+
+  // The normal plan respects the turn's action economy; only uncounted actions
+  // run off-budget. Refuse a plan add that would exceed the budget.
+  if (action.overBudget) {
+    globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
+    return;
+  }
+
+  const draft = panel._readActiveDraftPlan();
+  // A composite (e.g. Rush, Sudden Charge) atomizes into its Stride/Strike parts, mirroring
+  // Auto-fill (_autoFillDraft) -- a raw single-step push would leave the whole ability un-split
+  // and unexecutable. A plain action passes straight through unchanged (same array, same
+  // reference), so action.key is kept for that common case instead of re-deriving it.
+  const atoms = builderAtomicActionsForStep(action);
+  const newSteps = atoms.length === 1 && atoms[0] === action
+    ? [action]
+    : atoms;
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    steps: [
+      ...(draft.steps ?? []),
+      ...newSteps.map((atom) => {
+        // A self-centered area (e.g. an emanation) needs no manual placement -- it's always
+        // centered on the caster, so pre-fill it here the same way Auto-fill already does,
+        // instead of forcing a "Place template" prompt for something with only one possible
+        // location.
+        const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(panel._context, atom) : null;
+        return {
+          instanceId: draftStepId(),
+          actionKey: atom === action ? action.key : panel._actionKeyForStep(atom),
+          // Persist a display name so the step still reads correctly if its action stops being
+          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+          name: atom?.name ?? atom?.action?.name,
+          actionCost: atom?.actionCost ?? atom?.cost,
+          requiresDestination: requiresDestinationForAction(atom),
+          ...(atom?.groupId
+            ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
+            : atom?.activityProfile?.requiresDistinctTargets
+              ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
+              : {}),
+          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+        };
+      }),
+    ],
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+// Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
+// for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
+export async function addPanelUncountedAction(panel, actionKey) {
+  if (!panel._canExecuteDraft()) return;
+  const action = panel._findBuilderAction(actionKey);
+  if (!panel._context || !action) return;
+  const draft = panel._readActiveDraftPlan();
+  // A composite (e.g. Stand -> Stride, Rush, Sudden Charge) atomizes into its separate parts,
+  // mirroring _addAction -- a raw single-step push left the whole bundled ability as one
+  // multi-action uncounted entry, asking for a target/destination the parts don't individually need.
+  const atoms = builderAtomicActionsForStep(action);
+  const newAtoms = atoms.length === 1 && atoms[0] === action ? [action] : atoms;
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    uncounted: [
+      ...(draft.uncounted ?? []),
+      ...newAtoms.map((atom) => {
+        // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
+        const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(panel._context, atom) : null;
+        return {
+          instanceId: draftStepId(),
+          actionKey: atom === action ? action.key : panel._actionKeyForStep(atom),
+          // Persist a display name so the step still reads correctly if its action stops being
+          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+          name: atom?.name ?? atom?.action?.name,
+          actionCost: atom?.actionCost ?? atom?.cost,
+          requiresDestination: requiresDestinationForAction(atom),
+          ...(atom?.groupId
+            ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
+            : atom?.activityProfile?.requiresDistinctTargets
+              ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
+              : {}),
+          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+        };
+      }),
+    ],
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+export async function addPanelSustainSpell(panel, spellId) {
+  if (!panel._canEditDraft()) return;
+  const spell = panel._findSustainedSpell(spellId);
+  const action = panel._findSustainAction();
+  if (!panel._context || !spell || !action || action.disabled) {
+    globalThis.ui?.notifications?.warn?.(action?.disabledReason ?? t("Notify.SustainUnavailable", "Sustain a Spell is not available."));
+    return;
+  }
+
+  const draft = panel._readActiveDraftPlan();
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    steps: [
+      ...(draft.steps ?? []),
+      {
+        instanceId: draftStepId(),
+        actionKey: action.key,
+        actionCost: action.actionCost ?? action.cost ?? 1,
+        requiresDestination: requiresDestinationForAction(action),
+        sustainedSpell: sustainedSpellDraftFields(spell),
+      },
+    ],
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+export async function removePanelDraftStep(panel, instanceId) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const draft = panel._readActiveDraftPlan();
+  const listKey = draftListForInstance(draft, instanceId);
+  const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    [listKey]: list.filter((step) => step.instanceId !== instanceId),
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+export async function duplicatePanelDraftStep(panel, instanceId) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const draft = panel._readActiveDraftPlan();
+  const listKey = draftListForInstance(draft, instanceId);
+  const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+  const index = list.findIndex((step) => step.instanceId === instanceId);
+  if (index < 0) return;
+  const clone = { ...list[index], instanceId: draftStepId() };
+  const nextList = [...list.slice(0, index + 1), clone, ...list.slice(index + 1)];
+  await panel._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: nextList }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+export async function reorderPanelDraftStep(panel, instanceId, targetInstanceId) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context || !instanceId || !targetInstanceId || instanceId === targetInstanceId) return;
+  const draft = panel._readActiveDraftPlan();
+  const listKey = draftListForInstance(draft, instanceId);
+  if (listKey !== draftListForInstance(draft, targetInstanceId)) return;
+  if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
+    globalThis.ui?.notifications?.warn?.(t("Notify.RevertBeforeReorder", "Revert executed steps before reordering."));
+    return;
+  }
+  const steps = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+  const swapped = swapDraftSteps(steps, instanceId, targetInstanceId);
+  if (swapped === steps) return;
+  await panel._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: swapped }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+// Cycle a strike's multiple-attack-penalty level: auto -> MAP 0 -> -5 -> -10 -> auto. The chosen
+// level is pinned on the step (mapOverride) and overrides the position-derived default, for
+// abilities that keep MAP flat across consecutive attacks.
+export async function cyclePanelStepMap(panel, instanceId) {
+  if (!panel._canExecuteDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step) return;
+  const current = Number.isFinite(step.mapOverride) ? step.mapOverride : null;
+  const next = current == null ? 0 : current >= 2 ? null : current + 1;
+  await panel._persistActiveDraftStep({ ...step, mapOverride: next });
+  await panel._syncDraftToGM();
+  await panel.render({ force: true });
+}
+
+// The live PF2e actor for the planning combatant, used to read its movement speeds. Prefers the
+// canvas token's actor (freshest derived data) and falls back to the context summary's document.
+export function actorForPanelMovement(panel, context) {
+  const ids = [
+    context?.token?.id,
+    context?.token?.uuid,
+    context?.combatant?.tokenId,
+    context?.combatant?.token?.id,
+  ].filter(Boolean);
+  // Scan placeables (canvas.tokens.get isn't reliable across versions) for the live token's actor,
+  // which carries the prepared movement speeds; fall back to the context summary's actor document.
+  for (const token of globalThis.canvas?.tokens?.placeables ?? []) {
+    const document = token?.document ?? token;
+    const matches = ids.some((id) => token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id);
+    if (matches && token?.actor) return token.actor;
+  }
+  return context?.actor?.document ?? context?.actor ?? null;
+}
+
+// Cycle a Stride's movement type through the actor's available speeds (walk -> fly -> burrow ->
+// ...-> walk). The chosen movement-action is pinned on the step (and its action) so the executor
+// travels on that speed and the destination picker sizes the reachable range to it.
+export async function cyclePanelStepMovement(panel, instanceId) {
+  if (!panel._canExecuteDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const options = Array.isArray(panel._movementOptions) ? panel._movementOptions : [];
+  if (options.length <= 1) return;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step) return;
+  const current = stepMovementAction(step);
+  const index = Math.max(0, options.findIndex((option) => option.action === current));
+  const next = options[(index + 1) % options.length].action;
+  await panel._persistActiveDraftStep({
+    ...step,
+    movementAction: next,
+    action: step.action ? { ...step.action, movementAction: next } : step.action,
+  });
+  await panel._syncDraftToGM();
+  await panel.render({ force: true });
+}
+
+// Cycle which of the actor's ready Strikes backs one atom of a distinct-target multiattack
+// (e.g. Arm -> Tentacle -> Arm for a Kraken's Double Attack). Unlike movement, this doesn't
+// need a manual step.action merge -- findProjectedDraftAction re-derives the atom (and applies
+// this same weaponId) fresh on every render, so persisting the id alone is enough.
+export async function cyclePanelStepWeapon(panel, instanceId) {
+  if (!panel._canExecuteDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const options = Array.isArray(panel._weaponOptions) ? panel._weaponOptions : [];
+  if (options.length <= 1) return;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step || !step.groupId) return;
+  const defaultId = bestReadyStrike(panel._actorForMovement(panel._context), panel._context)?.id ?? null;
+  const current = step.weaponId ?? defaultId;
+  const index = Math.max(0, options.findIndex((option) => option.id === current));
+  const next = options[(index + 1) % options.length];
+  await panel._persistActiveDraftStep({
+    ...step,
+    weaponId: next.id,
+  });
+  await panel._syncDraftToGM();
+  await panel.render({ force: true });
+}
+
+export async function togglePanelFavorite(panel, actionKey) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context || !actionKey) return;
+  toggleActionFavorite(panel._context, actionKey);
+  await panel.render({ force: true });
+}
+
+export async function reorderPanelFavorite(panel, key, targetKey) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context || !key || !targetKey || key === targetKey) return;
+  const changed = reorderActionFavorite(panel._context, key, targetKey);
+  if (!changed) return;
+  await panel.render({ force: true });
+}
+
+export function actionKeyForPanelStep(panel, step) {
+  const key = actionBuilderKey(step);
+  const direct = panel._findBuilderAction(key);
+  if (direct) return direct.key;
+
+  // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
+  // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
+  // which makes step.item.uuid collide with that weapon's OWN standalone candidate below. The
+  // atom's slug is deliberately the original ability's own, unique slug, so it must be checked
+  // on its own first, or the item.uuid fallback below wins the race and mislabels the step as
+  // the borrowed weapon instead of the ability that actually produced it.
+  if (step?.activityProfile?.requiresDistinctTargets) {
+    for (const tab of Object.values(panel._builder?.tabs ?? {})) {
+      const action = tab.all.find((candidate) => candidate.slug === step?.slug);
+      if (action) return action.key;
+    }
+  }
+
+  for (const tab of Object.values(panel._builder?.tabs ?? {})) {
+    const action = tab.all.find((candidate) =>
+      candidate.baseKey === key
+      || candidate.slug === step?.slug
+      || candidate.id === step?.id
+      // Both sides omit item.uuid for any generic, item-less action (Stride, Demoralize, Drop
+      // Prone, Raise a Shield, ...), so an unguarded === here matched undefined against undefined
+      // -- silently mis-keying a step to whichever OTHER item-less candidate happened to sort
+      // first that pass, e.g. a Stride step re-resolving to Drop Prone's own (false) "Actor is
+      // Prone" availability warning. Only compare when the step actually carries a real uuid.
+      || (step?.item?.uuid && candidate.item?.uuid === step.item.uuid));
+    if (action) return action.key;
+  }
+  return key;
+}
+
+function refreshPanelAutoFillContext(panel, draft = null) {
+  const context = readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant });
+  if (!context) return null;
+  const focusedContext = contextWithCurrentAutoFillTargets(context);
+
+  panel._context = focusedContext;
+  panel._planningContext = draft ? projectContextForDraftDestination(focusedContext, draft) : focusedContext;
+  const candidateBuild = buildCandidates(focusedContext);
+  const plans = buildTurnPlans(focusedContext, candidateBuild.candidates);
+  panel._autoFillPlans = plans;
+  return { context: focusedContext, candidateBuild, plans };
+}
+
+function planStepSignature(plan) {
+  return (plan?.steps ?? [])
+    .map((step) => step?.id ?? step?.slug ?? step?.name)
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join("+");
+}
+
+function refreshedPlanForStaleSelection(plan, plans) {
+  if (!plan || !Array.isArray(plans) || !plans.length) return null;
+  const id = String(plan.id ?? "").trim();
+  if (id) {
+    const match = plans.find((candidate) => String(candidate?.id ?? "").trim() === id);
+    if (match) return match;
+  }
+
+  const signature = planStepSignature(plan);
+  if (!signature) return null;
+  return plans.find((candidate) => planStepSignature(candidate) === signature) ?? null;
+}
+
+function targetIdentityValues(target) {
+  return [
+    target?.id,
+    target?.uuid,
+    target?.token?.id,
+    target?.token?.uuid,
+  ].filter(Boolean).map(String);
+}
+
+function contextWithCurrentAutoFillTargets(context) {
+  const selectedIds = new Set(currentTargetSelection().targetTokenIds.map(String));
+  if (!selectedIds.size) return context;
+  const selectedTargets = contextTargets(context)
+    .filter((target) => targetIdentityValues(target).some((id) => selectedIds.has(id)));
+  if (!selectedTargets.length) return context;
+  return {
+    ...context,
+    targets: selectedTargets,
+    enemies: selectedTargets,
+    battlefield: {
+      ...(context.battlefield ?? {}),
+      targets: selectedTargets,
+      enemies: selectedTargets,
+    },
+  };
+}
+
+export async function autoFillPanelDraft(panel, { plan = null } = {}) {
+  // A fast double-click fired two overlapping runs of this function, and their interleaved
+  // async steps (each racing on panel._context/panel._autoFillPlans as they awaited in turn)
+  // produced a corrupted draft -- e.g. a Stride warning "Actor is Prone" for an actor who was
+  // never prone, or an atom losing its groupId. A single in-flight guard makes a second
+  // invocation while one is still running a no-op instead of a second overlapping run.
+  if (panel._autoFillInFlight) return;
+  panel._autoFillInFlight = true;
+  try {
+    if (!panel._canEditDraft()) return;
+    // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
+    if (game?.user?.isGM !== true && settingOrDefault(SETTINGS.hideAutoFillFromPlayers, false)) return;
+    if (!panel._context) return;
+    const draft = panel._readActiveDraftPlan();
+    const refreshed = refreshPanelAutoFillContext(panel, draft);
+    const replacingDraft = (draft.steps?.length ?? 0) > 0;
+    const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
+    // Manual steps are already in the draft -- fill the remaining budget around them instead of
+    // discarding what the player chose (see _fillDraftGap).
+    if (replacingManualDraft) {
+      await panel._fillDraftGap({ plan, draft });
+      return;
+    }
+    const fallbackAutoFill = () => {
+      const candidateBuild = refreshed?.candidateBuild ?? buildCandidates(panel._context);
+      return bestTurnPlan(panel._context, candidateBuild.candidates);
+    };
+    if (!plan) panel._pinnedPlanId = null;
+    const refreshedPlans = refreshed?.plans ?? [];
+    const contextualPlan = refreshedPlanForStaleSelection(plan, refreshedPlans);
+    const autoFill = plan
+      ? (contextualPlan ?? bestAutoFillPlan(refreshedPlans) ?? (refreshed ? null : plan))
+      : bestAutoFillPlan(refreshedPlans.length ? refreshedPlans : panel._autoFillPlans)
+      ?? panel._builder?.autoFill
+      ?? panel._plan
+      ?? fallbackAutoFill();
+    if (!autoFill?.steps?.length) return;
+    if (plan) panel._pinnedPlanId = autoFill.id ?? null;
+
+    const reachableSteps = panel._atomizeAutoFillSteps(autoFill, panel._context);
+    await panel._writeActiveDraftPlan({
+      ...draft,
+      source: "auto-fill",
+      autoFillPlanId: autoFill.id ?? null,
+      autoFillPlanSummary: autoFill.summary ?? "",
+      steps: reachableSteps,
+    });
+    clearActionPreview();
+    await panel.render({ force: true });
+  } finally {
+    panel._autoFillInFlight = false;
+  }
+}
+
+// Appends a fill plan's steps after the draft's existing (manual) steps rather than replacing
+// the draft -- the manual steps are never touched, so there is nothing to confirm/undo here.
+export async function fillPanelDraftGap(panel, { plan, draft }) {
+  const fillPlans = panel._fillGapPlans();
+  if (!fillPlans.length) return;
+  if (!plan) panel._pinnedFillPlanId = null;
+  // A cycled plan id is scoped to the remaining-budget search that produced it -- if the draft
+  // changed since (a step was added/removed) it may no longer appear, so fall back to best.
+  const fillPlan = refreshedPlanForStaleSelection(plan, fillPlans) ?? bestAutoFillPlan(fillPlans);
+  if (!fillPlan?.steps?.length) return;
+  if (plan) panel._pinnedFillPlanId = fillPlan.id ?? null;
+  const movementContext = panel._planningContext ?? panel._context;
+  const addedSteps = panel._atomizeAutoFillSteps(fillPlan, movementContext, draft.steps);
+  if (!addedSteps.length) return;
+  await panel._writeActiveDraftPlan({
+    ...draft,
+    steps: [...draft.steps, ...addedSteps],
+  });
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+// Converts a plan's steps into draft steps, chaining movement destinations from movementContext
+// (turn-start position for a fresh Auto-fill, or the draft-projected position for a gap fill) and
+// checking reach against prefixSteps (the draft steps that will already precede these, if any).
+export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, prefixSteps = []) {
+  // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
+  // target and (for movement) a destination, so pre-fill both regardless of who's using it or
+  // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off
+  // Auto-fill for players entirely via the hideAutoFillFromPlayers setting checked above. The
+  // projected origin advances so a chained stride starts where the prior one lands.
+  let mc = movementContext;
+  // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
+  // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
+  // legal while prone, so it is not a basic auto-fill move and survives.
+  const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
+  const atomicSteps = autoFill.steps
+    .filter((step) => !isRedundantAutoFillMove(step))
+    .flatMap((step) => builderAtomicActionsForStep(step))
+    // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
+    // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
+    .filter((step) => !(planAppliesProne && isBasicAutoFillMove(step)));
+  const steps = atomicSteps.map((step, index) => {
+    const slug = String(step?.slug ?? "").toLowerCase();
+    const isBasicMove = isBasicAutoFillMove(slug);
+    // Origin for THIS step = where the prior committed strides left the actor (real position for
+    // the first). Computed before any chaining update below so over-Speed checks use the true origin.
+    const moveOrigin = mc.token?.plannedCenter ?? mc.token?.center;
+    // Keep a pre-set destination (e.g. a composite's attack square) only if the actor can actually
+    // reach it this move — Foundry's ruler is the authority, so an over-Speed square is dropped
+    // rather than auto-committed as an impossible stride.
+    const presetDestination = step?.destination
+      && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, panel._context?.profile))
+      ? step.destination
+      : null;
+    const presetAreaMarker = !step?.areaMarker ? computeAreaMarker(panel._context, step) : null;
+    let draftStep = {
+      instanceId: draftStepId(),
+      actionKey: panel._actionKeyForStep(step),
+      // Persist a display name so the step still reads correctly if its action stops being
+      // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
+      name: step?.name ?? step?.action?.name,
+      actionCost: step?.actionCost ?? step?.cost,
+      requiresDestination: requiresDestinationForAction(step),
+      // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
+      // computed from the original, un-atomized action) -- reused here as the group id so the
+      // panel can visually nest them under one header instead of showing N identical-looking rows.
+      // A backed move-and-strike composite's atoms (e.g. Sudden Charge's two Strides and one
+      // Strike) arrive with this identity already stamped by builderAtomicActionsForStep, since
+      // its Stride and Strike atoms come from two different builder functions that share nothing
+      // else -- prefer that pre-stamped identity when present, over re-deriving it here.
+      ...(step?.groupId
+        ? { groupId: step.groupId, groupLabel: step.groupLabel, ...(Number.isFinite(step?.atomIndex) ? { atomIndex: step.atomIndex } : {}) }
+        : step?.activityProfile?.requiresDistinctTargets
+          ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
+          : {}),
+      ...(presetDestination ? { destination: presetDestination } : {}),
+      ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+    };
+
+    const target = plannedTargetSelection(step);
+    if (target.targetTokenIds.length) {
+      draftStep = {
+        ...draftStep,
+        targetTokenIds: target.targetTokenIds,
+        targetLabel: target.targetLabel,
+        targetSelection: "manual",
+      };
+    }
+
+    if (draftStep.requiresDestination && !draftStep.destination) {
+      const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
+      const movement = recommendedMovementForStep(mc, movementStep);
+      // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
+      // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
+      // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
+      // A grouped Stride (e.g. Rush, Sudden Charge) is a mandatory component of a fixed-cost
+      // composite, not a discretionary reposition -- its own actionCost carries the whole
+      // ability's cost (see builderAtomicActionsForStep), so dropping it here would silently
+      // lose that cost and leave its sibling Strike atom looking free with no group to correct it.
+      if (isBasicMove && !step?.groupId && movement?.destination
+        && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
+        return null;
+      }
+      // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
+      // it unset so the GM places a legal one instead of an over-range auto-stride.
+      if (movement?.destination
+        && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, panel._context?.profile))) {
+        draftStep = {
+          ...draftStep,
+          destination: movement.destination,
+          // A direct path (no corner routing) has no waypoints of its own -- fall back to the
+          // destination as a one-point path so the distance label still renders, the same fix
+          // as the interactive destination picker's single-click case.
+          movementPlan: { native: false, waypoints: movement.waypoints?.length ? movement.waypoints : [movement.destination] },
+        };
+        mc = {
+          ...mc,
+          token: { ...(mc.token ?? {}), plannedCenter: movement.destination },
+        };
+      }
+    }
+
+    return draftStep;
+  }).filter(Boolean);
+  // Drop a Strike that can never connect: out of range from where it executes with no earlier
+  // move to close the gap (e.g. a move-and-strike whose Stride was pruned, or an aggro target
+  // left out of melee reach). Resolve each step from its projected origin, as the warnings do.
+  // prefixSteps (any manual steps the fill is appended after) is included so both the reachability
+  // projection and "did an earlier move already happen" check see the full sequence, not just
+  // the new steps in isolation.
+  const reachDraft = { steps: [...prefixSteps, ...steps] };
+  return steps.filter((step, index) => {
+    const hasEarlierMove = [...prefixSteps, ...steps.slice(0, index)]
+      .some((earlier) => earlier.requiresDestination === true);
+    const projected = findProjectedDraftAction(panel._context, reachDraft, step);
+    return !isUnreachableStrikeStep(projected, hasEarlierMove);
+  });
+}
+
+export async function cyclePanelAutoFillDraft(panel, direction = 1) {
+  const draft = panel._readActiveDraftPlan?.() ?? null;
+  refreshPanelAutoFillContext(panel, draft);
+  const plans = panel._activeAutoFillPlans();
+  const pinnedId = panel._activePinnedPlanId();
+  const current = selectDisplayPlan(plans, pinnedId);
+  const currentId = current?.id ?? pinnedId;
+  const next = direction < 0
+    ? previousAutoFillPlan(plans, currentId)
+    : nextAutoFillPlan(plans, currentId);
+  if (!next) return;
+  if (panel._hasManualDraftContent()) panel._pinnedFillPlanId = next.id ?? null;
+  else panel._pinnedPlanId = next.id ?? null;
+  await panel._autoFillDraft({ plan: next });
+}
+
+export async function syncPanelDraftToGM(panel, { notify = false } = {}) {
+  if (!panel._context || globalThis.game?.user?.isGM === true) return false;
+  const draft = readDraftPlan(panel._context);
+
+  try {
+    const sharedDraft = writeSharedDraftPlan(panel._context, {
+      ...draft,
+      userId: globalThis.game?.user?.id ?? null,
+      userName: globalThis.game?.user?.name ?? "",
+    });
+    try {
+      await writeSharedDraftPlanActorFlag(panel._context, sharedDraft);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Actor-flag plan sync failed`, error);
+    }
+    const payload = {
+      type: "shareDraft",
+      key: sharedDraftPlanKey(panel._context),
+      combatId: panel._context.combat?.id ?? null,
+      round: panel._context.combat?.round ?? null,
+      combatantId: panel._context.combatant?.id ?? null,
+      actorName: panel._context.actor?.name ?? panel._context.combatant?.name ?? "",
+      silent: !notify,
+      ...sharedDraft,
+    };
+
+    if (!shareDraftPlan(payload)) {
+      console.warn(`${MODULE_ID} | Cannot sync plan: socketlib is not available.`);
+      if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncNoSocket", "Cannot sync plan with GM: Foundry socket is not available."));
+      return false;
+    }
+    if (notify) globalThis.ui?.notifications?.info?.(t("Notify.PlanShared", "Plan shared with GM."));
+    return true;
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Plan sync failed`, error);
+    if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncFailed", "Could not sync plan with GM."));
+    return false;
+  }
+}

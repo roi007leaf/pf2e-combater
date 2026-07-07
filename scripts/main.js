@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
-import { clearMovementCollisionCache } from "./readers/action-reader.js";
+import { collectionValues } from "./foundry-data.js";
+import { clearMovementCollisionCache } from "./readers/action/reach.js";
 import { promptRetchDc, promptRetchResult } from "./rules/retch-decision.js";
 import { setSocket } from "./socket.js";
 import { t } from "./i18n.js";
@@ -16,21 +17,12 @@ import { clearCombatDraftPlans, clearDraftPlan, clearSharedDraftPlan, isSharedDr
 import { clearMovementPreview } from "./ui/movement-preview.js";
 import { openPanelForCurrentCombatant, togglePanelForCurrentCombatant } from "./ui/CombaterPanel.js";
 import { cancelDestinationPicker } from "./ui/destination-picker.js";
-import { promptUnsustainedSpellCleanup } from "./rules/sustained-spells.js";
-import { expiredAreaRegionsForScene } from "./engine/area-duration.js";
+import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
+import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
 
 let activePanel = null;
 let refreshTimer = null;
 let autoOpenSuppressed = false;
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (Array.isArray(collection.contents)) return collection.contents;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  if (typeof collection[Symbol.iterator] === "function") return Array.from(collection);
-  return Object.values(collection);
-}
 
 function tokenIdentityValues(value) {
   const document = value?.document ?? value;

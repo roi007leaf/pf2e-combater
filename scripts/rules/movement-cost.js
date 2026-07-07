@@ -1,3 +1,5 @@
+import { collectionValues } from "../foundry-data.js";
+
 function numeric(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -5,16 +7,6 @@ function numeric(value, fallback = 0) {
 
 function clampDifficulty(value) {
   return Math.max(1, Math.min(3, Math.trunc(numeric(value, 1)) || 1));
-}
-
-function collectionValues(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  if (Array.isArray(value.contents)) return value.contents;
-  if (Array.isArray(value.placeables)) return value.placeables;
-  if (typeof value.values === "function") return Array.from(value.values());
-  if (typeof value === "object") return Object.values(value).filter(Boolean);
-  return [];
 }
 
 function toObject(value) {
@@ -46,6 +38,15 @@ export function pf2eMovementActionForSlug(slug) {
 export function pf2eMovementActionForStep(step) {
   const requested = movementActionSlug(step?.movementAction ?? step?.action?.movementAction);
   return requested || pf2eMovementActionForSlug(step?.slug ?? step?.action?.slug);
+}
+
+export function pf2eTokenMovementActionForStep(step) {
+  const requested = movementActionSlug(step?.movementAction ?? step?.action?.movementAction);
+  if (requested && requested !== "step") return requested;
+
+  const slug = movementActionSlug(step?.slug ?? step?.action?.slug ?? step?.actionKey);
+  if (slug === "crawl") return "crawl";
+  return "walk";
 }
 
 function behaviorDisabled(behavior) {

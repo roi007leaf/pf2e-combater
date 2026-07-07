@@ -1,10 +1,9 @@
-import { createAreaRegionData } from "../engine/action-executor.js";
+import { areaMarkerLabel, areaMarkerShape, areaRegionDistance, areaRegionWidth, createAreaRegionData } from "../engine/area/region.js";
 import { t } from "../i18n.js";
+import { canvasGridSize as gridSize } from "../rules/canvas-geometry.js";
 
 let activeCleanup = null;
 let activeOnCancel = null;
-
-const AREA_SHAPES = new Set(["burst", "cone", "cube", "cylinder", "emanation", "line", "ring", "square"]);
 
 function numeric(value) {
   const number = Number(value);
@@ -15,11 +14,6 @@ function point(value) {
   const x = numeric(value?.x ?? value?.[0]);
   const y = numeric(value?.y ?? value?.[1]);
   return x === null || y === null ? null : { x, y };
-}
-
-function gridSize() {
-  const size = numeric(globalThis.canvas?.grid?.size);
-  return size && size > 0 ? size : 1;
 }
 
 function callGrid(method, ...args) {
@@ -150,24 +144,6 @@ function isPrimaryPointerEvent(event) {
   return button === undefined || button === null || button === 0;
 }
 
-function actionShape(action) {
-  const value = String(
-    action?.targetingProfile?.type
-    ?? action?.targetingProfile?.shape
-    ?? action?.area?.type
-    ?? "burst",
-  ).toLowerCase();
-  return AREA_SHAPES.has(value) ? value : "burst";
-}
-
-function actionDistance(action) {
-  return numeric(action?.targetingProfile?.distance ?? action?.targetingProfile?.radius ?? action?.area?.value, 5) ?? 5;
-}
-
-function actionWidth(action) {
-  return numeric(action?.targetingProfile?.width ?? action?.area?.width, globalThis.canvas?.grid?.size ?? 5) ?? 5;
-}
-
 function userColor() {
   return String(globalThis.game?.user?.color?.toString?.() ?? globalThis.game?.user?.color ?? "#f0b34a");
 }
@@ -188,23 +164,18 @@ function rotationFromOrigin(context, center) {
   return Math.round((radians * 180) / Math.PI);
 }
 
-function markerLabel(shape, distance) {
-  const name = shape.charAt(0).toUpperCase() + shape.slice(1);
-  return `${name} ${distance} ft`;
-}
-
 function initialAreaMarker({ context, action }) {
-  const shape = actionShape(action);
-  const distance = actionDistance(action);
+  const shape = areaMarkerShape(action);
+  const distance = areaRegionDistance(action, { distance: action?.area?.value });
   const center = point(globalThis.canvas?.mousePosition) ?? point(context?.token?.center) ?? { x: 0, y: 0 };
   return {
     shape,
     center,
     distance,
-    width: actionWidth(action),
+    width: areaRegionWidth(action, { width: action?.area?.width }),
     rotation: rotationFromOrigin(context, center),
     originTokenId: context?.token?.id ?? context?.token?.uuid ?? null,
-    label: markerLabel(shape, distance),
+    label: areaMarkerLabel(shape, distance),
   };
 }
 
@@ -221,17 +192,17 @@ function firstRegionShape(document) {
 
 function markerFromRegionShape({ context, action, shape, fallback }) {
   const data = normalizeShape(shape) ?? {};
-  const type = actionShape(action);
-  const distance = actionDistance(action);
+  const type = areaMarkerShape(action);
+  const distance = areaRegionDistance(action, { distance: action?.area?.value });
   const center = point(data) ?? point(fallback?.center) ?? point(context?.token?.center) ?? { x: 0, y: 0 };
   return {
     shape: type,
     center,
     distance,
-    width: actionWidth(action),
+    width: areaRegionWidth(action, { width: action?.area?.width }),
     rotation: numeric(data.rotation ?? fallback?.rotation, rotationFromOrigin(context, center)) ?? 0,
     originTokenId: context?.token?.id ?? context?.token?.uuid ?? null,
-    label: markerLabel(type, distance),
+    label: areaMarkerLabel(type, distance),
   };
 }
 
@@ -343,7 +314,7 @@ function deactivateTokenLayerForRegionPlacement() {
 }
 
 function regionPlacementTool(action) {
-  const shape = actionShape(action);
+  const shape = areaMarkerShape(action);
   if (shape === "cone") return "cone";
   if (shape === "line" || shape === "square" || shape === "cube") return "rectangle";
   return "circle";
@@ -466,16 +437,16 @@ export function chooseAreaMarker({ context, action, onChoose, onCancel, onMove }
       if (!rawPoint) return;
       handled = true;
       const center = snappedCenter(rawPoint);
-      const shape = actionShape(action);
-      const distance = actionDistance(action);
+      const shape = areaMarkerShape(action);
+      const distance = areaRegionDistance(action, { distance: action?.area?.value });
       onChoose({
         shape,
         center,
         distance,
-        width: actionWidth(action),
+        width: areaRegionWidth(action, { width: action?.area?.width }),
         rotation: rotationFromOrigin(context, center),
         originTokenId: context?.token?.id ?? context?.token?.uuid ?? null,
-        label: markerLabel(shape, distance),
+        label: areaMarkerLabel(shape, distance),
       });
     } finally {
       if (handled) stopAreaPicker({ notifyCancel: false });

@@ -1,6 +1,7 @@
-import { classifySystemAction } from "../engine/action-classifier.js";
-import { classifySpell } from "../engine/spell-classifier.js";
-import { readActionCost, slugify } from "../readers/action-reader.js";
+import { classifySystemAction } from "../engine/action/classifier.js";
+import { classifySpell } from "../engine/spell/classifier.js";
+import { slugify } from "../engine/action/text.js";
+import { readActionCost } from "../readers/action/reader.js";
 import { readSpellActionCost } from "../readers/spell-reader.js";
 import { findCustomAction } from "../catalog/custom-actions.js";
 import { findCuratedSpell } from "../catalog/spells/index.js";

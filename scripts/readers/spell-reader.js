@@ -1,20 +1,12 @@
 import { findCuratedSpell } from "../catalog/spells/index.js";
-import { heightenedSpellForRank, spellBaseRank, spellNameForRank } from "../engine/spell-heightening.js";
-import { classifySpell } from "../engine/spell-classifier.js";
-import { bestReadyStrikeAverageDamage, hasEnemyWithinRange, parseActionText, slugify } from "./action-reader.js";
+import { heightenedSpellForRank, spellBaseRank, spellNameForRank } from "../engine/spell/heightening.js";
+import { classifySpell } from "../engine/spell/classifier.js";
+import { parseActionText, slugify } from "../engine/action/text.js";
+import { contextActorDocument } from "../engine/actor-context.js";
+import { hasEnemyWithinRange } from "../engine/target-pool.js";
+import { bestReadyStrikeAverageDamage } from "./action/reader.js";
+import { collectionValues, systemValue } from "../foundry-data.js";
 import { t } from "../i18n.js";
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  return Object.values(collection);
-}
-
-function systemValue(value) {
-  if (value && typeof value === "object" && "value" in value) return value.value;
-  return value;
-}
 
 function titleCase(value) {
   return String(value ?? "")
@@ -22,20 +14,8 @@ function titleCase(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function isActorDocument(value) {
-  return Boolean(value && typeof value === "object" && (value.system || value.items || value.itemTypes));
-}
-
-function contextActor(context) {
-  if (isActorDocument(context?.actor?.document)) return context.actor.document;
-  if (isActorDocument(context?.combatant?.actor)) return context.combatant.actor;
-  if (isActorDocument(context?.actor?.object)) return context.actor.object;
-  if (isActorDocument(context?.actor)) return context.actor;
-  return null;
-}
-
 export function readSpellActions(context) {
-  const actor = contextActor(context);
+  const actor = contextActorDocument(context);
   return collectionValues(actor?.itemTypes?.spell).flatMap((item) => {
     const slug = slugify(item.slug ?? item.system?.slug ?? item.name);
     const curated = findCuratedSpell(slug);
@@ -177,7 +157,7 @@ function readConsumableSpellAvailability(item, entry) {
 // (a non-null id would route execution through entry.cast() instead, skipping the item's own
 // charge/quantity decrement).
 export function readConsumableSpellActions(context) {
-  const actor = contextActor(context);
+  const actor = contextActorDocument(context);
   return consumableSpellItems(actor).flatMap((item) => {
     const embeddedSpell = consumableEmbeddedSpell(item);
     if (!embeddedSpell) return [];

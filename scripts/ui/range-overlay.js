@@ -1,5 +1,12 @@
 import { previewLayer } from "./preview-layer.js";
 import { t } from "../i18n.js";
+import {
+  canvasGridSize as gridSize,
+  canvasPixelsPerFoot as pixelScale,
+  canvasPoint as point,
+  canvasTokenById,
+  numeric,
+} from "../rules/canvas-geometry.js";
 
 // Visual-only guidance: a ring at a spell's max range around the caster, with the
 // canvas dimmed outside it. It never blocks placing a template or picking a target —
@@ -19,39 +26,6 @@ let placementMaxFeet = null;
 let placementLabel = null;
 let capLabel = null;
 let panHookId = null;
-
-function numeric(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function point(value) {
-  const source = value?.center ?? value;
-  const x = numeric(source?.x ?? source?.[0], NaN);
-  const y = numeric(source?.y ?? source?.[1], NaN);
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-}
-
-function gridSize() {
-  return numeric(globalThis.canvas?.grid?.size, 1) || 1;
-}
-
-function gridDistance() {
-  return numeric(globalThis.canvas?.scene?.grid?.distance ?? globalThis.canvas?.grid?.distance, 5) || 5;
-}
-
-// Feet → canvas pixels, matching action-preview's distancePixels.
-function pixelScale() {
-  return gridSize() / gridDistance();
-}
-
-function canvasTokenById(id) {
-  if (!id) return null;
-  return (globalThis.canvas?.tokens?.placeables ?? []).find((token) => {
-    const document = token?.document ?? token;
-    return token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id;
-  }) ?? null;
-}
 
 function tokenCenter(token) {
   if (!token) return null;

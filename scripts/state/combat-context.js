@@ -1,6 +1,8 @@
 import { readActorProfile, readConditions, readEffects } from "../readers/actor-profile.js";
 import { readVisionerDetectionState } from "../integrations/visioner.js";
+import { collectionValues } from "../foundry-data.js";
 import { movementActionsSpent } from "./token-refresh.js";
+import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
 
 const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
@@ -114,30 +116,11 @@ function tokenCenter(token) {
 }
 
 function tokenFootprintCenters(token) {
-  const document = token?.document ?? token;
   const fallbackCenter = tokenCenter(token);
-  if (!document || !fallbackCenter) return [];
+  if (!fallbackCenter) return [];
 
   const size = Number(globalThis.canvas?.grid?.size ?? 1) || 1;
-  const width = Math.max(1, Math.ceil(Number(document.width ?? token?.width ?? 1) || 1));
-  const height = Math.max(1, Math.ceil(Number(document.height ?? token?.height ?? 1) || 1));
-  const x = Number(document.x ?? token?.x);
-  const y = Number(document.y ?? token?.y);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return [fallbackCenter];
-
-  if (width === 1 && height === 1) return [fallbackCenter];
-  if (width * height > 64) return [fallbackCenter];
-
-  const centers = [];
-  for (let row = 0; row < height; row += 1) {
-    for (let column = 0; column < width; column += 1) {
-      centers.push({
-        x: x + (column + 0.5) * size,
-        y: y + (row + 0.5) * size,
-      });
-    }
-  }
-  return centers;
+  return movementFootprintCentersForToken(fallbackCenter, token, size);
 }
 
 function measurePointDistance(from, to) {
@@ -320,15 +303,6 @@ function tokenMatchesIdentity(left, right) {
   const leftIds = new Set(tokenIdentityValues(left));
   if (!leftIds.size) return false;
   return tokenIdentityValues(right).some((id) => leftIds.has(id));
-}
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (Array.isArray(collection.contents)) return collection.contents;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  if (typeof collection[Symbol.iterator] === "function") return Array.from(collection);
-  return [];
 }
 
 function tokenIdentityValues(value) {

@@ -2,6 +2,7 @@
 // slug, name, traits, and description (see itemText), which is normalized to lowercase with hyphens
 // and underscores turned into spaces — so multi-word PF2e names like "lay-on-hands" match "lay on
 // hands". Word boundaries keep matches whole (e.g. "harm" does not match "harmless").
+import { actorItems, collectionValues } from "../foundry-data.js";
 import { t } from "../i18n.js";
 
 function roleCuePattern(words) {
@@ -48,15 +49,6 @@ const CONTROL_WORDS = roleCuePattern([
   "petrify", "deafen", "calm emotions", "synesthesia", "create a diversion", "stuck",
 ]);
 
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (collection instanceof Map) return Array.from(collection.values());
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  if (typeof collection === "object") return Object.values(collection);
-  return [];
-}
-
 function normalizeText(value) {
   return String(value ?? "")
     .replace(/[-_]+/g, " ")
@@ -83,17 +75,6 @@ export function canUseFullAggro(context) {
   return isGM && activeActorType(context) === "npc";
 }
 
-function itemTypes(actor, type) {
-  return collectionValues(actor?.itemTypes?.[type]);
-}
-
-function allItems(actor) {
-  const typed = Object.values(actor?.itemTypes ?? {}).flatMap(collectionValues);
-  const typedIds = new Set(typed.map((item) => item?.id ?? item?._id).filter(Boolean));
-  const fallback = collectionValues(actor?.items).filter((item) => !typedIds.has(item?.id ?? item?._id));
-  return [...typed, ...fallback];
-}
-
 // Cue-match against the item's identity — slug, name, label, role, traits — but NOT its description
 // prose. A rules paragraph like "you are not frightened" would otherwise trip the fear/control cues;
 // identity fields are far more reliable and PF2e names/traits are already descriptive.
@@ -112,7 +93,7 @@ function itemText(item) {
 }
 
 function itemsOfTypes(actor, types) {
-  return types ? types.flatMap((type) => itemTypes(actor, type)) : allItems(actor);
+  return types ? types.flatMap((type) => actorItems(actor, type)) : actorItems(actor);
 }
 
 function hasItemMatching(actor, pattern, types = null) {
@@ -124,7 +105,7 @@ function countItemsMatching(actor, pattern, types = null) {
 }
 
 function spellCount(actor) {
-  return itemTypes(actor, "spell").length;
+  return actorItems(actor, "spell").length;
 }
 
 function hpPercent(target) {
@@ -249,7 +230,7 @@ function computeAggroProfile(context, target) {
     addRole(profile, "healer", 42, t("Aggro.Healer", "Target can heal or recover allies."));
   }
 
-  if (spellCount(actor) > 0 || itemTypes(actor, "spellcastingEntry").length > 0) {
+  if (spellCount(actor) > 0 || actorItems(actor, "spellcastingEntry").length > 0) {
     addRole(profile, "caster", 18 + Math.min(12, spellCount(actor) * 2), t("Aggro.Caster", "Target has active spellcasting."));
   }
 
@@ -261,7 +242,7 @@ function computeAggroProfile(context, target) {
   // NPC nothing. Scale it by how much offense the target actually stacks — extra weapons plus damage
   // feats/impulses/spells (Rage, Power Attack, Flurry, Sneak Attack, damaging cantrips…) — so a
   // glass-cannon striker reads as a bigger threat than a one-weapon mook.
-  const weapons = itemTypes(actor, "weapon");
+  const weapons = actorItems(actor, "weapon");
   const damageAbilities = countItemsMatching(actor, DAMAGE_WORDS, ["spell", "action", "feat", "feature"]);
   if (weapons.length > 0 || damageAbilities > 0) {
     const offense = Math.min(20, weapons.length * 3 + damageAbilities * 4);

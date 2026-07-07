@@ -1,5 +1,6 @@
 import { readCombatState } from "../rules/combat-state.js";
 import { KNOWN_SUBCLASS_SLUGS, SUBCLASS_TAGS } from "../rules/class-tactics-data/index.js";
+import { collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
 
 const ABILITY_SLUGS = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -11,18 +12,6 @@ function numericValue(value, fallback = null) {
 function rankValue(value, fallback = 0) {
   if (value === null) return null;
   return numericValue(value, fallback);
-}
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  return Object.values(collection);
-}
-
-function systemValue(value) {
-  if (value && typeof value === "object" && "value" in value) return value.value;
-  return value;
 }
 
 function readSkillStat(skill, { fallbackRank = 0 } = {}) {
@@ -161,12 +150,12 @@ function strikeReach(strike) {
   return reachFromTraits([
     ...(Array.isArray(strike?.traits) ? strike.traits : []),
     ...(Array.isArray(strike?.weaponTraits) ? strike.weaponTraits : []),
-    ...readTraitSlugs(strike?.item),
+    ...traitSlugs(strike?.item),
   ]);
 }
 
 function itemReach(item) {
-  return reachFromTraits(readTraitSlugs(item));
+  return reachFromTraits(traitSlugs(item));
 }
 
 function readReach(actor) {
@@ -194,19 +183,11 @@ function readDefenses(actor) {
   };
 }
 
-function readTraitSlugs(item) {
-  const traits = item?.system?.traits;
-  const value = traits?.value ?? traits;
-  if (Array.isArray(value)) return value;
-  if (value instanceof Set) return Array.from(value);
-  return [];
-}
-
 function isShieldLike(item) {
   const category = systemValue(item?.system?.category);
   return item?.type === "shield"
     || (item?.type === "armor" && category === "shield")
-    || (item?.type === "weapon" && readTraitSlugs(item).includes("shield"));
+    || (item?.type === "weapon" && traitSlugs(item).includes("shield"));
 }
 
 function isEquipped(item) {

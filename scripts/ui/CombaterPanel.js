@@ -1,72 +1,82 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
-import { SETTINGS, playerAccessAllowed, setting } from "../settings.js";
-import {
-  buildActionBuilderModel,
-  actionBuilderKey,
-  ACTION_BUILDER_TABS,
-  backingStrikeOverrideFields,
-  builderAtomicActionsForStep,
-  computeAreaMarker,
-  isUnreachableStrikeStep,
-  projectContextForDraftDestination,
-  projectContextForDraftStepOrigin,
-  requiresDestinationForAction,
-  SUSTAIN_A_SPELL_ACTION,
-} from "../engine/action-builder.js";
-import {
-  currentTargetSelection,
-  executeDraftStep,
-  executionReadinessForStep,
-  isSelfCenteredAreaAction,
-  isTargetCenteredAreaAction,
-  nextPendingExecutionStep,
-  plannedTargetSelection,
-  requiresAreaMarkerForAction,
-  requiresTargetForAction,
-  setTokenTargets,
-  targetTokenId,
-  tokensInAreaMarker,
-} from "../engine/action-executor.js";
-import { revertDraftExecution, revertDraftStep } from "../engine/action-revert.js";
+import { SETTINGS, playerAccessAllowed, settingOrDefault } from "../settings.js";
+import { SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder.js";
+import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
-import { confidenceLabel } from "../engine/confidence.js";
-import { actionBudget, attacksTowardMap, bestTurnPlan, buildTurnPlans, isAttackAction, mapPenalty } from "../engine/planner.js";
-import { swapDraftSteps } from "../engine/draft-reorder.js";
-import { readActionFavorites, reorderActionFavorite, toggleActionFavorite } from "../state/action-favorites.js";
-import { readCombatContext } from "../state/combat-context.js";
-import {
-  readDraftPlan,
-  readSharedDraftPlan,
-  hasSharedDraftPlan,
-  sharedDraftPlanKey,
-  shouldDisplaySharedDraft,
-  writeDraftPlan,
-  writeSharedDraftPlan,
-  upsertDraftStep,
-  draftListForInstance,
-  writeSharedDraftPlanActorFlag,
-} from "../state/draft-plans.js";
-import { clearActionPreview, showActionPreview } from "./action-preview.js";
+import { actionBudget } from "../engine/action/budget.js";
+import { buildTurnPlans } from "../engine/planner.js";
+import { clearActionPreview, showActionPreview } from "./action/preview.js";
 import { CombaterBrowser } from "./CombaterBrowser.js";
-import { showMovementPreview, showHoverGhost, recommendedMovementForStep } from "./movement-preview.js";
-import { displayStepEntries } from "./display-steps.js";
-import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "./plan-selection.js";
-import { cancelDestinationPicker, chooseDestination } from "./destination-picker.js";
-import { cancelAreaPicker, chooseAreaMarker } from "./area-picker.js";
-import { clearRangeOverlay, showRangeOverlay, updateRangePlacement } from "./range-overlay.js";
-import { groupActionsByBuilderCategory } from "./action-categories.js";
-import { actionDetailChips, traitChips } from "./action-details.js";
-import { actorMovementOptions } from "../readers/actor-profile.js";
-import { actorStrikeOptions, bestReadyStrike } from "../readers/action-reader.js";
-import { readSustainedSpellEntries } from "../rules/sustained-spells.js";
-import { promptRetchDc, promptRetchResult } from "../rules/retch-decision.js";
-import { requestRetchDc, requestRetchResult, shareDraftPlan } from "../socket.js";
+import { selectDisplayPlan } from "./plan-selection.js";
+import {
+  actionKeyForPanelStep,
+  actorForPanelMovement,
+  addPanelAction,
+  addPanelSustainSpell,
+  addPanelUncountedAction,
+  atomizePanelAutoFillSteps,
+  autoFillPanelDraft,
+  cyclePanelAutoFillDraft,
+  cyclePanelStepMap,
+  cyclePanelStepMovement,
+  cyclePanelStepWeapon,
+  duplicatePanelDraftStep,
+  fillPanelDraftGap,
+  persistPanelActiveDraftStep,
+  readPanelActiveDraftPlan,
+  removePanelDraftStep,
+  reorderPanelDraftStep,
+  reorderPanelFavorite,
+  syncPanelDraftToGM,
+  togglePanelFavorite,
+  writePanelActiveDraftPlan,
+  writePanelActiveSharedDraft,
+} from "./panel/draft-workflow.js";
+import {
+  cancelPanelPickers,
+  choosePanelArea,
+  choosePanelDestination,
+  choosePanelTarget,
+  clearActionPreviewUnlessPicking,
+  contextForDraftStep,
+  draftForOrigin,
+  pickAreaTemplate,
+  removePanelAreaTemplate,
+  restoreDestinationPickerPreview,
+  showDestinationPickerPreview,
+  showPanelHoverGhost,
+  stepWithRetryReset,
+} from "./panel/picker-workflow.js";
+import {
+  applyPanelExecutionResult,
+  chooseSustainedSpellForStep,
+  confirmPanelRetchResult,
+  executePanelDraftStep,
+  handlePanelExecutionChoice,
+  providePanelRetchDc,
+  resetPanelExecution,
+  retchActorName,
+  revertPanelDraftStep,
+  setPanelAwaitingGm,
+} from "./panel/execution-workflow.js";
+import { activatePanelRenderBindings } from "./panel/event-bindings.js";
+import {
+  preparePanelContext,
+  viewPanelContext,
+} from "./panel/context-workflow.js";
+import {
+  debugAction,
+  DEFAULT_TAB,
+  explicitTargetFields,
+  isSustainAction,
+  normalizedSlug,
+  TABS,
+  withBuilderActionFields,
+} from "./panel/view-model.js";
 import { pf2eActionName, t } from "../i18n.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
-const DEFAULT_TAB = "one";
-const TABS = new Set(ACTION_BUILDER_TABS.map((tab) => tab.id));
 const RESET_PIN_REFRESH_SOURCES = new Set([
   "actor-update",
   "button",
@@ -78,14 +88,6 @@ const RESET_PIN_REFRESH_SOURCES = new Set([
   "token-refresh",
   "token-update",
 ]);
-
-function readSetting(key, fallback) {
-  try {
-    return setting(key);
-  } catch (_error) {
-    return fallback;
-  }
-}
 
 function readPanelState() {
   try {
@@ -104,193 +106,6 @@ function writePanelState(patch) {
   }
 }
 
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (Array.isArray(collection.contents)) return collection.contents;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  if (typeof collection[Symbol.iterator] === "function") return Array.from(collection);
-  return Object.values(collection);
-}
-
-function ownershipLevelValue(level) {
-  if (Number.isFinite(Number(level))) return Number(level);
-  const levels = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS ?? {};
-  return Number(levels[String(level ?? "").toUpperCase()] ?? 0) || 0;
-}
-
-// Only a currently-connected owner counts. An absent player's owned character is the GM's to plan
-// and execute for that session — there's no live player turn to defer to, so it should behave like
-// any other actor the GM runs (e.g. an NPC ally) rather than lock the GM out of Auto-fill/execute.
-function actorHasActiveNonGmOwner(actor) {
-  const document = actor?.document ?? actor;
-  if (!document) return false;
-  const ownerLevel = ownershipLevelValue(globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
-  const users = collectionValues(globalThis.game?.users).filter((user) => user && user.isGM !== true && user.active === true);
-
-  if (typeof document.testUserPermission === "function") {
-    return users.some((user) => document.testUserPermission(user, ownerLevel));
-  }
-
-  const ownership = document.ownership ?? {};
-  return users.some((user) => ownershipLevelValue(ownership[user.id]) >= ownerLevel);
-}
-
-// A "player's actor" is one a non-GM user actually owns AND is currently online to play. An NPC-type
-// actor, an unowned character (e.g. a GM-run NPC ally), or a character whose only owners are all
-// offline is the GM's to plan, so we only treat genuinely player-piloted actors as player plans.
-function isPlayerControlledActor(actor) {
-  const document = actor?.document ?? actor;
-  if (!document) return false;
-  return actorHasActiveNonGmOwner(document);
-}
-
-function titleCase(value) {
-  return String(value ?? "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function camelCase(value) {
-  return String(value ?? "").replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
-}
-
-function actionCostClass(cost) {
-  if (cost === "reaction") return "reaction";
-  if (cost === 0) return "free";
-  return `cost-${Math.max(1, Math.min(3, Number(cost) || 1))}`;
-}
-
-function actionCostLabel(cost) {
-  if (cost === "reaction") return t("Cost.Reaction", "reaction");
-  if (cost === 0) return t("Cost.Free", "free");
-  const numeric = Math.max(1, Math.min(3, Number(cost) || 1));
-  return t(numeric === 1 ? "Cost.ActionOne" : "Cost.ActionMany", numeric === 1 ? "{count} action" : "{count} actions", { count: numeric });
-}
-
-// PF2e action-cost key: 0/free → "F", 1/2/3 → "1"/"2"/"3", reaction → "R".
-function actionGlyph(cost) {
-  if (cost === "reaction") return "R";
-  if (cost === 0 || cost === "free") return "F";
-  return String(Math.max(1, Math.min(3, Number(cost) || 1)));
-}
-
-// PF2e's own action-cost icon images, used in place of the action-glyph webfont (which
-// Foundry registers for itself but does not reliably expose to module markup).
-const ACTION_GLYPH_ICONS = {
-  1: "systems/pf2e/icons/actions/OneAction.webp",
-  2: "systems/pf2e/icons/actions/TwoActions.webp",
-  3: "systems/pf2e/icons/actions/ThreeActions.webp",
-  R: "systems/pf2e/icons/actions/Reaction.webp",
-  F: "systems/pf2e/icons/actions/FreeAction.webp",
-};
-
-function actionGlyphIcon(cost) {
-  return ACTION_GLYPH_ICONS[actionGlyph(cost)] ?? ACTION_GLYPH_ICONS[1];
-}
-
-// Generic PF2e action icon shown for actions without an item image (Stride, Step, etc.).
-const GENERIC_ACTION_IMG = "systems/pf2e/icons/actions/Passive.webp";
-
-function actionImage(source) {
-  return source?.img
-    ?? source?.item?.img
-    ?? source?.item?.texture?.src
-    ?? source?.strike?.imageUrl
-    ?? source?.action?.img
-    ?? GENERIC_ACTION_IMG;
-}
-
-function stepTraitSlugs(step) {
-  const traits = Array.isArray(step?.traits) ? step.traits : [];
-  return traits.map((trait) => String(trait?.slug ?? trait?.name ?? trait).toLowerCase());
-}
-
-function isRangedStep(step) {
-  if (!step) return false;
-  const increment = Number(step?.range?.increment);
-  if (Number.isFinite(increment) && increment > 0) return true;
-
-  const traits = stepTraitSlugs(step);
-  if (traits.includes("ranged")) return true;
-
-  // A thrown weapon's melee Strike is not ranged (max reach 5 ft); it only
-  // counts as ranged when the Strike actually reaches beyond melee.
-  const max = Number(step?.range?.max ?? step?.targetingProfile?.maxRange);
-  const isThrown = traits.some((trait) => /^thrown(-\d+)?$/.test(trait));
-  return isThrown && Number.isFinite(max) && max > 5;
-}
-
-function rangeLabelFor(step) {
-  if (!isRangedStep(step)) return "";
-  // A range increment (readStrikeRange mirrors it onto .max too) means the attack penalty scales
-  // with distance past the first increment -- worth calling out separately from a flat max range.
-  const increment = Number(step?.range?.increment);
-  if (Number.isFinite(increment) && increment > 0) {
-    return t("Panel.RangeIncrement", "Range increment {value} ft", { value: increment });
-  }
-  const max = Number(step?.range?.max ?? step?.targetingProfile?.maxRange);
-  return Number.isFinite(max) && max > 0
-    ? t("Panel.Range", "Range {value} ft", { value: max })
-    : t("Panel.Ranged", "Ranged");
-}
-
-function withBuilderActionFields(action) {
-  if (!action || action.requiresDestination === true || !requiresDestinationForAction(action)) return action;
-  return { ...action, requiresDestination: true };
-}
-
-function plannedTargetLabel(step) {
-  const label = String(step?.targetLabel ?? "").trim();
-  if (label) return label;
-  const ids = Array.isArray(step?.targetTokenIds) ? step.targetTokenIds : [];
-  return ids.length ? "Target planned" : "";
-}
-
-function recommendationTargetIds(action) {
-  const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target ?? null;
-  return new Set([
-    action?.targetingProfile?.preferredTargetId,
-    target?.id,
-    target?.uuid,
-    target?.token?.id,
-    target?.token?.uuid,
-  ].filter(Boolean).map(String));
-}
-
-function isAutoStoredRecommendationTarget(step, action) {
-  if (step?.targetSelection === "manual") return false;
-  const ids = Array.isArray(step?.targetTokenIds) ? step.targetTokenIds.map(String).filter(Boolean) : [];
-  if (!ids.length) return false;
-  const recommendedIds = recommendationTargetIds(action);
-  return recommendedIds.size > 0 && ids.every((id) => recommendedIds.has(id));
-}
-
-function explicitTargetFields(step, action) {
-  return isAutoStoredRecommendationTarget(step, action)
-    ? { targetTokenIds: [], targetLabel: "" }
-    : { targetTokenIds: step?.targetTokenIds, targetLabel: step?.targetLabel };
-}
-
-// Bare creature name behind an explicitly stored target, stripped of any "Target:" prefix.
-function rawTargetName(step, action) {
-  if (isAutoStoredRecommendationTarget(step, action)) return "";
-  const direct = step?.suggestedTarget?.name ?? step?.preferredTarget?.name ?? "";
-  if (direct) return String(direct).trim();
-  const label = plannedTargetLabel(step);
-  if (/^Target planned$/i.test(label)) return "";
-  return label.replace(/^Target:\s*/i, "").trim();
-}
-
-// What the detail line says about who a step targets. Movement destinations are chosen later,
-// so they intentionally do not reuse a tactical target as a fake destination label.
-function stepTargetLabel(name, { requiresTarget, requiresDestination }) {
-  if (!name) return "";
-  if (requiresTarget) return `→ ${name}`;
-  if (requiresDestination) return "";
-  return "";
-}
-
 // A generic Stride carries no target of its own, so the movement preview falls back to the first
 // listed enemy. When the plan continues into an attack, the stride should instead close on the
 // enemy that attack will hit. Borrow the next targeted step's resolved target so the recommended
@@ -298,776 +113,6 @@ function stepTargetLabel(name, { requiresTarget, requiresDestination }) {
 // A generic basic move the planner scored negative (e.g. "repositioning is low priority" when the
 // target is already in reach) wastes an action. Never auto-fill it, no matter which plan variant
 // feeds the auto-fill (best plan, a pinned variant, or a projected-origin edge case).
-const AUTO_FILL_BASIC_MOVE_SLUGS = new Set(["stride", "step", "stand-stride"]);
-function isRedundantAutoFillMove(step) {
-  return AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())
-    && step?.source === "generic"
-    && Number(step?.score) < 0;
-}
-
-// The candidate slug is often the action id ("generic-drop-prone"), so match a contained substring.
-function autoFillAppliesProne(step) {
-  const slug = String(step?.slug ?? "").toLowerCase();
-  return slug.includes("drop-prone") || step?.executable === "drop-prone";
-}
-
-// A plain strike's suggestedTarget is targetRef()'s sanitized {type, id, uuid, name} display ref --
-// it carries no position. Only composite readers (stride-strike, flank, ...) stamp a preferredTarget
-// with an embedded token/center. Resolve the live canvas token by id/uuid as a fallback so a Stride
-// borrowing an ordinary strike's target (via strideStepTowardPlannedTarget) can still find where to go.
-function autoFillTargetCenter(step) {
-  const target = step?.preferredTarget ?? step?.suggestedTarget ?? step?.target;
-  const embedded = target?.token?.center ?? target?.center ?? null;
-  if (embedded || !target) return embedded;
-  const ids = [target.id, target.uuid, target.actor?.id, target.actor?.uuid].filter(Boolean);
-  if (!ids.length) return null;
-  for (const token of globalThis.canvas?.tokens?.placeables ?? []) {
-    const document = token?.document ?? token;
-    const matches = ids.some((id) =>
-      token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id
-      || token?.actor?.id === id || document?.actor?.id === id);
-    if (matches) return token?.center ?? null;
-  }
-  return null;
-}
-
-// Auto-fill aims a generic Stride at the plan's attack target, so its purpose is to improve position
-// toward that target. The reachable set excludes the origin, so the "Stride to the same place" the GM
-// sees is really a 1-cell shuffle that gets NO closer because the path is blocked (walls/water). Keep
-// the Stride only if its destination actually gets meaningfully closer to the target; otherwise it
-// accomplished nothing. (Kiting/retreat is a separate retreat action, not this target-aimed Stride.)
-function strideImprovesPosition(originCenter, destination, targetCenter) {
-  if (!destination || !originCenter) return true; // no recommendation/origin → don't second-guess
-  const gridSize = Number(globalThis.canvas?.grid?.size) || 0;
-  const minGain = gridSize > 0 ? gridSize * 0.5 : 1;
-  if (!targetCenter) {
-    return Math.hypot(destination.x - originCenter.x, destination.y - originCenter.y) >= minGain;
-  }
-  const before = Math.hypot(targetCenter.x - originCenter.x, targetCenter.y - originCenter.y);
-  const after = Math.hypot(targetCenter.x - destination.x, targetCenter.y - destination.y);
-  return (before - after) >= minGain;
-}
-
-// Final guard: never auto-commit a Stride/Step destination the actor can't actually reach in one
-// move. Whatever produced the square (recommended placement, a composite's attack square), measure
-// it with Foundry's own ruler and reject it if it costs more than the actor's Speed — that's the
-// "stride lands way past max speed" bug. When the ruler is unavailable, trust the upstream bound.
-function autoFillStrideOverSpeed(originCenter, destination, profile) {
-  const measure = globalThis.canvas?.grid?.measurePath;
-  const speed = Number(profile?.speed?.value ?? profile?.speed ?? profile?.landSpeed) || 0;
-  if (!originCenter || !destination || typeof measure !== "function" || speed <= 0) return false;
-  try {
-    const cost = Number(measure([originCenter, destination])?.distance);
-    return Number.isFinite(cost) && cost > speed + 0.01;
-  } catch (_error) {
-    return false;
-  }
-}
-
-function strideStepTowardPlannedTarget(step, atomicSteps, index) {
-  if (step?.preferredTarget || step?.suggestedTarget) return step;
-  for (let next = index + 1; next < atomicSteps.length; next += 1) {
-    const selection = plannedTargetSelection(atomicSteps[next]);
-    if (selection.targets.length) return { ...step, preferredTarget: selection.targets[0] };
-  }
-  return step;
-}
-
-function normalizedSlug(value) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function isSustainAction(action) {
-  return [
-    action?.slug,
-    action?.id,
-    action?.key,
-    action?.baseKey,
-    action?.actionKey,
-  ].some((value) => normalizedSlug(value) === "sustain-a-spell");
-}
-
-function stripDuplicateKeySuffix(value) {
-  return String(value ?? "").replace(/#\d+$/u, "");
-}
-
-function draftStepLookupKeys(step) {
-  return new Set([
-    step?.actionKey,
-    step?.key,
-    actionBuilderKey(step),
-    stripDuplicateKeySuffix(step?.actionKey),
-    step?.slug,
-    step?.id,
-    step?.action?.slug,
-    step?.action?.id,
-    step?.action?.item?.uuid,
-  ].map((value) => String(value ?? "").trim()).filter(Boolean));
-}
-
-function actionLookupValues(action) {
-  return [
-    action?.key,
-    action?.baseKey,
-    actionBuilderKey(action),
-    stripDuplicateKeySuffix(actionBuilderKey(action)),
-    action?.id,
-    action?.uuid,
-    action?.item?.uuid,
-    action?.slug,
-    action?.name,
-  ].map((value) => String(value ?? "").trim()).filter(Boolean);
-}
-
-function draftStepActionRows(candidateBuild) {
-  const candidates = Array.isArray(candidateBuild?.candidates) ? candidateBuild.candidates : [];
-  const rejected = Array.isArray(candidateBuild?.rejected) ? candidateBuild.rejected : [];
-  return [
-    ...candidates,
-    ...rejected.map((entry) => {
-      const action = entry?.action ?? entry;
-      if (!action) return null;
-      const reason = action.disabledReason ?? action.unavailableReason ?? entry?.reason ?? t("Reject.NotAvailable", "Action is not available in current context.");
-      return {
-        ...action,
-        available: false,
-        disabled: true,
-        unavailableReason: reason,
-        disabledReason: reason,
-      };
-    }),
-  ].filter(Boolean).map(withBuilderActionFields);
-}
-
-function findProjectedDraftAction(context, draft, step) {
-  if (isSustainAction(step)) {
-    return {
-      ...SUSTAIN_A_SPELL_ACTION,
-      name: pf2eActionName("sustain-a-spell", SUSTAIN_A_SPELL_ACTION.name),
-      reason: t("Reason.SustainExtend", "Spend 1 action to extend a sustained spell's duration."),
-      key: "sustain-a-spell",
-      baseKey: "sustain-a-spell",
-    };
-  }
-  const stepContext = projectContextForDraftStepOrigin(context, draft, step?.instanceId);
-  // A distinct-target atom's own composite (e.g. a Kraken's "Double Attack") never appears among
-  // this actor's own browsable candidates once it's already reflected in the draft, so generic
-  // key/slug/item.uuid matching below falls through to an unrelated real weapon candidate that
-  // happens to share a field -- confirmed live to silently break the ability's own MAP-sharing
-  // rule (a plain weapon Strike has no mapAttacks/requiresDistinctTargets data, so the position-
-  // based MAP calculator treats each atom as an independent ordinary attack). Re-derive the exact
-  // atom fresh instead: find the original ability by its group label, re-atomize it the same way
-  // the draft was originally built, and match back to THIS step by its own persisted target.
-  if (step?.groupId) {
-    const original = buildCandidates(stepContext).candidates.find((candidate) =>
-      (candidate.activityProfile?.requiresDistinctTargets || candidate.activityProfile?.requiresBackingStrike)
-      && String(candidate.name ?? "").split(" -> ")[0] === step.groupLabel);
-    if (original) {
-      const atoms = builderAtomicActionsForStep(original);
-      // A distinct-target atom (e.g. Double Attack) has its own distinct preferredTarget to match
-      // by; a move-and-strike atom (e.g. Sudden Charge's Strides and Strike) has no per-atom target
-      // to disambiguate by, but Task 2 stamps a stable atomIndex on every atom instead.
-      const targetIds = Array.isArray(step.targetTokenIds) ? step.targetTokenIds.map(String) : [];
-      const matchedAtom = Number.isFinite(step.atomIndex)
-        ? atoms[step.atomIndex]
-        : atoms.find((atom) => targetIds.includes(String(atom.preferredTarget?.id)));
-      const atom = matchedAtom ?? (atoms.length ? atoms[0] : null);
-      if (atom && step.weaponId) {
-        const stepActorDocument = stepContext.actor?.document ?? stepContext.actor ?? null;
-        const chosenWeapon = actorStrikeOptions(stepActorDocument, stepContext)
-          .find((option) => option.id === step.weaponId);
-        if (chosenWeapon) {
-          const leafName = String(atom.name ?? "").split(" -> ")[0];
-          return { ...atom, ...backingStrikeOverrideFields(chosenWeapon, leafName) };
-        }
-      }
-      if (atom) return atom;
-    }
-  }
-  const keys = draftStepLookupKeys(step);
-  return draftStepActionRows(buildCandidates(stepContext)).find((action) =>
-    actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
-  ) ?? null;
-}
-
-function projectedDraftStepActions(context, draft) {
-  if (!context) return {};
-  const actions = {};
-  for (const step of Array.isArray(draft?.steps) ? draft.steps : []) {
-    if (!step?.instanceId) continue;
-    const action = findProjectedDraftAction(context, draft, step);
-    if (action) actions[step.instanceId] = action;
-  }
-  return actions;
-}
-
-function areaLabel(areaMarker) {
-  const label = String(areaMarker?.label ?? "").trim();
-  if (label) return `Area: ${label}`;
-  const shape = String(areaMarker?.shape ?? areaMarker?.type ?? "").trim();
-  if (!shape) return "";
-  const distance = Number(areaMarker?.distance ?? areaMarker?.radius);
-  return Number.isFinite(distance) ? `Area: ${titleCase(shape)} ${distance} ft` : `Area: ${titleCase(shape)}`;
-}
-
-function executionStatus(step) {
-  const status = String(step?.execution?.status ?? "pending").toLowerCase();
-  return ["done", "failed"].includes(status) ? status : "pending";
-}
-
-function executionLabel(step) {
-  const status = executionStatus(step);
-  if (status === "done") return t("Panel.Done", "Done");
-  if (status === "failed") return step?.execution?.error
-    ? t("Panel.FailedReason", "Failed: {error}", { error: step.execution.error })
-    : t("Panel.Failed", "Failed");
-  return "";
-}
-
-function draftStepId() {
-  return globalThis.foundry?.utils?.randomID?.()
-    ?? `draft-step-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
-  const cost = step?.actionCost ?? step?.cost ?? 1;
-  const targetName = step?.suggestedTarget?.name ?? step?.preferredTarget?.name ?? "";
-  const rangeLabel = rangeLabelFor(step);
-  return {
-    ...step,
-    index: sourceIndex,
-    displayIndex,
-    costClass: actionCostClass(cost),
-    costLabel: actionCostLabel(cost),
-    actionGlyphIcon: actionGlyphIcon(cost),
-    img: actionImage(step),
-    reason: step?.reason ?? step?.reasons?.[0] ?? "",
-    targetLabel: targetName ? `Target: ${targetName}` : "",
-    mapLabel: step?.mapPenalty > 0 ? `MAP -${step.mapPenalty}` : "",
-    isRanged: Boolean(rangeLabel),
-    rangeLabel,
-    sourceLabel: titleCase(step?.source),
-  };
-}
-
-function decoratePlan(plan, index = 0) {
-  const confidence = plan?.confidence ?? "low";
-  const steps = displayStepEntries(plan?.steps)
-    .map((entry, stepIndex) => decorateStep(entry.step, stepIndex, entry.sourceIndex));
-  return {
-    ...plan,
-    index,
-    rank: index + 1,
-    confidenceLabel: confidenceLabel(confidence),
-    confidenceClass: String(confidence),
-    steps,
-    hasSteps: steps.length > 0,
-    reason: plan?.reason ?? plan?.steps?.[0]?.reason ?? "No recommendation available.",
-  };
-}
-
-function decorateAction(action, options = {}) {
-  const cost = action?.actionCost ?? action?.cost ?? 1;
-  const decorated = decorateStep(action, 0, 0);
-  const detailChips = actionDetailChips(action);
-  return {
-    ...decorated,
-    favoriteTitle: action?.favorite ? "Remove favorite" : "Add favorite",
-    disabledTitle: action?.disabled ? action.disabledReason : "Add to draft",
-    requiresDestination: requiresDestinationForAction(action),
-    targetLabel: options.hideTarget ? "" : decorated.targetLabel,
-    detailChips,
-    hasDetailChips: detailChips.length > 0,
-    readonly: options.readonly === true,
-    canDragFavorite: options.canDragFavorite === true && options.readonly !== true,
-  };
-}
-
-// The movement-action a draft step currently Strides with. Defaults to walking; a player can pin a
-// different movement type (fly/burrow/swim/climb) per step, stored as `movementAction`.
-function stepMovementAction(step) {
-  const raw = String(step?.movementAction ?? step?.action?.movementAction ?? "").toLowerCase();
-  if (raw && raw !== "step") return raw;
-  const slug = String(step?.slug ?? step?.action?.slug ?? "").toLowerCase();
-  if (slug === "crawl") return "crawl";
-  return "walk";
-}
-
-function movementActionLabel(action) {
-  switch (action) {
-    case "fly": return t("Movement.Fly", "Fly");
-    case "burrow": return t("Movement.Burrow", "Burrow");
-    case "swim": return t("Movement.Swim", "Swim");
-    case "climb": return t("Movement.Climb", "Climb");
-    default: return t("Movement.Walk", "Walk");
-  }
-}
-
-// A speed-based Stride lets the player pick which speed to travel on. Move-and-strike activities
-// auto-plot their movement (no destination prompt), and Step/Crawl are fixed 5-ft moves, so neither
-// offers a movement-type choice.
-function isSpeedBasedMovementStep(action) {
-  if (!action || action?.activityProfile?.teleport === true) return false;
-  if (!requiresDestinationForAction(action)) return false;
-  const slug = String(action?.slug ?? action?.action?.slug ?? "").toLowerCase();
-  return slug !== "step" && slug !== "crawl";
-}
-
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
-  const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
-  const action = step?.action ? decorateAction(step.action) : null;
-  const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
-  const displaySource = action
-    ? { ...action, actionCost: plannedCost, cost: plannedCost }
-    : step;
-  const display = decorateStep(displaySource, index, index);
-  const requiresDestination = requiresDestinationForAction(action ?? step);
-  const requiresTarget = requiresTargetForAction(action ?? step);
-  const requiresArea = requiresAreaMarkerForAction(action ?? step);
-  // A self-centered area (an emanation) is always centered on the caster, and a target-centered one
-  // (e.g. Circle of Protection, "Range touch") resolves through the target-picker instead -- neither
-  // has anything to manually place, so the template button only makes sense for burst/cone/line,
-  // which genuinely need a player-picked point/aim.
-  const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step) && !isTargetCenteredAreaAction(action ?? step);
-  const stepTraitChips = traitChips(action ?? step);
-  const status = executionStatus(step);
-  const isExecutionDone = status === "done";
-  const canRunStep = readonly !== true || gmExecute === true;
-  const sustainLabel = isSustainAction(action ?? step) && step?.sustainedSpell?.name
-    ? t("Panel.SustainLabel", "Sustain: {name}", { name: step.sustainedSpell.name })
-    : "";
-  const targetLabel = sustainLabel || stepTargetLabel(rawTargetName(step, action), { requiresTarget, requiresDestination });
-  const stepAreaLabel = areaLabel(step?.areaMarker);
-  const readiness = isExecutionDone
-    ? { status: "ready", choices: [], warning: "" }
-    : executionReadinessForStep(step, action ?? step);
-  const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
-  // A completed step's readiness/validity warnings are stale — don't surface them.
-  const warning = isExecutionDone ? "" : (readiness.warning || rawWarning);
-  const canShowExecuteStep = canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
-  const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
-  const canEditStepOrder = readonly !== true && reorderLocked !== true;
-  // Per-strike multiple-attack-penalty control: shows the current MAP and lets the owner cycle it
-  // (auto -> 0 -> -5 -> -10 -> auto) for abilities that keep MAP flat across attacks.
-  const isAttackStep = Number.isFinite(step?.attackIndex);
-  const mapPenaltyValue = Number(step?.mapPenalty) || 0;
-  const mapToolLabel = mapPenaltyValue > 0
-    ? t("Panel.MapValue", "MAP -{penalty}", { penalty: mapPenaltyValue })
-    : t("Panel.MapFull", "MAP 0");
-  const mapPinned = step?.mapPinned === true;
-  const mapToolTip = mapPinned
-    ? t("Panel.MapPinned", "MAP pinned to {label}. Click to cycle.", { label: mapToolLabel })
-    : t("Panel.MapAuto", "MAP auto ({label}). Click to pin.", { label: mapToolLabel });
-  // Per-Stride movement-type control: lets the owner travel on a non-walking speed (fly/burrow/swim/
-  // climb) when the actor has one, sizing the reachable range to that speed. Only shown when the
-  // actor actually has more than one movement type to choose from.
-  const movementAction = stepMovementAction(step);
-  const movementToolLabel = movementActionLabel(movementAction);
-  const canCycleMovement = isSpeedBasedMovementStep(action ?? step)
-    && canRunStep && !isExecutionDone && movementOptions.length > 1;
-  const movementToolTip = t("Panel.MovementCycle", "Stride on {label} Speed. Click to change.", { label: movementToolLabel });
-  // Per-atom weapon control: a distinct-target multiattack's atoms (e.g. a Kraken's two Double
-  // Attack strikes) each default to the actor's single best Strike; let the owner independently
-  // pick which of the actor's other ready Strikes backs THIS atom instead. Only shown when the
-  // actor actually has more than one Strike to choose from.
-  const weaponToolLabel = action?.item?.name ?? t("Panel.WeaponDefault", "Default");
-  const isStrikeAtom = action?.executable === "strike" || action?.source === "strike";
-  const canCycleWeapon = Boolean(step?.groupId) && isStrikeAtom && canRunStep && !isExecutionDone && weaponOptions.length > 1;
-  const weaponToolTip = t("Panel.WeaponCycle", "Attacking with {label}. Click to change.", { label: weaponToolLabel });
-  return {
-    ...display,
-    ...step,
-    action,
-    displayIndex: index,
-    position: index + 1,
-    instanceId: step?.instanceId,
-    readonly,
-    name: action?.name ?? step?.name ?? step?.actionKey ?? t("Panel.UnknownAction", "Unknown action"),
-    reason: action?.reason ?? step?.reason ?? "",
-    targetLabel,
-    requiresDestination,
-    requiresTarget,
-    requiresArea,
-    canChooseArea,
-    areaLabel: stepAreaLabel,
-    hasAreaMarker: Boolean(step?.areaMarker),
-    executionStatus: status,
-    executionLabel: executionLabel(step),
-    executionTooltip: step?.execution?.error ?? executionLabel(step),
-    isExecutionDone,
-    isExecutionFailed: status === "failed",
-    canShowExecuteStep,
-    canExecuteStep: !isAwaitingGm && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true && readiness.status === "ready",
-    executionBlocked: executionBlocked || isAwaitingGm,
-    executeTooltip: isAwaitingGm
-      ? t("Panel.AwaitingGm", "Waiting for the GM…")
-      : (executionBlocked ? (readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing.")) : t("Panel.ExecuteStep", "Execute this step")),
-    awaitingGm: isAwaitingGm,
-    awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM…"),
-    canCycleMap: isAttackStep && canRunStep && !isExecutionDone,
-    mapToolLabel,
-    mapToolTip,
-    mapPinned,
-    canCycleMovement,
-    movementToolLabel,
-    movementToolTip,
-    canCycleWeapon,
-    weaponToolLabel,
-    weaponToolTip,
-    canDragStep: canEditStepOrder,
-    // Per-step revert shows for the owner, or for a GM running an AFK player's shared plan.
-    canRevertStep: isExecutionDone && canRunStep,
-    warning,
-    traitChips: stepTraitChips,
-    hasTraitChips: stepTraitChips.length > 0,
-    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
-  };
-}
-
-function filterBuilderTabActions(actions, query) {
-  const terms = searchTerms(query);
-  if (!terms.length) return actions;
-  return actions.filter((action) => {
-    const haystack = actionSearchHaystack(action);
-    return terms.every((term) => haystack.includes(term));
-  });
-}
-
-function decorateBuilderTab(tab, activeTab, { readonly = false, searchQuery = "" } = {}) {
-  const quickenedActions = filterBuilderTabActions(tab.quickened ?? [], searchQuery)
-    .map((action) => decorateAction(action, { hideTarget: true, readonly }));
-  const categorizedActions = filterBuilderTabActions(tab.all, searchQuery)
-    .filter((action) => !action.favorite)
-    .map((action) => decorateAction(action, { hideTarget: true, readonly }));
-  const sections = [
-    {
-      id: "favorites",
-      label: t("Section.Favorites", "Favorites"),
-      isFavoritesSection: true,
-      actions: filterBuilderTabActions(tab.favorites, searchQuery)
-        .map((action) => decorateAction(action, { readonly, canDragFavorite: true })),
-    },
-    ...(quickenedActions.length
-      ? [{ id: "quickened", label: t("Section.Quickened", "Quickened actions"), actions: quickenedActions }]
-      : []),
-    ...groupActionsByBuilderCategory(categorizedActions),
-  ];
-  return {
-    ...tab,
-    active: tab.id === activeTab,
-    glyphIcon: actionGlyphIcon(tab.cost),
-    searchQuery: String(searchQuery ?? ""),
-    sections: sections.map((section) => ({
-      ...section,
-      hasActions: section.actions.length > 0,
-    })),
-  };
-}
-
-// Search matches the action's title only. Including the prose fields (reason, disabledReason,
-// target/cost labels) meant a query like "reach" matched "Force Open" via "...in reach.",
-// which reads as nonsense to the user. Slug is the title normalized, so it stays.
-function actionSearchHaystack(action) {
-  return [
-    action?.name,
-    action?.slug,
-  ].map((part) => String(part ?? "").toLowerCase()).join(" ");
-}
-
-function searchTerms(query) {
-  return String(query ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-}
-
-function remainingActionPoolSummary(builder) {
-  const normal = Number(builder?.remainingNormalActions ?? 0);
-  const quickened = Number(builder?.remainingQuickenedActions ?? 0);
-  if (quickened <= 0) {
-    return t(
-      normal === 1 ? "Summary.NormalActionLeft" : "Summary.NormalActionsLeft",
-      normal === 1 ? "{count} normal action left" : "{count} normal actions left",
-      { count: normal },
-    );
-  }
-  return t("Summary.NormalQuickenedLeft", "{normal} normal, {quickened} quickened left", { normal, quickened });
-}
-
-function decoratedSustainedSpells(entries, { readonly = false } = {}) {
-  return (Array.isArray(entries) ? entries : []).map((entry) => {
-    const effectCount = entry.effectIds?.length ?? entry.effects?.length ?? 0;
-    const templateCount = entry.templateRefs?.length ?? 0;
-    const statusLabel = entry.sustained
-      ? t("Sustain.Sustained", "Sustained")
-      : entry.planned ? t("Sustain.Planned", "Planned") : t("Sustain.NeedsSustain", "Needs sustain");
-    const detailParts = [];
-    if (effectCount) {
-      detailParts.push(t(effectCount === 1 ? "Sustain.EffectOne" : "Sustain.EffectMany", effectCount === 1 ? "{count} effect" : "{count} effects", { count: effectCount }));
-    }
-    if (templateCount) {
-      detailParts.push(t(templateCount === 1 ? "Sustain.TemplateOne" : "Sustain.TemplateMany", templateCount === 1 ? "{count} template" : "{count} templates", { count: templateCount }));
-    }
-    return {
-      ...entry,
-      effectCount,
-      templateCount,
-      detailLabel: detailParts.join(" - "),
-      statusLabel,
-      statusClass: entry.sustained ? "is-sustained" : entry.planned ? "is-planned" : "needs-sustain",
-      canAdd: readonly !== true && entry.planned !== true && entry.sustained !== true,
-    };
-  });
-}
-
-function sustainedSpellDraftFields(entry) {
-  return {
-    id: entry?.id,
-    name: entry?.name ?? t("Sustain.DefaultName", "Sustained spell"),
-    spellUuid: entry?.spellUuid ?? null,
-    effectIds: Array.isArray(entry?.effectIds) ? [...entry.effectIds] : [],
-    templateRefs: Array.isArray(entry?.templateRefs) ? [...entry.templateRefs] : [],
-  };
-}
-
-// Tag each attack step with its multiple-attack-penalty level by position in the sequence, so the
-// 2nd/3rd strike rolls (and displays) at the right MAP rather than always at full bonus. Continues
-// the running attack count from `startCount` and returns the updated count for the next list. The
-// penalty is written onto the step and its action for the display label; `attackIndex` (1-based)
-// drives the variant the executor rolls.
-function injectMapInfo(steps, startCount = 0) {
-  let attackCount = startCount;
-  const list = Array.isArray(steps) ? steps : [];
-  const tagged = [];
-  let i = 0;
-  while (i < list.length) {
-    const step = list[i];
-    const action = step?.action ?? step;
-    if (!isAttackAction(action)) {
-      tagged.push(step);
-      i += 1;
-      continue;
-    }
-    // Every atom of the same composite (e.g. both of a Kraken's Double Attack strikes) shares one
-    // MAP tier -- the ability's own mapAttacks ("counts as two attacks") advances the running count
-    // once, for whatever comes AFTER the whole composite finishes, not once per atom, which would
-    // over-count a 2-strike ability as 4 attacks' worth of advancement instead of 2 and incorrectly
-    // escalate MAP between its own attacks. Some grouped composites (Twin Takedown, Flurry of Blows,
-    // Twin Feint, Hunted Shot) explicitly apply MAP normally per strike instead -- mapAppliesPerStrike
-    // opts a group out of this shared-tier scan so each atom advances and tiers independently.
-    const groupId = step?.groupId;
-    const perStrikeMap = action?.activityProfile?.mapAppliesPerStrike === true;
-    let end = i + 1;
-    if (groupId && !perStrikeMap) {
-      while (end < list.length && list[end]?.groupId === groupId) end += 1;
-    }
-    const groupSteps = list.slice(i, end);
-    const autoLevel = Math.min(2, attackCount); // position-derived MAP level: 0, 1, 2
-    attackCount += attacksTowardMap(groupSteps[0]?.action ?? groupSteps[0]);
-    for (const groupStep of groupSteps) {
-      const groupAction = groupStep?.action ?? groupStep;
-      // A player can pin a specific MAP level per strike (0 / -5 / -10); some abilities keep MAP
-      // flat across consecutive attacks, so the auto position isn't always right. `mapOverride`
-      // null = auto.
-      const override = Number.isFinite(groupStep?.mapOverride) ? Math.max(0, Math.min(2, groupStep.mapOverride)) : null;
-      const level = override ?? autoLevel;
-      const penalty = mapPenalty(groupAction, level);
-      tagged.push({
-        ...groupStep,
-        attackIndex: level + 1,
-        mapPenalty: penalty,
-        mapPinned: override !== null,
-        action: groupStep?.action ? { ...groupStep.action, mapPenalty: penalty } : groupStep?.action,
-      });
-    }
-    i = end;
-  }
-  return { steps: tagged, attackCount };
-}
-
-// Collapses consecutive same-groupId steps (2+) into one { isGroup: true, children } entry for
-// display, so a distinct-target ability's atoms (e.g. a Kraken's two Double Attack Strikes) nest
-// under one shared header instead of showing as identical-looking independent rows. A lone,
-// unpaired member of a group (e.g. after a manual delete) is passed through unchanged -- a header
-// around a single child adds visual noise with no benefit.
-function groupDraftSteps(steps) {
-  const list = Array.isArray(steps) ? steps : [];
-  const grouped = [];
-  let i = 0;
-  while (i < list.length) {
-    const step = list[i];
-    const groupId = step?.groupId;
-    if (!groupId) {
-      grouped.push(step);
-      i += 1;
-      continue;
-    }
-    let end = i + 1;
-    while (end < list.length && list[end]?.groupId === groupId) end += 1;
-    const members = list.slice(i, end);
-    if (members.length < 2) {
-      grouped.push(step);
-      i += 1;
-      continue;
-    }
-    const prefix = `${members[0].groupLabel} -> `;
-    const groupTraitChips = traitChips({ traits: members[0].groupTraits ?? [], item: members[0].groupItem ?? null });
-    grouped.push({
-      isGroup: true,
-      groupLabel: members[0].groupLabel,
-      instanceId: members[0].instanceId,
-      actionGlyphIcon: members[0].actionGlyphIcon,
-      costLabel: members[0].costLabel,
-      canDragStep: members[0].canDragStep,
-      groupItem: members[0].groupItem ?? null,
-      groupUuid: members[0].groupUuid ?? null,
-      traitChips: groupTraitChips,
-      hasTraitChips: groupTraitChips.length > 0,
-      children: members.map((member) => ({
-        ...member,
-        name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
-        canDragStep: false,
-        // The group header already shows the composite's real cost glyph; repeating a
-        // per-atom glyph on each child is misleading (atoms after the first are forced to
-        // cost 0, see builderAtomicActionsForStep) and reads as if the atom were free.
-        isGroupChild: true,
-      })),
-    });
-    i = end;
-  }
-  return grouped;
-}
-
-function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
-  if (!builder) return null;
-  const draftReadonly = builder.draft?.readonly === true;
-  const isPlayerPlan = builder.draft?.shared === true;
-  // The GM may execute a player's shared plan on their behalf even though it's read-only to edit.
-  const gmCanRunPlayerPlan = globalThis.game?.user?.isGM === true && isPlayerPlan;
-  const sharedDraftUserName = String(builder.draft?.userName ?? "").trim();
-  const rawSteps = builder.draft?.steps ?? [];
-  const reorderLocked = rawSteps.some((step) => executionStatus(step) !== "pending");
-  const planMap = injectMapInfo(rawSteps, 0);
-  const rawDraftSteps = planMap.steps
-    .map((step, index) => decorateDraftStep(step, index, {
-      readonly: draftReadonly,
-      gmExecute: gmCanRunPlayerPlan,
-      reorderLocked,
-      awaitingGm,
-      movementOptions,
-      weaponOptions,
-    }));
-  const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
-  const draftSteps = rawDraftSteps.map((step) => ({
-    ...step,
-    isCurrentExecution: step.instanceId === currentExecutionStep?.instanceId,
-  }));
-  const active = TABS.has(activeTab) ? activeTab : DEFAULT_TAB;
-  const sustainedEntries = decoratedSustainedSpells(sustainedSpells, { readonly: draftReadonly });
-  const rawUncounted = builder.draft?.uncounted ?? [];
-  const uncountedReorderLocked = rawUncounted.some((step) => executionStatus(step) !== "pending");
-  // Uncounted attacks come after the plan in the turn, so their MAP continues the plan's count.
-  const uncountedMap = injectMapInfo(rawUncounted, planMap.attackCount);
-  const rawUncountedSteps = uncountedMap.steps.map((step, index) => decorateDraftStep(step, index, {
-    readonly: draftReadonly,
-    gmExecute: gmCanRunPlayerPlan,
-    reorderLocked: uncountedReorderLocked,
-    awaitingGm,
-    movementOptions,
-    weaponOptions,
-  }));
-  const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
-  const uncountedEntries = rawUncountedSteps.map((step) => ({
-    ...step,
-    isCurrentExecution: step.instanceId === currentUncountedStep?.instanceId,
-  }));
-  const allExecutable = [...draftSteps, ...uncountedEntries];
-  const executedCount = allExecutable.filter((step) => step.executionStatus === "done").length;
-  const canResetExecution = allExecutable.some((step) => step.executionStatus === "done" || step.executionStatus === "failed");
-  const decoratedTabsList = ACTION_BUILDER_TABS.map((tab) => ({
-    ...decorateBuilderTab(builder.tabs[tab.id], active, { readonly: draftReadonly, searchQuery }),
-    label: t(`Tab.${tab.id}`, tab.label),
-  }));
-  // Every tab's actions are already filtered by `searchQuery` above (decorateBuilderTab runs for
-  // every tab, not just the active one) -- while searching, surface every tab's matches instead of
-  // just the active tab's, tagged with which tab each match came from.
-  const mergedSearchResults = decoratedTabsList.flatMap((tab) => tab.sections
-    .filter((section) => section.hasActions)
-    .map((section) => ({ ...section, tabLabel: tab.label })));
-  return {
-    ...builder,
-    readonly: draftReadonly,
-    tabsList: decoratedTabsList,
-    mergedSearchResults,
-    activeTab: active,
-    activeTabLabel: t(`Tab.${active}`, ACTION_BUILDER_TABS.find((tab) => tab.id === active)?.label ?? "1 Action"),
-    searchQuery: String(searchQuery ?? ""),
-    draft: {
-      ...(builder.draft ?? {}),
-      steps: draftSteps,
-      hasSteps: draftSteps.length > 0,
-      readonly: draftReadonly,
-      countLabel: draftSteps.length
-        ? t(draftSteps.length === 1 ? "Summary.StepOne" : "Summary.StepMany", draftSteps.length === 1 ? "{count} step" : "{count} steps", { count: draftSteps.length })
-        : t("Summary.Empty", "Empty"),
-      confidenceClass: draftSteps.length ? "medium" : "low",
-      warnings: [...new Set(draftSteps.map((step) => step.warning).filter(Boolean))],
-    },
-    sustainedSpells: {
-      hasEntries: sustainedEntries.length > 0,
-      entries: sustainedEntries,
-    },
-    uncounted: {
-      hasEntries: uncountedEntries.length > 0,
-      entries: uncountedEntries,
-    },
-    execution: {
-      hasSteps: allExecutable.length > 0,
-      canReset: (draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution,
-      progressLabel: executedCount > 0 ? t("Summary.Progress", "{done}/{total} done", { done: executedCount, total: allExecutable.length }) : "",
-      hasStatus: ((draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution) || executedCount > 0,
-      current: currentExecutionStep ?? null,
-      currentInstanceId: currentExecutionStep?.instanceId ?? "",
-    },
-    isPlayerPlan,
-    playerPlanLabel: t("Summary.PlayerPlan", "Player plan"),
-    playerPlanTooltip: sharedDraftUserName
-      ? t("Summary.PlayerPlanFrom", "Player plan from {user}", { user: sharedDraftUserName })
-      : t("Summary.PlayerPlan", "Player plan"),
-    poolSummary: remainingActionPoolSummary(builder),
-    totalSummary: t(
-      builder.remainingTotalActions === 1 ? "Summary.TotalActionLeft" : "Summary.TotalActionsLeft",
-      builder.remainingTotalActions === 1 ? "{count} total action left" : "{count} total actions left",
-      { count: builder.remainingTotalActions },
-    ),
-    reactionSummary: builder.usage?.reaction ? t("Summary.ReactionPlanned", "Reaction planned") : t("Summary.ReactionOpen", "Reaction open"),
-  };
-}
-
-function debugAction(action, index) {
-  const profileParts = action?.activityProfile
-    ? Object.entries(action.activityProfile)
-      .filter(([, value]) => value === true || Number.isFinite(value))
-      .map(([key, value]) => value === true ? camelCase(key) : `${camelCase(key)}:${value}`)
-    : [];
-  const skillCheckLabel = action?.skillCheck?.label ?? "";
-  if (skillCheckLabel) profileParts.push(skillCheckLabel);
-  return {
-    index,
-    name: action?.name ?? t("Panel.UnknownAction", "Unknown action"),
-    slug: action?.slug ?? "",
-    source: action?.source ?? "",
-    role: action?.role ?? "",
-    profile: profileParts.join(", "),
-    skillCheckLabel,
-    available: action?.available !== false,
-    score: Number.isFinite(action?.score) ? action.score : null,
-    costLabel: actionCostLabel(action?.actionCost ?? 1),
-    targetLabel: action?.suggestedTarget?.name ?? "",
-    reason: action?.reason ?? action?.reasons?.[0] ?? "",
-  };
-}
-
 async function renderSheet(document) {
   const sheet = document?.sheet;
   if (!sheet?.render) return false;
@@ -1110,15 +155,6 @@ async function createGuidance(step, actor) {
   globalThis.ui?.notifications?.info?.(`${name}: ${step?.reason ?? t("Guidance.ReviewShort", "Review recommendation.")}`);
 }
 
-function markManualDraft(draft) {
-  return {
-    ...draft,
-    source: "manual",
-    autoFillPlanId: null,
-    autoFillPlanSummary: "",
-  };
-}
-
 class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: `${MODULE_ID}-panel`,
@@ -1153,7 +189,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this.refreshSource = options.refreshSource ?? "manual";
     this.expanded = typeof state.expanded === "boolean"
       ? state.expanded
-      : !readSetting(SETTINGS.compactDefault, true);
+      : !settingOrDefault(SETTINGS.compactDefault, true);
     this.activeTab = TABS.has(state.activeTab) ? state.activeTab : DEFAULT_TAB;
     this.searchQuery = typeof state.searchQuery === "string" ? state.searchQuery : "";
     this._context = null;
@@ -1221,136 +257,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _prepareContext(options) {
     await super._prepareContext(options);
-
-    const context = readCombatContext(this.refreshSource, { combatant: this._selectedCombatant });
-    this._context = context;
-
-    if (!context) {
-      this._candidates = [];
-      this._rejected = [];
-      this._detected = [];
-      this._plans = [];
-      this._autoFillPlans = [];
-      this._plan = null;
-      this._builder = null;
-      this._planningContext = null;
-      this._movementOptions = [];
-      this._weaponOptions = [];
-      return this._viewContext(null);
-    }
-
-    const draft = readDraftPlan(context);
-    const sharedDraft = game?.user?.isGM === true ? readSharedDraftPlan(context) : null;
-    const sharedDraftKnown = hasSharedDraftPlan(sharedDraft);
-    const gmViewingPlayerPlan = game?.user?.isGM === true && isPlayerControlledActor(context.actor?.document ?? context.actor);
-    const useSharedDraft = sharedDraftKnown && (gmViewingPlayerPlan || shouldDisplaySharedDraft(draft, sharedDraft));
-    // When the GM is viewing a player's shared plan (e.g. the player went AFK), let the GM execute it
-    // on their behalf. The draft stays read-only for editing, but execution/revert is permitted and
-    // writes back to the shared draft rather than the GM's local one.
-    this._gmExecuteMode = gmViewingPlayerPlan && useSharedDraft;
-    // Mirroring/locking to the shared draft only makes sense while the player is actively online —
-    // otherwise a stale shared draft from earlier in the session (even an empty one; any draft the
-    // player ever shared stamps sharedDraftKnown for the rest of the encounter) would keep an absent
-    // player's actor stuck read-only forever. Once they're offline, fall through to the GM's own
-    // editable local draft — the same one any other actor the GM runs already uses.
-    const activeDraft = (gmViewingPlayerPlan && useSharedDraft)
-      ? { ...sharedDraft, readonly: true, shared: true }
-      : gmViewingPlayerPlan
-        ? { steps: [], readonly: true, shared: true, userName: "" }
-        : draft;
-    const baseBuild = buildCandidates(context);
-    const planningContext = projectContextForDraftDestination(context, activeDraft);
-    this._planningContext = planningContext;
-    const candidateBuild = planningContext === context ? baseBuild : buildCandidates(planningContext);
-    const { candidates, rejected, detected } = candidateBuild;
-    const baseBuilderCandidates = baseBuild.candidates.map(withBuilderActionFields);
-    const builderCandidates = candidates.map(withBuilderActionFields);
-    const builderRejected = rejected.map((entry) => ({
-      ...entry,
-      action: withBuilderActionFields(entry?.action),
-    }));
-    const draftStepActions = projectedDraftStepActions(context, activeDraft);
-    const autoFillPlans = buildTurnPlans(context, baseBuilderCandidates);
-    const plans = buildTurnPlans(planningContext, builderCandidates);
-    if (this._pinnedPlanId && !autoFillPlans.some((candidatePlan) => candidatePlan?.id === this._pinnedPlanId)) {
-      this._pinnedPlanId = null;
-    }
-    const plan = selectDisplayPlan(plans, this._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
-    const favorites = readActionFavorites(context);
-
-    this._candidates = builderCandidates;
-    this._rejected = rejected;
-    this._detected = detected;
-    this._plans = plans;
-    this._autoFillPlans = autoFillPlans;
-    this._plan = plan;
-    const builderModel = buildActionBuilderModel({
-      context: planningContext,
-      candidates: builderCandidates,
-      draftFallbackActions: planningContext === context ? [] : baseBuilderCandidates,
-      rejected: builderRejected,
-      plans: plan ? [plan] : plans,
-      draft: activeDraft,
-      draftStepActions,
-      favorites,
-    });
-    const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
-    this._movementOptions = actorMovementOptions(this._actorForMovement(context));
-    this._weaponOptions = actorStrikeOptions(this._actorForMovement(context), context);
-    this._builder = decorateBuilder(builderModel, this.activeTab, this.searchQuery, { sustainedSpells, awaitingGm: this._awaitingGm, movementOptions: this._movementOptions, weaponOptions: this._weaponOptions });
-    this._builder.readonly = this._builder.readonly || gmViewingPlayerPlan;
-
-    return this._viewContext(context);
+    return preparePanelContext(this);
   }
 
   _viewContext(context) {
-    const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
-    // The GM can hide Auto-fill from players so they plan their own turns rather than taking the
-    // generic recommendation. The GM always keeps it.
-    const showAutoFill = game?.user?.isGM === true || !readSetting(SETTINGS.hideAutoFillFromPlayers, false);
-    // Computed once and reused below -- _fillGapPlans() (inside _activeAutoFillPlans) reruns the
-    // candidate search, so calling it twice per render would double that cost for no reason.
-    const activePlans = this._activeAutoFillPlans();
-    const selectedAutoFill = selectDisplayPlan(activePlans, this._activePinnedPlanId())
-      ?? this._builder?.autoFill
-      ?? this._plan;
-    const autoFill = decoratePlan(selectedAutoFill, 0);
-    const autoFillCycle = autoFillCyclePlans(activePlans);
-    const autoFillCycleIndex = autoFillCycle.findIndex((plan) => plan?.id === selectedAutoFill?.id);
-    const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
-    const draftSteps = this._builder?.draft?.steps ?? [];
-
-    return {
-      actor: context?.actor ?? null,
-      token: context?.token ?? null,
-      plan: autoFill,
-      headerSteps: groupDraftSteps(draftSteps),
-      headerSummary: "",
-      builder: this._builder,
-      expanded: this.expanded,
-      activeTab: this.activeTab,
-      browserOpen: Boolean(this._browser),
-      showDebug,
-      showAutoFill,
-      autoFillCycle: {
-        canCycle: autoFillCycle.length > 1,
-        label: `${autoFillCyclePosition}/${Math.max(1, autoFillCycle.length)}`,
-        tooltip: t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
-        ariaLabel: t("Panel.AutoFillCycleAria", "Cycle Auto-fill plan"),
-      },
-      hasContext: Boolean(context),
-      refreshSource: this.refreshSource,
-      debug: {
-        candidates: this._candidates.map(debugAction),
-        rejected: this._rejected.map((entry, index) => ({
-          index,
-          action: debugAction(entry?.action, index),
-          reason: entry?.reason ?? "",
-        })),
-        detected: this._detected.map(debugAction),
-        context,
-      },
-    };
+    return viewPanelContext(this, context);
   }
 
   _selectedAutoFillPlan() {
@@ -1408,162 +319,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // hover overlay vanish. The preview is managed by step hover and explicit actions, and
     // the destination-picker overlay is re-shown below.
     this._restorePosition();
-
-    const element = this.element;
-    this._activateDrag(element);
-    this._activateActionListScrollPerformance(element);
-
-    element.querySelector("[data-action='toggle-browser']")
-      ?.addEventListener("click", () => this._toggleBrowser());
-    element.querySelector("[data-action='toggle-compact']")
-      ?.addEventListener("click", () => this._setExpanded(!this.expanded));
-    element.querySelector("[data-action='refresh']")
-      ?.addEventListener("click", () => this.refresh("button"));
-
-    // Cost tabs, search, and the action add/favorite/open controls live in the detached
-    // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
-    for (const button of element.querySelectorAll("[data-add-sustain-spell]")) {
-      button.addEventListener("click", () => this._addSustainSpell(button.dataset.addSustainSpell));
-    }
-
-    for (const button of element.querySelectorAll("[data-remove-draft-step]")) {
-      button.addEventListener("click", () => this._removeDraftStep(button.dataset.removeDraftStep));
-    }
-
-    for (const button of element.querySelectorAll("[data-duplicate-draft-step]")) {
-      button.addEventListener("click", () => this._duplicateDraftStep(button.dataset.duplicateDraftStep));
-    }
-
-    for (const button of element.querySelectorAll("[data-cycle-map]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._cycleStepMap(button.dataset.cycleMap);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-cycle-movement]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._cycleStepMovement(button.dataset.cycleMovement);
-      });
-    }
-    for (const button of element.querySelectorAll("[data-cycle-weapon]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._cycleStepWeapon(button.dataset.cycleWeapon);
-      });
-    }
-
-    for (const container of element.querySelectorAll("[data-drag-list]")) {
-      let draggingId = null;
-      for (const handle of container.querySelectorAll("[data-drag-draft-step]")) {
-        handle.addEventListener("dragstart", (event) => {
-          draggingId = handle.dataset.dragDraftStep;
-          event.dataTransfer.effectAllowed = "move";
-          event.dataTransfer.setData("text/plain", draggingId);
-          handle.closest("[data-drag-row]")?.classList.add("is-dragging");
-        });
-        handle.addEventListener("dragend", () => {
-          draggingId = null;
-          for (const row of container.querySelectorAll(".is-dragging, .drop-target")) {
-            row.classList.remove("is-dragging", "drop-target");
-          }
-        });
-      }
-      for (const row of container.querySelectorAll("[data-drag-row]")) {
-        row.addEventListener("dragover", (event) => {
-          if (!draggingId) return;
-          event.preventDefault();
-          event.stopPropagation();
-          row.classList.add("drop-target");
-        });
-        row.addEventListener("dragleave", (event) => {
-          event.stopPropagation();
-          row.classList.remove("drop-target");
-        });
-        row.addEventListener("drop", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          row.classList.remove("drop-target");
-          if (draggingId) this._reorderDraftStep(draggingId, row.dataset.dragRow);
-        });
-      }
-    }
-
-    for (const button of element.querySelectorAll("[data-auto-fill]")) {
-      button.addEventListener("click", () => this._autoFillDraft());
-    }
-
-    for (const button of element.querySelectorAll("[data-cycle-auto-fill]")) {
-      button.addEventListener("click", () => this._cycleAutoFillDraft());
-      button.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        this._cycleAutoFillDraft(-1);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-reset-execution]")) {
-      button.addEventListener("click", () => this._resetExecution());
-    }
-
-    for (const button of element.querySelectorAll("[data-revert-step]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._revertDraftStep(button.dataset.revertStep);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-execute-draft-step]")) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this._executeDraftStep(button.dataset.executeDraftStep, event);
-      });
-    }
-
-    for (const button of element.querySelectorAll("[data-choose-destination]")) {
-      button.addEventListener("click", () => this._chooseDestination(button.dataset.chooseDestination));
-    }
-
-    for (const button of element.querySelectorAll("[data-choose-target]")) {
-      button.addEventListener("click", () => this._chooseTarget(button.dataset.chooseTarget));
-    }
-
-    for (const button of element.querySelectorAll("[data-choose-area]")) {
-      button.addEventListener("click", () => this._chooseArea(button.dataset.chooseArea));
-    }
-
-    for (const button of element.querySelectorAll("[data-remove-area]")) {
-      button.addEventListener("click", () => this._removeAreaTemplate(button.dataset.removeArea));
-    }
-
-    for (const button of element.querySelectorAll("[data-open-draft-step]")) {
-      button.addEventListener("click", () => this._openDraftStep(button.dataset.openDraftStep));
-    }
-
-    for (const button of element.querySelectorAll("[data-open-draft-group]")) {
-      button.addEventListener("click", () => this._openDraftGroup(button.dataset.openDraftGroup));
-    }
-
-    for (const button of element.querySelectorAll("[data-execute-step]")) {
-      button.addEventListener("click", () => this.executeStep(Number(button.dataset.executeStep)));
-    }
-
-    for (const previewElement of element.querySelectorAll("[data-preview-step]")) {
-      previewElement.addEventListener("pointerenter", () => this._showActionPreview(previewElement));
-      previewElement.addEventListener("pointerleave", (event) => this._clearActionPreviewUnlessPicking(event));
-      previewElement.addEventListener("pointercancel", (event) => this._clearActionPreviewUnlessPicking(event));
-    }
-
-    for (const previewElement of element.querySelectorAll("[data-preview-draft-step]")) {
-      previewElement.addEventListener("pointerenter", () => this._showDraftActionPreview(previewElement));
-      previewElement.addEventListener("pointerleave", (event) => this._clearActionPreviewUnlessPicking(event));
-      previewElement.addEventListener("pointercancel", (event) => this._clearActionPreviewUnlessPicking(event));
-    }
-
-    if (readSetting(SETTINGS.rememberPanelPosition, true)) {
-      element.addEventListener("pointerup", () => this._savePosition(), { passive: true });
-    }
-
+    activatePanelRenderBindings(this, this.element);
     this._restoreDestinationPickerPreview();
 
     // Keep the detached browser window in sync: every panel render (mutation, refresh, or
@@ -1579,7 +335,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   // Context for the browser window: it renders the panel's already-computed builder model.
   browserViewContext() {
-    const showDebug = Boolean(game?.user?.isGM && readSetting(SETTINGS.showDebugTab, false));
+    const showDebug = Boolean(game?.user?.isGM && settingOrDefault(SETTINGS.showDebugTab, false));
     return {
       builder: this._builder,
       readonly: this._builder?.readonly === true,
@@ -1766,878 +522,143 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   // Reads/writes route to the shared draft when the GM is executing a player plan, otherwise to the
   // local per-user draft.
   _readActiveDraftPlan() {
-    return this._gmExecuteMode === true
-      ? readSharedDraftPlan(this._context)
-      : readDraftPlan(this._context);
+    return readPanelActiveDraftPlan(this);
   }
 
   async _persistActiveDraftStep(step, listKey) {
-    const targetList = listKey ?? draftListForInstance(this._readActiveDraftPlan(), step.instanceId);
-    if (this._gmExecuteMode === true) {
-      const draft = readSharedDraftPlan(this._context);
-      const list = [...(draft[targetList] ?? [])];
-      const index = list.findIndex((entry) => entry.instanceId === step.instanceId);
-      if (index >= 0) list[index] = step;
-      else list.push(step);
-      await this._writeActiveSharedDraft({ ...draft, [targetList]: list });
-      return;
-    }
-    upsertDraftStep(this._context, step, targetList);
-    await this._syncDraftToGM();
+    return persistPanelActiveDraftStep(this, step, listKey);
   }
 
   async _writeActiveDraftPlan(draft) {
-    if (this._gmExecuteMode === true) {
-      await this._writeActiveSharedDraft(draft);
-      return;
-    }
-    writeDraftPlan(this._context, draft);
-    await this._syncDraftToGM();
+    return writePanelActiveDraftPlan(this, draft);
   }
 
-  // Preserve the player's ownership fields; only the steps / execution state changes.
   async _writeActiveSharedDraft(draft) {
-    writeSharedDraftPlan(this._context, draft);
-    await writeSharedDraftPlanActorFlag(this._context, draft);
+    return writePanelActiveSharedDraft(this, draft);
   }
 
   async _addAction(actionKey) {
-    if (!this._canEditDraft()) return;
-    const action = this._findBuilderAction(actionKey);
-    if (!this._context || !action) return;
-
-    // The normal plan respects the turn's action economy; only uncounted actions
-    // run off-budget. Refuse a plan add that would exceed the budget.
-    if (action.overBudget) {
-      globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
-      return;
-    }
-
-    const draft = this._readActiveDraftPlan();
-    // A composite (e.g. Rush, Sudden Charge) atomizes into its Stride/Strike parts, mirroring
-    // Auto-fill (_autoFillDraft) -- a raw single-step push would leave the whole ability un-split
-    // and unexecutable. A plain action passes straight through unchanged (same array, same
-    // reference), so action.key is kept for that common case instead of re-deriving it.
-    const atoms = builderAtomicActionsForStep(action);
-    const newSteps = atoms.length === 1 && atoms[0] === action
-      ? [action]
-      : atoms;
-    await this._writeActiveDraftPlan(markManualDraft({
-      ...draft,
-      steps: [
-        ...(draft.steps ?? []),
-        ...newSteps.map((atom) => {
-          // A self-centered area (e.g. an emanation) needs no manual placement -- it's always
-          // centered on the caster, so pre-fill it here the same way Auto-fill already does,
-          // instead of forcing a "Place template" prompt for something with only one possible
-          // location.
-          const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(this._context, atom) : null;
-          return {
-            instanceId: draftStepId(),
-            actionKey: atom === action ? action.key : this._actionKeyForStep(atom),
-            // Persist a display name so the step still reads correctly if its action stops being
-            // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-            name: atom?.name ?? atom?.action?.name,
-            actionCost: atom?.actionCost ?? atom?.cost,
-            requiresDestination: requiresDestinationForAction(atom),
-            ...(atom?.groupId
-              ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
-              : atom?.activityProfile?.requiresDistinctTargets
-                ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
-                : {}),
-            ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-          };
-        }),
-      ],
-    }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return addPanelAction(this, actionKey);
   }
 
-  // Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
-  // for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
   async _addUncountedAction(actionKey) {
-    if (!this._canExecuteDraft()) return;
-    const action = this._findBuilderAction(actionKey);
-    if (!this._context || !action) return;
-    const draft = this._readActiveDraftPlan();
-    // A composite (e.g. Stand -> Stride, Rush, Sudden Charge) atomizes into its separate parts,
-    // mirroring _addAction -- a raw single-step push left the whole bundled ability as one
-    // multi-action uncounted entry, asking for a target/destination the parts don't individually need.
-    const atoms = builderAtomicActionsForStep(action);
-    const newAtoms = atoms.length === 1 && atoms[0] === action ? [action] : atoms;
-    await this._writeActiveDraftPlan(markManualDraft({
-      ...draft,
-      uncounted: [
-        ...(draft.uncounted ?? []),
-        ...newAtoms.map((atom) => {
-          // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
-          const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(this._context, atom) : null;
-          return {
-            instanceId: draftStepId(),
-            actionKey: atom === action ? action.key : this._actionKeyForStep(atom),
-            // Persist a display name so the step still reads correctly if its action stops being
-            // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-            name: atom?.name ?? atom?.action?.name,
-            actionCost: atom?.actionCost ?? atom?.cost,
-            requiresDestination: requiresDestinationForAction(atom),
-            ...(atom?.groupId
-              ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
-              : atom?.activityProfile?.requiresDistinctTargets
-                ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
-                : {}),
-            ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-          };
-        }),
-      ],
-    }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return addPanelUncountedAction(this, actionKey);
   }
 
   async _addSustainSpell(spellId) {
-    if (!this._canEditDraft()) return;
-    const spell = this._findSustainedSpell(spellId);
-    const action = this._findSustainAction();
-    if (!this._context || !spell || !action || action.disabled) {
-      globalThis.ui?.notifications?.warn?.(action?.disabledReason ?? t("Notify.SustainUnavailable", "Sustain a Spell is not available."));
-      return;
-    }
-
-    const draft = this._readActiveDraftPlan();
-    await this._writeActiveDraftPlan(markManualDraft({
-      ...draft,
-      steps: [
-        ...(draft.steps ?? []),
-        {
-          instanceId: draftStepId(),
-          actionKey: action.key,
-          actionCost: action.actionCost ?? action.cost ?? 1,
-          requiresDestination: requiresDestinationForAction(action),
-          sustainedSpell: sustainedSpellDraftFields(spell),
-        },
-      ],
-    }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return addPanelSustainSpell(this, spellId);
   }
 
   async _removeDraftStep(instanceId) {
-    if (!this._canEditDraft()) return;
-    if (!this._context || !instanceId) return;
-    const draft = this._readActiveDraftPlan();
-    const listKey = draftListForInstance(draft, instanceId);
-    const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
-    await this._writeActiveDraftPlan(markManualDraft({
-      ...draft,
-      [listKey]: list.filter((step) => step.instanceId !== instanceId),
-    }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return removePanelDraftStep(this, instanceId);
   }
 
   async _duplicateDraftStep(instanceId) {
-    if (!this._canEditDraft()) return;
-    if (!this._context || !instanceId) return;
-    const draft = this._readActiveDraftPlan();
-    const listKey = draftListForInstance(draft, instanceId);
-    const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
-    const index = list.findIndex((step) => step.instanceId === instanceId);
-    if (index < 0) return;
-    const clone = { ...list[index], instanceId: draftStepId() };
-    const nextList = [...list.slice(0, index + 1), clone, ...list.slice(index + 1)];
-    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: nextList }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return duplicatePanelDraftStep(this, instanceId);
   }
 
   async _reorderDraftStep(instanceId, targetInstanceId) {
-    if (!this._canEditDraft()) return;
-    if (!this._context || !instanceId || !targetInstanceId || instanceId === targetInstanceId) return;
-    const draft = this._readActiveDraftPlan();
-    const listKey = draftListForInstance(draft, instanceId);
-    if (listKey !== draftListForInstance(draft, targetInstanceId)) return;
-    if ((draft[listKey] ?? []).some((step) => executionStatus(step) !== "pending")) {
-      globalThis.ui?.notifications?.warn?.(t("Notify.RevertBeforeReorder", "Revert executed steps before reordering."));
-      return;
-    }
-    const steps = Array.isArray(draft[listKey]) ? draft[listKey] : [];
-    const swapped = swapDraftSteps(steps, instanceId, targetInstanceId);
-    if (swapped === steps) return;
-    await this._writeActiveDraftPlan(markManualDraft({ ...draft, [listKey]: swapped }));
-    clearActionPreview();
-    await this.render({ force: true });
+    return reorderPanelDraftStep(this, instanceId, targetInstanceId);
   }
 
-  // Cycle a strike's multiple-attack-penalty level: auto -> MAP 0 -> -5 -> -10 -> auto. The chosen
-  // level is pinned on the step (mapOverride) and overrides the position-derived default, for
-  // abilities that keep MAP flat across consecutive attacks.
   async _cycleStepMap(instanceId) {
-    if (!this._canExecuteDraft()) return;
-    if (!this._context || !instanceId) return;
-    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
-    if (!step) return;
-    const current = Number.isFinite(step.mapOverride) ? step.mapOverride : null;
-    const next = current == null ? 0 : current >= 2 ? null : current + 1;
-    await this._persistActiveDraftStep({ ...step, mapOverride: next });
-    await this._syncDraftToGM();
-    await this.render({ force: true });
+    return cyclePanelStepMap(this, instanceId);
   }
 
-  // The live PF2e actor for the planning combatant, used to read its movement speeds. Prefers the
-  // canvas token's actor (freshest derived data) and falls back to the context summary's document.
   _actorForMovement(context) {
-    const ids = [
-      context?.token?.id,
-      context?.token?.uuid,
-      context?.combatant?.tokenId,
-      context?.combatant?.token?.id,
-    ].filter(Boolean);
-    // Scan placeables (canvas.tokens.get isn't reliable across versions) for the live token's actor,
-    // which carries the prepared movement speeds; fall back to the context summary's actor document.
-    for (const token of globalThis.canvas?.tokens?.placeables ?? []) {
-      const document = token?.document ?? token;
-      const matches = ids.some((id) => token?.id === id || token?.uuid === id || document?.id === id || document?.uuid === id);
-      if (matches && token?.actor) return token.actor;
-    }
-    return context?.actor?.document ?? context?.actor ?? null;
+    return actorForPanelMovement(this, context);
   }
 
-  // Cycle a Stride's movement type through the actor's available speeds (walk -> fly -> burrow ->
-  // ...-> walk). The chosen movement-action is pinned on the step (and its action) so the executor
-  // travels on that speed and the destination picker sizes the reachable range to it.
   async _cycleStepMovement(instanceId) {
-    if (!this._canExecuteDraft()) return;
-    if (!this._context || !instanceId) return;
-    const options = Array.isArray(this._movementOptions) ? this._movementOptions : [];
-    if (options.length <= 1) return;
-    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
-    if (!step) return;
-    const current = stepMovementAction(step);
-    const index = Math.max(0, options.findIndex((option) => option.action === current));
-    const next = options[(index + 1) % options.length].action;
-    await this._persistActiveDraftStep({
-      ...step,
-      movementAction: next,
-      action: step.action ? { ...step.action, movementAction: next } : step.action,
-    });
-    await this._syncDraftToGM();
-    await this.render({ force: true });
+    return cyclePanelStepMovement(this, instanceId);
   }
 
-  // Cycle which of the actor's ready Strikes backs one atom of a distinct-target multiattack
-  // (e.g. Arm -> Tentacle -> Arm for a Kraken's Double Attack). Unlike movement, this doesn't
-  // need a manual step.action merge -- findProjectedDraftAction re-derives the atom (and applies
-  // this same weaponId) fresh on every render, so persisting the id alone is enough.
   async _cycleStepWeapon(instanceId) {
-    if (!this._canExecuteDraft()) return;
-    if (!this._context || !instanceId) return;
-    const options = Array.isArray(this._weaponOptions) ? this._weaponOptions : [];
-    if (options.length <= 1) return;
-    const step = this._findActiveStep(instanceId) ?? this._findDraftStep(instanceId);
-    if (!step || !step.groupId) return;
-    const defaultId = bestReadyStrike(this._actorForMovement(this._context), this._context)?.id ?? null;
-    const current = step.weaponId ?? defaultId;
-    const index = Math.max(0, options.findIndex((option) => option.id === current));
-    const next = options[(index + 1) % options.length];
-    await this._persistActiveDraftStep({
-      ...step,
-      weaponId: next.id,
-    });
-    await this._syncDraftToGM();
-    await this.render({ force: true });
+    return cyclePanelStepWeapon(this, instanceId);
   }
 
   async _toggleFavorite(actionKey) {
-    if (!this._canEditDraft()) return;
-    if (!this._context || !actionKey) return;
-    toggleActionFavorite(this._context, actionKey);
-    await this.render({ force: true });
+    return togglePanelFavorite(this, actionKey);
   }
 
   async _reorderFavorite(key, targetKey) {
-    if (!this._canEditDraft()) return;
-    if (!this._context || !key || !targetKey || key === targetKey) return;
-    const changed = reorderActionFavorite(this._context, key, targetKey);
-    if (!changed) return;
-    await this.render({ force: true });
+    return reorderPanelFavorite(this, key, targetKey);
   }
 
   _actionKeyForStep(step) {
-    const key = actionBuilderKey(step);
-    const direct = this._findBuilderAction(key);
-    if (direct) return direct.key;
-
-    // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
-    // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
-    // which makes step.item.uuid collide with that weapon's OWN standalone candidate below. The
-    // atom's slug is deliberately the original ability's own, unique slug, so it must be checked
-    // on its own first, or the item.uuid fallback below wins the race and mislabels the step as
-    // the borrowed weapon instead of the ability that actually produced it.
-    if (step?.activityProfile?.requiresDistinctTargets) {
-      for (const tab of Object.values(this._builder?.tabs ?? {})) {
-        const action = tab.all.find((candidate) => candidate.slug === step?.slug);
-        if (action) return action.key;
-      }
-    }
-
-    for (const tab of Object.values(this._builder?.tabs ?? {})) {
-      const action = tab.all.find((candidate) =>
-        candidate.baseKey === key
-        || candidate.slug === step?.slug
-        || candidate.id === step?.id
-        // Both sides omit item.uuid for any generic, item-less action (Stride, Demoralize, Drop
-        // Prone, Raise a Shield, ...), so an unguarded === here matched undefined against undefined
-        // -- silently mis-keying a step to whichever OTHER item-less candidate happened to sort
-        // first that pass, e.g. a Stride step re-resolving to Drop Prone's own (false) "Actor is
-        // Prone" availability warning. Only compare when the step actually carries a real uuid.
-        || (step?.item?.uuid && candidate.item?.uuid === step.item.uuid));
-      if (action) return action.key;
-    }
-    return key;
+    return actionKeyForPanelStep(this, step);
   }
 
   async _autoFillDraft({ plan = null } = {}) {
-    // A fast double-click fired two overlapping runs of this function, and their interleaved
-    // async steps (each racing on this._context/this._autoFillPlans as they awaited in turn)
-    // produced a corrupted draft -- e.g. a Stride warning "Actor is Prone" for an actor who was
-    // never prone, or an atom losing its groupId. A single in-flight guard makes a second
-    // invocation while one is still running a no-op instead of a second overlapping run.
-    if (this._autoFillInFlight) return;
-    this._autoFillInFlight = true;
-    try {
-      if (!this._canEditDraft()) return;
-      // Respect the GM's "hide Auto-fill from players" setting regardless of how this was triggered.
-      if (game?.user?.isGM !== true && readSetting(SETTINGS.hideAutoFillFromPlayers, false)) return;
-      if (!this._context) return;
-      const draft = this._readActiveDraftPlan();
-      const replacingDraft = (draft.steps?.length ?? 0) > 0;
-      const replacingManualDraft = replacingDraft && draft.source !== "auto-fill";
-      // Manual steps are already in the draft -- fill the remaining budget around them instead of
-      // discarding what the player chose (see _fillDraftGap).
-      if (replacingManualDraft) {
-        await this._fillDraftGap({ plan, draft });
-        return;
-      }
-      const fallbackAutoFill = () => {
-        const candidateBuild = buildCandidates(this._context);
-        return bestTurnPlan(this._context, candidateBuild.candidates);
-      };
-      if (!plan) this._pinnedPlanId = null;
-      const autoFill = plan
-        ?? bestAutoFillPlan(this._autoFillPlans)
-        ?? this._builder?.autoFill
-        ?? this._plan
-        ?? fallbackAutoFill();
-      if (!autoFill?.steps?.length) return;
-
-      const reachableSteps = this._atomizeAutoFillSteps(autoFill, this._context);
-      await this._writeActiveDraftPlan({
-        ...draft,
-        source: "auto-fill",
-        autoFillPlanId: autoFill.id ?? null,
-        autoFillPlanSummary: autoFill.summary ?? "",
-        steps: reachableSteps,
-      });
-      clearActionPreview();
-      await this.render({ force: true });
-    } finally {
-      this._autoFillInFlight = false;
-    }
+    return autoFillPanelDraft(this, { plan });
   }
 
-  // Appends a fill plan's steps after the draft's existing (manual) steps rather than replacing
-  // the draft -- the manual steps are never touched, so there is nothing to confirm/undo here.
   async _fillDraftGap({ plan, draft }) {
-    const fillPlans = this._fillGapPlans();
-    if (!fillPlans.length) return;
-    if (!plan) this._pinnedFillPlanId = null;
-    // A cycled plan id is scoped to the remaining-budget search that produced it -- if the draft
-    // changed since (a step was added/removed) it may no longer appear, so fall back to best.
-    const fillPlan = (plan && fillPlans.find((candidate) => candidate?.id === plan.id))
-      ?? bestAutoFillPlan(fillPlans);
-    if (!fillPlan?.steps?.length) return;
-    const movementContext = this._planningContext ?? this._context;
-    const addedSteps = this._atomizeAutoFillSteps(fillPlan, movementContext, draft.steps);
-    if (!addedSteps.length) return;
-    await this._writeActiveDraftPlan({
-      ...draft,
-      steps: [...draft.steps, ...addedSteps],
-    });
-    clearActionPreview();
-    await this.render({ force: true });
+    return fillPanelDraftGap(this, { plan, draft });
   }
 
-  // Converts a plan's steps into draft steps, chaining movement destinations from movementContext
-  // (turn-start position for a fresh Auto-fill, or the draft-projected position for a gap fill) and
-  // checking reach against prefixSteps (the draft steps that will already precede these, if any).
   _atomizeAutoFillSteps(autoFill, movementContext, prefixSteps = []) {
-    // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
-    // target and (for movement) a destination, so pre-fill both regardless of who's using it or
-    // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off
-    // Auto-fill for players entirely via the hideAutoFillFromPlayers setting checked above. The
-    // projected origin advances so a chained stride starts where the prior one lands.
-    let mc = movementContext;
-    // Hard guard: "Drop Prone -> Stride" is illegal (can't Stride while prone). If the plan applies
-    // prone, drop any Stride/Step from the draft regardless of what the planner produced. Crawl is
-    // legal while prone, so it is not in AUTO_FILL_BASIC_MOVE_SLUGS and survives.
-    const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
-    const atomicSteps = autoFill.steps
-      .filter((step) => !isRedundantAutoFillMove(step))
-      .flatMap((step) => builderAtomicActionsForStep(step))
-      // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
-      // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
-      .filter((step) => !(planAppliesProne && AUTO_FILL_BASIC_MOVE_SLUGS.has(String(step?.slug ?? "").toLowerCase())));
-    const steps = atomicSteps.map((step, index) => {
-      const slug = String(step?.slug ?? "").toLowerCase();
-      const isBasicMove = AUTO_FILL_BASIC_MOVE_SLUGS.has(slug);
-      // Origin for THIS step = where the prior committed strides left the actor (real position for
-      // the first). Computed before any chaining update below so over-Speed checks use the true origin.
-      const moveOrigin = mc.token?.plannedCenter ?? mc.token?.center;
-      // Keep a pre-set destination (e.g. a composite's attack square) only if the actor can actually
-      // reach it this move — Foundry's ruler is the authority, so an over-Speed square is dropped
-      // rather than auto-committed as an impossible stride.
-      const presetDestination = step?.destination
-        && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, step.destination, this._context?.profile))
-        ? step.destination
-        : null;
-      const presetAreaMarker = !step?.areaMarker ? computeAreaMarker(this._context, step) : null;
-      let draftStep = {
-        instanceId: draftStepId(),
-        actionKey: this._actionKeyForStep(step),
-        // Persist a display name so the step still reads correctly if its action stops being
-        // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-        name: step?.name ?? step?.action?.name,
-        actionCost: step?.actionCost ?? step?.cost,
-        requiresDestination: requiresDestinationForAction(step),
-        // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
-        // computed from the original, un-atomized action) -- reused here as the group id so the
-        // panel can visually nest them under one header instead of showing N identical-looking rows.
-        // A backed move-and-strike composite's atoms (e.g. Sudden Charge's two Strides and one
-        // Strike) arrive with this identity already stamped by builderAtomicActionsForStep, since
-        // its Stride and Strike atoms come from two different builder functions that share nothing
-        // else -- prefer that pre-stamped identity when present, over re-deriving it here.
-        ...(step?.groupId
-          ? { groupId: step.groupId, groupLabel: step.groupLabel, ...(Number.isFinite(step?.atomIndex) ? { atomIndex: step.atomIndex } : {}) }
-          : step?.activityProfile?.requiresDistinctTargets
-            ? { groupId: step.id, groupLabel: String(step?.name ?? "").split(" -> ")[0] }
-            : {}),
-        ...(presetDestination ? { destination: presetDestination } : {}),
-        ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-      };
-
-      const target = plannedTargetSelection(step);
-      if (target.targetTokenIds.length) {
-        draftStep = {
-          ...draftStep,
-          targetTokenIds: target.targetTokenIds,
-          targetLabel: target.targetLabel,
-          targetSelection: "manual",
-        };
-      }
-
-      if (draftStep.requiresDestination && !draftStep.destination) {
-        const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
-        const movement = recommendedMovementForStep(mc, movementStep);
-        // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
-        // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
-        // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
-        // A grouped Stride (e.g. Rush, Sudden Charge) is a mandatory component of a fixed-cost
-        // composite, not a discretionary reposition -- its own actionCost carries the whole
-        // ability's cost (see builderAtomicActionsForStep), so dropping it here would silently
-        // lose that cost and leave its sibling Strike atom looking free with no group to correct it.
-        if (isBasicMove && !step?.groupId && movement?.destination
-          && !strideImprovesPosition(moveOrigin, movement.destination, autoFillTargetCenter(movementStep))) {
-          return null;
-        }
-        // Commit (and chain the planned origin) only for a destination within Speed; otherwise leave
-        // it unset so the GM places a legal one instead of an over-range auto-stride.
-        if (movement?.destination
-          && !(isBasicMove && autoFillStrideOverSpeed(moveOrigin, movement.destination, this._context?.profile))) {
-          draftStep = {
-            ...draftStep,
-            destination: movement.destination,
-            // A direct path (no corner routing) has no waypoints of its own -- fall back to the
-            // destination as a one-point path so the distance label still renders, the same fix
-            // as the interactive destination picker's single-click case.
-            movementPlan: { native: false, waypoints: movement.waypoints?.length ? movement.waypoints : [movement.destination] },
-          };
-          mc = {
-            ...mc,
-            token: { ...(mc.token ?? {}), plannedCenter: movement.destination },
-          };
-        }
-      }
-
-      return draftStep;
-    }).filter(Boolean);
-    // Drop a Strike that can never connect: out of range from where it executes with no earlier
-    // move to close the gap (e.g. a move-and-strike whose Stride was pruned, or an aggro target
-    // left out of melee reach). Resolve each step from its projected origin, as the warnings do.
-    // prefixSteps (any manual steps the fill is appended after) is included so both the reachability
-    // projection and "did an earlier move already happen" check see the full sequence, not just
-    // the new steps in isolation.
-    const reachDraft = { steps: [...prefixSteps, ...steps] };
-    return steps.filter((step, index) => {
-      const hasEarlierMove = [...prefixSteps, ...steps.slice(0, index)]
-        .some((earlier) => earlier.requiresDestination === true);
-      const projected = findProjectedDraftAction(this._context, reachDraft, step);
-      return !isUnreachableStrikeStep(projected, hasEarlierMove);
-    });
+    return atomizePanelAutoFillSteps(this, autoFill, movementContext, prefixSteps);
   }
 
   async _cycleAutoFillDraft(direction = 1) {
-    const plans = this._activeAutoFillPlans();
-    const pinnedId = this._activePinnedPlanId();
-    const current = selectDisplayPlan(plans, pinnedId);
-    const currentId = current?.id ?? pinnedId;
-    const next = direction < 0
-      ? previousAutoFillPlan(plans, currentId)
-      : nextAutoFillPlan(plans, currentId);
-    if (!next) return;
-    if (this._hasManualDraftContent()) this._pinnedFillPlanId = next.id ?? null;
-    else this._pinnedPlanId = next.id ?? null;
-    await this._autoFillDraft({ plan: next });
+    return cyclePanelAutoFillDraft(this, direction);
   }
 
   async _syncDraftToGM({ notify = false } = {}) {
-    if (!this._context || globalThis.game?.user?.isGM === true) return false;
-    const draft = readDraftPlan(this._context);
-
-    try {
-      const sharedDraft = writeSharedDraftPlan(this._context, {
-        ...draft,
-        userId: globalThis.game?.user?.id ?? null,
-        userName: globalThis.game?.user?.name ?? "",
-      });
-      try {
-        await writeSharedDraftPlanActorFlag(this._context, sharedDraft);
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Actor-flag plan sync failed`, error);
-      }
-      const payload = {
-        type: "shareDraft",
-        key: sharedDraftPlanKey(this._context),
-        combatId: this._context.combat?.id ?? null,
-        round: this._context.combat?.round ?? null,
-        combatantId: this._context.combatant?.id ?? null,
-        actorName: this._context.actor?.name ?? this._context.combatant?.name ?? "",
-        silent: !notify,
-        ...sharedDraft,
-      };
-
-      if (!shareDraftPlan(payload)) {
-        console.warn(`${MODULE_ID} | Cannot sync plan: socketlib is not available.`);
-        if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncNoSocket", "Cannot sync plan with GM: Foundry socket is not available."));
-        return false;
-      }
-      if (notify) globalThis.ui?.notifications?.info?.(t("Notify.PlanShared", "Plan shared with GM."));
-      return true;
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Plan sync failed`, error);
-      if (notify) globalThis.ui?.notifications?.warn?.(t("Notify.SyncFailed", "Could not sync plan with GM."));
-      return false;
-    }
+    return syncPanelDraftToGM(this, { notify });
   }
 
   _cancelDestinationPicker() {
-    this._destinationPicker = null;
-    this._areaPicker = null;
-    cancelDestinationPicker();
-    cancelAreaPicker();
-    clearRangeOverlay();
+    cancelPanelPickers(this);
   }
 
   _clearActionPreviewUnlessPicking(event) {
-    if (this._destinationPicker || this._areaPicker) return;
-    const element = event?.currentTarget?.closest?.(".pf2e-combater") ?? this.element;
-    // Keep the canvas overlay alive while the cursor moves onto the canvas/tokens, or when
-    // the pointer interaction is cancelled (relatedTarget is null). Only clear it when the
-    // cursor moves to another control inside the panel.
-    const related = event?.relatedTarget ?? null;
-    if (!related || !element?.contains?.(related)) return;
-    clearActionPreview();
+    clearActionPreviewUnlessPicking(this, event);
   }
 
   _draftForOrigin() {
-    return this._builder?.draft ?? readDraftPlan(this._context);
+    return draftForOrigin(this);
   }
 
   _contextForDraftStep(instanceId) {
-    return projectContextForDraftStepOrigin(this._context, this._draftForOrigin(), instanceId);
+    return contextForDraftStep(this, instanceId);
   }
 
-  // The persistent reachable-area grid -- drawn once when the picker starts, and again after a real
-  // click commits a waypoint/destination (to show remaining budget), but NEVER for a mere hover.
-  // Hovering only ever touches the separate, lightweight overlay in _showHoverGhost below; redrawing
-  // this grid's couple hundred individual rectangles on every mouse-move frame is what made it
-  // flicker down to just whatever was near the cursor instead of staying a stable, full view.
   _showDestinationPickerPreview(instanceId = this._destinationPicker?.instanceId) {
-    const step = this._findDraftStep(instanceId);
-    if (!this._context || !step) return false;
-    const preview = this._destinationPicker?.instanceId === instanceId ? this._destinationPicker.preview : null;
-
-    showMovementPreview(this._contextForDraftStep(instanceId), {
-      ...(step.action ?? step),
-      ...(preview?.destination ? { destination: preview.destination } : {}),
-      ...(preview?.movementPlan ? { movementPlan: preview.movementPlan } : {}),
-      // Pending elevation (Shift+scroll before a destination is committed) so the readout and
-      // shrinking reachable range still update.
-      ...(Number.isFinite(preview?.elevation) ? { plannedElevation: preview.elevation } : {}),
-      requiresDestination: true,
-    });
-    return true;
+    return showDestinationPickerPreview(this, instanceId);
   }
 
-  // The cursor-following ghost/cost overlay -- independent of the grid above, so hovering never
-  // touches (or waits on) that larger, persistent render. The candidate's own movementPlan (built by
-  // the picker's candidatePlanFor, carrying whatever waypoints are already committed) must ride along
-  // here -- without it, movementPreviewForStep's hoverOnly branch has no way to know a waypoint bend
-  // already exists, and validates the hover point as if it were a direct line from the origin instead
-  // of routing through that waypoint first.
   _showHoverGhost(instanceId, destination, metadata = {}) {
-    const step = this._findDraftStep(instanceId);
-    if (!this._context || !step || !destination) return false;
-    showHoverGhost(this._contextForDraftStep(instanceId), {
-      ...(step.action ?? step),
-      requiresDestination: true,
-      ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}),
-    }, destination);
-    return true;
+    return showPanelHoverGhost(this, instanceId, destination, metadata);
   }
 
   _restoreDestinationPickerPreview() {
-    if (!this._destinationPicker?.instanceId) return;
-    if (this._destinationPicker.native) return;
-    this._showDestinationPickerPreview(this._destinationPicker.instanceId);
+    restoreDestinationPickerPreview(this);
   }
 
   _stepWithRetryReset(step, patch) {
-    const execution = step?.execution?.status === "failed" ? { status: "pending" } : step?.execution;
-    return {
-      ...step,
-      ...patch,
-      ...(execution ? { execution } : {}),
-    };
+    return stepWithRetryReset(step, patch);
   }
 
   _chooseDestination(instanceId) {
-    if (!this._canExecuteDraft()) return;
-    // Clicking the same step's "Set destination" button again while its picker is already active
-    // toggles it off, instead of tearing it down and immediately restarting an identical picker.
-    if (this._destinationPicker?.instanceId === instanceId) {
-      this._cancelDestinationPicker();
-      clearActionPreview();
-      return;
-    }
-    const step = this._findDraftStep(instanceId);
-    if (!this._context || !step) return;
-    this._cancelDestinationPicker();
-    this._destinationPicker = { instanceId, native: false };
-
-    const picker = chooseDestination({
-      context: this._contextForDraftStep(instanceId),
-      action: step.action ?? step,
-      enableWaypoints: true,
-      onPreview: (destination, metadata = {}) => {
-        // A hover candidate updates only its own small overlay, not the persistent grid's stored
-        // state -- storing it here would make a later, unrelated panel re-render (which redraws the
-        // grid from this state) treat a transient cursor position as if it were really committed.
-        if (metadata.hoverOnly) {
-          this._showHoverGhost(instanceId, destination, metadata);
-          return;
-        }
-        this._destinationPicker = {
-          ...(this._destinationPicker ?? {}),
-          instanceId,
-          native: false,
-          preview: {
-            destination,
-            movementPlan: metadata.movementPlan ?? null,
-            elevation: metadata.elevation,
-          },
-        };
-        this._showDestinationPickerPreview(instanceId);
-      },
-      onCancel: () => {
-        this._destinationPicker = null;
-        clearActionPreview();
-      },
-      onChoose: async (destination, metadata = {}) => {
-        const current = this._findActiveStep(instanceId) ?? step;
-        await this._persistActiveDraftStep(this._stepWithRetryReset(current, {
-          destination,
-          ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}),
-        }));
-        this._destinationPicker = null;
-        clearActionPreview();
-        await this.render({ force: true });
-      },
-    });
-    if (!picker) {
-      this._destinationPicker = null;
-      clearActionPreview();
-      globalThis.ui?.notifications?.warn?.(t("Notify.NoDestinationPicker", "Canvas destination picker is not available."));
-      return;
-    }
-    this._destinationPicker = { instanceId, native: picker.native === true };
-    if (!picker.native) this._showDestinationPickerPreview(instanceId);
+    return choosePanelDestination(this, instanceId);
   }
 
   async _chooseTarget(instanceId) {
-    if (!this._canExecuteDraft()) return;
-    const step = this._findDraftStep(instanceId);
-    if (!this._context || !step) return;
-    this._cancelDestinationPicker();
-    const selection = currentTargetSelection();
-    if (!selection.targetTokenIds.length) {
-      globalThis.ui?.notifications?.warn?.(t("Notify.TargetFirst", "Target a token in Foundry first."));
-      return;
-    }
-    const current = this._findActiveStep(instanceId) ?? step;
-    await this._persistActiveDraftStep(this._stepWithRetryReset(current, {
-      targetTokenIds: selection.targetTokenIds,
-      targetLabel: selection.targetLabel,
-      targetSelection: "manual",
-    }));
-    await this.render({ force: true });
+    return choosePanelTarget(this, instanceId);
   }
 
   async _removeAreaTemplate(instanceId) {
-    if (!this._canExecuteDraft() || !this._context) return;
-    const current = this._findActiveStep(instanceId);
-    if (!current?.areaMarker) return;
-    this._cancelDestinationPicker();
-
-    const isDone = current.execution?.status === "done";
-    if (isDone) {
-      // The step already placed a Region on the canvas — delete it, leaving the rest of the
-      // executed step (rolls, chat) intact.
-      const regionOp = (current.execution.revert?.ops ?? []).find((op) => op.kind === "region" && op.regionId);
-      if (regionOp) {
-        try {
-          // Remove the linked countdown effect first so it does not linger after the template.
-          if (regionOp.effectUuid && typeof globalThis.fromUuid === "function") {
-            const effect = await globalThis.fromUuid(regionOp.effectUuid);
-            if (effect?.id && effect?.parent?.items?.get?.(effect.id) && typeof effect.delete === "function") {
-              await effect.delete();
-            }
-          }
-          const scene = globalThis.game?.scenes?.get?.(regionOp.sceneId) ?? globalThis.canvas?.scene;
-          // Idempotent: only delete the region if it still exists (cascades may have removed it).
-          if (scene?.regions?.get?.(regionOp.regionId) && typeof scene.deleteEmbeddedDocuments === "function") {
-            await scene.deleteEmbeddedDocuments("Region", [regionOp.regionId]);
-          }
-        } catch (_error) {
-          globalThis.ui?.notifications?.warn?.(t("Notify.RemoveTemplateFailed", "Could not remove the placed template region."));
-        }
-      }
-      // Keep the step executed; just drop the template, its auto-targets, and the region revert op.
-      const revert = current.execution.revert;
-      const ops = (revert?.ops ?? []).filter((op) => op.kind !== "region");
-      await this._persistActiveDraftStep({
-        ...current,
-        areaMarker: null,
-        targetTokenIds: [],
-        execution: { ...current.execution, ...(revert ? { revert: { ...revert, ops } } : {}) },
-      });
-    } else {
-      // Not executed yet — drop the template and the targets it auto-selected, reopen the step.
-      await this._persistActiveDraftStep(this._stepWithRetryReset(current, { areaMarker: null, targetTokenIds: [] }));
-    }
-    clearActionPreview();
-    await this.render({ force: true });
+    return removePanelAreaTemplate(this, instanceId);
   }
 
   async _pickTemplate(templates) {
-    const dialog = globalThis.foundry?.applications?.api?.DialogV2;
-    if (typeof dialog?.wait !== "function") return templates[0] ?? null;
-    const buttons = templates.map((template, index) => ({
-      action: String(index),
-      label: template.label ?? `${template.type} ${template.distance ?? ""} ft`.trim(),
-    }));
-    const choice = await dialog.wait({
-      window: { title: t("Dialog.ChooseTemplate.Title", "Choose template") },
-      content: `<p>${escapeHtml(t("Dialog.ChooseTemplate.Content", "This action has more than one area template. Choose which to place:"))}</p>`,
-      buttons: [...buttons, { action: "cancel", label: t("Dialog.Cancel", "Cancel") }],
-      rejectClose: false,
-    }).catch(() => null);
-    if (choice === null || choice === undefined || choice === "cancel") return null;
-    return templates[Number(choice)] ?? null;
+    return pickAreaTemplate(templates);
   }
 
   async _chooseArea(instanceId) {
-    if (!this._canExecuteDraft()) {
-      globalThis.ui?.notifications?.warn?.(t("Notify.ReadOnly", "This draft is read-only."));
-      return;
-    }
-    const step = this._findDraftStep(instanceId);
-    if (!this._context || !step) {
-      globalThis.ui?.notifications?.warn?.(t("Notify.NoAreaStep", "No draft step is available for area placement."));
-      return;
-    }
-    const action = step.action ?? step;
-    const templates = action?.targetingProfile?.templates ?? [];
-    let placementAction = action;
-    if (templates.length > 1) {
-      const chosen = await this._pickTemplate(templates);
-      if (!chosen) return;
-      placementAction = {
-        ...action,
-        targetingProfile: {
-          ...(action.targetingProfile ?? {}),
-          type: chosen.type,
-          shape: chosen.type,
-          distance: chosen.distance,
-          ...(chosen.width ? { width: chosen.width } : {}),
-          templates: undefined,
-        },
-      };
-    }
-
-    // A preceding Reach Spell (rangeBuff) step extends this spell's range; reflect it
-    // in the range ring.
-    const reachBonus = this._draftRangeBonus(instanceId);
-    if (reachBonus > 0) placementAction = { ...placementAction, rangeBonusFeet: reachBonus };
-
-    this._cancelDestinationPicker();
-    this._areaPicker = { instanceId };
-    globalThis.ui?.notifications?.info?.(t("Notify.PlaceAreaCanvas", "Place the area template on the canvas."));
-
-    // Show the caster's spell-range ring while the template is being placed. Cleared
-    // when placement resolves/cancels, and by _cancelDestinationPicker on teardown.
-    showRangeOverlay(this._contextForDraftStep(instanceId), placementAction);
-
-    const picker = chooseAreaMarker({
-      context: this._contextForDraftStep(instanceId),
-      action: placementAction,
-      onMove: (marker) => updateRangePlacement(marker?.center),
-      onCancel: () => {
-        this._areaPicker = null;
-        clearRangeOverlay();
-      },
-      onChoose: async (areaMarker) => {
-        const current = this._findActiveStep(instanceId) ?? step;
-        const inside = tokensInAreaMarker({
-          context: this._contextForDraftStep(instanceId),
-          action: placementAction,
-          marker: areaMarker,
-        });
-        setTokenTargets(inside);
-        const targetTokenIds = inside.map((token) => targetTokenId(token)).filter(Boolean);
-        await this._persistActiveDraftStep(
-          this._stepWithRetryReset(current, { areaMarker, ...(targetTokenIds.length ? { targetTokenIds } : {}) }),
-        );
-        this._areaPicker = null;
-        clearRangeOverlay();
-        await this.render({ force: true });
-      },
-    });
-    if (!picker) {
-      this._areaPicker = null;
-      clearRangeOverlay();
-      globalThis.ui?.notifications?.warn?.(t("Notify.NoAreaPicker", "Canvas area picker is not available."));
-    }
+    return choosePanelArea(this, instanceId);
   }
 
   async _openBuilderAction(actionKey) {
@@ -2699,7 +720,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _restorePosition() {
-    if (this._restoredPosition || !readSetting(SETTINGS.rememberPanelPosition, true)) return;
+    if (this._restoredPosition || !settingOrDefault(SETTINGS.rememberPanelPosition, true)) return;
     this._restoredPosition = true;
 
     const { left, top } = readPanelState();
@@ -2714,7 +735,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _savePosition() {
-    if (!readSetting(SETTINGS.rememberPanelPosition, true)) return;
+    if (!settingOrDefault(SETTINGS.rememberPanelPosition, true)) return;
     const box = this.element.getBoundingClientRect();
     writePanelState({
       left: Math.round(box.left),
@@ -2793,45 +814,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _chooseSustainedSpellForStep(step) {
-    if (!this._context || !step?.instanceId) return null;
-    const entries = readSustainedSpellEntries(this._context, undefined, this._readActiveDraftPlan())
-      .filter((entry) => entry.planned !== true && entry.sustained !== true);
-    if (!entries.length) {
-      globalThis.ui?.notifications?.warn?.(t("Notify.NoSustainNeeded", "No sustained spells need sustaining."));
-      return null;
-    }
-
-    let selected = entries[0];
-    if (entries.length > 1) {
-      const dialog = globalThis.foundry?.applications?.api?.DialogV2;
-      if (typeof dialog?.wait !== "function") {
-        globalThis.ui?.notifications?.warn?.(t("Notify.ChooseSustainFirst", "Choose a spell from the Sustained spells section first."));
-        return null;
-      }
-      const choice = await dialog.wait({
-        window: { title: t("Dialog.SustainSpell.Title", "Sustain a Spell") },
-        content: `<p>${escapeHtml(t("Dialog.SustainSpell.Content", "Choose which sustained spell to sustain."))}</p>`,
-        buttons: [
-          ...entries.map((entry) => ({
-            action: entry.id,
-            label: escapeHtml(entry.name),
-          })),
-          { action: "cancel", label: t("Dialog.Cancel", "Cancel") },
-        ],
-        rejectClose: false,
-      }).catch(() => "cancel");
-      if (!choice || choice === "cancel") return null;
-      selected = entries.find((entry) => entry.id === choice) ?? null;
-      if (!selected) return null;
-    }
-
-    const current = this._findActiveStep(step.instanceId) ?? step;
-    const nextStep = this._stepWithRetryReset(current, { sustainedSpell: sustainedSpellDraftFields(selected) });
-    await this._persistActiveDraftStep(nextStep);
-    return {
-      ...step,
-      sustainedSpell: sustainedSpellDraftFields(selected),
-    };
+    return chooseSustainedSpellForStep(this, step);
   }
 
   async executeStep(index) {
@@ -2839,184 +822,39 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _executeDraftStep(instanceId, event) {
-    // Invoked fire-and-forget from a click handler, so surface failures instead of letting them die
-    // as a silent unhandled rejection (which reads as "nothing happens" when a step is clicked).
-    try {
-      if (!this._canExecuteDraft()) return;
-      let step = this._findDraftStep(instanceId);
-      if (!this._context || !step || step.executionStatus === "done") return;
-
-      const action = step.action ?? step;
-      if (isSustainAction(action) && !step.sustainedSpell) {
-        step = await this._chooseSustainedSpellForStep(step);
-        if (!step) return;
-      }
-
-      const readiness = executionReadinessForStep(step, action);
-      if (readiness.choices.length) {
-        globalThis.ui?.notifications?.warn?.(readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing."));
-        return;
-      }
-
-      // Drop the canvas overlay (stride path/range hover) up front so it disappears the instant the
-      // step runs, instead of lingering through the awaited move animation and the re-render after it.
-      clearActionPreview();
-      const result = await executeDraftStep({
-        context: this._contextForDraftStep(step.instanceId) ?? this._context,
-        step,
-        action,
-        event,
-      });
-      await this._applyExecutionResult(step, result, event);
-    } catch (error) {
-      globalThis.console?.error?.("pf2e-combater | Execute step failed", error);
-      globalThis.ui?.notifications?.error?.(t("Notify.ExecuteFailed", "Could not execute the step; see the console."));
-    }
+    return executePanelDraftStep(this, instanceId, event);
   }
 
   _handleExecutionChoice(step, choice, event, result = null) {
-    if (choice === "destination") {
-      this._chooseDestination(step.instanceId);
-      return true;
-    }
-    if (choice === "target") {
-      this._chooseTarget(step.instanceId);
-      return true;
-    }
-    if (choice === "area") {
-      this._chooseArea(step.instanceId);
-      return true;
-    }
-    if (choice === "retch-dc") {
-      this._provideRetchDc(step, event);
-      return true;
-    }
-    if (choice === "retch-result") {
-      this._confirmRetchResult(step, event, result?.rolled ?? null);
-      return true;
-    }
-    return false;
+    return handlePanelExecutionChoice(this, step, choice, event, result);
   }
 
   _retchActorName() {
-    return this._context?.actor?.name ?? this._context?.combatant?.name ?? null;
+    return retchActorName(this);
   }
 
-  // Mark/clear a draft step as blocked on a GM response and re-render so the step shows (or hides)
-  // its "waiting for the GM" indicator. The flag is transient panel state, never persisted.
   async _setAwaitingGm(instanceId, on) {
-    if (!instanceId) return;
-    const before = this._awaitingGm.has(instanceId);
-    if (on) this._awaitingGm.add(instanceId);
-    else this._awaitingGm.delete(instanceId);
-    if (this._awaitingGm.has(instanceId) !== before) await this.render({ force: true });
+    return setPanelAwaitingGm(this, instanceId, on);
   }
 
-  // Phase 1: the GM supplies the effect's save DC. Re-running with the DC rolls the save (phase 2)
-  // and comes back as a "retch-result" choice for the GM to rule on. Wrapped so a dialog/socket
-  // failure surfaces instead of dying as a silent unhandled rejection (this runs fire-and-forget).
   async _provideRetchDc(step, event) {
-    try {
-      const actorName = this._retchActorName();
-      let dc;
-      if (game?.user?.isGM === true) {
-        dc = await promptRetchDc({ actorName });
-      } else {
-        globalThis.ui?.notifications?.info?.(t("Notify.WaitingRetchDcGM", "Waiting for the GM to set the Retch save DC."));
-        await this._setAwaitingGm(step.instanceId, true);
-        try {
-          dc = await requestRetchDc({ actorName });
-        } finally {
-          await this._setAwaitingGm(step.instanceId, false);
-        }
-        if (dc == null) dc = await promptRetchDc({ actorName });
-      }
-      if (!Number.isFinite(dc)) return; // dismissed
-      const result = await executeDraftStep({
-        context: this._contextForDraftStep(step.instanceId) ?? this._context,
-        step,
-        action: step.action ?? step,
-        event,
-        choices: { dc },
-      });
-      await this._applyExecutionResult(step, result, event);
-    } catch (error) {
-      globalThis.console?.error?.("pf2e-combater | Retch DC step failed", error);
-      globalThis.ui?.notifications?.error?.(t("Notify.RetchFailed", "Retch could not be resolved; see the console."));
-    }
+    return providePanelRetchDc(this, step, event);
   }
 
-  // Phase 3: the player has rolled the save; the GM sets the result accordingly.
   async _confirmRetchResult(step, event, rolled) {
-    try {
-      const actorName = this._retchActorName();
-      let decision;
-      if (game?.user?.isGM === true) {
-        decision = await promptRetchResult({ actorName, rolled });
-      } else {
-        globalThis.ui?.notifications?.info?.(t("Notify.WaitingRetchGM", "Waiting for the GM to judge your Retch save."));
-        await this._setAwaitingGm(step.instanceId, true);
-        try {
-          decision = await requestRetchResult({ actorName, rolled });
-        } finally {
-          await this._setAwaitingGm(step.instanceId, false);
-        }
-        if (decision === null) decision = await promptRetchResult({ actorName, rolled });
-      }
-      if (!decision) return; // dismissed
-      const result = await executeDraftStep({
-        context: this._contextForDraftStep(step.instanceId) ?? this._context,
-        step,
-        action: step.action ?? step,
-        event,
-        choices: { retchSucceeded: decision.succeeded === true, retchCritical: decision.critical === true },
-      });
-      await this._applyExecutionResult(step, result, event);
-    } catch (error) {
-      globalThis.console?.error?.("pf2e-combater | Retch result step failed", error);
-      globalThis.ui?.notifications?.error?.(t("Notify.RetchFailed", "Retch could not be resolved; see the console."));
-    }
+    return confirmPanelRetchResult(this, step, event, rolled);
   }
 
   async _applyExecutionResult(step, result, event) {
-    if (result?.status === "needs-choice") {
-      this._handleExecutionChoice(step, result.choices?.[0], event, result);
-      return;
-    }
-    if (!result || result.status === "cancelled") return;
-    if (!this._context || !step?.instanceId) return;
-
-    const current = this._findActiveStep(step.instanceId) ?? step;
-    await this._persistActiveDraftStep({ ...current, ...(result.patch ?? {}) });
-    clearActionPreview();
-    if (result.status === "failed" && result.error) globalThis.ui?.notifications?.warn?.(result.error);
-    await this.render({ force: true });
+    return applyPanelExecutionResult(this, step, result, event);
   }
 
   async _revertDraftStep(instanceId) {
-    if (!this._canExecuteDraft() || !this._context) return;
-    const current = this._findActiveStep(instanceId);
-    if (!current || current?.execution?.status !== "done") return;
-    const result = await revertDraftStep({
-      context: this._contextForDraftStep(instanceId) ?? this._context,
-      step: current,
-    });
-    await this._persistActiveDraftStep({ ...current, ...(result.patch ?? {}) });
-    clearActionPreview();
-    for (const warning of result.warnings ?? []) globalThis.ui?.notifications?.warn?.(warning);
-    await this.render({ force: true });
+    return revertPanelDraftStep(this, instanceId);
   }
 
   async _resetExecution() {
-    if (!this._canExecuteDraft() || !this._context) return;
-    const { draft, warnings } = await revertDraftExecution({
-      context: this._context,
-      draft: this._readActiveDraftPlan(),
-      contextForStep: (step) => this._contextForDraftStep(step?.instanceId) ?? this._context,
-    });
-    await this._writeActiveDraftPlan(draft);
-    for (const warning of warnings ?? []) globalThis.ui?.notifications?.warn?.(warning);
-    await this.render({ force: true });
+    return resetPanelExecution(this);
   }
 
   async _openActionDetails(step) {

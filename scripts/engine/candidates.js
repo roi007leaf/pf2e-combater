@@ -1,19 +1,11 @@
-import { readActionSources } from "../readers/action-reader.js";
+import { readActionSources } from "../readers/action/reader.js";
 import { readConsumableSpellActions, readSpellActions } from "../readers/spell-reader.js";
 import { npcTacticRejection } from "../rules/npc-tactics.js";
-import { SETTINGS, setting } from "../settings.js";
+import { SETTINGS, settingOrDefault } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
 import { t } from "../i18n.js";
 
 const REJECTED_SCORE = -900;
-
-function readSetting(key, fallback) {
-  try {
-    return setting(key);
-  } catch (_error) {
-    return fallback;
-  }
-}
 
 function sourcePriority(action, includeUnknown) {
   if (action.source === "spell-curated") return 50;
@@ -73,11 +65,11 @@ function dedupeDetected(detected, includeUnknown) {
 }
 
 export function buildCandidates(context) {
-  const spells = readSetting(SETTINGS.enableSpellRecommendations, true)
+  const spells = settingOrDefault(SETTINGS.enableSpellRecommendations, true)
     ? [...readSpellActions(context), ...readConsumableSpellActions(context)]
     : [];
   const actions = readActionSources(context, spells);
-  const includeUnknown = readSetting(SETTINGS.includeUnknownCustomActions, false);
+  const includeUnknown = settingOrDefault(SETTINGS.includeUnknownCustomActions, false);
 
   const { detected, duplicates } = dedupeDetected([...actions, ...spells], includeUnknown);
   const candidates = [];
@@ -96,7 +88,7 @@ export function buildCandidates(context) {
       rejected.push({ action, reason: t("Reject.UnknownHidden", "Unknown custom action hidden by setting.") });
       continue;
     }
-    const scored = scoreCandidate(context, action, spells);
+    const scored = scoreCandidate(context, action, spells, detected);
     const npcRejection = npcTacticRejection(context, scored, detected);
     if (npcRejection) {
       rejected.push({ action: scored, reason: npcRejection });

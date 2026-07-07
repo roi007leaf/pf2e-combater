@@ -1,5 +1,30 @@
 import { previewLayer } from "./preview-layer.js";
-import { pf2eMovementActionForStep, pf2eMovementSegmentCost } from "../rules/movement-cost.js";
+import { pf2eMovementActionForStep } from "../rules/movement-cost.js";
+import {
+  canvasAttackPathBlocked,
+  canvasGridDistance,
+  canvasGridSize,
+  canvasMovementPathBlocked,
+  canvasTokenById,
+  canReachPlacementPerimeter,
+  gridReachDistance,
+  rectangleDistance,
+  scaledPoint,
+} from "../rules/canvas-geometry.js";
+import {
+  directMovementRouteToCenter as engineDirectMovementRouteToCenter,
+  movementBudgetForStep,
+  movementDestinationForStep,
+  movementFootprintForToken as tokenFootprint,
+  movementHorizontalBudgetForStep,
+  movementOriginForContext,
+  movementPlacementForCenter as placementForCenter,
+  movementRouteSegmentCost,
+  movementRouteForStep,
+  movementWaypointsForStep,
+  reachableMovementCenters as engineReachableMovementCenters,
+  routeCornerWaypoints as engineRouteCornerWaypoints,
+} from "../engine/movement-route.js";
 import { t } from "../i18n.js";
 
 const MOVEMENT_SLUGS = new Set(["crawl", "stride", "step", "stand-stride"]);
@@ -30,49 +55,6 @@ function directPoint(value) {
   const y = numeric(value?.y, NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { x, y };
-}
-
-function tokenFootprint(value) {
-  const token = value?.token ?? value ?? {};
-  const document = token.document ?? token;
-  // A real canvas Token placeable's own .width/.height can report its RENDERED PIXEL size (e.g.
-  // scaled by a token ring or art-scale setting) rather than the grid-unit footprint PF2e
-  // positioning math expects. TokenDocument#width/#height are always in grid units, so prefer
-  // those -- same fix already applied to this bug's other occurrences (action-preview.js's
-  // tokenPlacement, action-reader.js's tokenFootprintPixels, action-executor.js's tokenFootprint).
-  return {
-    widthCells: Math.max(1, numeric(document.width ?? token.width, 1) || 1),
-    heightCells: Math.max(1, numeric(document.height ?? token.height, 1) || 1),
-  };
-}
-
-function contextAllies(context) {
-  return context?.allies ?? context?.battlefield?.allies ?? [];
-}
-
-function contextEnemies(context) {
-  return context?.enemies ?? context?.battlefield?.enemies ?? [];
-}
-
-function rectanglesOverlap(left, right) {
-  return left.x < right.x + right.width
-    && left.x + left.width > right.x
-    && left.y < right.y + right.height
-    && left.y + left.height > right.y;
-}
-
-// Mirrors action-reader.js's centerOccupiedByOtherToken for the scoring engine's BFS
-// (movementReachableCenters), but reuses this file's own {widthCells, heightCells} -> pixel-rect
-// conversion (placementForCenter) instead of action-reader.js's tokenFootprintPixels convention.
-function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
-  const candidatePlacement = placementForCenter(center, footprint, gridSize);
-  const others = [...contextAllies(context), ...contextEnemies(context)];
-  return others.some((other) => {
-    const otherCenter = point(other);
-    if (!otherCenter) return false;
-    const otherPlacement = placementForCenter(otherCenter, tokenFootprint(other), gridSize);
-    return rectanglesOverlap(candidatePlacement, otherPlacement);
-  });
 }
 
 function targetIdentity(value) {
@@ -129,24 +111,6 @@ function previewTarget(context, step) {
   return context?.battlefield?.targets?.[0] ?? context?.targets?.[0] ?? values[0] ?? null;
 }
 
-function profileSpeed(context) {
-  const profile = context?.actor?.profile ?? context?.profile ?? {};
-  const speed = profile.speed?.value ?? profile.speed ?? profile.landSpeed;
-  return numeric(speed, 25) || 25;
-}
-
-// The Speed (feet) the previewed Stride travels on. A non-walking movement type (fly/burrow/swim/
-// climb) uses that creature speed; everything else falls back to the land Speed from the profile.
-function movementSpeedFeet(context, step, collisionToken) {
-  const movementAction = pf2eMovementActionForStep(step);
-  if (movementAction && !["walk", "step", "crawl"].includes(movementAction)) {
-    const speed = collisionToken?.actor?.system?.movement?.speeds?.[movementAction];
-    const value = numeric(speed?.total ?? speed?.value ?? speed?.base, NaN);
-    if (Number.isFinite(value) && value > 0) return value;
-  }
-  return profileSpeed(context);
-}
-
 // Signed elevation change to the chosen destination (positive = climbing), or 0 when the step has
 // no vertical target.
 function verticalElevationDelta(step, collisionToken) {
@@ -159,187 +123,12 @@ function verticalElevationDelta(step, collisionToken) {
   return target - origin;
 }
 
-// Feet of Speed consumed by climbing/descending to the chosen elevation (vertical Strides only).
-function verticalMovementFeet(step, collisionToken) {
-  return Math.abs(verticalElevationDelta(step, collisionToken));
-}
-
-function movementDistanceFeet(context, step, collisionToken) {
-  if (step?.slug === "crawl" || step?.slug === "step") return 5;
-  if (step?.slug === "stride" || step?.slug === "stand-stride") {
-    // Vertical movement eats into the horizontal range: the higher you climb, the less Speed remains
-    // to travel across the ground, so the reachable squares shrink accordingly.
-    return Math.max(0, movementSpeedFeet(context, step, collisionToken) - verticalMovementFeet(step, collisionToken));
-  }
-  return 0;
-}
-
-function reachableCenters(origin, distanceFeet, gridSize) {
-  const cells = Math.floor(distanceFeet / gridSize);
-  const maxOffset = cells * gridSize;
-  const centers = [];
-  for (let dx = -cells; dx <= cells; dx += 1) {
-    for (let dy = -cells; dy <= cells; dy += 1) {
-      if (dx === 0 && dy === 0) continue;
-      centers.push({
-        x: origin.x + dx * gridSize,
-        y: origin.y + dy * gridSize,
-        maxOffset,
-      });
-    }
-  }
-  return centers;
-}
-
-function scaledPoint(value, scale) {
-  return {
-    x: value.x * scale,
-    y: value.y * scale,
-  };
-}
-
-function rayForPoints(from, to) {
-  // Ray moved to foundry.canvas.geometry.Ray in v13; prefer it so we don't hit the deprecated global.
-  const Ray = globalThis.foundry?.canvas?.geometry?.Ray ?? globalThis.foundry?.utils?.Ray ?? globalThis.Ray;
-  return Ray ? new Ray(from, to) : { A: from, B: to };
-}
-
-function wallDocument(wall) {
-  return wall?.document ?? wall ?? {};
-}
-
-function doorTypeValue(document) {
-  return document.door ?? document.doorType ?? document.type;
-}
-
-function doorStateValue(document) {
-  return document.ds ?? document.doorState ?? document.state;
-}
-
-function wallBlocksMovement(wall) {
-  const document = wallDocument(wall);
-  const movement = document.move ?? document.movement;
-  if (Number(movement) === 0) return false;
-
-  const door = doorTypeValue(document);
-  const state = doorStateValue(document);
-  const hasDoor = Number(door) > 0
-    || ["door", "secret"].includes(String(door ?? "").toLowerCase());
-  if (hasDoor && (Number(state) === 1 || String(state ?? "").toLowerCase() === "open")) return false;
-  return true;
-}
-
-function wallEndpoints(wall) {
-  const document = wallDocument(wall);
-  const coords = document.c ?? document.coords;
-  if (Array.isArray(coords) && coords.length >= 4) {
-    return [{ x: Number(coords[0]), y: Number(coords[1]) }, { x: Number(coords[2]), y: Number(coords[3]) }];
-  }
-  if (wall?.A && wall?.B) return [wall.A, wall.B];
-  if (document.A && document.B) return [document.A, document.B];
-  return null;
-}
-
-function pointOnSegment(point, start, end) {
-  return point.x <= Math.max(start.x, end.x)
-    && point.x >= Math.min(start.x, end.x)
-    && point.y <= Math.max(start.y, end.y)
-    && point.y >= Math.min(start.y, end.y);
-}
-
-function orientation(start, end, point) {
-  const value = (end.y - start.y) * (point.x - end.x) - (end.x - start.x) * (point.y - end.y);
-  if (Math.abs(value) < 0.0001) return 0;
-  return value > 0 ? 1 : 2;
-}
-
-function segmentsIntersect(a, b, c, d) {
-  const o1 = orientation(a, b, c);
-  const o2 = orientation(a, b, d);
-  const o3 = orientation(c, d, a);
-  const o4 = orientation(c, d, b);
-
-  if (o1 !== o2 && o3 !== o4) return true;
-  if (o1 === 0 && pointOnSegment(c, a, b)) return true;
-  if (o2 === 0 && pointOnSegment(d, a, b)) return true;
-  if (o3 === 0 && pointOnSegment(a, c, d)) return true;
-  if (o4 === 0 && pointOnSegment(b, c, d)) return true;
-  return false;
-}
-
-function wallSegment(wall) {
-  const endpoints = wallEndpoints(wall);
-  if (!endpoints) return null;
-  const [start, end] = endpoints;
-  const values = [start.x, start.y, end.x, end.y].map(Number);
-  if (!values.every(Number.isFinite)) return null;
-  return [{ x: values[0], y: values[1] }, { x: values[2], y: values[3] }];
-}
-
-function wallSegmentsBlockMovement(from, to, options = {}) {
-  const walls = Array.isArray(options.walls)
-    ? options.walls
-    : (options.walls?.placeables ?? globalThis.canvas?.walls?.placeables ?? []);
-  if (!Array.isArray(walls) || !walls.length) return false;
-
-  return walls.some((wall) => {
-    if (!wallBlocksMovement(wall)) return false;
-    const segment = wallSegment(wall);
-    return segment ? segmentsIntersect(from, to, segment[0], segment[1]) : false;
-  });
-}
-
 function pathBlocked(from, to, options = {}) {
-  if (typeof options.pathBlocked === "function") return Boolean(options.pathBlocked(from, to));
-
-  const scale = numeric(options.collisionScale, 1) || 1;
-  const collisionTo = scaledPoint(to, scale);
-  const collisionFrom = scaledPoint(from, scale);
-  const token = options.collisionToken;
-  if (typeof token?.checkCollision === "function") {
-    try {
-      if (token.checkCollision(collisionTo, { type: "move", mode: "any", origin: collisionFrom })) return true;
-    } catch (_error) {
-      // Fall through to wall-layer collision.
-    }
-  }
-
-  const walls = options.walls ?? globalThis.canvas?.walls;
-  if (typeof walls?.checkCollision !== "function") {
-    return wallSegmentsBlockMovement(collisionFrom, collisionTo, options);
-  }
-
-  const ray = rayForPoints(collisionFrom, collisionTo);
-  for (const type of ["move", "movement"]) {
-    try {
-      if (walls.checkCollision(ray, { type, mode: "any" })) return true;
-    } catch (_error) {
-      // Foundry versions disagree on movement collision type names.
-    }
-  }
-  return wallSegmentsBlockMovement(collisionFrom, collisionTo, options);
+  return canvasMovementPathBlocked(from, to, options);
 }
 
 function attackPathBlocked(from, to, options = {}) {
-  if (typeof options.attackPathBlocked === "function") return Boolean(options.attackPathBlocked(from, to));
-
-  const scale = numeric(options.collisionScale, 1) || 1;
-  const collisionFrom = scaledPoint(from, scale);
-  const collisionTo = scaledPoint(to, scale);
-  const walls = options.walls ?? globalThis.canvas?.walls;
-  if (typeof walls?.checkCollision !== "function") {
-    return wallSegmentsBlockMovement(collisionFrom, collisionTo, options);
-  }
-
-  const ray = rayForPoints(collisionFrom, collisionTo);
-  for (const type of ["sight", "move", "movement"]) {
-    try {
-      if (walls.checkCollision(ray, { type, mode: "any" })) return true;
-    } catch (_error) {
-      // Foundry versions disagree on collision type names.
-    }
-  }
-  return wallSegmentsBlockMovement(collisionFrom, collisionTo, options);
+  return canvasAttackPathBlocked(from, to, options);
 }
 
 function pointVisible(point, options = {}) {
@@ -364,158 +153,50 @@ function pointVisible(point, options = {}) {
   }
 }
 
+function movementRouteOptions(gridSize, options = {}) {
+  return {
+    ...options,
+    gridSize,
+    gridDistance: gridSize,
+    pathBlocked: (from, to) => pathBlocked(from, to, options),
+    pointVisible: (center) => pointVisible(center, options),
+  };
+}
+
+function movementPreviewOrigin(context, gridSize, options = {}) {
+  return movementOriginForContext(context, {
+    ...options,
+    gridSize,
+  });
+}
+
 function reachableMovementCenters(origin, distanceFeet, gridSize, options = {}) {
-  const candidates = reachableCenters(origin, distanceFeet, gridSize);
-  const maxOffset = candidates[0]?.maxOffset ?? 0;
-  const bestCosts = new Map([[`${origin.x},${origin.y},0`, 0]]);
-  const queue = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
-  const centers = [];
-
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index];
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        if (dx === 0 && dy === 0) continue;
-        const center = {
-          x: current.center.x + dx * gridSize,
-          y: current.center.y + dy * gridSize,
-        };
-        if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
-        if (!pointVisible(center, options)) continue;
-        if (pathBlocked(current.center, center, options)) continue;
-
-        const movement = movementSegmentCost(current.center, center, gridSize, current.diagonalCount, options);
-        const cost = current.cost + movement.cost;
-        if (cost > distanceFeet) continue;
-
-        const key = `${center.x},${center.y},${movement.diagonalCount % 2}`;
-        if ((bestCosts.get(key) ?? Infinity) <= cost) continue;
-        bestCosts.set(key, cost);
-        const routeCenter = { ...center, cost };
-        const route = [...current.route, routeCenter];
-        const reachableCenter = { ...routeCenter, route };
-        centers.push(reachableCenter);
-        queue.push({ center: routeCenter, cost, route, diagonalCount: movement.diagonalCount });
-      }
-    }
-  }
-
-  // Post-filter (applied once after the BFS completes, mirroring action-reader.js's
-  // movementReachableCenters) rather than rejecting occupied squares mid-expansion: this only
-  // excludes occupied squares from being offered as a landing destination, it does not stop a
-  // route from passing through an occupied square to reach a square beyond it.
-  if (!options.context) return centers;
-  const footprint = tokenFootprint(options.collisionToken ?? options.context?.token);
-  return centers.filter((center) => !centerOccupiedByOtherToken(options.context, center, footprint, gridSize));
+  return engineReachableMovementCenters(origin, distanceFeet, movementRouteOptions(gridSize, options));
 }
 
 function pointKey(point) {
   return `${point.x},${point.y}`;
 }
 
-function movementSegmentCost(from, to, gridSize, startingDiagonalCount = 0, options = {}) {
-  return pf2eMovementSegmentCost(from, to, {
-    ...options,
-    gridSize,
-    gridDistance: gridSize,
-    startingDiagonalCount,
+function movementRoutePreviewForStep(context, step, origin, gridSize, options = {}) {
+  return movementRouteForStep(context, step, {
+    ...movementRouteOptions(gridSize, options),
+    origin,
   });
 }
 
-function movementStepCost(from, to, gridSize = 5, startingDiagonalCount = 0, options = {}) {
-  return movementSegmentCost(from, to, gridSize, startingDiagonalCount, options).cost;
+function movementWaypointRouteForPreview(context, step, origin, waypoints, gridSize, options = {}) {
+  const destination = waypoints?.at(-1) ?? movementDestinationForStep(step);
+  return movementRoutePreviewForStep(context, {
+    ...step,
+    destination,
+    movementPlan: {
+      ...(step?.movementPlan ?? {}),
+      waypoints: waypoints ?? step?.movementPlan?.waypoints ?? [],
+    },
+  }, origin, gridSize, options);
 }
 
-function movementHeuristic(from, to, gridSize = 5) {
-  return movementSegmentCost(from, to, gridSize).cost;
-}
-
-function routePriority(node, destination, gridSize) {
-  const heuristic = movementHeuristic(node.center, destination, gridSize);
-  const euclidean = Math.hypot(destination.x - node.center.x, destination.y - node.center.y);
-  return node.cost + heuristic + euclidean * 0.001;
-}
-
-function directRouteToCenter(origin, destination, distanceFeet, gridSize, options = {}) {
-  const cells = Math.floor(distanceFeet / gridSize);
-  const maxOffset = cells * gridSize;
-  const destinationKey = pointKey(destination);
-  const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
-  const open = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
-
-  while (open.length) {
-    open.sort((left, right) => routePriority(left, destination, gridSize) - routePriority(right, destination, gridSize));
-    const current = open.shift();
-    if (pointKey(current.center) === destinationKey) return current.route;
-
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        if (dx === 0 && dy === 0) continue;
-        const center = {
-          x: current.center.x + dx * gridSize,
-          y: current.center.y + dy * gridSize,
-        };
-        if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
-        if (!pointVisible(center, options)) continue;
-        if (pathBlocked(current.center, center, options)) continue;
-
-        const movement = movementSegmentCost(current.center, center, gridSize, current.diagonalCount, options);
-        const cost = current.cost + movement.cost;
-        if (cost > distanceFeet) continue;
-
-        const key = `${pointKey(center)},${movement.diagonalCount % 2}`;
-        if ((bestCosts.get(key) ?? Infinity) <= cost) continue;
-        bestCosts.set(key, cost);
-        const routeCenter = { ...center, cost };
-        open.push({
-          center: routeCenter,
-          cost,
-          route: [...current.route, routeCenter],
-          diagonalCount: movement.diagonalCount,
-        });
-      }
-    }
-  }
-
-  return null;
-}
-
-function explicitDestination(step) {
-  const x = numeric(step?.destination?.x, NaN);
-  const y = numeric(step?.destination?.y, NaN);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const elevation = numeric(step?.destination?.elevation, NaN);
-  if (Number.isFinite(elevation)) return { x, y, elevation };
-  return { x, y };
-}
-
-function explicitDestinationReason(origin, destination, distanceFeet, gridSize, options = {}) {
-  if (!pointVisible(destination, options)) return t("Move.NotVisible", "Destination is not visible.");
-  if (movementSegmentCost(origin, destination, gridSize, 0, options).cost > distanceFeet) {
-    return t("Move.BeyondRangeDest", "Destination is beyond movement range.");
-  }
-  return t("Move.NoPath", "No collision-free movement path to destination.");
-}
-
-function placementForCenter(center, footprint, gridSize) {
-  return {
-    center,
-    x: center.x - (footprint.widthCells * gridSize) / 2,
-    y: center.y - (footprint.heightCells * gridSize) / 2,
-    width: footprint.widthCells * gridSize,
-    height: footprint.heightCells * gridSize,
-  };
-}
-
-// A hint box is deliberately always exactly 1 cell (not the actor's real footprint) -- drawing the
-// full footprint at every reachable square would heavily overlap for a fast, Large-or-bigger actor.
-// `placementForCenter`'s `center - gridSize/2` math assumes `center` is a cell CENTER, which only
-// holds for an odd footprint (1x1, 3x3, ...); an even one (2x2 Large, 4x4 Gargantuan, ...) naturally
-// lands its own BFS candidate centers on grid VERTICES instead (same parity split as
-// destination-picker.js's snapAxisToFootprint), which that formula offsets by half a cell. Flooring
-// to the containing cell's top-left is correct for either parity: for an odd footprint's cell-center
-// input it reproduces the exact same box as before; for an even footprint's vertex input it picks
-// one of the 4 touching cells (a deterministic, always-valid choice for what's just a visual hint).
 // A hint box is deliberately always exactly 1 cell (not the actor's real footprint) -- drawing the
 // full footprint at every reachable square would heavily overlap for a fast, Large-or-bigger actor.
 // `placementForCenter`'s `center - gridSize/2` math assumes `center` is a cell CENTER, which only
@@ -548,50 +229,6 @@ function xMarkerForPlacement(placement) {
   };
 }
 
-function samePoint(left, right) {
-  return !!left && !!right && left.x === right.x && left.y === right.y;
-}
-
-// Keep each waypoint's own elevation alongside its x/y so the preview can label per-leg heights.
-function directPointWithElevation(value) {
-  const base = directPoint(value);
-  if (!base) return null;
-  const elevation = numeric(value?.elevation, NaN);
-  return Number.isFinite(elevation) ? { ...base, elevation } : base;
-}
-
-function explicitWaypointCenters(step, destinationCenter) {
-  const waypoints = Array.isArray(step?.movementPlan?.waypoints)
-    ? step.movementPlan.waypoints.map((waypoint) => directPointWithElevation(waypoint)).filter(Boolean)
-    : [];
-  if (!waypoints.length) return null;
-  if (destinationCenter && !samePoint(waypoints.at(-1), destinationCenter)) waypoints.push(destinationCenter);
-  return waypoints;
-}
-
-function validateWaypointPath(origin, waypoints, distanceFeet, gridSize, options = {}) {
-  let from = origin;
-  let cost = 0;
-  let diagonalCount = 0;
-  for (const waypoint of waypoints) {
-    if (!pointVisible(waypoint, options)) {
-      return { available: false, reason: t("Move.NotVisible", "Destination is not visible."), cost };
-    }
-    if (pathBlocked(from, waypoint, options)) {
-      return { available: false, reason: t("Move.NoPath", "No collision-free movement path to destination."), cost };
-    }
-
-    const movement = movementSegmentCost(from, waypoint, gridSize, diagonalCount, options);
-    cost += movement.cost;
-    diagonalCount = movement.diagonalCount;
-    if (cost > distanceFeet) {
-      return { available: false, reason: t("Move.BeyondRange", "Waypoint path is beyond movement range."), cost };
-    }
-    from = waypoint;
-  }
-  return { available: true, reason: "", cost };
-}
-
 function distanceLabelText(distance) {
   const rounded = Math.round(distance * 10) / 10;
   return t("Chip.RangeFt", "{range} ft", { range: Number.isInteger(rounded) ? rounded : rounded.toFixed(1) });
@@ -603,7 +240,7 @@ function waypointSegmentLabels(origin, waypoints, gridSize, options = {}) {
   let total = 0;
   let diagonalCount = 0;
   for (const to of waypoints) {
-    const movement = movementSegmentCost(from, to, gridSize, diagonalCount, options);
+    const movement = movementRouteSegmentCost(from, to, movementRouteOptions(gridSize, options), diagonalCount);
     total += movement.cost;
     diagonalCount = movement.diagonalCount;
     labels.push({
@@ -631,70 +268,6 @@ function reachableMarkers(origin, centers, recommendation, gridSize) {
     })
     .slice(0, MAX_REACHABLE_MARKERS)
     .map((center) => markerForCenter(center, gridSize));
-}
-
-function rectangleDistance(left, right) {
-  const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
-  const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
-  return Math.hypot(dx, dy);
-}
-
-function gridReachDistance(left, right, gridSize) {
-  const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
-  const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
-  return Math.max(dx, dy) + gridSize;
-}
-
-function perimeterSamplePoints(placement, gridSize) {
-  if (!placement) return [];
-
-  const columns = Math.max(1, Math.round(placement.width / gridSize));
-  const rows = Math.max(1, Math.round(placement.height / gridSize));
-  const inset = gridSize * 0.05;
-  const points = [];
-
-  for (let column = 0; column < columns; column += 1) {
-    const x = placement.x + (column + 0.5) * gridSize;
-    points.push({ x, y: placement.y + inset });
-    points.push({ x, y: placement.y + placement.height - inset });
-  }
-
-  for (let row = 0; row < rows; row += 1) {
-    const y = placement.y + (row + 0.5) * gridSize;
-    points.push({ x: placement.x + inset, y });
-    points.push({ x: placement.x + placement.width - inset, y });
-  }
-
-  return points;
-}
-
-function nearestPoints(points, target, limit) {
-  return points
-    .toSorted((left, right) =>
-      Math.hypot(left.x - target.x, left.y - target.y)
-      - Math.hypot(right.x - target.x, right.y - target.y),
-    )
-    .slice(0, limit);
-}
-
-function canReachTargetPerimeter(placement, targetPlacement, gridSize, options = {}) {
-  if (attackPathBlocked(placement.center, targetPlacement.center, options)) return false;
-
-  const originPoints = nearestPoints(
-    [placement.center, ...perimeterSamplePoints(placement, gridSize)].filter(Boolean),
-    targetPlacement.center,
-    8,
-  );
-  const targetPoints = nearestPoints(
-    perimeterSamplePoints(targetPlacement, gridSize),
-    placement.center,
-    16,
-  );
-  const targets = targetPoints.length ? targetPoints : [targetPlacement.center];
-
-  return originPoints.some((origin) =>
-    targets.some((target) => !attackPathBlocked(origin, target, options)),
-  );
 }
 
 function recommendedPlacement(context, step, origin, reachable, footprint, gridSize, { preferShortestRoute = false } = {}) {
@@ -732,7 +305,9 @@ function strikeReachableCenters(context, step, reachable, footprint, gridSize, o
   return reachable.filter((center) => {
     const placement = placementForCenter(center, footprint, gridSize);
     return gridReachDistance(placement, targetPlacement, gridSize) <= reach
-      && canReachTargetPerimeter(placement, targetPlacement, gridSize, options);
+      && canReachPlacementPerimeter(placement, targetPlacement, gridSize, {
+        pathBlocked: (from, to) => attackPathBlocked(from, to, options),
+      });
   });
 }
 
@@ -775,10 +350,10 @@ function routeWaypoint(route, strideIndex, strideCount, speed, destination) {
 }
 
 function retreatStrideStrikePath(context, step, gridSize, options = {}) {
-  const origin = point(context?.token);
+  const origin = movementPreviewOrigin(context, gridSize, options);
   if (!origin) return null;
 
-  const speed = profileSpeed(context);
+  const speed = movementBudgetForStep(context, { ...step, slug: "stride" }, options);
   const footprint = tokenFootprint(context?.token);
   const outboundCenters = reachableMovementCenters(origin, speed, gridSize, options);
   const fixedAttackCenter = point({ center: step?.activityProfile?.attackCenter });
@@ -793,10 +368,10 @@ function retreatStrideStrikePath(context, step, gridSize, options = {}) {
   if (!destination) return null;
 
   const attackCenter = destination.center;
-  const outboundRoute = directRouteToCenter(origin, attackCenter, speed, gridSize, options)
+  const outboundRoute = engineDirectMovementRouteToCenter(origin, attackCenter, speed, movementRouteOptions(gridSize, options))
     ?? attackCenter.route
     ?? [attackCenter];
-  const inboundRoute = directRouteToCenter(attackCenter, origin, speed, gridSize, options);
+  const inboundRoute = engineDirectMovementRouteToCenter(attackCenter, origin, speed, movementRouteOptions(gridSize, options));
   if (!inboundRoute?.length || pointKey(inboundRoute.at(-1)) !== pointKey(origin)) return null;
 
   const attackPlacement = placementForCenter(attackCenter, footprint, gridSize);
@@ -830,11 +405,11 @@ function retreatStrideStrikePath(context, step, gridSize, options = {}) {
 // Where each Stride lands on the way to the target, following the same
 // stepwise route used for collision checks.
 function strideStrikePath(context, step, gridSize, options = {}) {
-  const origin = point(context?.token);
+  const origin = movementPreviewOrigin(context, gridSize, options);
   if (!origin) return null;
 
   const strideCount = Math.max(1, Math.floor(Number(step?.activityProfile?.strideCount) || 1));
-  const speed = profileSpeed(context);
+  const speed = movementBudgetForStep(context, { ...step, slug: "stride" }, options);
   const footprint = tokenFootprint(context?.token);
   const movementCenters = reachableMovementCenters(origin, strideCount * speed, gridSize, options);
   const fixedAttackCenter = point({ center: step?.activityProfile?.attackCenter });
@@ -847,7 +422,7 @@ function strideStrikePath(context, step, gridSize, options = {}) {
   if (!destination) return null;
 
   const destCenter = destination.center;
-  const route = directRouteToCenter(origin, destCenter, strideCount * speed, gridSize, options)
+  const route = engineDirectMovementRouteToCenter(origin, destCenter, strideCount * speed, movementRouteOptions(gridSize, options))
     ?? destCenter.route
     ?? [];
   const stridePath = [];
@@ -872,22 +447,20 @@ function strideStrikePath(context, step, gridSize, options = {}) {
 }
 
 function explicitMovementPreview(context, step, origin, distanceFeet, footprint, gridSize, options = {}) {
-  const destinationCenter = explicitDestination(step);
+  const destinationCenter = movementDestinationForStep(step);
   if (!destinationCenter) return null;
 
   const color = DESTINATION_COLOR;
   const destinationVisible = pointVisible(destinationCenter, options);
   const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
   const destinationMarker = xMarkerForPlacement(destinationPlacement);
-  const waypointCenters = explicitWaypointCenters(step, destinationCenter);
+  const routePlan = movementRoutePreviewForStep(context, step, origin, gridSize, options);
+  const waypointCenters = movementWaypointsForStep(step, destinationCenter);
   if (waypointCenters?.length) {
-    const waypointValidation = destinationVisible
-      ? validateWaypointPath(origin, waypointCenters, distanceFeet, gridSize, options)
-      : { available: false, reason: t("Move.NotVisible", "Destination is not visible.") };
-    const destinationAvailable = destinationVisible && waypointValidation.available === true;
+    const destinationAvailable = destinationVisible && routePlan.reachable === true;
     // Execution only needs to know whether the destination is legal — skip the expensive flood-fill
     // of the remaining reachable area (and its markers/labels), which exists purely for the hover
-    // overlay. Validating the waypoint path above is cheap; the BFS is what made executing a Stride lag.
+    // overlay. Reading the route verdict above is cheap; the BFS is what made executing a Stride lag.
     if (options.validateOnly) {
       return {
         enabled: true,
@@ -900,12 +473,12 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
         destinationPlacement,
         destinationMarker,
         destinationAvailable,
-        destinationIllegalReason: destinationAvailable ? "" : waypointValidation.reason,
+        destinationIllegalReason: destinationAvailable ? "" : routePlan.reason,
         movementColor: color,
       };
     }
     const remainingDistanceFeet = destinationAvailable
-      ? Math.max(0, distanceFeet - waypointValidation.cost)
+      ? Math.max(0, routePlan.maxCost - routePlan.cost)
       : 0;
     const waypointOrigin = waypointCenters.at(-1) ?? destinationCenter;
     const remainingCenters = destinationAvailable && remainingDistanceFeet > 0
@@ -925,7 +498,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       destinationPlacement,
       destinationMarker,
       destinationAvailable,
-      destinationIllegalReason: destinationAvailable ? "" : waypointValidation.reason,
+      destinationIllegalReason: destinationAvailable ? "" : routePlan.reason,
       stridePath: destinationAvailable
         ? [{
           index: 1,
@@ -950,11 +523,9 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
     };
   }
 
-  // Execution: skip the A* path search and just check range + visibility — Foundry's move API is the
-  // final collision arbiter (it reports "Movement was prevented" if a wall blocks the way).
+  // Validation callers need only the route verdict, not overlay markers.
   if (options.validateOnly) {
-    const withinRange = movementSegmentCost(origin, destinationCenter, gridSize, 0, options).cost <= distanceFeet;
-    const available = destinationVisible && withinRange;
+    const available = destinationVisible && routePlan.reachable === true;
     return {
       enabled: true,
       slug: step.slug,
@@ -966,19 +537,19 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       destinationPlacement,
       destinationMarker,
       destinationAvailable: available,
-      destinationIllegalReason: available
-        ? ""
-        : (destinationVisible ? t("Move.BeyondRangeDest", "Destination is beyond movement range.") : t("Move.NotVisible", "Destination is not visible.")),
+      destinationIllegalReason: available ? "" : routePlan.reason,
       movementColor: color,
     };
   }
 
-  const route = destinationVisible
-    ? directRouteToCenter(origin, destinationCenter, distanceFeet, gridSize, options)
-    : null;
-  const destinationAvailable = destinationVisible
-    && Array.isArray(route)
-    && (route.length > 0 || pointKey(origin) === pointKey(destinationCenter));
+  const route = destinationVisible ? routePlan.route : null;
+  const destinationAvailable = destinationVisible && routePlan.reachable === true;
+  // A single plain destination (no manually-placed waypoints) gets the same distance readout a
+  // multi-waypoint Stride already shows on its own trail -- waypointSegmentLabels with a single-
+  // point "path" is exactly a one-segment origin-to-destination label.
+  const segmentLabels = destinationAvailable
+    ? waypointSegmentLabels(origin, [destinationCenter], gridSize, options)
+    : [];
   const stridePath = destinationAvailable
     ? [{
       index: 1,
@@ -986,6 +557,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
       trail: route,
       placement: destinationPlacement,
       marker: destinationMarker,
+      segmentLabels,
       color,
     }]
     : [];
@@ -1001,11 +573,7 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
     destinationPlacement,
     destinationMarker,
     destinationAvailable,
-    destinationIllegalReason: destinationAvailable
-      ? ""
-      : (destinationVisible
-        ? explicitDestinationReason(origin, destinationCenter, distanceFeet, gridSize, options)
-        : t("Move.NotVisible", "Destination is not visible.")),
+    destinationIllegalReason: destinationAvailable ? "" : routePlan.reason,
     stridePath,
     reachableCenters: [],
     reachablePlacements: [],
@@ -1018,30 +586,22 @@ function explicitMovementPreview(context, step, origin, distanceFeet, footprint,
   };
 }
 
-function teleportRangeFeet(step) {
-  return numeric(
-    step?.targetingProfile?.maxRange ?? step?.maxRange ?? step?.range?.max ?? step?.action?.targetingProfile?.maxRange,
-    NaN,
-  );
-}
-
 // A teleport (e.g. Translocate) reaches any space within the spell's range, ignoring terrain and the
 // movement path. Rather than a filled grid (a 120-ft range covers hundreds of squares — too many to
 // draw, and the per-square cap made it look far shorter than it is), the preview is a range ring
 // marking the boundary plus the chosen destination.
-function teleportPreview(step, origin, footprint, gridSize, options = {}) {
+function teleportPreview(context, step, origin, footprint, gridSize, options = {}) {
   const color = DESTINATION_COLOR;
-  const range = teleportRangeFeet(step);
+  const routePlan = movementRoutePreviewForStep(context, step, origin, gridSize, options);
+  const range = movementBudgetForStep(context, step, options);
   const hasRange = Number.isFinite(range) && range > 0;
-  const inRange = (center) => !hasRange
-    || movementSegmentCost(origin, center, gridSize, 0, options).cost <= range;
 
-  const destinationCenter = explicitDestination(step);
+  const destinationCenter = movementDestinationForStep(step);
   const destinationVisible = destinationCenter ? pointVisible(destinationCenter, options) : false;
   const destinationPlacement = destinationCenter && destinationVisible
     ? placementForCenter(destinationCenter, footprint, gridSize)
     : null;
-  const destinationAvailable = destinationCenter ? destinationVisible && inRange(destinationCenter) : null;
+  const destinationAvailable = destinationCenter ? destinationVisible && routePlan.reachable === true : null;
 
   return {
     enabled: true,
@@ -1057,7 +617,7 @@ function teleportPreview(step, origin, footprint, gridSize, options = {}) {
     destinationMarker: xMarkerForPlacement(destinationPlacement),
     destinationAvailable,
     destinationIllegalReason: destinationAvailable === false
-      ? (destinationVisible ? t("Move.BeyondSpellRange", "Destination is beyond the spell's range.") : t("Move.NotVisible", "Destination is not visible."))
+      ? routePlan.reason
       : "",
     reachableCenters: [],
     reachableMarkers: [],
@@ -1079,9 +639,9 @@ export function movementPreviewForStep(context, step, options = {}) {
   // A teleport picks a destination like a Stride but reaches by range, not a path — show its own
   // range-bounded preview rather than the (empty) stride preview for its non-movement slug.
   if (step?.activityProfile?.teleport === true || step?.action?.activityProfile?.teleport === true) {
-    const teleportOrigin = point(context?.token);
+    const teleportOrigin = movementPreviewOrigin(context, gridSize, movementOptions);
     if (!teleportOrigin) return { enabled: false };
-    return teleportPreview(step, teleportOrigin, tokenFootprint(context?.token), gridSize, movementOptions);
+    return teleportPreview(context, step, teleportOrigin, tokenFootprint(context?.token), gridSize, movementOptions);
   }
 
   if (isStrideStrikeStep(step)) {
@@ -1091,13 +651,18 @@ export function movementPreviewForStep(context, step, options = {}) {
     return path ? { enabled: true, slug: step.slug, ...path } : { enabled: false };
   }
 
-  if (!MOVEMENT_SLUGS.has(step?.slug)) return { enabled: false };
+  // A dynamically-slugged action (e.g. "flank-strike-tentacle") can still be a genuine plain Stride
+  // needing the full destination-picker/reachable-area preview -- requiresDestination is the same
+  // canonical "this needs a manually-picked destination" signal requiresDestinationForAction()
+  // already uses to decide whether the panel shows a "Select destination" button at all, so a step
+  // that gets the button must also get the preview when that button is clicked.
+  if (!MOVEMENT_SLUGS.has(step?.slug) && step?.requiresDestination !== true) return { enabled: false };
 
-  const origin = point(context?.token);
+  const origin = movementPreviewOrigin(context, gridSize, movementOptions);
   if (!origin) return { enabled: false };
 
   const collisionToken = movementOptions.collisionToken;
-  const distanceFeet = movementDistanceFeet(context, step, collisionToken);
+  const distanceFeet = movementHorizontalBudgetForStep(context, step, movementOptions);
   const elevationDelta = verticalElevationDelta(step, collisionToken);
   const originElevation = numeric(collisionToken?.document?.elevation, 0) || 0;
   const footprint = tokenFootprint(context?.token);
@@ -1131,7 +696,7 @@ export function movementPreviewForStep(context, step, options = {}) {
   // committed to ending movement there. The grid stays exactly the general/unnarrowed view; only the
   // candidate's own ghost/cost data is layered on top of it.
   if (step?.hoverOnly === true) {
-    const destinationCenter = explicitDestination(step);
+    const destinationCenter = movementDestinationForStep(step);
     if (!destinationCenter) return bareReachablePreview;
     const destinationVisible = pointVisible(destinationCenter, movementOptions);
     const destinationPlacement = destinationVisible ? placementForCenter(destinationCenter, footprint, gridSize) : null;
@@ -1148,26 +713,33 @@ export function movementPreviewForStep(context, step, options = {}) {
     // origin-only bareReachablePreview did before any waypoint existed.
     //
     // The caller's own movementPlan.waypoints (destination-picker.js's candidatePlanFor) already ends
-    // with this same hover destination -- explicitWaypointCenters' own dedup (via samePoint) means
+    // with this same hover destination -- movementWaypointsForStep's own dedup means
     // passing destinationCenter here is safe whether or not the caller already included it, so slicing
     // off the last entry reliably yields ONLY the truly prior/committed waypoints either way. Passing
     // `null` instead (as if the destination were never in that array) double-counted the destination as
     // its own "committed" waypoint, which both silently self-cancelled in the cost check (a harmless
     // zero-length repeat) AND made the grid re-center on wherever the cursor currently was instead of
     // staying anchored to the last REAL commit.
-    const allWaypointCenters = explicitWaypointCenters(step, destinationCenter);
+    const allWaypointCenters = movementWaypointsForStep(step, destinationCenter);
     const priorWaypointCenters = allWaypointCenters?.length > 1 ? allWaypointCenters.slice(0, -1) : null;
     if (priorWaypointCenters?.length) {
-      const priorValidation = validateWaypointPath(origin, priorWaypointCenters, distanceFeet, gridSize, movementOptions);
-      const remainingDistanceFeet = priorValidation.available ? Math.max(0, distanceFeet - priorValidation.cost) : 0;
+      const priorRoute = movementWaypointRouteForPreview(context, step, origin, priorWaypointCenters, gridSize, movementOptions);
+      const remainingDistanceFeet = priorRoute.reachable ? Math.max(0, priorRoute.maxCost - priorRoute.cost) : 0;
       const waypointOrigin = priorWaypointCenters.at(-1);
-      const remainingCenters = priorValidation.available && remainingDistanceFeet > 0
+      const remainingCenters = priorRoute.reachable && remainingDistanceFeet > 0
         ? reachableMovementCenters(waypointOrigin, remainingDistanceFeet, gridSize, movementOptions)
         : [];
       const remainingPlacements = remainingCenters.map((center) => placementForCenter(center, footprint, gridSize));
       const remainingMarkers = reachableMarkers(waypointOrigin, remainingCenters, null, gridSize);
-      const reachable = priorValidation.available
-        && validateWaypointPath(origin, [...priorWaypointCenters, destinationCenter], distanceFeet, gridSize, movementOptions).available;
+      const candidateRoute = movementWaypointRouteForPreview(
+        context,
+        step,
+        origin,
+        [...priorWaypointCenters, destinationCenter],
+        gridSize,
+        movementOptions,
+      );
+      const reachable = priorRoute.reachable && candidateRoute.reachable;
       return {
         ...bareReachablePreview,
         reachableCenters: remainingCenters,
@@ -1197,19 +769,11 @@ export function movementPreviewForStep(context, step, options = {}) {
   return bareReachablePreview;
 }
 
-function canvasTokenById(id) {
-  if (!id) return null;
-  return (globalThis.canvas?.tokens?.placeables ?? []).find((token) => {
-    const document = token?.document ?? token;
-    return token?.id === id || document?.id === id || document?.uuid === id;
-  }) ?? null;
-}
-
 function tokenCenter(token) {
   if (!token) return null;
   if (token.center) return { x: token.center.x, y: token.center.y };
   const document = token.document ?? token;
-  const size = globalThis.canvas?.grid?.size ?? 1;
+  const size = canvasGridSize();
   return {
     x: numeric(document.x ?? token.x, 0) + (numeric(document.width, 1) * size) / 2,
     y: numeric(document.y ?? token.y, 0) + (numeric(document.height, 1) * size) / 2,
@@ -1250,8 +814,8 @@ function canvasContext(context, step) {
 }
 
 function previewGridSize() {
-  const sceneDistance = numeric(globalThis.canvas?.scene?.grid?.distance, 5) || 5;
-  const pixelSize = numeric(globalThis.canvas?.grid?.size, sceneDistance) || sceneDistance;
+  const sceneDistance = canvasGridDistance();
+  const pixelSize = canvasGridSize();
   return { sceneDistance, pixelSize };
 }
 
@@ -1603,6 +1167,7 @@ function computeMovementPreview(context, step) {
     token: {
       ...(rawContext.token ?? {}),
       center: toScene(rawContext.token?.center),
+      plannedCenter: toScene(rawContext.token?.plannedCenter),
       width: rawContext.token?.width,
       height: rawContext.token?.height,
     },
@@ -1623,24 +1188,7 @@ function computeMovementPreview(context, step) {
   return { preview, scale };
 }
 
-// Corner points of a stepwise route (origin-exclusive, destination-inclusive) given in scene
-// coords, returned in pixel coords. Only points where the step direction changes are kept, so
-// a straight route yields none and only genuinely bent routes need waypoints.
-export function routeCornerWaypoints(origin, route, scale = 1) {
-  if (!origin || !Array.isArray(route) || route.length < 2) return [];
-  const points = [origin, ...route];
-  const corners = [];
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const prev = points[index - 1];
-    const current = points[index];
-    const next = points[index + 1];
-    if (Math.sign(current.x - prev.x) !== Math.sign(next.x - current.x)
-      || Math.sign(current.y - prev.y) !== Math.sign(next.y - current.y)) {
-      corners.push({ x: current.x * scale, y: current.y * scale });
-    }
-  }
-  return corners;
-}
+export { engineRouteCornerWaypoints as routeCornerWaypoints };
 
 // Real routed cost/path (canvas pixel coords) to a SPECIFIC candidate destination, using the same
 // obstacle- and terrain-avoiding BFS that drives the reachable-area overlay -- so a square the
@@ -1662,7 +1210,7 @@ export function movementRouteToPoint(context, step, destinationPoint) {
     Math.abs(center.x - sceneDestination.x) < epsilon && Math.abs(center.y - sceneDestination.y) < epsilon);
   if (!match) return null;
 
-  const waypoints = routeCornerWaypoints(preview.origin, match.route, scale);
+  const waypoints = engineRouteCornerWaypoints(preview.origin, match.route, scale);
   return {
     cost: numeric(match.cost, 0),
     destination: { x: match.x * scale, y: match.y * scale },
@@ -1679,7 +1227,7 @@ export function recommendedMovementForStep(context, step) {
   const recommended = preview.recommendedCenter ?? preview.destinationCenter ?? null;
   if (!recommended) return null;
   const destination = { x: recommended.x * scale, y: recommended.y * scale };
-  const waypoints = routeCornerWaypoints(preview.origin, recommended.route, scale);
+  const waypoints = engineRouteCornerWaypoints(preview.origin, recommended.route, scale);
   return { destination, ...(waypoints.length ? { waypoints } : {}) };
 }
 

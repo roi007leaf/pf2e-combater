@@ -1,3 +1,5 @@
+import { actorItems } from "../foundry-data.js";
+
 function normalize(value) {
   return String(value ?? "")
     .normalize("NFKD")
@@ -6,15 +8,6 @@ function normalize(value) {
     .replace(/['']/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (collection instanceof Map) return Array.from(collection.values());
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  if (typeof collection === "object") return Object.values(collection);
-  return [];
 }
 
 function itemSlug(item) {
@@ -128,15 +121,6 @@ export function readTargetCombatState(target) {
     tracedRune: stateFlag(target, ["tracedRune", "traced-rune"])
       || targetHasMarkState(target, "traced-rune"),
   };
-}
-
-function actorItems(actor, type) {
-  const typed = collectionValues(actor?.itemTypes?.[type]);
-  const typedIds = new Set(typed.map((item) => item?.id ?? item?._id).filter(Boolean));
-  const fallback = collectionValues(actor?.items)
-    .filter((item) => item?.type === type)
-    .filter((item) => !typedIds.has(item?.id ?? item?._id));
-  return [...typed, ...fallback];
 }
 
 function stateEntries(actor) {

@@ -110,4 +110,13 @@ export function setting(key) {
   return game.settings.get(MODULE_ID, key);
 }
 
+export function settingOrDefault(key, fallback) {
+  try {
+    const value = setting(key);
+    return value === undefined ? fallback : value;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
 export { SETTINGS };

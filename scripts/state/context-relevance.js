@@ -1,15 +1,9 @@
+import { collectionValues } from "../foundry-data.js";
+
 function stringValues(values) {
   return values
     .filter((value) => value !== null && value !== undefined && value !== "")
     .map((value) => String(value));
-}
-
-function collectionValues(collection) {
-  if (!collection) return [];
-  if (Array.isArray(collection)) return collection;
-  if (Array.isArray(collection.contents)) return collection.contents;
-  if (typeof collection.values === "function") return Array.from(collection.values());
-  return [];
 }
 
 function uuidIds(uuid, kind) {

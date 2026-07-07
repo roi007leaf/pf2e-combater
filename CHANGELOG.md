@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.1.0]
+
+### Added
+
+- **Auto-fill now uses the combat targets you already selected before pressing the button.** If the
+  selected token is one of the acting combatant's current combat targets, Auto-fill rebuilds the
+  plan from that live selection instead of using the panel's previous fallback target.
+- **A project architecture context document was added** so future refactors can preserve the module's
+  domain language, boundaries, and release intent instead of rediscovering them from scratch.
+- **Self-test coverage is now split into modules.** The old monolithic runner now loads a dedicated
+  source-architecture assertion suite and a runtime behavior suite, keeping the same `npm test`
+  command while making the tests easier to navigate.
+
+### Changed
+
+- **The engine was split into focused action, execution, planner, scoring, and revert modules.**
+  Action budget, action text parsing, action requirements, builder projection, execution state,
+  target handling, chat/revert envelopes, native PF2e item use, damage rolling, movement execution,
+  conditions, equipment, Strike/System Action/Sustain/Teleport execution, and spell-slot/resource
+  revert logic now live behind smaller module boundaries instead of the old executor/revert
+  monoliths.
+- **The planner and scorer were decomposed by responsibility.** Planner rules, projections, and
+  conflict checks now live under `scripts/engine/planner/`; scoring facts, gates, targets, buffs,
+  skills, spells, role tactics, activity tactics, and shared tactic helpers now live under
+  `scripts/engine/scoring/`.
+- **Action reading was reorganized into reader families.** Generic actions, item actions, weapon
+  actions, elemental blasts, defensive/recovery actions, action reach, shared action-reader helpers,
+  and positional tactics now each have their own module, with positional stride, retreat, flank,
+  kite, and tactic helper files separated under `scripts/readers/positional/`.
+- **Panel UI behavior was moved out of `CombaterPanel` into workflow modules.** Context preparation,
+  draft mutation/Auto-fill, destination/target/area picking, execution/revert controls, render event
+  binding, and display view-model shaping now live under `scripts/ui/panel/`, while action
+  categories, action details, and action preview live under `scripts/ui/action/`.
+- **Shared Foundry, canvas, token, target, actor, area, and movement helpers now have explicit
+  modules.** The refactor consolidates collection/system-value unwrapping, token geometry, canvas
+  geometry, area region math, target pools, actor context access, movement routes, and movement-cost
+  handling so execution, preview, planning, and readers use the same primitives.
+- **Files with a common prefix were gathered into matching folders.** The `action-*`, `area-*`,
+  `spell-*`, UI action, reader action, and positional tactic families now use folder structure
+  instead of flat `x-*` filenames.
+
+### Fixed
+
+- **Auto-fill no longer has to rely on stale panel target state when a valid combat target is
+  selected immediately before filling.** The draft workflow now refreshes combat context, rebuilds
+  candidates, and regenerates Auto-fill plans at button press time before writing the draft.
+- **Cycling Auto-fill alternatives now refreshes area template placement against the live selected
+  target.** A stale cycled plan can no longer keep an old cone aimed at another enemy, such as
+  Expel Infestation staying on Celdar after Ezren was targeted.
+- **Fill-gap Auto-fill now remaps stale shuffled plans through the selected-target candidate
+  search too.** Manual draft actions no longer make the remaining-budget fill fall back to an
+  unfocused plan when a target is selected.
+- **NPC area actions using PF2e's shorthand template embeds now auto-place and preview correctly.**
+  Actions like Expel Infestation (`@Template[cone|distance:30]`) are parsed as cones instead of
+  falling back to a generic area/burst that still required manual placement.
+- **Projected movement and reach calculations now share token-footprint and route helpers instead
+  of duplicating geometry math** across action builder, movement preview, destination picker,
+  combat context, and execution paths.
+
 ## [1.0.12]
 
 ### Added
