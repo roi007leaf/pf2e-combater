@@ -911,8 +911,8 @@ assert.ok(panelTemplateSource.includes("combater-step-main"), "selected action r
 assert.ok(panelTemplateSource.includes("combater-step-details"), "selected action rows should group target and destination metadata");
 assert.ok(panelTemplateSource.includes("combater-step-tools"), "selected action tool buttons should stay inside the row");
 assert.ok(
-  /grid-template-areas:\s*"identity actions"\s*"plan plan"/.test(panelStyleSource),
-  "panel header should use a two-row grid so action chips do not fight execute controls",
+  /grid-template-areas:\s*"identity"\s*"actions"\s*"plan"/.test(panelStyleSource),
+  "panel header should stack identity, controls, and selected actions so toolbar chips never hide actor status",
 );
 assert.ok(
   /\.pf2e-combater \.combater-plan-strip\s*\{[\s\S]*?grid-area:\s*plan;/.test(panelStyleSource),

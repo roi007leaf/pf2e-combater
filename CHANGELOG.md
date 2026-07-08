@@ -28,8 +28,9 @@
   such as finishing wounded enemies, pressuring casters/healers/controllers, punishing immediate
   threats, avoiding hard defenders, preferring nearest reachable enemies, or favoring objective
   targets.
-- **Long inferred tactic labels now wrap to two lines in the header chip** so "Auto: Artillery /
-  Aggressive" and similar combinations no longer force the whole Combater toolbar wider.
+- **Long inferred tactic labels now wrap to two lines and the toolbar stacks below the actor
+  identity** so "Auto: Artillery / Aggressive" and similar combinations no longer force the
+  Combater header wide enough to hide actor status elements.
 
 ## [1.1.2]
 
