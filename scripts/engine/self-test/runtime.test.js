@@ -4485,8 +4485,9 @@ assert.equal(aggroProfile(npcAggroContext, woundedFullHpTarget).roles.includes("
 assert.equal(aggroProfile(npcAggroContext, dyingTarget).roles.includes("finisher-target"), true,
   "a dying creature is a finisher target");
 
-function tacticFlagDocument(type = "npc", flags = {}) {
+function tacticFlagDocument(type = "npc", flags = {}, extra = {}) {
   return {
+    ...extra,
     type,
     flags,
     getFlag: (moduleId, key) => flags?.[moduleId]?.[key],
@@ -4502,7 +4503,7 @@ function tacticContext(actorTactic = null, tokenTactic = null, options = {}) {
     actor: {
       id: "tactic-actor",
       name: "Tactic Actor",
-      document: tacticFlagDocument(actorType, actorFlags),
+      document: tacticFlagDocument(actorType, actorFlags, options.actorDocument),
     },
     token: {
       id: "tactic-token",
@@ -4541,6 +4542,110 @@ assert.equal(tokenOverrideTactic.source, "token", "token tactic override should 
 const invalidTactic = resolveTacticPersonality(tacticContext({ role: "fake", temperament: "wrong" }, undefined));
 assert.equal(invalidTactic.role, "auto", "invalid tactic flag should fall back to Auto role");
 assert.equal(invalidTactic.temperament, "auto", "invalid tactic flag should fall back to Auto temperament");
+
+const autoArtilleryContext = tacticContext({ role: "auto", temperament: "auto" }, undefined, {
+  actorDocument: {
+    system: {
+      details: { level: { value: 5 } },
+      actions: [{
+        type: "strike",
+        label: "Longbow",
+        traits: ["volley-30"],
+        item: { system: { range: { increment: 100 }, damageRolls: { main: { damage: "2d8+4", damageType: "piercing" } } } },
+      }],
+    },
+    itemTypes: {
+      spell: [{
+        name: "Fireball",
+        slug: "fireball",
+        system: { traits: { value: ["fire"] }, damage: { main: { formula: "6d6" } }, range: { value: "500 feet" } },
+      }],
+      spellcastingEntry: [{ system: { slots: { slot3: { value: 1 } } } }],
+    },
+  },
+});
+const autoArtilleryTactic = resolveTacticPersonality(autoArtilleryContext);
+assert.equal(autoArtilleryTactic.role, "auto", "Auto role should stay stored as Auto for the dialog");
+assert.equal(autoArtilleryTactic.effectiveRole, "artillery", "Auto role should infer Artillery from ranged strikes and combat spells");
+assert.equal(autoArtilleryTactic.effectiveTemperament, "aggressive", "Auto temperament should infer Aggressive from offensive ranged output");
+assert.equal(tacticPersonalityView(autoArtilleryContext).label, "Auto: Artillery / Aggressive",
+  "the tactic chip should show the inferred Auto role without changing the stored selection");
+assert.ok(
+  tacticPersonalityAdjustment(autoArtilleryContext, {
+    id: "scorching-ray",
+    name: "Scorching Ray",
+    role: "damage",
+    actionCost: 2,
+    source: "spell-inferred",
+    activityProfile: { spell: true },
+  }, { role: "damage" }).scoreDelta
+    > tacticPersonalityAdjustment(autoArtilleryContext, {
+      id: "claw",
+      name: "Claw",
+      role: "damage",
+      actionCost: 1,
+      source: "strike",
+      range: { max: 5 },
+    }, { role: "damage" }).scoreDelta,
+  "inferred Artillery should bias Auto Fill and Shuffle toward spells/ranged actions over plain melee",
+);
+
+const autoSupportContext = tacticContext({ role: "auto", temperament: "auto" }, undefined, {
+  actorDocument: {
+    itemTypes: {
+      spell: [{
+        name: "Heal",
+        slug: "heal",
+        system: { traits: { value: ["healing", "vitality"] }, description: { value: "<p>Heal an ally.</p>" } },
+      }],
+      action: [{
+        name: "Bolster Ally",
+        slug: "bolster-ally",
+        system: { description: { value: "<p>One ally gains a status bonus.</p>" } },
+      }],
+    },
+  },
+});
+const autoSupportTactic = resolveTacticPersonality(autoSupportContext);
+assert.equal(autoSupportTactic.effectiveRole, "support", "Auto role should infer Support from healing and ally-buff tools");
+assert.ok(
+  tacticPersonalityAdjustment(autoSupportContext, {
+    id: "heal",
+    name: "Heal",
+    role: "healing",
+    actionCost: 2,
+    source: "spell-inferred",
+    activityProfile: { spellBuff: true },
+  }, { role: "healing" }).scoreDelta > 0,
+  "inferred Support should affect Auto Fill and Shuffle scoring",
+);
+
+const autoBruteContext = tacticContext({ role: "auto", temperament: "auto" }, undefined, {
+  actorDocument: {
+    system: {
+      attributes: { hp: { value: 95, max: 95 }, ac: { value: 18 } },
+      actions: [
+        {
+          type: "strike",
+          label: "Maul",
+          traits: ["forceful", "backswing"],
+          item: { system: { damageRolls: { main: { damage: "2d12+8", damageType: "bludgeoning" } } } },
+        },
+        { type: "action", name: "Grab", slug: "grab", traits: ["attack"], description: { value: "<p>The brute Grabs a creature.</p>" } },
+      ],
+    },
+  },
+});
+const autoBruteTactic = resolveTacticPersonality(autoBruteContext);
+assert.equal(autoBruteTactic.effectiveRole, "brute", "Auto role should infer Brute from heavy melee and grab tools");
+assert.equal(autoBruteTactic.effectiveTemperament, "berserker", "Auto temperament should infer Berserker from durable heavy melee pressure");
+
+const explicitBossAutoTemperament = resolveTacticPersonality(tacticContext({ role: "boss", temperament: "auto" }, undefined, {
+  actorDocument: autoArtilleryContext.actor.document,
+}));
+assert.equal(explicitBossAutoTemperament.effectiveRole, "boss", "explicit role should override inferred role");
+assert.equal(explicitBossAutoTemperament.inferredRole, "artillery", "inferred role should remain visible for diagnostics");
+assert.equal(explicitBossAutoTemperament.effectiveTemperament, "aggressive", "Auto temperament should still infer when only role is explicit");
 
 const disabledCustomTactic = resolveTacticPersonality(tacticContext({
   role: "boss",

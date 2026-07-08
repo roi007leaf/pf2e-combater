@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.js";
+import { actorItems, collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
 import { t } from "../i18n.js";
 
 export const TACTIC_PERSONALITY_FLAG = "tacticPersonality";
@@ -51,6 +52,8 @@ const TARGET_SLIDER_IDS = new Set(TACTIC_TARGET_SLIDERS.map((entry) => entry.id)
 const MAX_TACTIC_DELTA = 44;
 const CUSTOM_ACTION_STEP = 8;
 const CUSTOM_TARGET_STEP = 10;
+const AUTO_ROLE_MIN_SCORE = 5;
+const AUTO_TEMPERAMENT_MIN_SCORE = 4;
 
 const ROLE_ACTION_WEIGHTS = {
   boss: { highImpact: 22, reaction: 10, damage: 6, control: 8, support: 4, mobility: -4 },
@@ -125,6 +128,19 @@ function hasFlagValue(value) {
   return value !== undefined && value !== null && value !== "";
 }
 
+function numericValue(value) {
+  const number = Number(systemValue(value));
+  return Number.isFinite(number) ? number : null;
+}
+
+function actorDocument(context) {
+  return context?.actor?.document
+    ?? context?.combatant?.actor
+    ?? context?.combatant?.document?.actor
+    ?? context?.actor
+    ?? null;
+}
+
 function actorType(context) {
   return String(
     context?.profile?.actorType
@@ -163,6 +179,326 @@ function normalizeCustom(value) {
   return { action, target };
 }
 
+function textFromHtml(value) {
+  return String(systemValue(value) ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function documentText(document) {
+  const traits = [
+    ...traitSlugs(document),
+    ...(Array.isArray(document?.traits) ? document.traits.map((trait) => trait?.slug ?? trait?.name ?? trait) : []),
+    ...(Array.isArray(document?.weaponTraits) ? document.weaponTraits.map((trait) => trait?.slug ?? trait?.name ?? trait) : []),
+  ];
+  return [
+    document?.name,
+    document?.label,
+    document?.slug,
+    document?.system?.slug,
+    traits.join(" "),
+    textFromHtml(document?.system?.description),
+    textFromHtml(document?.system?.description?.value),
+    textFromHtml(document?.description),
+    textFromHtml(document?.description?.value),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function scoreBag() {
+  return {
+    role: {
+      boss: 0,
+      lieutenant: 0,
+      minion: 0,
+      brute: 0,
+      skirmisher: 0,
+      artillery: 0,
+      controller: 0,
+      defender: 0,
+      support: 0,
+    },
+    temperament: {
+      aggressive: 0,
+      cautious: 0,
+      opportunist: 0,
+      berserker: 0,
+      coward: 0,
+    },
+  };
+}
+
+function addScore(scores, group, key, amount) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value === 0 || !(key in scores[group])) return;
+  scores[group][key] += value;
+}
+
+function bestScoredKey(scores, minimum) {
+  let best = "auto";
+  let bestScore = minimum;
+  for (const [key, score] of Object.entries(scores)) {
+    if (score <= bestScore) continue;
+    best = key;
+    bestScore = score;
+  }
+  return best;
+}
+
+function actorItemsOfTypes(actor, types) {
+  return types.flatMap((type) => actorItems(actor, type));
+}
+
+function actorLevel(actor) {
+  return numericValue(actor?.system?.details?.level?.value)
+    ?? numericValue(actor?.system?.details?.level)
+    ?? numericValue(actor?.level)
+    ?? null;
+}
+
+function targetLevel(target) {
+  return numericValue(target?.level)
+    ?? numericValue(target?.actor?.document?.system?.details?.level?.value)
+    ?? numericValue(target?.actor?.system?.details?.level?.value)
+    ?? null;
+}
+
+function opposingLevels(context) {
+  const seen = new Set();
+  const values = [];
+  const targets = [
+    ...(Array.isArray(context?.targets) ? context.targets : []),
+    ...(Array.isArray(context?.battlefield?.targets) ? context.battlefield.targets : []),
+    ...(Array.isArray(context?.battlefield?.enemies) ? context.battlefield.enemies : []),
+  ];
+  for (const target of targets) {
+    const key = target?.id ?? target?.uuid ?? target?.name;
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    const level = targetLevel(target);
+    if (level !== null) values.push(level);
+  }
+  return values;
+}
+
+function actorHpPercent(context, actor) {
+  const explicit = Number(context?.profile?.hpPercent);
+  if (Number.isFinite(explicit)) return explicit;
+  const hp = actor?.system?.attributes?.hp;
+  const current = numericValue(hp?.value);
+  const max = numericValue(hp?.max);
+  if (current !== null && max !== null && max > 0) return current / max;
+  return null;
+}
+
+function actorMaxHp(actor) {
+  return numericValue(actor?.system?.attributes?.hp?.max);
+}
+
+function actorSpeed(context, actor) {
+  return numericValue(context?.profile?.speed)
+    ?? numericValue(actor?.system?.attributes?.speed?.value)
+    ?? numericValue(actor?.system?.movement?.speeds?.land?.value)
+    ?? numericValue(actor?.system?.movement?.speed?.value)
+    ?? null;
+}
+
+function strikeTraits(strike) {
+  return [
+    ...(Array.isArray(strike?.traits) ? strike.traits.map((trait) => trait?.slug ?? trait?.name ?? trait) : []),
+    ...(Array.isArray(strike?.weaponTraits) ? strike.weaponTraits.map((trait) => trait?.slug ?? trait?.name ?? trait) : []),
+    ...traitSlugs(strike?.item),
+  ].map((trait) => normalizeId(trait)).filter(Boolean);
+}
+
+function strikeRange(strike, traits) {
+  const item = strike?.item ?? {};
+  const systemRange = item?.system?.range;
+  const increment = numericValue(systemRange?.increment ?? systemRange);
+  const max = numericValue(systemRange?.max);
+  if (max !== null && max > 0) return max;
+  if (increment !== null && increment > 0) return increment;
+  const traitReach = traits
+    .map((trait) => trait.match(/^reach-(\d+)$/)?.[1])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (traitReach.length) return Math.max(...traitReach);
+  if (traits.includes("reach")) return 10;
+  return 5;
+}
+
+function diceAverage(formula) {
+  const text = String(formula ?? "");
+  let total = 0;
+  let matched = false;
+  for (const [, count, faces] of text.matchAll(/(\d+)d(\d+)/g)) {
+    total += Number(count) * ((Number(faces) + 1) / 2);
+    matched = true;
+  }
+  for (const flat of text.match(/[+-]\s*\d+(?!d)/g) ?? []) {
+    total += Number(flat.replace(/\s/g, ""));
+    matched = true;
+  }
+  return matched && total > 0 ? total : null;
+}
+
+function strikeAverageDamage(strike) {
+  const rolls = strike?.item?.system?.damageRolls;
+  if (rolls && typeof rolls === "object") {
+    const values = Object.values(rolls)
+      .map((roll) => diceAverage(roll?.damage ?? roll?.formula))
+      .filter((value) => value !== null);
+    if (values.length) return values.reduce((total, value) => total + value, 0);
+  }
+  return diceAverage(strike?.damageFormula);
+}
+
+function hasPattern(text, pattern) {
+  return pattern.test(String(text ?? ""));
+}
+
+const HEALING_RE = /\b(heal|healing|soothe|restore|restores|regenerate|regeneration|vitality|rejuvenat)\b/;
+const SUPPORT_RE = /\b(ally|allies|aura|bolster|bonus|command|commander|inspire|protect|protective|grant|grants|marshal)\b/;
+const CONTROL_RE = /\b(grab|grapple|trip|shove|reposition|disarm|frightened|slowed|stunned|stun|immobilized|restrained|prone|off-guard|clumsy|drained|sickened|enfeebled|stupefied|dazzled|blinded|paralyzed|petrified|control)\b/;
+const MOBILITY_RE = /\b(stride|step|fly|flight|leap|jump|teleport|burrow|swim|climb|skirmish|mobile|pounce|charge)\b/;
+const DEFENSE_RE = /\b(shield|block|parry|guard|defend|defender|protect|armor|resistance|resist)\b/;
+const REACTION_RE = /\b(reaction|trigger|reactive strike|attack of opportunity|shield block)\b/;
+const STEALTH_RE = /\b(stealth|sneak|hide|ambush|invisible|invisibility|surprise|backstab)\b/;
+const RAGE_RE = /\b(rage|frenzy|frenzied|berserk|berserker|reckless|bloodrager)\b/;
+const COWARD_RE = /\b(coward|fearful|craven|flee|retreat|surrender)\b/;
+const AREA_DAMAGE_RE = /\b(area|burst|cone|line|emanation|breath|fireball|blast|explosion)\b/;
+
+function scoreTextSignals(scores, text) {
+  if (hasPattern(text, HEALING_RE)) {
+    addScore(scores, "role", "support", 8);
+    addScore(scores, "temperament", "cautious", 2);
+  }
+  if (hasPattern(text, SUPPORT_RE)) {
+    addScore(scores, "role", "support", 4);
+    addScore(scores, "role", "lieutenant", 3);
+  }
+  if (hasPattern(text, CONTROL_RE)) {
+    addScore(scores, "role", "controller", 5);
+    addScore(scores, "temperament", "opportunist", 2);
+  }
+  if (hasPattern(text, MOBILITY_RE)) {
+    addScore(scores, "role", "skirmisher", 4);
+    addScore(scores, "temperament", "opportunist", 2);
+  }
+  if (hasPattern(text, DEFENSE_RE)) {
+    addScore(scores, "role", "defender", 5);
+    addScore(scores, "temperament", "cautious", 3);
+  }
+  if (hasPattern(text, REACTION_RE)) {
+    addScore(scores, "role", "defender", 3);
+    addScore(scores, "temperament", "opportunist", 4);
+  }
+  if (hasPattern(text, STEALTH_RE)) {
+    addScore(scores, "role", "skirmisher", 4);
+    addScore(scores, "temperament", "opportunist", 4);
+  }
+  if (hasPattern(text, RAGE_RE)) {
+    addScore(scores, "role", "brute", 4);
+    addScore(scores, "temperament", "berserker", 8);
+  }
+  if (hasPattern(text, COWARD_RE)) {
+    addScore(scores, "temperament", "coward", 8);
+  }
+  if (hasPattern(text, AREA_DAMAGE_RE)) {
+    addScore(scores, "role", "artillery", 3);
+    addScore(scores, "temperament", "aggressive", 2);
+  }
+}
+
+function inferTacticPersonality(context) {
+  if (actorType(context) !== "npc") return { role: "auto", temperament: "auto" };
+
+  const actor = actorDocument(context);
+  const scores = scoreBag();
+  const level = actorLevel(actor);
+  const enemyLevels = opposingLevels(context);
+  if (level !== null && enemyLevels.length) {
+    const averageEnemyLevel = enemyLevels.reduce((total, value) => total + value, 0) / enemyLevels.length;
+    if (level >= averageEnemyLevel + 2) addScore(scores, "role", "boss", 14);
+    else if (level >= averageEnemyLevel + 1) addScore(scores, "role", "lieutenant", 4);
+    if (level <= averageEnemyLevel - 2) addScore(scores, "role", "minion", 14);
+  }
+
+  const hpPercent = actorHpPercent(context, actor);
+  if (hpPercent !== null) {
+    if (hpPercent <= 0.2) addScore(scores, "temperament", "coward", 12);
+    else if (hpPercent <= 0.4) addScore(scores, "temperament", "cautious", 9);
+  }
+
+  const maxHp = actorMaxHp(actor);
+  if (maxHp !== null && maxHp >= 70) {
+    addScore(scores, "role", "brute", 3);
+    addScore(scores, "role", "defender", 2);
+    addScore(scores, "temperament", "berserker", 2);
+  }
+
+  const speed = actorSpeed(context, actor);
+  if (speed !== null && speed >= 35) {
+    addScore(scores, "role", "skirmisher", 4);
+    addScore(scores, "temperament", "opportunist", 2);
+  }
+
+  if (context?.profile?.hasShield === true) {
+    addScore(scores, "role", "defender", 5);
+    addScore(scores, "temperament", "cautious", 3);
+  }
+
+  const systemActions = collectionValues(actor?.system?.actions, { compact: true });
+  for (const action of systemActions) {
+    const traits = strikeTraits(action);
+    const text = documentText(action);
+    scoreTextSignals(scores, text);
+    if (action?.type === "strike") {
+      const range = strikeRange(action, traits);
+      const averageDamage = strikeAverageDamage(action);
+      if (range > 10 || traits.some((trait) => ["ranged", "thrown", "propulsive", "volley"].includes(trait) || trait.startsWith("volley-"))) {
+        addScore(scores, "role", "artillery", 6);
+        addScore(scores, "temperament", "aggressive", 3);
+      } else {
+        addScore(scores, "role", "brute", 5);
+        addScore(scores, "temperament", "aggressive", 2);
+      }
+      if (averageDamage !== null && averageDamage >= 18) {
+        addScore(scores, "role", "brute", 4);
+        addScore(scores, "temperament", "aggressive", 4);
+        addScore(scores, "temperament", "berserker", 5);
+      }
+      if (traits.includes("reach") || traits.some((trait) => trait.startsWith("reach-"))) addScore(scores, "role", "brute", 2);
+      if (traits.includes("agile") || traits.includes("finesse")) addScore(scores, "role", "skirmisher", 2);
+    }
+  }
+
+  const featureItems = actorItemsOfTypes(actor, ["action", "feat", "feature", "classFeature", "classfeature", "equipment", "armor", "weapon"]);
+  for (const item of featureItems) scoreTextSignals(scores, documentText(item));
+
+  const spellItems = actorItemsOfTypes(actor, ["spell"]);
+  for (const spell of spellItems) {
+    const text = documentText(spell);
+    scoreTextSignals(scores, text);
+    if (hasPattern(text, HEALING_RE)) continue;
+    if (hasPattern(text, CONTROL_RE)) continue;
+    if (hasPattern(text, SUPPORT_RE)) continue;
+    if (spell?.system?.damage || hasPattern(text, /\b(attack|damage|fire|cold|electricity|acid|mental|void|poison)\b/)) {
+      addScore(scores, "role", "artillery", 5);
+      addScore(scores, "temperament", "aggressive", 3);
+    }
+  }
+
+  if ((context?.battlefield?.allies?.length ?? 0) > 0 && (scores.role.support > 0 || scores.role.controller > 0)) {
+    addScore(scores, "role", "lieutenant", 3);
+  }
+
+  const role = bestScoredKey(scores.role, AUTO_ROLE_MIN_SCORE);
+  const temperament = bestScoredKey(scores.temperament, AUTO_TEMPERAMENT_MIN_SCORE);
+  return { role, temperament };
+}
+
 function normalizeTactic(value) {
   if (typeof value === "string") {
     const id = normalizeId(value);
@@ -186,23 +522,44 @@ function normalizeTactic(value) {
 }
 
 export function resolveTacticPersonality(context) {
+  const inferred = inferTacticPersonality(context);
   const tokenRaw = readFlag(context?.token, TACTIC_PERSONALITY_OVERRIDE_FLAG);
   if (hasFlagValue(tokenRaw)) {
+    const tactic = normalizeTactic(tokenRaw);
     return {
-      ...normalizeTactic(tokenRaw),
+      ...tactic,
+      inferredRole: inferred.role,
+      inferredTemperament: inferred.temperament,
+      effectiveRole: tactic.role === "auto" ? inferred.role : tactic.role,
+      effectiveTemperament: tactic.temperament === "auto" ? inferred.temperament : tactic.temperament,
       source: "token",
     };
   }
 
   const actorRaw = readFlag(context?.actor, TACTIC_PERSONALITY_FLAG);
   if (hasFlagValue(actorRaw)) {
+    const tactic = normalizeTactic(actorRaw);
     return {
-      ...normalizeTactic(actorRaw),
+      ...tactic,
+      inferredRole: inferred.role,
+      inferredTemperament: inferred.temperament,
+      effectiveRole: tactic.role === "auto" ? inferred.role : tactic.role,
+      effectiveTemperament: tactic.temperament === "auto" ? inferred.temperament : tactic.temperament,
       source: "actor",
     };
   }
 
-  return { role: "auto", temperament: "auto", customEnabled: false, custom: null, source: "default" };
+  return {
+    role: "auto",
+    temperament: "auto",
+    customEnabled: false,
+    custom: null,
+    inferredRole: inferred.role,
+    inferredTemperament: inferred.temperament,
+    effectiveRole: inferred.role,
+    effectiveTemperament: inferred.temperament,
+    source: "default",
+  };
 }
 
 function actionRole(action, explicitRole) {
@@ -236,7 +593,7 @@ function actionCategories(action, explicitRole) {
   if (["mobility", "mobility-attack"].includes(role) || ["stride", "step", "crawl", "tumble-through"].includes(slug)) categories.add("mobility");
   if (role === "mobility-attack") categories.add("mobilityAttack");
   if (source === "spell" || source === "spell-inferred" || action?.spell === true || action?.item?.type === "spell") categories.add("spell");
-  if (source === "strike" || traits.has("ranged") || Number(action?.range?.max ?? action?.targetingProfile?.maxRange) > 10) categories.add("ranged");
+  if (traits.has("ranged") || Number(action?.range?.max ?? action?.targetingProfile?.maxRange) > 10) categories.add("ranged");
   if (source === "strike" && !categories.has("ranged")) categories.add("melee");
   if (action?.actionCost === "reaction" || role === "reaction" || profile.reaction === true) categories.add("reaction");
   if ((Number.isFinite(cost) && cost >= 2 && (categories.has("damage") || categories.has("control") || categories.has("support"))) || profile.npcFamily || profile.highImpact === true) categories.add("highImpact");
@@ -273,12 +630,29 @@ function addCustomActionParts(parts, custom, categories) {
   }
 }
 
+function autoLabel(entries, effective) {
+  if (!effective || effective === "auto") return t("Tactic.Auto", "Auto");
+  return t("Tactic.AutoResolved", "Auto: {label}", { label: labelFor(entries, effective) });
+}
+
+function autoPairLabel(effectiveRole, effectiveTemperament) {
+  if (effectiveRole === "auto" && effectiveTemperament === "auto") return t("Tactic.Auto", "Auto");
+  if (effectiveRole === "auto") return autoLabel(TACTIC_TEMPERAMENTS, effectiveTemperament);
+  if (effectiveTemperament === "auto") return autoLabel(TACTIC_ROLES, effectiveRole);
+  return t("Tactic.AutoResolvedPair", "Auto: {role} / {temperament}", {
+    role: labelFor(TACTIC_ROLES, effectiveRole),
+    temperament: labelFor(TACTIC_TEMPERAMENTS, effectiveTemperament),
+  });
+}
+
 function formatTacticLabel(tactic) {
-  const role = labelFor(TACTIC_ROLES, tactic.role);
-  const temperament = labelFor(TACTIC_TEMPERAMENTS, tactic.temperament);
+  const effectiveRole = tactic.effectiveRole ?? tactic.role;
+  const effectiveTemperament = tactic.effectiveTemperament ?? tactic.temperament;
+  const role = tactic.role === "auto" ? autoLabel(TACTIC_ROLES, effectiveRole) : labelFor(TACTIC_ROLES, tactic.role);
+  const temperament = tactic.temperament === "auto" ? autoLabel(TACTIC_TEMPERAMENTS, effectiveTemperament) : labelFor(TACTIC_TEMPERAMENTS, tactic.temperament);
   const custom = tactic.customEnabled ? t("Tactic.Custom", "Custom") : "";
   const base = tactic.role === "auto" && tactic.temperament === "auto"
-    ? t("Tactic.Auto", "Auto")
+    ? autoPairLabel(effectiveRole, effectiveTemperament)
     : tactic.role === "auto"
       ? temperament
       : tactic.temperament === "auto"
@@ -304,12 +678,14 @@ function reasonFor(tactic, parts) {
 export function tacticPersonalityAdjustment(context, action, { role = null } = {}) {
   if (!isNpcGmContext(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolveTacticPersonality(context);
-  if (tactic.role === "auto" && tactic.temperament === "auto" && !tactic.customEnabled) return { scoreDelta: 0, reasons: [] };
+  const effectiveRole = tactic.effectiveRole ?? tactic.role;
+  const effectiveTemperament = tactic.effectiveTemperament ?? tactic.temperament;
+  if (effectiveRole === "auto" && effectiveTemperament === "auto" && !tactic.customEnabled) return { scoreDelta: 0, reasons: [] };
 
   const categories = actionCategories(action, role);
   const parts = [];
-  addWeightedParts(parts, ROLE_ACTION_WEIGHTS[tactic.role], categories);
-  addWeightedParts(parts, TEMPERAMENT_ACTION_WEIGHTS[tactic.temperament], categories);
+  addWeightedParts(parts, ROLE_ACTION_WEIGHTS[effectiveRole], categories);
+  addWeightedParts(parts, TEMPERAMENT_ACTION_WEIGHTS[effectiveTemperament], categories);
   if (tactic.customEnabled) addCustomActionParts(parts, tactic.custom, categories);
 
   const scoreDelta = clampDelta(parts.reduce((total, part) => total + part.delta, 0));
@@ -370,12 +746,14 @@ function addCustomTargetParts(parts, custom, roles, target) {
 export function tacticPersonalityTargetAdjustment(context, action, { target = null, aggroProfile = null } = {}) {
   if (!isNpcGmContext(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolveTacticPersonality(context);
-  if (tactic.role === "auto" && tactic.temperament === "auto" && !tactic.customEnabled) return { scoreDelta: 0, reasons: [] };
+  const effectiveRole = tactic.effectiveRole ?? tactic.role;
+  const effectiveTemperament = tactic.effectiveTemperament ?? tactic.temperament;
+  if (effectiveRole === "auto" && effectiveTemperament === "auto" && !tactic.customEnabled) return { scoreDelta: 0, reasons: [] };
 
   const roles = targetRoles(aggroProfile);
   const parts = [
-    ...targetRoleWeightParts(ROLE_TARGET_WEIGHTS[tactic.role], roles),
-    ...targetRoleWeightParts(TEMPERAMENT_TARGET_WEIGHTS[tactic.temperament], roles),
+    ...targetRoleWeightParts(ROLE_TARGET_WEIGHTS[effectiveRole], roles),
+    ...targetRoleWeightParts(TEMPERAMENT_TARGET_WEIGHTS[effectiveTemperament], roles),
   ];
   if (tactic.customEnabled) addCustomTargetParts(parts, tactic.custom, roles, target);
 
@@ -399,6 +777,10 @@ export function tacticPersonalityView(context) {
       : t("Tactic.ActorDefaultTooltip", "Actor tactic default: {label}", { label }),
     role: tactic.role,
     temperament: tactic.temperament,
+    effectiveRole: tactic.effectiveRole,
+    effectiveTemperament: tactic.effectiveTemperament,
+    inferredRole: tactic.inferredRole,
+    inferredTemperament: tactic.inferredTemperament,
     customEnabled: tactic.customEnabled,
     custom: tactic.custom,
     source: tactic.source,

@@ -240,8 +240,14 @@ assert.ok(panelViewModelSource.includes("icons/actions/OneAction.webp"), "panel 
 assert.ok(panelTemplateSource.includes("combater-chip-img") && panelTemplateSource.includes("combater-action-img"), "panel should show item images beside action names");
 assert.ok(panelContextWorkflowSource.includes("tacticPersonalityView"), "panel context should expose resolved tactic personality view data");
 assert.ok(panelTemplateSource.includes("data-configure-tactic"), "panel template should render the GM NPC tactic chip");
+assert.ok(panelTemplateSource.includes("combater-header-tactic-label"),
+  "NPC tactic chip should wrap its label in a dedicated span so long inferred Auto labels can use two lines");
 assert.ok(panelEventBindingsSource.includes("data-configure-tactic") && panelEventBindingsSource.includes("_configureTacticPersonality"),
   "panel bindings should open tactic personality config from the header chip");
+assert.ok(
+  /combater-header-tactic-label\s*\{[\s\S]*?white-space:\s*normal;[\s\S]*?-webkit-line-clamp:\s*2;/.test(panelStyleSource),
+  "NPC tactic chip label should wrap to two lines instead of forcing the header wider",
+);
 assert.ok(panelSource.includes("TACTIC_PERSONALITY_FLAG") && panelSource.includes("TACTIC_PERSONALITY_OVERRIDE_FLAG"),
   "panel should write actor default and token override tactic flags");
 assert.ok(panelSource.includes('name="customEnabled"') && panelSource.includes("data-custom-sliders"),
@@ -2232,10 +2238,13 @@ assert.ok(
 );
 assert.ok(
   tacticPersonalitySource.includes("export function resolveTacticPersonality")
+    && tacticPersonalitySource.includes("function inferTacticPersonality")
+    && tacticPersonalitySource.includes("effectiveRole")
+    && tacticPersonalitySource.includes("effectiveTemperament")
     && tacticPersonalitySource.includes("export function tacticPersonalityAdjustment")
     && tacticPersonalitySource.includes("export function tacticPersonalityTargetAdjustment")
     && tacticPersonalitySource.includes("export function tacticPersonalityView"),
-  "tactic personality module should own flag resolution, action scoring, target scoring, and view data",
+  "tactic personality module should own flag resolution, Auto inference, effective scoring, target scoring, and view data",
 );
 assert.ok(
   scoringTargetsSource.includes("export function bestTargetForAction")

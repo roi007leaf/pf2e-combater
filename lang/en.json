@@ -870,6 +870,8 @@
     },
     "Tactic": {
       "Auto": "Auto",
+      "AutoResolved": "Auto: {label}",
+      "AutoResolvedPair": "Auto: {role} / {temperament}",
       "Custom": "Custom",
       "And": " and ",
       "Favors": "{label} tactic favors {items}.",

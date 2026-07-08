@@ -9,6 +9,11 @@
   Boss, Lieutenant, Minion, Brute, Skirmisher, Artillery, Controller, Defender, or Support, then
   combine it with a temperament such as Aggressive, Cautious, Opportunist, Berserker, or Coward.
   These profiles bias recommendations without changing PF2e stats, actions, traits, or legality.
+- **The Auto role and Auto temperament now infer how an NPC should behave from its sheet and combat
+  context.** Ranged strikes and combat spells lean Artillery, healing and ally buffs lean Support,
+  heavy melee and grab tools lean Brute, shield/guard tools lean Defender, level gaps can imply
+  Boss or Minion, and low HP or aggressive melee pressure can infer temperament. Explicit presets
+  still override the inferred result.
 - **Tactic profiles support actor defaults, token overrides, and an optional Custom layer.** Saving
   an actor default gives every token of that NPC the same baseline behavior, while saving a token
   override lets a single battlefield copy act differently. Custom action and target sliders stay

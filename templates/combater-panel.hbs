@@ -238,7 +238,7 @@
         {{#if tacticPersonality.visible}}
           <button type="button" class="combater-header-tactic {{#if tacticPersonality.isOverride}}is-override{{/if}}" data-configure-tactic data-tooltip="{{tacticPersonality.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.TacticAria"}}">
             <i class="fa-solid fa-chess-knight"></i>
-            <span>{{tacticPersonality.label}}</span>
+            <span class="combater-header-tactic-label">{{tacticPersonality.label}}</span>
           </button>
         {{/if}}
         {{#if builder}}

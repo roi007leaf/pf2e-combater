@@ -881,19 +881,25 @@
 
 .pf2e-combater .combater-header-tactic {
   display: inline-flex;
+  flex: 0 1 150px;
   align-items: center;
   gap: 5px;
-  max-width: 180px;
-  min-height: 28px;
+  width: min(150px, 38vw);
+  max-width: 150px;
+  min-height: 38px;
   border: 1px solid #6f607c;
-  border-radius: 999px;
-  padding: 3px 9px;
+  border-radius: 16px;
+  padding: 4px 9px;
   background: #262230;
   color: #d7c6ee;
   font-size: 11px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.1;
   cursor: pointer;
+}
+
+.pf2e-combater .combater-header-tactic i {
+  flex: 0 0 auto;
 }
 
 .pf2e-combater .combater-header-tactic.is-override {
@@ -902,11 +908,15 @@
   color: #ead282;
 }
 
-.pf2e-combater .combater-header-tactic span {
+.pf2e-combater .combater-header-tactic-label {
+  display: -webkit-box;
   overflow: hidden;
   min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.1;
+  text-overflow: clip;
 }
 
 .pf2e-combater .combater-header-tactic:hover,
