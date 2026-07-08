@@ -71,6 +71,15 @@ import {
   viewPanelContext,
 } from "./panel/context-workflow.js";
 import {
+  TACTIC_ACTION_SLIDERS,
+  TACTIC_PERSONALITY_FLAG,
+  TACTIC_PERSONALITY_OVERRIDE_FLAG,
+  TACTIC_ROLES,
+  TACTIC_TARGET_SLIDERS,
+  TACTIC_TEMPERAMENTS,
+  tacticPersonalityView,
+} from "../rules/tactic-personality.js";
+import {
   debugAction,
   DEFAULT_TAB,
   explicitTargetFields,
@@ -91,6 +100,7 @@ const RESET_PIN_REFRESH_SOURCES = new Set([
   "item-delete",
   "item-update",
   "target-change",
+  "tactic-update",
   "token-refresh",
   "token-update",
 ]);
@@ -141,6 +151,67 @@ function escapeHtml(value) {
   return foundry?.utils?.escapeHTML
     ? foundry.utils.escapeHTML(String(value ?? ""))
     : String(value ?? "");
+}
+
+function optionListHtml(options, selected) {
+  return options.map((option) => {
+    const id = String(option.id);
+    const label = escapeHtml(option.label);
+    const selectedAttr = id === selected ? " selected" : "";
+    return `<option value="${escapeHtml(id)}"${selectedAttr}>${label}</option>`;
+  }).join("");
+}
+
+function sliderValue(values, id) {
+  const value = Number(values?.[id]);
+  return Number.isFinite(value) ? Math.max(-3, Math.min(3, Math.round(value))) : 0;
+}
+
+function sliderRowsHtml(prefix, sliders, values) {
+  return sliders.map((slider) => {
+    const id = String(slider.id);
+    const value = sliderValue(values, id);
+    return `<label class="combater-tactic-slider">`
+      + `<span>${escapeHtml(slider.label)}</span>`
+      + `<input type="range" name="${escapeHtml(prefix)}.${escapeHtml(id)}" min="${slider.min}" max="${slider.max}" step="1" value="${value}">`
+      + `</label>`;
+  }).join("");
+}
+
+function tacticDialogContent(view) {
+  const custom = view?.custom ?? {};
+  const checked = view?.customEnabled === true ? " checked" : "";
+  return `<div class="combater-tactic-form">`
+    + `<div class="form-group"><label>${escapeHtml(t("Tactic.Role", "Role"))}</label>`
+    + `<select name="role">${optionListHtml(TACTIC_ROLES, view?.role ?? "auto")}</select></div>`
+    + `<div class="form-group"><label>${escapeHtml(t("Tactic.Temperament", "Temperament"))}</label>`
+    + `<select name="temperament">${optionListHtml(TACTIC_TEMPERAMENTS, view?.temperament ?? "auto")}</select></div>`
+    + `<label class="combater-tactic-custom-toggle"><input type="checkbox" name="customEnabled"${checked}>`
+    + `<span>${escapeHtml(t("Tactic.CustomizePreset", "Customize preset"))}</span></label>`
+    + `<div class="combater-tactic-custom-fields" data-custom-sliders>`
+    + `<fieldset class="combater-tactic-fieldset"><legend>${escapeHtml(t("Tactic.ActionStyle", "Action style"))}</legend>`
+    + sliderRowsHtml("action", TACTIC_ACTION_SLIDERS, custom.action)
+    + `</fieldset>`
+    + `<fieldset class="combater-tactic-fieldset"><legend>${escapeHtml(t("Tactic.TargetStyle", "Target style"))}</legend>`
+    + sliderRowsHtml("target", TACTIC_TARGET_SLIDERS, custom.target)
+    + `</fieldset></div>`
+    + `</div>`;
+}
+
+function readTacticForm(button) {
+  const form = button?.form;
+  const read = (name) => form?.elements?.namedItem?.(name)?.value ?? form?.elements?.[name]?.value;
+  const readChecked = (name) => form?.elements?.namedItem?.(name)?.checked === true || form?.elements?.[name]?.checked === true;
+  const action = {};
+  const target = {};
+  for (const slider of TACTIC_ACTION_SLIDERS) action[slider.id] = Number(read(`action.${slider.id}`)) || 0;
+  for (const slider of TACTIC_TARGET_SLIDERS) target[slider.id] = Number(read(`target.${slider.id}`)) || 0;
+  return {
+    role: read("role") || "auto",
+    temperament: read("temperament") || "auto",
+    customEnabled: readChecked("customEnabled"),
+    custom: { action, target },
+  };
 }
 
 async function createGuidance(step, actor) {
@@ -399,6 +470,65 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     writePanelState({ expanded });
     this.setPosition({ width: expanded ? 720 : 360 });
     this.render({ force: true });
+  }
+
+  async _configureTacticPersonality() {
+    const view = tacticPersonalityView(this._context);
+    if (!view.visible) return;
+
+    const dialog = globalThis.foundry?.applications?.api?.DialogV2;
+    if (typeof dialog?.wait !== "function") {
+      globalThis.ui?.notifications?.warn?.(t("Tactic.DialogUnavailable", "Tactic editor is unavailable."));
+      return;
+    }
+
+    const decision = await dialog.wait({
+      window: { title: t("Tactic.ConfigureTitle", "NPC tactic") },
+      content: tacticDialogContent(view),
+      buttons: [
+        {
+          action: "actor",
+          label: t("Tactic.SaveActorDefault", "Save actor default"),
+          callback: (_event, button) => ({ mode: "actor", value: readTacticForm(button) }),
+        },
+        {
+          action: "token",
+          label: t("Tactic.SaveTokenOverride", "Save token override"),
+          default: true,
+          callback: (_event, button) => ({ mode: "token", value: readTacticForm(button) }),
+        },
+        {
+          action: "reset",
+          label: t("Tactic.ResetTokenOverride", "Reset override"),
+          callback: () => ({ mode: "reset" }),
+        },
+        { action: "cancel", label: t("Dialog.Cancel", "Cancel"), callback: () => null },
+      ],
+      rejectClose: false,
+    }).catch(() => null);
+    if (!decision) return;
+
+    const actor = this._context?.actor?.document ?? this._context?.actor;
+    const token = this._context?.token?.document ?? this._context?.token;
+    try {
+      if (decision.mode === "actor") {
+        if (typeof actor?.setFlag !== "function") throw new Error("Actor flags unavailable");
+        await actor.setFlag(MODULE_ID, TACTIC_PERSONALITY_FLAG, decision.value);
+      } else if (decision.mode === "token") {
+        if (typeof token?.setFlag !== "function") throw new Error("Token flags unavailable");
+        await token.setFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG, decision.value);
+      } else if (decision.mode === "reset") {
+        if (typeof token?.unsetFlag !== "function") throw new Error("Token flags unavailable");
+        await token.unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG);
+      }
+      this._pinnedPlanId = null;
+      this._pinnedFillPlanId = null;
+      globalThis.ui?.notifications?.info?.(t("Tactic.Saved", "Tactic set to {label}.", { label: tacticPersonalityView(this._context).label }));
+      await this.refresh("tactic-update");
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to update NPC tactic`, error);
+      globalThis.ui?.notifications?.warn?.(t("Tactic.SaveFailed", "Could not update NPC tactic."));
+    }
   }
 
   _setActiveTab(tab) {

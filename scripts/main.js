@@ -230,6 +230,14 @@ function scheduleDocumentRefresh(document, source) {
   scheduleRefresh(source);
 }
 
+function tokenUpdateChangesTacticOverride(changed) {
+  const flags = changed?.flags?.[MODULE_ID];
+  return Boolean(flags && (
+    Object.hasOwn(flags, "tacticPersonalityOverride")
+    || Object.hasOwn(flags, "-=tacticPersonalityOverride")
+  ));
+}
+
 Hooks.once("init", () => {
   registerSettings();
 
@@ -452,6 +460,7 @@ Hooks.on("preUpdateToken", (token, changed) => {
 
 Hooks.on("updateToken", (token, changed, options) => {
   const movementSpent = markMovementActionSpent(token, { changed, options });
+  if (tokenUpdateChangesTacticOverride(changed)) scheduleRefresh("tactic-update");
   if (!tokenUpdateAffectsCombatGeometry(changed)) return;
   scheduleRefresh(movementSpent ? "token-movement" : "token-update");
 });

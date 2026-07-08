@@ -879,6 +879,93 @@
   outline: none;
 }
 
+.pf2e-combater .combater-header-tactic {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 180px;
+  min-height: 28px;
+  border: 1px solid #6f607c;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: #262230;
+  color: #d7c6ee;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-tactic.is-override {
+  border-color: #8c7a46;
+  background: #2c281f;
+  color: #ead282;
+}
+
+.pf2e-combater .combater-header-tactic span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-header-tactic:hover,
+.pf2e-combater .combater-header-tactic:focus-visible {
+  border-color: #d7c6ee;
+  color: var(--combater-ink);
+  outline: none;
+}
+
+.combater-tactic-form {
+  display: grid;
+  gap: 10px;
+}
+
+.combater-tactic-custom-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 700;
+}
+
+.combater-tactic-custom-toggle input {
+  flex: 0 0 auto;
+}
+
+.combater-tactic-custom-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.combater-tactic-form:not(:has(input[name="customEnabled"]:checked)) .combater-tactic-custom-fields {
+  display: none;
+}
+
+.combater-tactic-fieldset {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--color-border-light-tertiary, #555);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.combater-tactic-fieldset legend {
+  padding: 0 4px;
+  font-weight: 700;
+}
+
+.combater-tactic-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 8px;
+  align-items: center;
+}
+
+.combater-tactic-slider span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Browse toggle: a blue accent pill (distinct from the gold Auto-fill); fills solid
    while the browser window is open so its open/closed state reads at a glance. */
 .pf2e-combater .combater-header-browse {

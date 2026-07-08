@@ -14,6 +14,7 @@ import {
 import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { actorStrikeOptions } from "../../readers/action/reader.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
+import { tacticPersonalityView } from "../../rules/tactic-personality.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
 import { autoFillCyclePlans, selectDisplayPlan } from "../plan-selection.js";
@@ -75,6 +76,7 @@ export function viewPanelContext(panel, context) {
     expanded: panel.expanded,
     activeTab: panel.activeTab,
     browserOpen: Boolean(panel._browser),
+    tacticPersonality: tacticPersonalityView(context),
     showDebug,
     showAutoFill,
     autoFillCycle: {

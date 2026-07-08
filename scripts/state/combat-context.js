@@ -40,7 +40,8 @@ function tokenSummary(token) {
     center: tokenCenter(token),
     width: Number(document.width ?? token?.width ?? 1) || 1,
     height: Number(document.height ?? token?.height ?? 1) || 1,
-    document: document.documentName ?? "TokenDocument",
+    documentName: document.documentName ?? "TokenDocument",
+    document,
   };
 }
 

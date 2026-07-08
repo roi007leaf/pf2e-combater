@@ -4,6 +4,7 @@
 // hands". Word boundaries keep matches whole (e.g. "harm" does not match "harmless").
 import { actorItems, collectionValues } from "../foundry-data.js";
 import { t } from "../i18n.js";
+import { tacticPersonalityTargetAdjustment } from "./tactic-personality.js";
 
 function roleCuePattern(words) {
   return new RegExp(`\\b(${words.join("|")})\\b`, "i");
@@ -278,5 +279,6 @@ export function aggroTargetValue(context, action, role, target) {
     const roleValue = profile.roleScores?.[aggroRole] ?? 0;
     value += roleValue * roleWeightForAction(action, role, aggroRole);
   }
+  value += tacticPersonalityTargetAdjustment(context, action, { role, target, aggroProfile: profile }).scoreDelta;
   return Math.round(value);
 }

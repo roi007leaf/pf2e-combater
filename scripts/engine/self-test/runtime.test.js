@@ -122,6 +122,12 @@ import { builderActionCategory, groupActionsByBuilderCategory } from "../../ui/a
 import { actionDetailChips, traitChips } from "../../ui/action/details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../../rules/aggro.js";
+import {
+  resolveTacticPersonality,
+  tacticPersonalityAdjustment,
+  tacticPersonalityTargetAdjustment,
+  tacticPersonalityView,
+} from "../../rules/tactic-personality.js";
 import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
 import { requestRetchDc, requestRetchResult, setSocket, shareDraftPlan } from "../../socket.js";
 import {
@@ -4478,6 +4484,271 @@ assert.equal(aggroProfile(npcAggroContext, woundedFullHpTarget).roles.includes("
   "a full-HP wounded creature is not a finisher target");
 assert.equal(aggroProfile(npcAggroContext, dyingTarget).roles.includes("finisher-target"), true,
   "a dying creature is a finisher target");
+
+function tacticFlagDocument(type = "npc", flags = {}) {
+  return {
+    type,
+    flags,
+    getFlag: (moduleId, key) => flags?.[moduleId]?.[key],
+  };
+}
+
+function tacticContext(actorTactic = null, tokenTactic = null, options = {}) {
+  const actorFlags = actorTactic === undefined ? {} : { "pf2e-combater": { tacticPersonality: actorTactic } };
+  const tokenFlags = tokenTactic === undefined ? {} : { "pf2e-combater": { tacticPersonalityOverride: tokenTactic } };
+  const actorType = options.actorType ?? "npc";
+  return {
+    isGM: options.isGM ?? true,
+    actor: {
+      id: "tactic-actor",
+      name: "Tactic Actor",
+      document: tacticFlagDocument(actorType, actorFlags),
+    },
+    token: {
+      id: "tactic-token",
+      name: "Tactic Token",
+      document: tacticFlagDocument(actorType, tokenFlags),
+    },
+    profile: {
+      actorType,
+      hpPercent: 1,
+      hasShield: true,
+      conditions: { slugs: [], values: {} },
+      skills: {},
+    },
+    battlefield: {
+      targets: [aggroDefenderTarget, aggroHealerTarget, aggroCasterTarget],
+      enemies: [aggroDefenderTarget, aggroHealerTarget, aggroCasterTarget],
+      allies: [{ id: "ally", name: "Ally", hpPercent: 0.5, distance: 10 }],
+    },
+    targets: [aggroDefenderTarget, aggroHealerTarget, aggroCasterTarget],
+  };
+}
+
+const actorDefaultTactic = resolveTacticPersonality(tacticContext({ role: "boss", temperament: "aggressive" }, undefined));
+assert.equal(actorDefaultTactic.role, "boss", "actor default tactic should resolve role");
+assert.equal(actorDefaultTactic.temperament, "aggressive", "actor default tactic should resolve temperament");
+assert.equal(actorDefaultTactic.source, "actor", "actor default tactic should report actor source");
+
+const tokenOverrideTactic = resolveTacticPersonality(tacticContext(
+  { role: "minion", temperament: "coward" },
+  { role: "artillery", temperament: "cautious" },
+));
+assert.equal(tokenOverrideTactic.role, "artillery", "token tactic override should win over actor default role");
+assert.equal(tokenOverrideTactic.temperament, "cautious", "token tactic override should win over actor default temperament");
+assert.equal(tokenOverrideTactic.source, "token", "token tactic override should report token source");
+
+const invalidTactic = resolveTacticPersonality(tacticContext({ role: "fake", temperament: "wrong" }, undefined));
+assert.equal(invalidTactic.role, "auto", "invalid tactic flag should fall back to Auto role");
+assert.equal(invalidTactic.temperament, "auto", "invalid tactic flag should fall back to Auto temperament");
+
+const disabledCustomTactic = resolveTacticPersonality(tacticContext({
+  role: "boss",
+  temperament: "aggressive",
+  customEnabled: false,
+  custom: { action: { damage: 3 }, target: { finishWounded: 3 } },
+}, undefined));
+assert.equal(disabledCustomTactic.customEnabled, false, "stored custom sliders should be disabled unless customEnabled is true");
+assert.equal(
+  tacticPersonalityAdjustment(
+    tacticContext({
+      role: "auto",
+      temperament: "auto",
+      customEnabled: false,
+      custom: { action: { damage: 3 } },
+    }, undefined),
+    { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike" },
+    { role: "damage" },
+  ).scoreDelta,
+  0,
+  "disabled custom sliders should not affect action scoring",
+);
+assert.ok(
+  tacticPersonalityAdjustment(
+    tacticContext({
+      role: "auto",
+      temperament: "auto",
+      customEnabled: true,
+      custom: { action: { damage: 3 } },
+    }, undefined),
+    { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike" },
+    { role: "damage" },
+  ).scoreDelta > 0,
+  "enabled custom sliders should affect action scoring",
+);
+
+assert.equal(tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined)).visible, true,
+  "GM NPC context should expose tactic UI view data");
+assert.equal(tacticPersonalityView(tacticContext({
+  role: "boss",
+  temperament: "aggressive",
+  customEnabled: true,
+  custom: { action: { damage: 2 } },
+}, undefined)).label, "Boss / Aggressive / Custom",
+  "enabled custom sliders should be explicit in the tactic chip label");
+assert.equal(tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined, { actorType: "character" })).visible, false,
+  "PC context should not expose NPC tactic UI");
+assert.equal(tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined, { isGM: false })).visible, false,
+  "player context should not expose NPC tactic UI");
+
+const bossHighImpactDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "boss", temperament: "auto" }, undefined),
+  { id: "breath", name: "Breath Weapon", role: "area-damage", actionCost: 3, source: "npc-action", activityProfile: { npcFamily: "breath-weapon" } },
+  { role: "area-damage", areaHitCount: 2 },
+);
+const bossStrideDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "boss", temperament: "auto" }, undefined),
+  { id: "stride", name: "Stride", role: "mobility", actionCost: 1, source: "generic", slug: "stride" },
+  { role: "mobility" },
+);
+assert.ok(bossHighImpactDelta.scoreDelta > bossStrideDelta.scoreDelta,
+  "Boss tactic should prefer high-impact multi-action options over plain movement");
+assert.ok(bossHighImpactDelta.reasons.some((reason) => /Boss/i.test(reason)),
+  "Boss tactic should surface a tactic reason");
+
+const aggressiveDamageDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "auto", temperament: "aggressive" }, undefined),
+  { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike", activityProfile: { averageDamage: 14 } },
+  { role: "damage" },
+);
+const cautiousDamageDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "auto", temperament: "cautious" }, undefined),
+  { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike", activityProfile: { averageDamage: 14 } },
+  { role: "damage" },
+);
+const cautiousDefenseDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "auto", temperament: "cautious" }, undefined),
+  { id: "raise-a-shield", name: "Raise a Shield", role: "defense", actionCost: 1, source: "generic", slug: "raise-a-shield" },
+  { role: "defense" },
+);
+assert.ok(aggressiveDamageDelta.scoreDelta > cautiousDamageDelta.scoreDelta,
+  "Aggressive temperament should value damage more than Cautious");
+assert.ok(cautiousDefenseDelta.scoreDelta > cautiousDamageDelta.scoreDelta,
+  "Cautious temperament should value defense over damage");
+
+const customCasterPressure = tacticPersonalityTargetAdjustment(
+  tacticContext({
+    role: "auto",
+    temperament: "auto",
+    customEnabled: true,
+    custom: { target: { pressureSpecialists: 3 } },
+  }, undefined),
+  { id: "shot", name: "Shot", role: "damage" },
+  { role: "damage", target: aggroCasterTarget, aggroProfile: aggroProfile(npcAggroContext, aggroCasterTarget) },
+);
+const customDefenderPressure = tacticPersonalityTargetAdjustment(
+  tacticContext({
+    role: "auto",
+    temperament: "auto",
+    custom: { target: { pressureSpecialists: 3 } },
+  }, undefined),
+  { id: "shot", name: "Shot", role: "damage" },
+  { role: "damage", target: aggroDefenderTarget, aggroProfile: aggroProfile(npcAggroContext, aggroDefenderTarget) },
+);
+assert.ok(customCasterPressure.scoreDelta > customDefenderPressure.scoreDelta,
+  "custom target slider should prioritize caster/healer/controller targets over defenders");
+
+const bossNukeAction = {
+  id: "crushing-roar",
+  name: "Crushing Roar",
+  slug: "crushing-roar",
+  source: "npc-action",
+  actionCost: 3,
+  role: "damage",
+  targetingProfile: { enemy: true, maxRange: 60 },
+  activityProfile: { npcFamily: "breath-weapon" },
+};
+const autoBossNuke = scoreCandidate(tacticContext({ role: "auto", temperament: "auto" }, undefined), bossNukeAction);
+const tacticBossNuke = scoreCandidate(tacticContext({ role: "boss", temperament: "auto" }, undefined), bossNukeAction);
+assert.ok(tacticBossNuke.score > autoBossNuke.score,
+  "Boss tactic should affect scoreCandidate output used by Auto Fill and Shuffle");
+
+const tacticDamageAction = {
+  id: "claw",
+  name: "Claw",
+  slug: "claw",
+  source: "strike",
+  actionCost: 1,
+  role: "damage",
+  activityProfile: { averageDamage: 12 },
+};
+const tacticShieldAction = {
+  id: "raise-a-shield",
+  name: "Raise a Shield",
+  slug: "raise-a-shield",
+  source: "generic",
+  actionCost: 1,
+  role: "defense",
+};
+const aggressivePlanContext = {
+  ...tacticContext({ role: "auto", temperament: "aggressive" }, undefined),
+  actionsSpent: { normal: 2, total: 2 },
+};
+const cautiousPlanContext = {
+  ...tacticContext({ role: "auto", temperament: "cautious" }, undefined),
+  actionsSpent: { normal: 2, total: 2 },
+};
+const aggressiveCandidates = [
+  scoreCandidate(aggressivePlanContext, tacticDamageAction),
+  scoreCandidate(aggressivePlanContext, tacticShieldAction),
+];
+const cautiousCandidates = [
+  scoreCandidate(cautiousPlanContext, tacticDamageAction),
+  scoreCandidate(cautiousPlanContext, tacticShieldAction),
+];
+assert.equal(buildTurnPlans(aggressivePlanContext, aggressiveCandidates)[0].steps[0].id, "claw",
+  "Aggressive Auto Fill/Shuffle candidate order should prefer damage");
+assert.equal(buildTurnPlans(cautiousPlanContext, cautiousCandidates)[0].steps[0].id, "raise-a-shield",
+  "Cautious Auto Fill/Shuffle candidate order should prefer defense");
+
+const customFinisherTarget = {
+  id: "fallen-scout",
+  name: "Fallen Scout",
+  distance: 30,
+  hpPercent: 0.2,
+  attackTargetable: true,
+  conditions: { slugs: [], values: {} },
+  actor: {
+    document: {
+      type: "character",
+      itemTypes: { action: [], spell: [], spellcastingEntry: [], weapon: [] },
+      system: { attributes: { hp: { value: 8, max: 40 }, ac: { value: 16 } } },
+    },
+  },
+};
+const customFinisherContext = {
+  ...npcAggroContext,
+  actor: {
+    ...npcAggroContext.actor,
+    document: tacticFlagDocument("npc", {
+      "pf2e-combater": {
+        tacticPersonality: {
+          role: "auto",
+          temperament: "auto",
+          customEnabled: true,
+          custom: { target: { finishWounded: 3 } },
+        },
+      },
+    }),
+  },
+  targets: [aggroDefenderTarget, aggroHealerTarget, customFinisherTarget],
+  battlefield: {
+    ...npcAggroContext.battlefield,
+    targets: [aggroDefenderTarget, aggroHealerTarget, customFinisherTarget],
+    enemies: [aggroDefenderTarget, aggroHealerTarget, customFinisherTarget],
+  },
+};
+const customFinisherShot = scoreCandidate(customFinisherContext, {
+  id: "shortbow-custom",
+  name: "Shortbow",
+  slug: "strike",
+  source: "strike",
+  actionCost: 1,
+  role: "damage",
+  range: { max: 60 },
+});
+assert.equal(customFinisherShot.suggestedTarget.name, "Fallen Scout",
+  "custom finisher target pressure should affect NPC target selection for Auto Fill and Shuffle");
 
 // Incapacitation: a hard-control spell is worth much less against a target of more than twice its
 // rank (it resists a degree better), and the reason is surfaced.

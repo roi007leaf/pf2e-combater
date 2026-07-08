@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.1.3]
+
+### Added
+
+- **NPCs can now have GM Tactic Personality profiles that steer generated turns.** A GM-only
+  tactic chip appears in the Combater panel for NPC turns. GMs can choose a role preset such as
+  Boss, Lieutenant, Minion, Brute, Skirmisher, Artillery, Controller, Defender, or Support, then
+  combine it with a temperament such as Aggressive, Cautious, Opportunist, Berserker, or Coward.
+  These profiles bias recommendations without changing PF2e stats, actions, traits, or legality.
+- **Tactic profiles support actor defaults, token overrides, and an optional Custom layer.** Saving
+  an actor default gives every token of that NPC the same baseline behavior, while saving a token
+  override lets a single battlefield copy act differently. Custom action and target sliders stay
+  hidden until Customize is enabled, and preset-only profiles now stay preset-only instead of
+  silently applying slider values.
+
+### Changed
+
+- **Auto-fill and Shuffle now apply NPC tactic personality weights when ranking plans and choosing
+  targets.** Bosses lean toward high-impact turns and valuable reactions, aggressive creatures
+  press damage, cautious creatures value defense, and custom target priorities can push behaviors
+  such as finishing wounded enemies, pressuring casters/healers/controllers, punishing immediate
+  threats, avoiding hard defenders, preferring nearest reachable enemies, or favoring objective
+  targets.
+
 ## [1.1.2]
 
 ### Fixed

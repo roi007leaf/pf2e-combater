@@ -163,6 +163,8 @@ const scoringGatesSource = readFileSync(new URL("../scoring/gates.js", import.me
 const scoringSkillsSource = readFileSync(new URL("../scoring/skills.js", import.meta.url), "utf8");
 const scoringSpellsSource = readFileSync(new URL("../scoring/spells.js", import.meta.url), "utf8");
 const scoringTargetsSource = readFileSync(new URL("../scoring/targets.js", import.meta.url), "utf8");
+const aggroSource = readFileSync(new URL("../../rules/aggro.js", import.meta.url), "utf8");
+const tacticPersonalitySource = readFileSync(new URL("../../rules/tactic-personality.js", import.meta.url), "utf8");
 const actionBuilderSource = readFileSync(new URL("../action/builder.js", import.meta.url), "utf8");
 const actionBuilderProjectionSource = readFileSync(new URL("../action/builder-projection.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("../action/executor.js", import.meta.url), "utf8");
@@ -236,6 +238,22 @@ assert.ok(panelViewModelSource.includes("function actionGlyphIcon"), "panel acti
 assert.ok(panelTemplateSource.includes("combater-cost-glyph"), "panel template should render PF2e action-cost icon images");
 assert.ok(panelViewModelSource.includes("icons/actions/OneAction.webp"), "panel view-model should reference the PF2e action-cost icon set");
 assert.ok(panelTemplateSource.includes("combater-chip-img") && panelTemplateSource.includes("combater-action-img"), "panel should show item images beside action names");
+assert.ok(panelContextWorkflowSource.includes("tacticPersonalityView"), "panel context should expose resolved tactic personality view data");
+assert.ok(panelTemplateSource.includes("data-configure-tactic"), "panel template should render the GM NPC tactic chip");
+assert.ok(panelEventBindingsSource.includes("data-configure-tactic") && panelEventBindingsSource.includes("_configureTacticPersonality"),
+  "panel bindings should open tactic personality config from the header chip");
+assert.ok(panelSource.includes("TACTIC_PERSONALITY_FLAG") && panelSource.includes("TACTIC_PERSONALITY_OVERRIDE_FLAG"),
+  "panel should write actor default and token override tactic flags");
+assert.ok(panelSource.includes('name="customEnabled"') && panelSource.includes("data-custom-sliders"),
+  "tactic dialog should hide custom sliders behind an explicit Customize toggle");
+assert.ok(panelStyleSource.includes('input[name="customEnabled"]:checked') && panelStyleSource.includes(".combater-tactic-custom-fields"),
+  "tactic dialog CSS should show slider fields only when Customize is checked");
+assert.ok(panelSource.includes("unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG"),
+  "panel should support resetting the token tactic override");
+assert.ok(combatContextSource.includes("documentName: document.documentName") && combatContextSource.includes("document,"),
+  "combat context token summary should retain the TokenDocument so token tactic override flags can resolve");
+assert.ok(mainSource.includes("tacticPersonalityOverride") && mainSource.includes("tactic-update"),
+  "token tactic override flag updates should refresh the active panel without requiring token geometry changes");
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
 assert.ok(panelSource.includes("setCombatant(combatant"), "panel should expose explicit combatant selection");
 assert.ok(panelContextWorkflowSource.includes("combatant: panel._selectedCombatant"), "panel context should use selected explicit combatant");
@@ -2201,6 +2219,23 @@ for (const pattern of [
 assert.ok(
   scoringSource.includes('from "./scoring/targets.js"'),
   "scoring should choose targets through the scoring targets module",
+);
+assert.ok(
+  scoringSource.includes("../rules/tactic-personality.js")
+    && scoringSource.includes("tacticPersonalityAdjustment"),
+  "scoring should apply GM NPC tactic personality adjustments through the tactic personality module",
+);
+assert.ok(
+  aggroSource.includes("./tactic-personality.js")
+    && aggroSource.includes("tacticPersonalityTargetAdjustment"),
+  "aggro target choice should apply tactic personality target preferences",
+);
+assert.ok(
+  tacticPersonalitySource.includes("export function resolveTacticPersonality")
+    && tacticPersonalitySource.includes("export function tacticPersonalityAdjustment")
+    && tacticPersonalitySource.includes("export function tacticPersonalityTargetAdjustment")
+    && tacticPersonalitySource.includes("export function tacticPersonalityView"),
+  "tactic personality module should own flag resolution, action scoring, target scoring, and view data",
 );
 assert.ok(
   scoringTargetsSource.includes("export function bestTargetForAction")

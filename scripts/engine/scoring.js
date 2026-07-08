@@ -1,5 +1,6 @@
 import { classTacticAdjustment } from "../rules/class-tactics.js";
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
+import { tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
 import { backingStrikeForAction, backingStrikesForAction } from "./backing-strike.js";
 import {
   actionTraitSlugs,
@@ -104,6 +105,12 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   if (npcAdjustment.scoreDelta) {
     score += npcAdjustment.scoreDelta;
     reasons.push(...npcAdjustment.reasons);
+  }
+
+  const tacticAdjustment = tacticPersonalityAdjustment(context, action, { target, role, areaHitCount });
+  if (tacticAdjustment.scoreDelta) {
+    score += tacticAdjustment.scoreDelta;
+    reasons.push(...tacticAdjustment.reasons);
   }
 
   if (spellAdjustment.scoreDelta) {

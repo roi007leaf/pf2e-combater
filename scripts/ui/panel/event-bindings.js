@@ -12,6 +12,8 @@ export function activatePanelRenderBindings(panel, element) {
     ?.addEventListener("click", () => panel._setExpanded(!panel.expanded));
   element.querySelector("[data-action='refresh']")
     ?.addEventListener("click", () => panel.refresh("button"));
+  element.querySelector("[data-configure-tactic]")
+    ?.addEventListener("click", () => panel._configureTacticPersonality());
 
   // Cost tabs, search, and the action add/favorite/open controls live in the detached
   // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
