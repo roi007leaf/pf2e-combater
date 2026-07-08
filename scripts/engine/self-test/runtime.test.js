@@ -4,6 +4,7 @@ import { confidenceLabel } from "../confidence.js";
 import { fighterContext, fixtureCandidates } from "../fixtures.js";
 import { actionBudget } from "../action/budget.js";
 import { bestTurnPlan, buildTurnPlans } from "../planner.js";
+import { hasPlanConflict } from "../planner/conflicts.js";
 import { swapDraftSteps } from "../draft-reorder.js";
 import { swapFavorites } from "../favorite-reorder.js";
 import { movementBudgetForStep, movementDestinationForStep, movementFootprintForToken, movementHorizontalBudgetForStep, movementOriginForContext, movementPlacementForCenter, movementPlanForDestination, movementPlanForWaypoints, movementRouteForStep, movementRouteSegmentCost, movementWaypointsForStep, reachableMovementCenters, waypointPathCost } from "../movement-route.js";
@@ -111,7 +112,7 @@ import { GENERIC_ACTIONS } from "../../catalog/generic-actions.js";
 import { findCustomAction } from "../../catalog/custom-actions.js";
 import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectableAlternativePlans, selectDisplayPlan } from "../../ui/plan-selection.js";
 import { clearActionPreview, showActionPreview } from "../../ui/action/preview.js";
-import { draftForAutoFillGap, draftNormalActionCost } from "../../ui/panel/draft-helpers.js";
+import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } from "../../ui/panel/draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
@@ -12782,6 +12783,187 @@ try {
     delete globalThis.canvas;
   } else {
     globalThis.canvas = previousReachCentersCanvas;
+  }
+}
+
+// Regression: findProjectedDraftAction re-derives a fresh "best" candidate for a draft step by
+// action identity alone, ignoring the step's OWN already-committed target (targetTokenIds). Once
+// the board changes (e.g. an earlier Stride in the same plan executes and repositions the actor),
+// the freshly-scored candidate can silently re-target a DIFFERENT, conveniently-reachable enemy and
+// report available:true -- even though the step is labeled for, and will actually attack, a
+// specific enemy that is genuinely out of reach. A Strike step with a stored target must be
+// validated against THAT target, not whichever one the fresh scoring pass prefers.
+{
+  const projectedRetargetActor = (enemies) => ({
+    actor: {
+      document: {
+        itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [], weapon: [] },
+        items: [],
+        system: {
+          actions: [{
+            slug: "tentacle", label: "Tentacle", name: "Tentacle", type: "strike",
+            visible: true, ready: true, canAttack: true,
+            item: { system: { traits: { value: ["reach"] } } },
+          }],
+        },
+      },
+    },
+    token: { id: "isqulug-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+    profile: { reach: 10, meleeReach: 10, speed: 25, conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: { targets: [], enemies, allies: [] },
+  });
+  const ezrenFar = { id: "ezren", name: "Ezren", distance: 15, token: { id: "ezren-token", center: { x: 0, y: 15 }, width: 1, height: 1 } };
+  const calderNear = { id: "calder", name: "Calder", distance: 5, token: { id: "calder-token", center: { x: 5, y: 0 }, width: 1, height: 1 } };
+
+  const staleTargetDraft = {
+    steps: [{ instanceId: "tentacle-1", slug: "strike-tentacle", actionKey: "strike-tentacle", targetTokenIds: ["ezren"], targetLabel: "Target: Ezren", targetSelection: "manual" }],
+  };
+
+  const staleTargetContext = projectedRetargetActor([ezrenFar, calderNear]);
+  const resolved = findProjectedDraftAction(staleTargetContext, staleTargetDraft, staleTargetDraft.steps[0]);
+  assert.ok(resolved, "expected a matched Tentacle candidate");
+  assert.equal(resolved.preferredTarget?.name, "Ezren", "the step's own labeled target must be evaluated, not whichever enemy is conveniently in range now");
+  assert.equal(resolved.available, false, "Ezren is 15 ft away, beyond Tentacle's 10-ft reach -- must not read as available");
+  assert.ok(/range/i.test(resolved.unavailableReason ?? ""), "should carry an out-of-range reason");
+
+  const reachableTargetContext = projectedRetargetActor([{ ...ezrenFar, distance: 5 }, calderNear]);
+  const reachableResolved = findProjectedDraftAction(reachableTargetContext, staleTargetDraft, staleTargetDraft.steps[0]);
+  assert.equal(reachableResolved.preferredTarget?.name, "Ezren");
+  assert.equal(reachableResolved.available, true, "when the step's own target genuinely is in reach, it should read as available");
+
+  const untargetedDraft = { steps: [{ instanceId: "tentacle-2", slug: "strike-tentacle", actionKey: "strike-tentacle" }] };
+  const untargetedResolved = findProjectedDraftAction(staleTargetContext, untargetedDraft, untargetedDraft.steps[0]);
+  assert.equal(untargetedResolved.preferredTarget?.name, "Calder", "a step with no stored target is unaffected -- the freshly-scored best target still applies");
+}
+
+// Regression: the same stale-retarget bug as above also hits generic melee maneuvers (Grapple,
+// Trip, Disarm, Shove, Reposition). Their availability comes from readGenericActionAvailability,
+// which checks "enemy in reach" against contextTargets() -- the user's RETICLE target pool -- not
+// the step's own committed targetTokenIds. A Grapple step committed to Calder (genuinely in melee
+// reach after a preceding Stride) read as available:false "No enemy in reach." because the fresh
+// scoring pass checked reach against Ezren, the user's current (and unrelated) reticle target.
+{
+  const genericRetargetContext = (targets, enemies) => ({
+    actor: {
+      id: "isqulug", name: "Isqulug", type: "npc",
+      document: {
+        id: "isqulug", name: "Isqulug", type: "npc",
+        system: { actions: [] },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [], spell: [], spellcastingEntry: [] },
+        items: [],
+      },
+      profile: { actorType: "npc", reach: 10, meleeReach: 10, speed: 25, handsFree: 2, hasShield: false, conditions: { slugs: [], values: {} }, skills: {} },
+    },
+    profile: { actorType: "npc", reach: 10, meleeReach: 10, speed: 25, handsFree: 2, hasShield: false, conditions: { slugs: [], values: {} }, skills: {} },
+    token: { id: "isqulug-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+    targets,
+    battlefield: { targets, enemies, allies: [] },
+    isGM: true,
+  });
+  const ezrenFar = { id: "ezren", name: "Ezren", distance: 15, hpPercent: 1, conditions: [], token: { id: "ezren-token", center: { x: 0, y: 15 }, width: 1, height: 1 } };
+  const calderNear = { id: "calder", name: "Calder", distance: 10, hpPercent: 1, conditions: [], token: { id: "calder-token", center: { x: 10, y: 0 }, width: 1, height: 1 } };
+  const genericStaleTargetContext = genericRetargetContext([ezrenFar], [ezrenFar, calderNear]);
+
+  const grappleAtCalderDraft = {
+    steps: [{ instanceId: "grapple-1", slug: "grapple", actionKey: "grapple", targetTokenIds: ["calder"], targetLabel: "Target: Calder", targetSelection: "manual" }],
+  };
+  const grappleResolved = findProjectedDraftAction(genericStaleTargetContext, grappleAtCalderDraft, grappleAtCalderDraft.steps[0]);
+  assert.ok(grappleResolved, "expected a matched Grapple candidate");
+  assert.equal(grappleResolved.preferredTarget?.name, "Calder", "the step's own labeled target must be evaluated, not the unrelated reticle target");
+  assert.equal(grappleResolved.available, true, "Calder is 10 ft away, within the 10-ft melee reach -- must not read as unavailable just because the reticle target (Ezren) is out of reach");
+
+  const grappleAtEzrenDraft = {
+    steps: [{ instanceId: "grapple-2", slug: "grapple", actionKey: "grapple", targetTokenIds: ["ezren"], targetLabel: "Target: Ezren", targetSelection: "manual" }],
+  };
+  const grappleAtEzrenResolved = findProjectedDraftAction(genericStaleTargetContext, grappleAtEzrenDraft, grappleAtEzrenDraft.steps[0]);
+  assert.equal(grappleAtEzrenResolved.preferredTarget?.name, "Ezren");
+  assert.equal(grappleAtEzrenResolved.available, false, "Ezren genuinely is 15 ft away, beyond melee reach -- must still read as unavailable when that really is the committed target");
+  assert.ok(/reach/i.test(grappleAtEzrenResolved.unavailableReason ?? ""), "should carry a reach-based reason");
+}
+
+// Regression: buildTurnPlans could combine a move-and-strike composite (e.g. "Stride -> Tentacle",
+// which repositions the actor to reach ONE enemy) with a separate, independent Strike candidate
+// against a DIFFERENT enemy that was only in range from the actor's ORIGINAL, pre-move position --
+// live-reproduced as "Stride -> Tentacle" (targets Calder) plus a loose "Tentacle" (targets Ezren,
+// who was close before the move but 15 ft away, out of reach, after it). hasPlanConflict must treat
+// that pairing as a conflict so the planner looks for an alternative (e.g. a repeat Strike against
+// the SAME enemy the committed move already reaches) instead of drafting a Strike that can never
+// connect.
+{
+  const previousConflictCanvas = globalThis.canvas;
+  try {
+    globalThis.canvas = { grid: { size: 5 }, scene: { grid: { distance: 5 } } };
+    // 8 ft from the committed landing square: within a 10-ft-reach Tentacle's reach, but beyond
+    // the actor's generic 5-ft melee reach (profileReach's default when nothing overrides it) --
+    // deliberately between the two thresholds so the Tentacle-reach and generic-maneuver-reach
+    // cases below produce different, distinguishable answers.
+    const calderTarget = { id: "calder", name: "Calder", distance: 5, token: { id: "calder-token", center: { x: 0, y: 8 }, width: 1, height: 1 } };
+    const ezrenFarTarget = { id: "ezren", name: "Ezren", distance: 5, token: { id: "ezren-token", center: { x: 0, y: 15 }, width: 1, height: 1 } };
+    const conflictContext = { token: { center: { x: 0, y: 0 }, width: 1, height: 1 }, profile: { conditions: { slugs: [], values: {} } } };
+    const committedBundleStep = {
+      slug: "stride-strike-tentacle",
+      preferredTarget: calderTarget,
+      activityProfile: { attackCenter: { x: 0, y: 0 }, strikeReach: 10 },
+    };
+    const looseTentacleAtEzren = { source: "strike", slug: "strike", name: "Tentacle", range: { max: 10 }, preferredTarget: ezrenFarTarget };
+
+    assert.equal(
+      hasPlanConflict(conflictContext, looseTentacleAtEzren, [committedBundleStep]),
+      true,
+      "a loose Strike whose target is out of reach from an already-committed move-and-strike's landing square must conflict",
+    );
+
+    // The same 10-ft-reach loose Strike, but now targeting the SAME enemy the bundle already
+    // reaches -- no conflict, since this candidate's own reach also covers that distance (8 ft).
+    const looseTentacleAtCalder = { ...looseTentacleAtEzren, preferredTarget: calderTarget };
+    assert.equal(
+      hasPlanConflict(conflictContext, looseTentacleAtCalder, [committedBundleStep]),
+      false,
+      "a loose Strike targeting the same enemy the committed move already reaches, and with reach enough to cover the distance, must not conflict",
+    );
+
+    // A generic maneuver (e.g. Grapple) with NO explicit range, targeting the SAME enemy the
+    // bundle reaches -- must still conflict, because its own (generic, ~5-ft) reach does not cover
+    // the 8-ft distance the Tentacle-sized move landed at. Same target is not automatically safe.
+    const looseGrappleAtCalder = { source: "generic", slug: "grapple", name: "Grapple", requiresEnemyInReach: true, preferredTarget: calderTarget };
+    assert.equal(
+      hasPlanConflict(conflictContext, looseGrappleAtCalder, [committedBundleStep]),
+      true,
+      "a generic maneuver with shorter reach than the move it's paired with must conflict even against the same target",
+    );
+
+    // A loose Strike whose target genuinely IS reachable from the committed landing square must
+    // not conflict either.
+    const ezrenNearTarget = { ...ezrenFarTarget, token: { ...ezrenFarTarget.token, center: { x: 0, y: 8 } } };
+    const looseTentacleAtNearEzren = { ...looseTentacleAtEzren, preferredTarget: ezrenNearTarget };
+    assert.equal(
+      hasPlanConflict(conflictContext, looseTentacleAtNearEzren, [committedBundleStep]),
+      false,
+      "a loose Strike whose target is genuinely still in reach must not conflict",
+    );
+
+    // With no committed move-and-strike in the plan yet, this check must not apply at all.
+    assert.equal(hasPlanConflict(conflictContext, looseTentacleAtEzren, []), false);
+
+    // Reversed build order: the loose, out-of-reach-after-the-move Strike is already staged in
+    // `steps`, and the move-and-strike composite is the candidate being considered NEXT. Plans can
+    // be assembled in either order, so this must conflict too, not just the order tested above.
+    assert.equal(
+      hasPlanConflict(conflictContext, committedBundleStep, [looseTentacleAtEzren]),
+      true,
+      "the conflict must also be caught when the move-and-strike composite is added AFTER the loose Strike it invalidates",
+    );
+    assert.equal(
+      hasPlanConflict(conflictContext, committedBundleStep, [looseTentacleAtCalder]),
+      false,
+      "reversed order: a loose Strike already aimed at the composite's own target, with reach to cover the distance, must not conflict",
+    );
+  } finally {
+    if (previousConflictCanvas === undefined) {
+      delete globalThis.canvas;
+    } else {
+      globalThis.canvas = previousConflictCanvas;
+    }
   }
 }
 

@@ -7,7 +7,10 @@ import {
 } from "../../engine/action/builder.js";
 import { plannedTargetSelection } from "../../engine/action/executor.js";
 import { buildCandidates } from "../../engine/candidates.js";
+import { contextEnemies, contextTargets } from "../../engine/target-pool.js";
 import { actorStrikeOptions } from "../../readers/action/reader.js";
+import { actionCanReach } from "../../readers/action/reach.js";
+import { contextProfile, meleeReach } from "../../readers/action/reader-helpers.js";
 import { pf2eActionName, t } from "../../i18n.js";
 import {
   isSustainAction,
@@ -157,6 +160,44 @@ function draftStepActionRows(candidateBuild) {
   ].filter(Boolean).map(withBuilderActionFields);
 }
 
+function targetIdCandidates(entity) {
+  return [entity?.id, entity?.uuid, entity?.token?.id, entity?.token?.uuid, entity?.actor?.id, entity?.actor?.uuid]
+    .filter(Boolean)
+    .map(String);
+}
+
+function sameTargetIdentity(left, right) {
+  if (!left || !right) return false;
+  const leftIds = new Set(targetIdCandidates(left));
+  return targetIdCandidates(right).some((id) => leftIds.has(id));
+}
+
+// Resolves this step's own already-committed target (targetTokenIds) from the projected
+// context's live target/enemy pool, so its distance reflects the PROJECTED position (e.g. after an
+// earlier Stride in the same plan), not whatever it was when the step was first added.
+function stepTargetFromContext(context, step) {
+  const ids = new Set((Array.isArray(step?.targetTokenIds) ? step.targetTokenIds : []).map(String));
+  if (!ids.size) return null;
+  const pool = [...contextTargets(context), ...contextEnemies(context)];
+  return pool.find((entry) => targetIdCandidates(entry).some((id) => ids.has(id))) ?? null;
+}
+
+// Generic melee maneuvers (Grapple, Trip, Disarm, Shove, Reposition) report their own reach
+// requirement this way (see readGenericActionAvailability), rather than a Strike's range.max.
+function requiresMeleeReach(action) {
+  return action?.requiresEnemyInReach === true || action?.targetingProfile?.requiresEnemyInReach === true;
+}
+
+// A Strike's range comes from the action itself (actionCanReach); a generic melee maneuver has no
+// range of its own -- it's gated on the actor's own melee reach, exactly like
+// readGenericActionAvailability's own "enemy in reach" check (reader-helpers.js), so a maneuver
+// re-validated here reads the same way the candidate builder itself would score it.
+function candidateReachesTarget(context, action, target) {
+  return action.source === "strike"
+    ? actionCanReach(action, target)
+    : Number.isFinite(target?.distance) && target.distance <= meleeReach(contextProfile(context));
+}
+
 export function findProjectedDraftAction(context, draft, step) {
   if (isSustainAction(step)) {
     return {
@@ -192,9 +233,39 @@ export function findProjectedDraftAction(context, draft, step) {
     }
   }
   const keys = draftStepLookupKeys(step);
-  return draftStepActionRows(buildCandidates(stepContext)).find((action) =>
+  const matched = draftStepActionRows(buildCandidates(stepContext)).find((action) =>
     actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
   ) ?? null;
+  if (!matched || (matched.source !== "strike" && !requiresMeleeReach(matched))) return matched;
+
+  // The freshly-matched candidate independently re-derives its own "best" target on every render,
+  // which can drift from the specific target this step already committed to (targetTokenIds) once
+  // the board changes -- e.g. an earlier Stride in the same plan executes and repositions the actor,
+  // and a DIFFERENT enemy now happens to be conveniently in range. Left alone, that silently shows
+  // this step as available against an enemy it isn't even labeled for, or (symmetrically) flags a
+  // manually-retargeted step as unavailable using a stale, no-longer-relevant reason. Re-validate
+  // against the step's own stored target whenever one is set and differs from what fresh scoring
+  // naturally picked. This also affects generic melee maneuvers (Grapple, Trip, Disarm, Shove,
+  // Reposition): their availability is gated on contextTargets() -- the user's RETICLE target pool
+  // -- so a step committed to an enemy that isn't the current reticle target reads as unavailable
+  // against that unrelated enemy's distance instead of its own.
+  const stepTarget = stepTargetFromContext(stepContext, step);
+  if (!stepTarget || sameTargetIdentity(matched.preferredTarget, stepTarget)) return matched;
+
+  const reachable = candidateReachesTarget(stepContext, matched, stepTarget);
+  const reason = reachable
+    ? ""
+    : matched.source === "strike"
+      ? t("Avail.NoTargetInRange", "No target in range.")
+      : t("Avail.NoEnemyInReach", "No enemy in reach.");
+  return {
+    ...matched,
+    preferredTarget: stepTarget,
+    suggestedTarget: stepTarget,
+    available: reachable,
+    unavailableReason: reason,
+    disabledReason: reason,
+  };
 }
 
 export function projectedDraftStepActions(context, draft) {

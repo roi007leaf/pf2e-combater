@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.1.2]
+
+### Fixed
+
+- **A generic melee maneuver (Grapple, Trip, Disarm, Shove, Reposition) drafted after a preceding
+  move could wrongly show "No enemy in reach" even when it genuinely reached the enemy it was
+  committed to.** These maneuvers check reach against the user's current target reticle rather than
+  their own committed enemy, so a step aimed at one enemy (e.g. Calder, correctly in reach after a
+  Stride) was validated against whichever enemy happened to be reticle-targeted at the time (e.g.
+  Ezren, out of reach) instead. The step's own committed target is now re-checked directly, the same
+  fix already applied to Strike steps.
+- **Auto-fill could pair a move-and-strike combo (e.g. "Stride -> Tentacle") with a second,
+  independent Strike or maneuver (Grapple, Trip, Disarm, Shove, Reposition) that could no longer
+  reach its target once the Stride landed.** This included a DIFFERENT enemy that was only in range
+  before the move, and also the SAME enemy when the extra action's own reach is shorter than the one
+  the move was sized for (e.g. a 5-ft Grapple paired with a Stride that only closed to a 10-ft
+  Tentacle's reach). The check now applies regardless of which action is added to the plan first.
+  Plan-building now recognizes this conflict and looks for a workable alternative (such as a repeat
+  attack on the same enemy the move already reaches) instead of drafting an action doomed to miss.
+- **A Strike step could silently show as ready (or wrongly flagged "No target in range") against
+  the wrong enemy once the board changed after it was drafted** — e.g. an earlier Stride in the
+  same turn executes and repositions the actor, and a different enemy happens to be conveniently in
+  range now. The step's own already-committed target is now re-checked directly, so its
+  available/in-range status always reflects the enemy it's actually labeled for and will attack.
+- **A "Stride into reach and Strike" combo (e.g. "Stride -> Tentacle") could land on a square that
+  looked in reach but wasn't, leaving the Strike unable to connect.** The attack-square search used
+  an approximate reach-distance formula that disagrees with Foundry's real diagonal-movement rule
+  for a diagonal approach; it now checks the same real distance the game itself uses, so the
+  destination it picks is always genuinely within the Strike's reach.
+
 ## [1.1.1]
 
 ### Summary

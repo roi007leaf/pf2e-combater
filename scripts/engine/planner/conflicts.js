@@ -10,6 +10,7 @@ import {
   isCompositionExtensionEligible,
   isMoveAndStrike,
 } from "./projections.js";
+import { footprintPathDistanceFeet, movementFootprintForToken } from "../../rules/token-geometry.js";
 
 export const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride"]);
 
@@ -101,6 +102,53 @@ function reachesCurrentTarget(context, candidate) {
   return Number.isFinite(distance) && distance <= range;
 }
 
+// A move-and-strike composite (e.g. "Stride -> Tentacle") has its own attackCenter -- the landing
+// square its Stride repositions the actor to. The first such step's landing square, if any.
+function firstAttackCenter(steps) {
+  for (const step of steps) {
+    const center = step?.activityProfile?.attackCenter;
+    if (center) return center;
+  }
+  return null;
+}
+
+// A plain, independent attack candidate's (no attackCenter of its own) target may only be in range
+// from the actor's CURRENT (pre-plan) position -- if a move-and-strike composite is or becomes
+// part of the same plan, repositioning the actor elsewhere, this candidate's own target can become
+// unreachable once that move actually happens. Also catches the same-target case where the move
+// was sized for a LONGER-reaching action (e.g. a 10-ft-reach Tentacle) than this candidate has
+// (e.g. a 5-ft generic maneuver like Grapple, which has no explicit range of its own) -- the two
+// must not be assumed interchangeable just because they're aimed at the same enemy. Falls back to
+// the actor's generic melee reach (profileReach) for candidates with no explicit range, matching
+// how the candidate-generation/availability checks elsewhere already treat a bare maneuver's reach.
+function plainCandidateUnreachableFromCenter(context, plainCandidate, attackCenter) {
+  if (!isAttackAction(plainCandidate) || plainCandidate?.activityProfile?.attackCenter) return false;
+
+  const target = targetForCandidate(context, plainCandidate);
+  const targetCenter = target?.token?.center ?? target?.center;
+  if (!target || !targetCenter) return false;
+
+  const range = currentAttackRange(plainCandidate) ?? profileReach(context);
+  if (!Number.isFinite(range) || range <= 0) return false;
+
+  const footprint = movementFootprintForToken(context?.token);
+  const distance = footprintPathDistanceFeet(attackCenter, footprint, targetCenter, target);
+  return !(Number.isFinite(distance) && distance <= range);
+}
+
+// Candidates can be combined in either order while a plan is built -- the move-and-strike
+// composite might already be committed when a plain action is considered, or a plain action might
+// already be committed when the composite is considered later. Check both directions.
+function hasCommittedMoveTargetConflict(context, candidate, steps) {
+  const candidateCenter = candidate?.activityProfile?.attackCenter;
+  if (candidateCenter) {
+    return steps.some((step) => plainCandidateUnreachableFromCenter(context, step, candidateCenter));
+  }
+  const committedCenter = firstAttackCenter(steps);
+  if (!committedCenter) return false;
+  return plainCandidateUnreachableFromCenter(context, candidate, committedCenter);
+}
+
 function canPairRepeatedStride(context, candidate, steps, attackPathAvailable = false) {
   return targetNeedsRepeatedStride(context, candidate, attackPathAvailable)
     && steps.every((step) =>
@@ -186,6 +234,10 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
     (basicMove && steps.some((step) => reachesCurrentTarget(context, step)))
     || (reachesCurrentTarget(context, candidate) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug)))
   ) {
+    return true;
+  }
+
+  if (hasCommittedMoveTargetConflict(context, candidate, steps)) {
     return true;
   }
 
