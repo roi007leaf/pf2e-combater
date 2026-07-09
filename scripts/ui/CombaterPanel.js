@@ -16,17 +16,25 @@ import {
   addPanelUncountedAction,
   atomizePanelAutoFillSteps,
   autoFillPanelDraft,
+  choosePanelMinionDestination,
+  choosePanelMinionTarget,
   cyclePanelAutoFillDraft,
+  cyclePanelMinionPlanMovement,
+  cyclePanelMinionPlanStep,
   cyclePanelStepMap,
   cyclePanelStepMovement,
   cyclePanelStepWeapon,
   duplicatePanelDraftStep,
+  executePanelMinionPlanStep,
   fillPanelDraftGap,
   persistPanelActiveDraftStep,
   readPanelActiveDraftPlan,
   removePanelDraftStep,
+  removePanelMinionPlanStep,
   reorderPanelDraftStep,
   reorderPanelFavorite,
+  revertPanelMinionPlanStep,
+  showPanelMinionActionPreview,
   syncPanelDraftToGM,
   togglePanelFavorite,
   writePanelActiveDraftPlan,
@@ -67,18 +75,24 @@ import {
 } from "./panel/execution-workflow.js";
 import { activatePanelRenderBindings } from "./panel/event-bindings.js";
 import {
+  panelIntelLedgerView,
   preparePanelContext,
   viewPanelContext,
 } from "./panel/context-workflow.js";
+import { openIntelWindow } from "./intel-window.js";
+import { openTacticWindow } from "./tactic-window.js";
 import {
-  TACTIC_ACTION_SLIDERS,
   TACTIC_PERSONALITY_FLAG,
   TACTIC_PERSONALITY_OVERRIDE_FLAG,
-  TACTIC_ROLES,
-  TACTIC_TARGET_SLIDERS,
-  TACTIC_TEMPERAMENTS,
   tacticPersonalityView,
 } from "../rules/tactic-personality.js";
+import {
+  INTEL_LEDGER_FLAG,
+  INTEL_REVEAL_MODE_FLAG,
+  intelLedgerView,
+  intelTargetMatchesKey,
+} from "../rules/intel-ledger.js";
+import { readCombatContext } from "../state/combat-context.js";
 import {
   debugAction,
   DEFAULT_TAB,
@@ -99,6 +113,7 @@ const RESET_PIN_REFRESH_SOURCES = new Set([
   "item-create",
   "item-delete",
   "item-update",
+  "intel-update",
   "target-change",
   "tactic-update",
   "token-refresh",
@@ -151,67 +166,6 @@ function escapeHtml(value) {
   return foundry?.utils?.escapeHTML
     ? foundry.utils.escapeHTML(String(value ?? ""))
     : String(value ?? "");
-}
-
-function optionListHtml(options, selected) {
-  return options.map((option) => {
-    const id = String(option.id);
-    const label = escapeHtml(option.label);
-    const selectedAttr = id === selected ? " selected" : "";
-    return `<option value="${escapeHtml(id)}"${selectedAttr}>${label}</option>`;
-  }).join("");
-}
-
-function sliderValue(values, id) {
-  const value = Number(values?.[id]);
-  return Number.isFinite(value) ? Math.max(-3, Math.min(3, Math.round(value))) : 0;
-}
-
-function sliderRowsHtml(prefix, sliders, values) {
-  return sliders.map((slider) => {
-    const id = String(slider.id);
-    const value = sliderValue(values, id);
-    return `<label class="combater-tactic-slider">`
-      + `<span>${escapeHtml(slider.label)}</span>`
-      + `<input type="range" name="${escapeHtml(prefix)}.${escapeHtml(id)}" min="${slider.min}" max="${slider.max}" step="1" value="${value}">`
-      + `</label>`;
-  }).join("");
-}
-
-function tacticDialogContent(view) {
-  const custom = view?.custom ?? {};
-  const checked = view?.customEnabled === true ? " checked" : "";
-  return `<div class="combater-tactic-form">`
-    + `<div class="form-group"><label>${escapeHtml(t("Tactic.Role", "Role"))}</label>`
-    + `<select name="role">${optionListHtml(TACTIC_ROLES, view?.role ?? "auto")}</select></div>`
-    + `<div class="form-group"><label>${escapeHtml(t("Tactic.Temperament", "Temperament"))}</label>`
-    + `<select name="temperament">${optionListHtml(TACTIC_TEMPERAMENTS, view?.temperament ?? "auto")}</select></div>`
-    + `<label class="combater-tactic-custom-toggle"><input type="checkbox" name="customEnabled"${checked}>`
-    + `<span>${escapeHtml(t("Tactic.CustomizePreset", "Customize preset"))}</span></label>`
-    + `<div class="combater-tactic-custom-fields" data-custom-sliders>`
-    + `<fieldset class="combater-tactic-fieldset"><legend>${escapeHtml(t("Tactic.ActionStyle", "Action style"))}</legend>`
-    + sliderRowsHtml("action", TACTIC_ACTION_SLIDERS, custom.action)
-    + `</fieldset>`
-    + `<fieldset class="combater-tactic-fieldset"><legend>${escapeHtml(t("Tactic.TargetStyle", "Target style"))}</legend>`
-    + sliderRowsHtml("target", TACTIC_TARGET_SLIDERS, custom.target)
-    + `</fieldset></div>`
-    + `</div>`;
-}
-
-function readTacticForm(button) {
-  const form = button?.form;
-  const read = (name) => form?.elements?.namedItem?.(name)?.value ?? form?.elements?.[name]?.value;
-  const readChecked = (name) => form?.elements?.namedItem?.(name)?.checked === true || form?.elements?.[name]?.checked === true;
-  const action = {};
-  const target = {};
-  for (const slider of TACTIC_ACTION_SLIDERS) action[slider.id] = Number(read(`action.${slider.id}`)) || 0;
-  for (const slider of TACTIC_TARGET_SLIDERS) target[slider.id] = Number(read(`target.${slider.id}`)) || 0;
-  return {
-    role: read("role") || "auto",
-    temperament: read("temperament") || "auto",
-    customEnabled: readChecked("customEnabled"),
-    custom: { action, target },
-  };
 }
 
 async function createGuidance(step, actor) {
@@ -476,36 +430,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const view = tacticPersonalityView(this._context);
     if (!view.visible) return;
 
-    const dialog = globalThis.foundry?.applications?.api?.DialogV2;
-    if (typeof dialog?.wait !== "function") {
-      globalThis.ui?.notifications?.warn?.(t("Tactic.DialogUnavailable", "Tactic editor is unavailable."));
-      return;
-    }
+    await openTacticWindow(view, {
+      onSave: (decision) => this._applyTacticPersonalityDecision(decision),
+    });
+  }
 
-    const decision = await dialog.wait({
-      window: { title: t("Tactic.ConfigureTitle", "NPC tactic") },
-      content: tacticDialogContent(view),
-      buttons: [
-        {
-          action: "actor",
-          label: t("Tactic.SaveActorDefault", "Save actor default"),
-          callback: (_event, button) => ({ mode: "actor", value: readTacticForm(button) }),
-        },
-        {
-          action: "token",
-          label: t("Tactic.SaveTokenOverride", "Save token override"),
-          default: true,
-          callback: (_event, button) => ({ mode: "token", value: readTacticForm(button) }),
-        },
-        {
-          action: "reset",
-          label: t("Tactic.ResetTokenOverride", "Reset override"),
-          callback: () => ({ mode: "reset" }),
-        },
-        { action: "cancel", label: t("Dialog.Cancel", "Cancel"), callback: () => null },
-      ],
-      rejectClose: false,
-    }).catch(() => null);
+  async _applyTacticPersonalityDecision(decision) {
     if (!decision) return;
 
     const actor = this._context?.actor?.document ?? this._context?.actor;
@@ -529,6 +459,63 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       console.warn(`${MODULE_ID} | Failed to update NPC tactic`, error);
       globalThis.ui?.notifications?.warn?.(t("Tactic.SaveFailed", "Could not update NPC tactic."));
     }
+  }
+
+  async _configureIntelLedger() {
+    const viewProvider = () => panelIntelLedgerView(this._freshIntelContext() ?? this._context);
+    const view = viewProvider();
+    if (!view.visible) return;
+
+    await openIntelWindow(view, {
+      mode: view.editable === true ? "edit" : "view",
+      onSave: (decision) => this._saveIntelLedger(decision),
+      viewProvider,
+    });
+  }
+
+  _freshIntelContext() {
+    return readCombatContext("intel-window", { combatant: this._selectedCombatant });
+  }
+
+  async _saveIntelLedger(decision) {
+    if (!decision) return;
+
+    try {
+      for (const entry of decision) {
+        if (typeof entry.actor?.setFlag !== "function") throw new Error("Actor flags unavailable");
+        await entry.actor.setFlag(MODULE_ID, INTEL_LEDGER_FLAG, entry.value);
+        await entry.actor.setFlag(MODULE_ID, INTEL_REVEAL_MODE_FLAG, entry.revealMode);
+      }
+      this._pinnedPlanId = null;
+      this._pinnedFillPlanId = null;
+      globalThis.ui?.notifications?.info?.(t("Intel.Saved", "Intel ledger updated."));
+      await this.refresh("intel-update");
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to update Recall Knowledge intel`, error);
+      globalThis.ui?.notifications?.warn?.(t("Intel.SaveFailed", "Could not update intel ledger."));
+    }
+  }
+
+  async _openTargetIntel(targetKey) {
+    const key = String(targetKey ?? "");
+    if (!key) return;
+    const viewProvider = () => this._targetIntelView(key);
+    const view = viewProvider();
+    if (!view?.visible || !view.entries.some((entry) => entry.hasRevealed)) {
+      globalThis.ui?.notifications?.info?.(t("Intel.NoRevealedData", "No Recall Knowledge facts have been revealed yet."));
+      return;
+    }
+    await openIntelWindow(view, { mode: "view", viewProvider });
+  }
+
+  _targetIntelView(key) {
+    const context = this._freshIntelContext() ?? this._context;
+    const target = [
+      ...(context?.battlefield?.targets ?? []),
+      ...(context?.battlefield?.enemies ?? []),
+      ...(context?.battlefield?.allies ?? []),
+    ].find((entry) => intelTargetMatchesKey(entry, key));
+    return target ? intelLedgerView({ ...context, intelTargets: [target] }) : null;
   }
 
   _setActiveTab(tab) {
@@ -715,6 +702,34 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return cyclePanelStepWeapon(this, instanceId);
   }
 
+  async _cycleMinionPlanStep(instanceId, stepIndex, direction = 1) {
+    return cyclePanelMinionPlanStep(this, instanceId, stepIndex, direction);
+  }
+
+  async _cycleMinionPlanMovement(instanceId, stepIndex) {
+    return cyclePanelMinionPlanMovement(this, instanceId, stepIndex);
+  }
+
+  async _chooseMinionTarget(instanceId) {
+    return choosePanelMinionTarget(this, instanceId);
+  }
+
+  _chooseMinionDestination(instanceId, stepIndex) {
+    return choosePanelMinionDestination(this, instanceId, stepIndex);
+  }
+
+  async _executeMinionPlanStep(instanceId, stepIndex, event) {
+    return executePanelMinionPlanStep(this, instanceId, stepIndex, event);
+  }
+
+  async _revertMinionPlanStep(instanceId, stepIndex) {
+    return revertPanelMinionPlanStep(this, instanceId, stepIndex);
+  }
+
+  async _removeMinionPlanStep(instanceId, stepIndex) {
+    return removePanelMinionPlanStep(this, instanceId, stepIndex);
+  }
+
   async _toggleFavorite(actionKey) {
     return togglePanelFavorite(this, actionKey);
   }
@@ -727,8 +742,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return actionKeyForPanelStep(this, step);
   }
 
-  async _autoFillDraft({ plan = null } = {}) {
-    return autoFillPanelDraft(this, { plan });
+  async _autoFillDraft({ plan = null, forceFull = false } = {}) {
+    return autoFillPanelDraft(this, { plan, forceFull });
   }
 
   async _fillDraftGap({ plan, draft }) {
@@ -855,6 +870,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       requiresDestination: requiresDestinationForAction(step.action),
       ...(reachBonus > 0 ? { rangeBonusFeet: reachBonus } : {}),
     }, { skipMovement: isDone });
+  }
+
+  _showMinionActionPreview(instanceId, stepIndex) {
+    return showPanelMinionActionPreview(this, instanceId, stepIndex);
   }
 
   _restorePosition() {

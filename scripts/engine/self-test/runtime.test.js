@@ -59,6 +59,7 @@ import {
   parseSpellDuration,
 } from "../area/duration.js";
 import { scoreCandidate } from "../scoring.js";
+import { canUseTargetSave, damageAdjustment, saveScoreDelta, targetHasMatchingDefense, targetTraitSlugs } from "../scoring/facts.js";
 import { contextAllies, contextEnemies, contextTargets, firstContextTarget, selfTargetReference, targetReference } from "../target-pool.js";
 import { buildCandidates } from "../candidates.js";
 import { classifySystemAction } from "../action/classifier.js";
@@ -66,7 +67,10 @@ import { classifySpell } from "../spell/classifier.js";
 import { findCuratedSpell } from "../../catalog/spells/index.js";
 import { spellCatalogAuditForItems, spellCatalogAuditMarkdown } from "../../dev/spell-catalog-audit.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../../readers/action/reader.js";
-import { reachableAttackCenters } from "../../readers/action/reach.js";
+import {
+  movementReachableCenters as actionMovementReachableCenters,
+  reachableAttackCenters,
+} from "../../readers/action/reach.js";
 import { readActorProfile, readEffects, actorMovementOptions } from "../../readers/actor-profile.js";
 import { readConsumableSpellActions, readSpellActions } from "../../readers/spell-reader.js";
 import {
@@ -99,6 +103,7 @@ import * as draftPlanState from "../../state/draft-plans.js";
 import { coveredClassSlugs } from "../../rules/class-tactics.js";
 import { KNOWN_SUBCLASS_SLUGS } from "../../rules/class-tactics-data/index.js";
 import { displayStepEntries } from "../../ui/display-steps.js";
+import { decorateBuilder, decoratePlan } from "../../ui/panel/view-model.js";
 import {
   captureMovementOrigin,
   consumeTokenRefreshChange,
@@ -114,6 +119,7 @@ import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFil
 import { clearActionPreview, showActionPreview } from "../../ui/action/preview.js";
 import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } from "../../ui/panel/draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
+import { panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../../ui/range-overlay.js";
@@ -128,6 +134,16 @@ import {
   tacticPersonalityTargetAdjustment,
   tacticPersonalityView,
 } from "../../rules/tactic-personality.js";
+import {
+  INTEL_REVEAL_MODE_FLAG,
+  INTEL_REVEAL_MODES,
+  canUseIntelCategory,
+  canUseIntelFact,
+  intelLedgerView,
+  intelTargetMatchesKey,
+  normalizeIntelLedger,
+} from "../../rules/intel-ledger.js";
+import { planMinionSubturn } from "../../rules/minion-planner.js";
 import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
 import { requestRetchDc, requestRetchResult, setSocket, shareDraftPlan } from "../../socket.js";
 import {
@@ -149,6 +165,19 @@ const panelTemplateSource = [
 const panelSource = readFileSync(new URL("../../ui/CombaterPanel.js", import.meta.url), "utf8");
 const panelContextWorkflowSource = readFileSync(new URL("../../ui/panel/context-workflow.js", import.meta.url), "utf8");
 const panelViewModelSource = readFileSync(new URL("../../ui/panel/view-model.js", import.meta.url), "utf8");
+
+function actorWithIntelLedger(values = {}, { revealMode = null, level = null } = {}) {
+  return {
+    type: "npc",
+    system: level === null ? {} : { details: { level: { value: level } } },
+    flags: {
+      "pf2e-combater": {
+        intelLedger: normalizeIntelLedger(values),
+        ...(revealMode ? { [INTEL_REVEAL_MODE_FLAG]: revealMode } : {}),
+      },
+    },
+  };
+}
 const browserSource = readFileSync(new URL("../../ui/CombaterBrowser.js", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../../settings.js", import.meta.url), "utf8");
@@ -4874,7 +4903,8 @@ const incapContext = (targetLevel) => ({
       conditions: { slugs: [], values: {} }, saves: { will: { dc: 20 }, reflex: { dc: 18 }, fortitude: { dc: 18 } },
       actor: {
         document: {
-          type: "character", itemTypes: {},
+          type: "npc", itemTypes: {},
+          flags: { "pf2e-combater": { intelLedger: normalizeIntelLedger({ saves: true }) } },
           system: { details: { level: { value: targetLevel } }, attributes: { hp: { value: 100, max: 100 }, ac: { value: 20 } } }
         }
       },
@@ -5437,6 +5467,26 @@ assert.ok(strideTowardPlannedTarget && strideTowardPlannedTarget.destination.x >
       "manual-draft fill-gap Auto-fill should not fall back to the first fill plan when a selected-target plan has the same step signature",
     );
     const previousFillGapDraft = fillGapDraft;
+    await runAutoFillPanelDraft({
+      ...fillGapPanel,
+      _autoFillInFlight: false,
+      _writeActiveDraftPlan: async (draft) => { fillGapDraft = draft; },
+    }, { plan: { ...stalePlan, id: "stale-expel-signature-only" }, forceFull: true });
+    assert.equal(
+      fillGapDraft?.source,
+      "auto-fill",
+      "Shift-click Auto-fill should replace the current draft with a complete calculated plan",
+    );
+    assert.equal(
+      fillGapDraft?.steps?.some((step) => step.instanceId === "manual-step"),
+      false,
+      "Shift-click Auto-fill should discard locked manual steps instead of filling around them",
+    );
+    assert.equal(
+      fillGapDraft?.steps?.some((step) => step.name === "Expel Infestation"),
+      true,
+      "Shift-click Auto-fill should still use the recalculated selected-target plan",
+    );
     await runAutoFillPanelDraft({
       ...fillGapPanel,
       _autoFillInFlight: false,
@@ -6798,11 +6848,26 @@ assert.equal(
 );
 assert.equal(
   movementBudgetForStep({
+    token: { actor: { system: { movement: { speeds: { land: { total: 0, value: 25, base: 25 } } } } } },
+  }, { slug: "stride", movementAction: "walk", movementDistance: 5 }),
+  25,
+  "PF2e familiar land speed should use system.movement.speeds.land.value before stale total-style data",
+);
+assert.equal(
+  movementBudgetForStep({
     token: { actor: { system: { movement: { speeds: { fly: { value: 40 } } } } } },
     actor: { profile: { speed: 25 } },
   }, { slug: "stride", movementAction: "fly" }),
   40,
   "movement route budget reads typed movement speed",
+);
+assert.equal(
+  movementBudgetForStep({
+    token: { actor: { movement: { speeds: { land: { value: 25 }, fly: { value: 45 } } } } },
+    actor: { profile: { speed: 25 } },
+  }, { slug: "stride", movementAction: "fly" }),
+  45,
+  "movement route budget reads minion actor movement facade typed speed",
 );
 assert.equal(
   movementBudgetForStep({}, { slug: "stride", movementDistance: 40 }),
@@ -9430,6 +9495,25 @@ try {
   }, { slug: "stride" });
   assert.equal(plannedCenterPreview.enabled, true);
   assert.deepEqual(plannedCenterPreview.origin, { x: 5, y: 10 });
+  const scaledEnemyOccupancyPreview = showMovementPreview({
+    token: { id: "calder-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: {
+      targets: [],
+      enemies: [{
+        id: "mitflit-token",
+        name: "Mitflit",
+        token: { id: "mitflit-token", center: { x: 300, y: 200 }, width: 1, height: 1 },
+      }],
+    },
+  }, { slug: "stride" });
+  assert.equal(scaledEnemyOccupancyPreview.enabled, true);
+  assert.equal(
+    scaledEnemyOccupancyPreview.reachableCenters.some((center) =>
+      Math.abs(center.x - 15) < 0.01 && Math.abs(center.y - 10) < 0.01),
+    false,
+    "canvas-pixel enemy centers must be converted before occupancy filters reachable grid squares",
+  );
   previewDrawCalls.length = 0;
   const waypointIndicatorPreview = showMovementPreview({
     token: { id: "calder-token" },
@@ -9650,6 +9734,53 @@ try {
     "with no ring enabled, ghost height must fall back to document.texture.scaleY, ignoring any stale live ring object",
   );
 
+  const tinyTexture = { id: "tiny-token-texture" };
+  TestTexture.from = (src) => (
+    src === "tokens/tiny.webp" ? tinyTexture
+      : src === "modules/pack/ring-subjects/calder.webp" ? ringSubjectTexture
+        : src === "tokens/calder.webp" ? calderTexture
+          : { id: `texture:${src}` }
+  );
+  const tinyToken = {
+    id: "tiny-token",
+    center: { x: 100, y: 100 },
+    document: {
+      id: "tiny-token",
+      uuid: "Scene.Token.tiny-token",
+      x: 75,
+      y: 75,
+      width: 0.5,
+      height: 0.5,
+      texture: { src: "tokens/tiny.webp" },
+      ring: { enabled: false },
+    },
+  };
+  globalThis.canvas.tokens.placeables.unshift(tinyToken);
+  previewDrawCalls.length = 0;
+  const tinyGhostPreview = showMovementPreview({
+    token: { id: "tiny-token" },
+    actor: { profile: { speed: 25 } },
+    battlefield: { targets: [] },
+  }, {
+    slug: "stride",
+    destination: { x: 200, y: 100 },
+  });
+  assert.equal(tinyGhostPreview.destinationAvailable, true, "sanity: tiny token destination is within a 25ft Speed");
+  assert.equal(tinyGhostPreview.destinationPlacement.width * previewScale, 100, "movement footprint still reserves one grid square for reachability");
+  const tinyGhostChild = layer.children[0]?.children.find((child) => child.texture === tinyTexture);
+  assert.ok(tinyGhostChild, "tiny token ghost should use the minion token texture");
+  assert.equal(tinyGhostChild?.width, 50, "tiny token ghost width should use document.width 0.5 instead of the one-cell movement fallback");
+  assert.equal(tinyGhostChild?.height, 50, "tiny token ghost height should use document.height 0.5 instead of the one-cell movement fallback");
+  const tinyOriginRadii = previewDrawCalls
+    .filter((call) => call.type === "drawCircle")
+    .map((call) => call.radius);
+  assert.equal(
+    Math.max(...tinyOriginRadii),
+    25,
+    "tiny token origin marker should use document.width 0.5 instead of the one-cell movement fallback",
+  );
+  globalThis.canvas.tokens.placeables.shift();
+
   // showHoverGhost must live on its own graphics object, entirely separate from the persistent
   // reachable-area grid showMovementPreview mounts -- redrawing/clearing the whole grid on every
   // mouse-move frame is what made it visibly shrink to just the area near the cursor instead of
@@ -9680,6 +9811,46 @@ try {
   assert.equal(layer.children.length, 2, "a second hover frame must still only ever add one ghost overlay, not stack another");
   assert.equal(layer.children[0], hoverGridGraphics, "a second hover frame must still leave the grid graphics object untouched");
   assert.notEqual(layer.children[1], firstHoverGraphics, "a second hover frame must replace the previous hover ghost graphics object");
+
+  globalThis.canvas.tokens.placeables[0].center = { x: 201, y: 201 };
+  globalThis.canvas.tokens.placeables[0].document.x = 150;
+  globalThis.canvas.tokens.placeables[0].document.y = 150;
+  const documentAlignedHoverPreview = showHoverGhost(hoverGridContext, { slug: "stride" }, { x: 300, y: 200 });
+  assert.equal(
+    documentAlignedHoverPreview?.destinationAvailable,
+    true,
+    "hover preview should use committed TokenDocument coords, not a slightly off-grid live Token.center that shifts the reachable lattice",
+  );
+  assert.deepEqual(
+    documentAlignedHoverPreview?.origin,
+    { x: 10, y: 10 },
+    "document-derived movement origin should stay aligned to the grid-snapped destination picker lattice",
+  );
+  delete globalThis.canvas.tokens.placeables[0].document.x;
+  delete globalThis.canvas.tokens.placeables[0].document.y;
+  const previousGetTopLeftPoint = globalThis.canvas.grid.getTopLeftPoint;
+  globalThis.canvas.grid.getTopLeftPoint = (point) => ({
+    x: Math.floor(point.x / 100) * 100,
+    y: Math.floor(point.y / 100) * 100,
+  });
+  try {
+    globalThis.canvas.tokens.placeables[0].center = { x: 2775, y: 1210 };
+    const snappedLiveCenterHoverPreview = showHoverGhost(hoverGridContext, { slug: "stride" }, { x: 2750, y: 1050 });
+    assert.equal(
+      snappedLiveCenterHoverPreview?.destinationAvailable,
+      true,
+      "hover preview should snap an off-grid live token center onto the same grid lattice as destination picker output",
+    );
+    assert.deepEqual(
+      snappedLiveCenterHoverPreview?.origin,
+      { x: 137.5, y: 62.5 },
+      "off-grid live token center should snap to the matching grid-cell center before reachability checks",
+    );
+  } finally {
+    if (previousGetTopLeftPoint) globalThis.canvas.grid.getTopLeftPoint = previousGetTopLeftPoint;
+    else delete globalThis.canvas.grid.getTopLeftPoint;
+  }
+  globalThis.canvas.tokens.placeables[0].center = { x: 200, y: 200 };
 
   clearHoverGhost();
   assert.equal(layer.children.length, 1, "clearing the hover ghost must leave the persistent grid mounted");
@@ -10158,6 +10329,21 @@ assert.equal(hoverOnlyPreview.explicitDestination, true);
 assert.deepEqual(hoverOnlyPreview.destinationCenter, { x: 20, y: 0 });
 assert.equal(hoverOnlyPreview.destinationAvailable, true, "the hover candidate (20,0) is well within a 25ft Speed");
 
+const fractionalHoverOnlyPreview = movementPreviewForStep({
+  token: { center: { x: 56.25, y: 16.25 } },
+  actor: { profile: { speed: 25 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: 76.25000000000001, y: 16.25 },
+}, { gridSize: 5 });
+assert.equal(
+  fractionalHoverOnlyPreview.destinationAvailable,
+  true,
+  "hover destination availability should tolerate tiny scene-coordinate drift from canvas scaling",
+);
+
 // Reported live: once a waypoint is already committed, hovering toward a further point showed the
 // ghost as "available" (green) even though the REAL click correctly rejected it -- because the
 // hover-only reachability check tested "is this point within Speed of the ORIGIN directly", entirely
@@ -10186,6 +10372,24 @@ assert.equal(
   waypointAwareHoverPreview.destinationAvailable,
   false,
   "a hover candidate must validate the full path through any already-committed waypoints, not just direct range from the origin",
+);
+const autoRoutedHoverPreview = movementPreviewForStep({
+  token: { center: { x: 0, y: 0 } },
+  actor: { profile: { speed: 20 } },
+  battlefield: {},
+}, {
+  slug: "stride",
+  hoverOnly: true,
+  destination: { x: 20, y: 0 },
+  movementPlan: {
+    committedWaypointCount: 0,
+    waypoints: [{ x: 0, y: 20 }, { x: 20, y: 0 }],
+  },
+}, { gridSize: 5 });
+assert.equal(
+  autoRoutedHoverPreview.destinationAvailable,
+  true,
+  "auto-routed hover waypoints are route hints, not already-committed manual waypoints",
 );
 // The general reachable-area GRID (the green highlighted cells, independent of wherever the cursor
 // currently is) must be similarly waypoint-aware -- reported live: one diagonal cell correctly showed
@@ -13632,6 +13836,14 @@ const withCompanionCommand = readActionSources({
   minions: [{ id: "companion-1", name: "Rex" }],
 }).find((action) => action.slug === "command-an-animal");
 assert.equal(withCompanionCommand.available, true);
+const companionCommandCosts = readActionSources({
+  ...fighterContext,
+  minions: [{ id: "companion-1", name: "Rex" }],
+})
+  .filter((action) => action.slug === "command-an-animal")
+  .map((action) => action.actionCost)
+  .toSorted((left, right) => left - right);
+assert.deepEqual(companionCommandCosts, [1], "Minion trait command should cost one action and grant the minion its two-action turn");
 
 const scoredStabilize = scoreCandidate({
   ...fighterContext,
@@ -15672,6 +15884,7 @@ assert.ok(fireTargetExtractElement.score > -999);
 const fireWeaknessExtractElement = scoreCandidate(kineticistExtractContext({
   id: "fire-weakness-target",
   name: "Oil Ooze",
+  actor: actorWithIntelLedger({ weaknesses: true }),
   traits: ["ooze"],
   weaknesses: [{ type: "fire", value: 5 }],
   resistances: [],
@@ -16452,6 +16665,7 @@ try {
         weaknesses: [{ type: "cold", value: 3 }],
         immunities: [{ type: "poison" }],
       },
+      traits: { value: ["animal"] },
       perception: { dc: 20, mod: 10 },
       saves: {
         fortitude: { dc: 17 },
@@ -16462,8 +16676,8 @@ try {
       abilities: {},
     },
   });
-  const valerosActor = makeActor("valeros", "Valeros");
-  const ezrenActor = makeActor("ezren", "Ezren");
+  const valerosActor = makeActor("valeros", "Valeros", "character");
+  const ezrenActor = makeActor("ezren", "Ezren", "character");
   const centipedeActor = makeActor("centipede", "Giant Centipede");
   const nakpikActor = makeActor("nakpik", "Nakpik");
   const hiddenPitActor = makeActor("hidden-pit", "Hidden Pit", "hazard");
@@ -16594,6 +16808,231 @@ try {
   );
   centipedeActor.itemTypes.effect = [];
 
+  assert.deepEqual(normalizeIntelLedger({ saves: ["reflex", "perception"] }).saves, ["reflex"]);
+  assert.deepEqual(normalizeIntelLedger({ saves: ["reflex", "perception"] }).perception, ["perception"]);
+  assert.equal(normalizeIntelLedger({ saves: true }).perception, false, "revealing all saves should not reveal Perception");
+
+  centipedeActor.flags = {
+    "pf2e-combater": {
+      intelLedger: normalizeIntelLedger({ saves: true, perception: true, weaknesses: true, traits: true }),
+    },
+  };
+  const playerContextWithIntel = readCombatContext("player-rk-intel-test");
+  const playerIntelTarget = playerContextWithIntel.battlefield.targets[0];
+  assert.deepEqual(playerIntelTarget.intelLedger, normalizeIntelLedger({ saves: true, perception: true, weaknesses: true, traits: true }));
+  assert.equal(playerIntelTarget.actor.document, undefined);
+  assert.equal(playerIntelTarget.actor.type, "npc");
+  assert.deepEqual(playerIntelTarget.saves, { fortitude: 17, reflex: 18, will: 19 });
+  assert.equal(playerIntelTarget.perceptionDC, 20);
+  assert.deepEqual(playerIntelTarget.weaknesses, [{ type: "cold", value: 3 }]);
+  assert.equal(playerIntelTarget.resistances, null);
+  assert.equal(playerIntelTarget.immunities, null);
+  assert.deepEqual(playerIntelTarget.traits, ["animal"]);
+  const playerIntelView = intelLedgerView(playerContextWithIntel);
+  assert.equal(playerIntelView.visible, true);
+  assert.equal(playerIntelView.editable, false);
+  assert.equal(playerIntelView.entries[0].hasRevealed, true);
+  assert.deepEqual(playerIntelView.entries[0].revealed.weaknesses, ["Cold 3"]);
+  assert.ok(playerIntelView.entries[0].revealed.saves.includes("Reflex DC 18"));
+  assert.deepEqual(playerIntelView.entries[0].revealed.perception, ["Perception DC 20"]);
+  assert.deepEqual(playerIntelView.entries[0].revealed.traits, ["Animal"]);
+  assert.deepEqual(playerIntelView.entries[0].revealed.resistances, []);
+  const playerPanelIntelView = panelIntelLedgerView(playerContextWithIntel);
+  assert.equal(playerPanelIntelView.visible, true, "PC Combater panel should expose revealed NPC Intel to players");
+  assert.equal(playerPanelIntelView.editable, false);
+  assert.deepEqual(playerPanelIntelView.entries[0].revealed.weaknesses, ["Cold 3"]);
+  globalThis.game.pf2e = { settings: { tokens: { nameVisibility: true } } };
+  enemyToken.document.playersCanSeeName = false;
+  const playerHiddenNameIntelContext = readCombatContext("player-hidden-name-rk-intel-test");
+  assert.equal(playerHiddenNameIntelContext.battlefield.targets[0].name, "Unknown");
+  assert.equal(intelLedgerView(playerHiddenNameIntelContext).entries[0].name, "Unknown", "player Intel should follow the combat tracker's hidden token name");
+  const centipedeCombatant = globalThis.game.combat.combatants.find((combatant) => combatant.tokenId === enemyToken.id);
+  centipedeCombatant.playersCanSeeName = true;
+  const playerCombatantVisibleNameIntelContext = readCombatContext("player-combatant-visible-name-rk-intel-test");
+  assert.equal(
+    playerCombatantVisibleNameIntelContext.battlefield.targets[0].name,
+    "Giant Centipede",
+    "player Intel should follow a combat tracker combatant name reveal even if the token document was previously hidden",
+  );
+  delete centipedeCombatant.playersCanSeeName;
+  delete enemyToken.document.playersCanSeeName;
+  delete globalThis.game.pf2e;
+  const playerTrackerIntelView = intelLedgerView({
+    isGM: false,
+    intelTargets: [{ displayName: "Tracker Unknown", name: "Tracker Centipede", actor: centipedeActor, token: { img: "centipede.webp" } }],
+  });
+  assert.equal(playerTrackerIntelView.visible, true);
+  assert.equal(playerTrackerIntelView.editable, false);
+  assert.equal(playerTrackerIntelView.entries[0].name, "Tracker Unknown");
+  assert.deepEqual(playerTrackerIntelView.entries[0].revealed.weaknesses, ["Cold 3"]);
+  assert.deepEqual(playerTrackerIntelView.entries[0].revealed.perception, ["Perception DC 20"]);
+  assert.deepEqual(playerTrackerIntelView.entries[0].revealed.traits, ["Animal"]);
+  assert.deepEqual(playerTrackerIntelView.entries[0].available.weaknesses, ["Cold 3"]);
+  assert.deepEqual(playerTrackerIntelView.entries[0].available.resistances, ["Fire 5"]);
+  assert.deepEqual(playerTrackerIntelView.entries[0].available.immunities, ["Poison"]);
+
+  const previousIntelWindowFoundry = globalThis.foundry;
+  try {
+    globalThis.foundry = {
+      applications: {
+        api: {
+          ApplicationV2: class {},
+          HandlebarsApplicationMixin: (Base) => Base,
+        },
+      },
+      utils: { randomID: () => "intel-test" },
+    };
+    const { resolveIntelWindowView } = await import("../../ui/intel-window.js");
+    const staleIntelView = {
+      visible: true,
+      categories: [],
+      entries: [{ name: "Unknown Combatant", hasRevealed: true }],
+    };
+    const freshIntelView = {
+      visible: true,
+      categories: [],
+      entries: [{ name: "War Wraith", hasRevealed: true }],
+    };
+    assert.equal(
+      resolveIntelWindowView(staleIntelView, () => freshIntelView).entries[0].name,
+      "War Wraith",
+      "open Known Intel windows should use a fresh provider so combat tracker name reveals update without reopening the panel",
+    );
+    assert.equal(
+      resolveIntelWindowView(staleIntelView, () => null).entries[0].name,
+      "Unknown Combatant",
+      "Known Intel should keep the last usable view if a live provider has no target",
+    );
+  } finally {
+    if (previousIntelWindowFoundry) globalThis.foundry = previousIntelWindowFoundry;
+    else delete globalThis.foundry;
+  }
+  centipedeActor.flags = {
+    "pf2e-combater": {
+      intelLedger: normalizeIntelLedger({ saves: true, perception: true, weaknesses: true }),
+      [INTEL_REVEAL_MODE_FLAG]: INTEL_REVEAL_MODES.band,
+    },
+  };
+  const playerBandIntelContext = readCombatContext("player-band-rk-intel-test");
+  const playerBandTarget = playerBandIntelContext.battlefield.targets[0];
+  assert.equal(playerBandTarget.saves.reflex, 16, "banded save intel should use a level-based approximate DC for scoring");
+  assert.equal(playerBandTarget.intelSaveBands.reflex.label, "Mid");
+  assert.equal(playerBandTarget.intelPerceptionBand.label, "High");
+  const playerBandIntelView = intelLedgerView(playerBandIntelContext);
+  assert.ok(playerBandIntelView.entries[0].revealed.saves.includes("Reflex: Mid"));
+  assert.deepEqual(playerBandIntelView.entries[0].revealed.perception, ["Perception: High"]);
+  assert.deepEqual(playerBandIntelView.entries[0].revealed.weaknesses, ["Cold: Mid"]);
+  assert.ok(!JSON.stringify(playerBandIntelView.entries[0].revealed).match(/\bDC \d|\bCold \d/), "banded player intel should hide exact NPC numbers");
+  const gmBandIntelView = intelLedgerView({
+    isGM: true,
+    intelTargets: [{ name: "GM Band Centipede", actor: centipedeActor, token: { img: "centipede.webp" } }],
+  });
+  assert.equal(gmBandIntelView.entries[0].revealMode, INTEL_REVEAL_MODES.band);
+  assert.ok(gmBandIntelView.entries[0].available.saves.includes("Reflex DC 18"), "GM should see exact save numbers even when players get bands");
+  assert.deepEqual(gmBandIntelView.entries[0].available.perception, ["Perception DC 20"]);
+  assert.deepEqual(gmBandIntelView.entries[0].available.weaknesses, ["Cold 3"]);
+  assert.ok(!JSON.stringify(gmBandIntelView.entries[0].available).includes("Reflex: Mid"));
+  const playerMetadataBandIntelView = intelLedgerView({
+    isGM: false,
+    intelTargets: [{
+      id: "metadata-band-target",
+      actor: {
+        type: "npc",
+        intelLedger: normalizeIntelLedger({ saves: ["reflex"], weaknesses: ["fire-10"] }),
+        intelRevealMode: INTEL_REVEAL_MODES.band,
+      },
+      saves: { reflex: 35 },
+      intelSaveBands: { reflex: { id: "mid", label: "Mid", approximateDc: 35 } },
+      weaknesses: [{ type: "fire", value: 10, intelBand: "mid", intelBandLabel: "Mid", exactValueHidden: true }],
+    }],
+  });
+  assert.deepEqual(playerMetadataBandIntelView.entries[0].revealed.saves, ["Reflex: Mid"]);
+  assert.deepEqual(playerMetadataBandIntelView.entries[0].revealed.weaknesses, ["Fire: Mid"]);
+  const gmUncheckedIntelView = intelLedgerView({
+    isGM: true,
+    intelTargets: [{ name: "GM Centipede", actor: { ...centipedeActor, flags: {} }, token: { img: "centipede.webp" } }],
+  });
+  assert.deepEqual(gmUncheckedIntelView.entries[0].available.weaknesses, ["Cold 3"], "GM edit window should show available system data before the category is revealed");
+  assert.deepEqual(gmUncheckedIntelView.entries[0].revealed.weaknesses, []);
+  ezrenActor.flags = {
+    "pf2e-combater": {
+      intelLedger: normalizeIntelLedger({ saves: true, weaknesses: true, traits: true }),
+    },
+  };
+  const characterIntelView = intelLedgerView({
+    isGM: true,
+    intelTargets: [{ name: "Ezren", actor: ezrenActor, token: { img: "ezren.webp" } }],
+  });
+  assert.equal(characterIntelView.visible, false, "Recall Knowledge intel should not expose player character targets from NPC turns");
+  ezrenActor.flags = {};
+  globalThis.game.user.isGM = true;
+  const gmNpcPanelIntelView = panelIntelLedgerView({
+    isGM: true,
+    actor: { id: "centipede", name: "Giant Centipede", document: centipedeActor, type: "npc" },
+    token: { id: "token-centipede", name: "Giant Centipede", img: "centipede.webp" },
+    battlefield: { enemies: [{ name: "Ezren", actor: ezrenActor }] },
+  });
+  assert.equal(gmNpcPanelIntelView.visible, true, "NPC Combater panel should show that NPC's own reveal editor");
+  assert.equal(gmNpcPanelIntelView.entries.length, 1);
+  assert.equal(gmNpcPanelIntelView.entries[0].name, "Giant Centipede");
+  const gmPlayerPanelIntelView = panelIntelLedgerView({
+    isGM: true,
+    actor: { id: "valeros", name: "Valeros", document: valerosActor, type: "character" },
+    token: activeToken,
+    battlefield: {
+      enemies: [{ name: "Giant Centipede", actor: centipedeActor, token: { img: "centipede.webp" } }],
+    },
+  });
+  assert.equal(gmPlayerPanelIntelView.visible, true, "GM selecting a player token should still see revealed NPC Intel");
+  assert.equal(gmPlayerPanelIntelView.editable, false, "GM selecting a player token should open player-facing Known Intel, not the NPC reveal editor");
+  assert.equal(gmPlayerPanelIntelView.entries.length, 1);
+  assert.ok(gmPlayerPanelIntelView.entries[0].revealed.saves.includes("Reflex DC 18"), "GM readonly Known Intel should still show exact numbers");
+  globalThis.game.user.isGM = false;
+  assert.equal(intelTargetMatchesKey(playerIntelTarget, playerIntelTarget.id), true);
+  const decoratedIntelPlan = decoratePlan({
+    steps: [{
+      id: "cold-ray-step",
+      name: "Cold Ray",
+      actionCost: 2,
+      suggestedTarget: playerIntelTarget,
+    }],
+  });
+  assert.equal(decoratedIntelPlan.steps[0].canOpenTargetIntel, true);
+  assert.equal(decoratedIntelPlan.steps[0].targetIntelKey, playerIntelTarget.id);
+  const decoratedCharacterIntelPlan = decoratePlan({
+    steps: [{
+      id: "pc-target-step",
+      name: "PC Target",
+      actionCost: 1,
+      suggestedTarget: { id: "ezren", name: "Ezren", actor: { type: "character" }, token: { id: "token-ezren" } },
+    }],
+  });
+  assert.equal(decoratedCharacterIntelPlan.steps[0].canOpenTargetIntel, false);
+  const playerKnownWeaknessScore = scoreCandidate(playerContextWithIntel, {
+    id: "cold-ray",
+    name: "Cold Ray",
+    slug: "cold-ray",
+    source: "spell-inferred",
+    role: "damage",
+    actionCost: 2,
+    targetingProfile: { enemy: true, maxRange: 60 },
+    damageProfile: { average: 8, type: "cold", types: ["cold"] },
+    activityProfile: { averageDamage: 8, damageTypes: ["cold"] },
+  });
+  assert.ok(playerKnownWeaknessScore.reasons.some((reason) => reason.includes("weakness 3")));
+
+  centipedeCombatant.hidden = true;
+  const playerContextWithoutHiddenCombatant = readCombatContext("player-hidden-combatant-test");
+  assert.equal(playerContextWithoutHiddenCombatant.battlefield.enemies.length, 0);
+  assert.equal(playerContextWithoutHiddenCombatant.battlefield.targets.length, 0);
+  assert.equal(
+    intelLedgerView(playerContextWithoutHiddenCombatant).visible,
+    false,
+    "player Known Intel must not list combatants hidden from the combat tracker",
+  );
+  centipedeCombatant.hidden = false;
+  centipedeActor.flags = {};
+
   enemyToken.hidden = true;
   enemyToken.document.hidden = true;
   const playerContextWithoutHiddenEnemy = readCombatContext("player-hidden-token-test");
@@ -16613,7 +17052,7 @@ try {
   assert.equal(neutralTargetContext.battlefield.targets.length, 1);
   assert.equal(neutralTargetContext.battlefield.targets[0].name, "Giant Centipede");
 
-  const calderActor = makeActor("calder", "Calder Stoneplow");
+  const calderActor = makeActor("calder", "Calder Stoneplow", "character");
   const calderToken = makeToken("token-calder", "Calder Stoneplow", calderActor, 1, 30);
   globalThis.game.user.targets = new Set();
   globalThis.canvas.tokens.placeables = [neutralToken, calderToken];
@@ -16809,26 +17248,27 @@ try {
       ownership: overrides.ownership ?? {},
       familiar: overrides.familiar ?? null,
       system: {
+        ...(overrides.master ? { master: overrides.master } : {}),
         attributes: { hp: { value: 10, max: 10 } },
         traits: { value: overrides.traits ?? [] },
         skills: {},
         abilities: {},
       },
     });
-    const makeMinionToken = (id, name, actor) => ({
+    const makeMinionToken = (id, name, actor, overrides = {}) => ({
       id,
       name,
       actor,
-      x: 5,
-      y: 0,
+      x: overrides.x ?? 5,
+      y: overrides.y ?? 0,
       document: {
         id,
         uuid: `Scene.Token.${id}`,
         name,
         actor,
-        disposition: 1,
-        x: 5,
-        y: 0,
+        disposition: overrides.disposition ?? 1,
+        x: overrides.x ?? 5,
+        y: overrides.y ?? 0,
         width: 1,
         height: 1,
         texture: { src: "" },
@@ -16850,11 +17290,33 @@ try {
     casterActor.familiar = familiarActor;
     const familiarToken = makeMinionToken("token-familiar", "Familiar", familiarActor);
 
+    const masterLinkedFamiliarActor = makeMinionActor("linked-familiar", "Master Linked Familiar", {
+      type: "familiar",
+      traits: ["minion"],
+      master: { id: casterActor.id },
+    });
+    const masterLinkedFamiliarToken = makeMinionToken("token-linked-familiar", "Master Linked Familiar", masterLinkedFamiliarActor);
+
     const companionActor = makeMinionActor("companion", "Animal Companion", {
+      type: "character",
       traits: ["minion", "animal"],
       ownership: { "user-1": 3 },
     });
     const companionToken = makeMinionToken("token-companion", "Animal Companion", companionActor);
+
+    const sameSideAnimalNpcActor = makeMinionActor("same-side-animal-npc", "Giant Centipede", {
+      type: "npc",
+      traits: ["animal"],
+      ownership: { "user-1": 3 },
+    });
+    const sameSideAnimalNpcToken = makeMinionToken("token-same-side-animal-npc", "Giant Centipede", sameSideAnimalNpcActor);
+
+    const ownedAllyActor = makeMinionActor("owned-ally", "Owned Ally", {
+      type: "npc",
+      traits: ["humanoid"],
+      ownership: { "user-1": 3 },
+    });
+    const ownedAllyToken = makeMinionToken("token-owned-ally", "Owned Ally", ownedAllyActor);
 
     const eidolonActor = makeMinionActor("eidolon", "Eidolon", {
       traits: ["eidolon"],
@@ -16862,11 +17324,12 @@ try {
     });
     const eidolonToken = makeMinionToken("token-eidolon", "Eidolon", eidolonActor);
 
-    const unownedCompanionActor = makeMinionActor("stray", "Stray Wolf", {
+    const hostileCompanionActor = makeMinionActor("hostile-stray", "Hostile Wolf", {
+      type: "npc",
       traits: ["minion", "animal"],
       ownership: { "user-2": 3 },
     });
-    const unownedCompanionToken = makeMinionToken("token-stray", "Stray Wolf", unownedCompanionActor);
+    const hostileCompanionToken = makeMinionToken("token-hostile-stray", "Hostile Wolf", hostileCompanionActor, { disposition: -1 });
 
     globalThis.game = {
       user: { isGM: true, targets: new Set() },
@@ -16882,15 +17345,24 @@ try {
     globalThis.canvas = {
       grid: { size: 1, measurePath: ([from, to]) => Math.abs(to.x - from.x) },
       tokens: {
-        placeables: [casterToken, familiarToken, companionToken, eidolonToken, unownedCompanionToken],
+        placeables: [
+          casterToken,
+          familiarToken,
+          masterLinkedFamiliarToken,
+          companionToken,
+          sameSideAnimalNpcToken,
+          ownedAllyToken,
+          eidolonToken,
+          hostileCompanionToken,
+        ],
       },
     };
 
     const minionContext = readCombatContext("minion-detection-test");
     assert.deepEqual(
       minionContext.minions.map((minion) => minion.name).sort(),
-      ["Animal Companion", "Familiar"],
-      "familiar (via actor.familiar) and owned minion-trait companion should both be detected; eidolon and unowned stray should not",
+      ["Animal Companion", "Familiar", "Master Linked Familiar"],
+      "PF2e familiars should come from actor.familiar or system.master.id, and companions from character minions; ordinary same-side NPC animals should not be commandable minions",
     );
   } finally {
     globalThis.game = previousMinionGame;
@@ -17652,6 +18124,32 @@ const numericRangeTeleport = classifySpell({
   },
 });
 assert.equal(numericRangeTeleport.targetingProfile.maxRange, 120, "a numeric spell range is read as feet");
+
+const agileFeetClassification = classifySpell({
+  name: "Agile Feet",
+  system: {
+    traits: { value: ["cleric", "focus", "manipulate"] },
+    level: { value: 1 },
+    range: { value: "" },
+    target: { value: "" },
+    description: {
+      value: "<p>The blessings of your god make your feet faster and your movements more fluid. You gain a +5-foot status bonus to your Speed and ignore difficult terrain. As part of casting agile feet, you can Stride, Step, or @UUID[Compendium.pf2e.actionspf2e.Item.Tumble Through]{Tumble Through}; you can instead Burrow, Climb, Fly, or Swim if you have the appropriate Speed.</p>",
+    },
+  },
+});
+assert.notEqual(agileFeetClassification.role, "control", "Agile Feet is a self buff, not enemy control from its embedded Tumble Through option");
+assert.equal(agileFeetClassification.targetingProfile.self, true, "Agile Feet should target the caster");
+assert.notEqual(agileFeetClassification.targetingProfile.enemy, true, "Agile Feet should not target an enemy");
+const agileFeetScored = scoreCandidate(fighterContext, {
+  id: "agile-feet",
+  slug: "agile-feet",
+  name: "Agile Feet",
+  actionCost: 1,
+  source: "spell-inferred",
+  ...agileFeetClassification,
+});
+assert.equal(agileFeetScored.suggestedTarget?.type, "self", "Agile Feet display target should be the caster, not the selected enemy");
+
 const wallControlScore = scoreCandidate({
   ...spellcasterSpellPriorityContext,
   battlefield: {
@@ -17880,6 +18378,7 @@ const fireSaveSpell = {
 const fireResistantTarget = {
   id: "fire-resistant",
   name: "Fire Resistant",
+  actor: actorWithIntelLedger({ saves: true, weaknesses: true, resistances: true }),
   distance: 30,
   hpPercent: 1,
   saves: { reflex: 18 },
@@ -17888,6 +18387,7 @@ const fireResistantTarget = {
 const fireWeakTarget = {
   id: "fire-weak",
   name: "Fire Weak",
+  actor: actorWithIntelLedger({ saves: true, weaknesses: true, resistances: true }),
   distance: 30,
   hpPercent: 1,
   saves: { reflex: 18 },
@@ -17901,13 +18401,60 @@ const gmFireSpellScore = scoreCandidate({
 assert.equal(gmFireSpellScore.suggestedTarget.name, "Fire Weak");
 assert.ok(gmFireSpellScore.reasons.some((reason) => reason.includes("weakness 5")));
 
+const unknownFireResistantTarget = { ...fireResistantTarget, actor: actorWithIntelLedger() };
+const unknownFireWeakTarget = { ...fireWeakTarget, actor: actorWithIntelLedger() };
 const playerFireSpellScore = scoreCandidate({
   ...fighterContext,
   isGM: false,
-  targets: [fireResistantTarget, fireWeakTarget],
+  targets: [unknownFireResistantTarget, unknownFireWeakTarget],
 }, fireSaveSpell);
 assert.equal(playerFireSpellScore.suggestedTarget.name, "Fire Resistant");
 assert.ok(!playerFireSpellScore.reasons.some((reason) => /weakness|resists|immune|spell DC/i.test(reason)));
+
+const playerRevealedWeakFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [
+    unknownFireResistantTarget,
+    { ...fireWeakTarget, actor: actorWithIntelLedger({ weaknesses: true }) },
+  ],
+}, fireSaveSpell);
+assert.equal(playerRevealedWeakFireSpellScore.suggestedTarget.name, "Fire Weak");
+assert.ok(playerRevealedWeakFireSpellScore.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(!playerRevealedWeakFireSpellScore.reasons.some((reason) => /spell DC|Reflex DC/i.test(reason)), "revealing weaknesses must not also reveal save math");
+
+const playerRevealedSaveFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [{ ...fireResistantTarget, actor: actorWithIntelLedger({ saves: true }) }],
+}, fireSaveSpell);
+assert.ok(playerRevealedSaveFireSpellScore.reasons.some((reason) => /Reflex DC 18|spell DC 20/i.test(reason)));
+assert.ok(!playerRevealedSaveFireSpellScore.reasons.some((reason) => /weakness|resists|immune/i.test(reason)), "revealing saves must not also reveal defenses");
+
+const playerBandWeakFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [{
+    ...fireWeakTarget,
+    actor: actorWithIntelLedger({ weaknesses: true }, { revealMode: INTEL_REVEAL_MODES.band, level: 0 }),
+    weaknesses: [{ type: "fire", value: 5, intelBand: "high", intelBandLabel: "High", exactValueHidden: true }],
+  }],
+}, fireSaveSpell);
+assert.ok(playerBandWeakFireSpellScore.reasons.some((reason) => reason.includes("weakness high")));
+assert.ok(!playerBandWeakFireSpellScore.reasons.some((reason) => /weakness 5/i.test(reason)), "banded weakness scoring should not reveal the exact amount");
+
+const playerBandSaveFireSpellScore = scoreCandidate({
+  ...fighterContext,
+  isGM: false,
+  targets: [{
+    ...fireResistantTarget,
+    actor: actorWithIntelLedger({ saves: true }, { revealMode: INTEL_REVEAL_MODES.band, level: 0 }),
+    saves: { reflex: 16 },
+    intelSaveBands: { reflex: { id: "mid", label: "Mid", approximateDc: 16 } },
+  }],
+}, fireSaveSpell);
+assert.ok(playerBandSaveFireSpellScore.reasons.some((reason) => /Reflex: Mid|spell DC 20/i.test(reason)));
+assert.ok(!playerBandSaveFireSpellScore.reasons.some((reason) => /Reflex DC \d/i.test(reason)), "banded save scoring should not reveal the exact save DC");
 
 const gmFireStrikeScore = scoreCandidate({
   ...fighterContext,
@@ -17928,7 +18475,7 @@ assert.equal(gmFireStrikeScore.suggestedTarget.name, "Fire Weak");
 const playerFireStrikeScore = scoreCandidate({
   ...fighterContext,
   isGM: false,
-  targets: [{ ...fireResistantTarget, distance: 5 }, { ...fireWeakTarget, distance: 5 }],
+  targets: [{ ...unknownFireResistantTarget, distance: 5 }, { ...unknownFireWeakTarget, distance: 5 }],
 }, {
   id: "flaming-sword",
   name: "Flaming Sword",
@@ -18397,6 +18944,37 @@ const mageHandClassification = classifySpell({
 const mageHandCurated = findCuratedSpell("mage-hand");
 assert.equal(mageHandCurated?.combatUse, "browse-only", "Mage Hand should be catalogued as manual Browse utility, not Auto-fill material");
 assert.equal(mageHandCurated?.role, "exploration-utility");
+const reviewedSpellExpectations = [
+  ["invoke-true-name", "setup", "auto"],
+  ["liberating-command", "healing", "context-only"],
+  ["empty-inside", "healing", "context-only"],
+  ["revealing-light", "debuff", undefined],
+  ["shattering-gem", "defense", undefined],
+  ["figment", "combat-utility", "browse-only"],
+  ["cup-of-dust", "debuff", undefined],
+  ["magic-passage", "exploration-utility", "browse-only"],
+  ["dawnflowers-light", "combat-utility", "browse-only"],
+  ["unbroken-panoply", "defense", "browse-only"],
+  ["magnetic-repulsion", "defense", "context-only"],
+  ["humanoid-form", "transformation", "context-only"],
+  ["helpful-steps", "exploration-utility", "browse-only"],
+  ["spirit-sense", "exploration-utility", "browse-only"],
+  ["crisis-of-faith", "save-damage", "context-only"],
+  ["knock", "exploration-utility", "browse-only"],
+  ["ill-omen", "debuff", undefined],
+  ["reed-whistle", "combat-utility", "never-auto-fill"],
+  ["beseech-the-sphinx", "buff", undefined],
+  ["bane", "debuff", undefined],
+  ["schadenfreude", "debuff", undefined],
+  ["false-vitality", "defense", undefined],
+  ["lock", "exploration-utility", "browse-only"],
+  ["tailwind", "buff", undefined],
+];
+for (const [slug, role, combatUse] of reviewedSpellExpectations) {
+  const reviewedSpell = findCuratedSpell(slug);
+  assert.equal(reviewedSpell?.role, role, `${slug} should use reviewed spell role ${role}`);
+  if (combatUse !== undefined) assert.equal(reviewedSpell?.combatUse, combatUse, `${slug} should use reviewed combatUse ${combatUse}`);
+}
 assert.equal(
   mageHandClassification.role,
   "exploration-utility",
@@ -18467,6 +19045,35 @@ assert.equal(
     .some((plan) => plan.steps.some((step) => step.slug === "context-only-damage")),
   false,
   "Auto-fill/shuffle plans should not spend actions on context-only spell candidates without a matched context rule",
+);
+const liberatingCommandCurated = findCuratedSpell("liberating-command");
+const liberatingCommandContextOnlyScore = {
+  ...contextOnlyCombatUseScore,
+  ...liberatingCommandCurated,
+  id: "liberating-command",
+  name: "Liberating Command",
+  slug: "liberating-command",
+  actionCost: 1,
+  source: "spell-curated",
+  score: 100,
+};
+assert.equal(
+  buildTurnPlans(spellcasterSpellPriorityContext, [liberatingCommandContextOnlyScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "liberating-command")),
+  false,
+  "Liberating Command should stay out of Auto-fill when no ally is restrained",
+);
+assert.equal(
+  buildTurnPlans({
+    ...spellcasterSpellPriorityContext,
+    battlefield: {
+      ...spellcasterSpellPriorityContext.battlefield,
+      allies: [{ id: "ally-grabbed", name: "Grabbed Ally", conditions: { slugs: ["grabbed"] } }],
+    },
+  }, [liberatingCommandContextOnlyScore])
+    .some((plan) => plan.steps.some((step) => step.slug === "liberating-command")),
+  true,
+  "Liberating Command can enter Auto-fill when its condition gate is matched",
 );
 const autoCombatUseScore = {
   ...browseOnlyCombatUseScore,
@@ -19483,7 +20090,10 @@ try {
 
   const retreatPreview = movementPreviewForStep(rangedRetreatContext, retreatAction, { gridSize: 5 });
   assert.equal(retreatPreview.enabled, true);
-  assert.deepEqual(retreatPreview.destinationCenter, retreatAction.activityProfile.attackCenter);
+  assert.deepEqual(
+    { x: retreatPreview.destinationCenter.x, y: retreatPreview.destinationCenter.y },
+    { x: retreatAction.activityProfile.attackCenter.x, y: retreatAction.activityProfile.attackCenter.y },
+  );
 
   const scoredRetreat = scoreCandidate(rangedRetreatContext, retreatAction);
   const scoredPlainShot = scoreCandidate(rangedRetreatContext, readActionSources(rangedRetreatContext)
@@ -20115,6 +20725,31 @@ const scoredInferredAreaSpell = scoreCandidate({
 });
 assert.ok(scoredInferredAreaSpell.score > 80, `area spell should score for enemies in area, got ${scoredInferredAreaSpell.score}`);
 assert.ok(scoredInferredAreaSpell.reasons.some((reason) => reason.includes("Fireball can hit")));
+
+const scoredAreaDebuffSpell = scoreCandidate({
+  ...fighterContext,
+  battlefield: {
+    enemies: [
+      { id: "e1", name: "Ezren", distance: 15 },
+      { id: "e2", name: "Merisiel", distance: 18 },
+    ],
+    allies: [],
+    targets: [{ id: "e1", name: "Ezren", distance: 15 }],
+  },
+  targets: undefined,
+}, {
+  id: "spell-revealing-light",
+  name: "Revealing Light",
+  slug: "revealing-light",
+  actionCost: 2,
+  source: "spell-curated",
+  role: "debuff",
+  saveProfile: { stat: "reflex", dc: null, basic: false },
+  activityProfile: { includes: ["debuff", "area"], includesStrike: false, appliesCondition: "dazzled" },
+  targetingProfile: { area: true, type: "burst", distance: 20, maxRange: 120, enemy: true },
+});
+assert.ok(scoredAreaDebuffSpell.score > 80, `area debuff should score for enemies in area, got ${scoredAreaDebuffSpell.score}`);
+assert.ok(scoredAreaDebuffSpell.reasons.some((reason) => reason.includes("Revealing Light can affect")));
 
 const spellcasterProfile = {
   actorType: "character",
@@ -21353,5 +21988,779 @@ assert.equal(grabManeuverScored.activityProfile.backingManeuver?.slug, "grapple"
 const ordinaryActionForManeuverFix = { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } };
 const ordinaryManeuverScored = scoreCandidate(grabManeuverContext, ordinaryActionForManeuverFix);
 assert.equal(ordinaryManeuverScored.activityProfile?.backingManeuver, undefined, "an ordinary action must not gain a backingManeuver");
+
+const intelFireAction = {
+  id: "intel-fire",
+  name: "Intel Fire",
+  slug: "intel-fire",
+  actionCost: 2,
+  source: "spell-inferred",
+  role: "save-damage",
+  spellDc: 21,
+  saveProfile: { stat: "reflex", basic: true },
+  damageProfile: { average: 12, type: "fire", types: ["fire"] },
+  activityProfile: { averageDamage: 12, damageTypes: ["fire"] },
+  targetingProfile: { enemy: true, maxRange: 60 },
+};
+const intelTarget = {
+  id: "intel-ooze",
+  name: "Intel Ooze",
+  distance: 30,
+  actor: actorWithIntelLedger({ weaknesses: true }),
+  saves: { reflex: 17 },
+  weaknesses: [{ type: "fire", value: 5 }],
+  resistances: [{ type: "fire", value: 10 }],
+  immunities: [{ type: "cold", value: 0 }],
+};
+assert.equal(canUseIntelCategory({ isGM: true }, intelTarget, "weaknesses"), true);
+assert.equal(canUseIntelCategory({ isGM: false }, intelTarget, "weaknesses"), true);
+assert.ok(damageAdjustment({ isGM: true }, intelFireAction, intelTarget)?.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(damageAdjustment({ isGM: false }, intelFireAction, intelTarget)?.reasons.some((reason) => reason.includes("weakness 5")));
+assert.equal(targetHasMatchingDefense({ isGM: false }, intelTarget, ["fire"]), true);
+assert.equal(targetHasMatchingDefense({ isGM: false }, intelTarget, ["cold"]), false);
+assert.equal(targetHasMatchingDefense({ isGM: false }, {
+  ...intelTarget,
+  actor: actorWithIntelLedger({ resistances: true }),
+}, ["fire"]), true);
+assert.equal(saveScoreDelta({ isGM: true }, intelFireAction, intelTarget, { spellDc: 21 }), null, "save odds should stay hidden until Recall Knowledge marks saves known");
+intelTarget.actor = actorWithIntelLedger({ saves: true, weaknesses: true, resistances: true });
+assert.ok(saveScoreDelta({ isGM: true }, intelFireAction, intelTarget, { spellDc: 21 })?.label.includes("Reflex DC 17"));
+assert.ok(damageAdjustment({ isGM: true }, intelFireAction, intelTarget)?.reasons.some((reason) => reason.includes("resists fire 10")));
+
+const intelColdAction = {
+  ...intelFireAction,
+  id: "intel-cold",
+  name: "Intel Cold",
+  damageProfile: { average: 12, type: "cold", types: ["cold"] },
+  activityProfile: { averageDamage: 12, damageTypes: ["cold"] },
+};
+const intelWillAction = {
+  ...intelFireAction,
+  id: "intel-will",
+  name: "Intel Will",
+  saveProfile: { stat: "will", basic: true },
+};
+const intelPerceptionTarget = {
+  ...intelTarget,
+  actor: actorWithIntelLedger({ saves: true }),
+  perceptionDC: 17,
+};
+assert.equal(canUseTargetSave({ isGM: false }, intelPerceptionTarget, "perception"), false, "Saves intel should not unlock Perception DC");
+intelPerceptionTarget.actor = actorWithIntelLedger({ perception: true });
+assert.equal(canUseTargetSave({ isGM: false }, intelPerceptionTarget, "perception"), true);
+const granularIntelTarget = {
+  id: "granular-intel-ooze",
+  name: "Granular Intel Ooze",
+  distance: 30,
+  actor: actorWithIntelLedger({
+    traits: ["ooze"],
+    saves: ["reflex"],
+    weaknesses: ["fire-5"],
+    resistances: ["cold-10"],
+  }),
+  traits: ["ooze", "aquatic"],
+  saves: { reflex: 17, will: 22 },
+  weaknesses: [{ type: "fire", value: 5 }, { type: "cold", value: 5 }],
+  resistances: [{ type: "fire", value: 10 }, { type: "cold", value: 10 }],
+  immunities: [{ type: "mental", value: 0 }],
+};
+assert.equal(canUseIntelCategory({ isGM: false }, granularIntelTarget, "weaknesses"), true);
+assert.equal(canUseIntelFact({ isGM: false }, granularIntelTarget, "weaknesses", "fire-5"), true);
+assert.equal(canUseIntelFact({ isGM: false }, granularIntelTarget, "weaknesses", "cold-5"), false);
+assert.deepEqual(Array.from(targetTraitSlugs({ isGM: false }, granularIntelTarget)).sort(), ["ooze"]);
+assert.ok(damageAdjustment({ isGM: false }, intelFireAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(!damageAdjustment({ isGM: false }, intelFireAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("resists fire")));
+assert.ok(damageAdjustment({ isGM: false }, intelColdAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("resists cold 10")));
+assert.ok(!damageAdjustment({ isGM: false }, intelColdAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(saveScoreDelta({ isGM: false }, intelFireAction, granularIntelTarget, { spellDc: 21 })?.label.includes("Reflex DC 17"));
+assert.equal(saveScoreDelta({ isGM: false }, intelWillAction, granularIntelTarget, { spellDc: 21 }), null);
+assert.equal(targetHasMatchingDefense({ isGM: false }, granularIntelTarget, ["cold"]), true);
+assert.equal(targetHasMatchingDefense({ isGM: false }, granularIntelTarget, ["mental"]), false);
+
+const previousMinionPlannerCanvas = globalThis.canvas;
+const previousMinionPlannerGame = globalThis.game;
+try {
+  globalThis.canvas = {
+    grid: {
+      size: 50,
+      measurePath: ([from, to]) => (Math.hypot(to.x - from.x, to.y - from.y) / 50) * 5,
+    },
+    scene: { grid: { distance: 5 } },
+  };
+  const wolfActor = {
+    id: "wolf",
+    name: "Wolf",
+    system: {
+      movement: { speeds: { land: { value: 40 } } },
+      actions: [{
+        type: "strike",
+        label: "Jaws",
+        ready: true,
+        visible: true,
+        canAttack: true,
+        item: {
+          name: "Jaws",
+          system: {
+            damageRolls: {
+              main: { damage: "1d8+2", damageType: "piercing" },
+            },
+          },
+        },
+      }],
+    },
+  };
+  const minionEnemy = {
+    id: "training-dummy",
+    name: "Training Dummy",
+    center: { x: 50, y: 0 },
+    distance: 5,
+    attackTargetable: true,
+  };
+  const wolfMinion = {
+    id: "wolf-token",
+    name: "Wolf",
+    actor: wolfActor,
+    token: { id: "wolf-token", center: { x: 0, y: 0 } },
+  };
+  const minionPlan = planMinionSubturn({
+    isGM: true,
+    minions: [wolfMinion],
+    battlefield: { enemies: [minionEnemy], allies: [], targets: [] },
+  });
+  assert.deepEqual(minionPlan.steps, ["Jaws", "Jaws"]);
+  assert.ok(minionPlan.label.includes("Wolf") && minionPlan.label.includes("Training Dummy"));
+  const familiarMinion = {
+    id: "familiar-token",
+    name: "Familiar",
+    actor: {
+      id: "familiar-actor",
+      name: "Familiar",
+      type: "familiar",
+      attackStatistic: {
+        roll: async () => {},
+      },
+      system: {
+        attack: { value: 5 },
+        movement: { speeds: { land: { value: 25 }, fly: { value: 25 } } },
+        actions: [],
+      },
+    },
+    token: { id: "familiar-token", center: { x: 0, y: 0 } },
+  };
+  const familiarPlan = planMinionSubturn({
+    isGM: false,
+    minions: [familiarMinion],
+    battlefield: { enemies: [minionEnemy], allies: [], targets: [] },
+  });
+  assert.deepEqual(
+    familiarPlan?.steps,
+    ["Attack Roll", "Attack Roll"],
+    "PF2e familiars expose a sheet Attack Roll instead of a Strike; Command an Animal should still plan that attack when adjacent",
+  );
+  assert.deepEqual(
+    familiarPlan?.actionOptions,
+    ["Stride", "Attack Roll", "Seek", "Stand", "Leap", "Drop Prone"],
+    "Command an Animal should expose the familiar Attack Roll plus player-selectable basic sub-actions",
+  );
+  assert.deepEqual(
+    familiarPlan?.movementOptions,
+    [{ action: "walk", speed: 25 }, { action: "fly", speed: 25 }],
+    "Command Companion minion plans should keep the minion's own movement modes for child Stride controls",
+  );
+  const tokenBackedFamiliarPlan = planMinionSubturn({
+    isGM: false,
+    minions: [{
+      id: "token-backed-familiar-token",
+      name: "Token Backed Familiar",
+      actor: {
+        id: "token-backed-familiar-summary",
+        name: "Token Backed Familiar",
+        type: "familiar",
+      },
+      token: {
+        id: "token-backed-familiar-token",
+        center: { x: 0, y: 0 },
+        document: { actor: familiarMinion.actor },
+      },
+    }],
+    battlefield: { enemies: [minionEnemy], allies: [], targets: [] },
+  });
+  assert.deepEqual(
+    tokenBackedFamiliarPlan?.movementOptions,
+    [{ action: "walk", speed: 25 }, { action: "fly", speed: 25 }],
+    "player-side minion plans should read movement modes from the live token actor when combat context only has an actor summary",
+  );
+  const derivedSpeedFamiliarPlan = planMinionSubturn({
+    isGM: false,
+    minions: [{
+      ...familiarMinion,
+      actor: {
+        ...familiarMinion.actor,
+        system: {
+          ...familiarMinion.actor.system,
+          movement: { speeds: { land: { total: 0, value: 25, base: 25 } } },
+        },
+      },
+    }],
+    battlefield: {
+      enemies: [{ ...minionEnemy, id: "far-familiar-dummy", center: { x: 150, y: 0 }, distance: 15 }],
+      allies: [],
+      targets: [],
+    },
+  });
+  assert.deepEqual(
+    derivedSpeedFamiliarPlan?.steps,
+    ["Stride", "Attack Roll"],
+    "PF2e familiar movement should use system.movement.speeds.land.value so one 25-foot Stride can enable Attack Roll",
+  );
+  const farMinionPlan = planMinionSubturn({
+    isGM: true,
+    minions: [wolfMinion],
+    battlefield: {
+      enemies: [{
+        ...minionEnemy,
+        id: "far-training-dummy",
+        center: { x: 500, y: 0 },
+        distance: 50,
+      }],
+      allies: [],
+      targets: [],
+    },
+  }, { actionCost: 3 });
+  assert.deepEqual(
+    farMinionPlan.steps,
+    ["Stride", "Stride"],
+    "Minion trait should clamp Command an Animal to the minion's two-action turn even if stale data says 3 actions were spent",
+  );
+  const scoredCommand = scoreCandidate({
+    ...fighterContext,
+    isGM: true,
+    minions: [wolfMinion],
+    battlefield: { enemies: [minionEnemy], allies: [], targets: [] },
+    targets: [minionEnemy],
+    enemies: [minionEnemy],
+  }, {
+    id: "command-an-animal",
+    name: "Command an Animal",
+    slug: "command-an-animal",
+    actionCost: 1,
+    source: "generic",
+    role: "setup",
+    activityProfile: {},
+    targetingProfile: { self: true },
+  });
+  assert.ok(scoredCommand.activityProfile?.minionPlan?.label.includes("Wolf"), "Command an Animal should carry nested minion plan for Auto-fill display");
+  const scoredStaleThreeActionCommand = scoreCandidate({
+    ...fighterContext,
+    isGM: true,
+    minions: [wolfMinion],
+    battlefield: {
+      enemies: [{
+        ...minionEnemy,
+        id: "far-training-dummy",
+        center: { x: 500, y: 0 },
+        distance: 50,
+      }],
+      allies: [],
+      targets: [],
+    },
+    targets: [minionEnemy],
+    enemies: [minionEnemy],
+  }, {
+    id: "command-an-animal-3",
+    name: "Command an Animal",
+    slug: "command-an-animal",
+    actionCost: 3,
+    source: "generic",
+    role: "setup",
+    activityProfile: {},
+    targetingProfile: { self: true },
+  });
+  assert.deepEqual(scoredStaleThreeActionCommand.activityProfile?.minionPlan?.steps, ["Stride", "Stride"]);
+  const decoratedMinionCommandPlan = decoratePlan({ steps: [scoredCommand] });
+  assert.deepEqual(
+    decoratedMinionCommandPlan.steps[0].minionPlan.steps.map((step) => step.name),
+    ["Jaws", "Jaws"],
+    "Command an Animal display model should expose visible minion sub-actions",
+  );
+  assert.equal(decoratedMinionCommandPlan.steps[0].minionPlan.minionName, "Wolf");
+  assert.equal(decoratedMinionCommandPlan.steps[0].minionPlan.targetName, "Training Dummy");
+
+  const {
+    atomizePanelAutoFillSteps: atomizeMinionAutoFillSteps,
+    choosePanelMinionTarget,
+    cyclePanelMinionPlanMovement,
+    cycleMinionPlanStep,
+    executePanelMinionPlanStep,
+    minionPlanStepPreview,
+    removePanelMinionPlanStep,
+    revertPanelMinionPlanStep,
+  } = await import("../../ui/panel/draft-workflow.js");
+  const editedFamiliarPlan = cycleMinionPlanStep(familiarPlan, 0, 1);
+  assert.deepEqual(
+    editedFamiliarPlan.steps,
+    ["Seek", "Attack Roll"],
+    "players should be able to replace one auto-suggested familiar sub-action without changing the rest of the command plan",
+  );
+  assert.ok(editedFamiliarPlan.label.includes("Familiar") && editedFamiliarPlan.label.includes("Seek -> Attack Roll"));
+  const minionAutoFillDraftSteps = atomizeMinionAutoFillSteps({
+    _context: { profile: fighterContext.profile },
+    _actionKeyForStep: (step) => step.id ?? step.slug ?? step.name,
+  }, { steps: [scoredCommand] }, { token: { center: { x: 0, y: 0 } } });
+  assert.deepEqual(
+    minionAutoFillDraftSteps[0].activityProfile?.minionPlan?.steps,
+    ["Jaws", "Jaws"],
+    "Auto-fill draft step should preserve minion sub-actions for render",
+  );
+
+  const manualCommandBrowse = decorateBuilder(buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [{ ...scoredCommand, key: "command-an-animal" }],
+    draft: { steps: [] },
+  }), "one");
+  const companionSection = manualCommandBrowse.tabsList
+    .find((tab) => tab.id === "one")?.sections
+    ?.find((section) => section.id === "companions");
+  assert.ok(companionSection, "Command Companion should expose player-selectable companion actions in Browse");
+  assert.deepEqual(
+    companionSection.actions.map((action) => action.minionActionName),
+    ["Stride", "Jaws", "Seek", "Stand", "Leap", "Drop Prone"],
+    "Browse should list the minion's basic actions and Strike option instead of one opaque command action",
+  );
+  assert.equal(
+    manualCommandBrowse.tabsList.find((tab) => tab.id === "one")?.sections
+      ?.flatMap((section) => section.actions)
+      .some((action) => action.slug === "command-an-animal"),
+    false,
+    "Browse should hide the opaque Command an Animal row when companion sub-actions are available",
+  );
+
+  const { addPanelAction: addMinionPanelAction } = await import("../../ui/panel/draft-workflow.js");
+  let minionManualDraft = { steps: [], source: null };
+  let minionManualBuilder = buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [{ ...scoredCommand, key: "command-an-animal" }],
+    draft: minionManualDraft,
+  });
+  const manualPanel = {
+    _context: fighterContext,
+    _builder: minionManualBuilder,
+    _canEditDraft: () => true,
+    _findBuilderAction(actionKey) {
+      return this._builder.tabs.one.all.find((action) => action.key === actionKey) ?? null;
+    },
+    _readActiveDraftPlan: () => minionManualDraft,
+    _writeActiveDraftPlan: async (draft) => { minionManualDraft = draft; },
+    _actionKeyForStep: (step) => step.key ?? actionBuilderKey(step),
+    _syncDraftToGM: async () => {},
+    render: async () => {},
+  };
+  const browseMinionAction = (name) => manualPanel._builder.tabs.one.all.find((action) =>
+    action.source === "minion-action" && action.minionActionName === name);
+  await addMinionPanelAction(manualPanel, browseMinionAction("Stride").key);
+  assert.deepEqual(
+    minionManualDraft.steps[0].activityProfile?.minionPlan?.steps,
+    ["Stride"],
+    "Manual Browse minion action should create a Command Companion row with the chosen first sub-action",
+  );
+  minionManualBuilder = buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [{ ...scoredCommand, key: "command-an-animal" }],
+    draft: minionManualDraft,
+  });
+  manualPanel._builder = minionManualBuilder;
+  await addMinionPanelAction(manualPanel, browseMinionAction("Jaws").key);
+  assert.deepEqual(
+    minionManualDraft.steps.map((step) => step.name),
+    ["Command Companion"],
+    "Adding a second companion action should reuse the same owner command step",
+  );
+  assert.deepEqual(
+    minionManualDraft.steps[0].activityProfile?.minionPlan?.steps,
+    ["Stride", "Jaws"],
+    "Manual Browse minion actions should append child sub-actions up to the companion's action budget",
+  );
+  const manualCommandBuilder = buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [{ ...scoredCommand, key: "command-an-animal" }],
+    draft: minionManualDraft,
+  });
+  const manualCommandView = decorateBuilder(manualCommandBuilder, "one");
+  assert.deepEqual(
+    manualCommandView.draft.steps[0].minionPlan.steps.map((step) => step.name),
+    ["Stride", "Jaws"],
+    "Manual Browse draft rows should render the nested minion subturn",
+  );
+  assert.equal(manualCommandView.draft.steps[0].minionPlanAsChildren, true, "draft Command an Animal should render minion sub-actions as indented child rows");
+  assert.equal(manualCommandView.draft.steps[0].canDragStep, true, "Command Companion parent row should keep the composite-style drag handle");
+  assert.equal(manualCommandView.draft.steps[0].canDuplicateStep, false, "Command Companion parent row should not duplicate the whole nested command");
+  assert.equal(manualCommandView.draft.steps[0].canShowExecuteStep, false, "Command Companion parent row should not execute separately from its minion child actions");
+  assert.equal(manualCommandView.draft.steps[0].canRemoveDraftStep, false, "Command Companion parent row should be removed through its minion child delete controls");
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canChooseTarget, false, "Stride minion child rows should not show target controls");
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].targetLabel, "", "Stride minion child rows should not inherit the attack target label");
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canChooseDestination, true);
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canShowMovementControl, true, "single-mode minion Stride rows should still show their current movement type");
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canCycleMovement, false);
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canRemoveStep, true);
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[1].canChooseTarget, true);
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[1].canRemoveStep, true);
+  assert.equal(manualCommandView.draft.steps[0].minionPlan.steps[0].canExecute, true);
+  await removePanelMinionPlanStep(manualPanel, minionManualDraft.steps[0].instanceId, 0);
+  assert.deepEqual(
+    minionManualDraft.steps[0].activityProfile?.minionPlan?.steps,
+    ["Jaws"],
+    "Minion child delete should remove only that sub-action when siblings remain",
+  );
+  await removePanelMinionPlanStep(manualPanel, minionManualDraft.steps[0].instanceId, 0);
+  assert.equal(minionManualDraft.steps.length, 0, "Deleting the last minion child should remove the owner command step");
+
+  const targetSwitchToken = { id: "target-switch", name: "Target Switch" };
+  globalThis.game = {
+    user: { targets: new Set([targetSwitchToken]) },
+    i18n: previousMinionPlannerGame?.i18n,
+  };
+  let targetDraftStep = {
+    instanceId: "command-step",
+    activityProfile: { minionPlan: { ...familiarPlan } },
+  };
+  const targetPanel = {
+    _context: fighterContext,
+    _canExecuteDraft: () => true,
+    _findActiveStep: () => targetDraftStep,
+    _findDraftStep: () => targetDraftStep,
+    _persistActiveDraftStep: async (step) => { targetDraftStep = step; },
+    _syncDraftToGM: async () => {},
+    render: async () => {},
+  };
+  await choosePanelMinionTarget(targetPanel, "command-step");
+  assert.equal(targetDraftStep.activityProfile.minionPlan.targetName, "Target Switch");
+  assert.deepEqual(targetDraftStep.activityProfile.minionPlan.targetTokenIds, ["target-switch"]);
+
+  const previewMinionToken = {
+    id: "preview-familiar-token",
+    name: "Preview Familiar",
+    center: { x: 0, y: 0 },
+    document: {
+      id: "preview-familiar-token",
+      x: -12.5,
+      y: -12.5,
+      width: 0.5,
+      height: 0.5,
+      actor: familiarMinion.actor,
+    },
+    actor: familiarMinion.actor,
+  };
+  const canvasOnlyFamiliarActor = {
+    ...familiarMinion.actor,
+    movement: { speeds: { land: { value: 25 }, fly: { value: 25 } } },
+    system: {
+      ...familiarMinion.actor.system,
+      movement: { speeds: {} },
+    },
+  };
+  const canvasOnlyMinionToken = {
+    id: "canvas-only-familiar-token",
+    name: "Canvas Only Familiar",
+    center: { x: 0, y: 0 },
+    document: {
+      id: "canvas-only-familiar-token",
+      x: -12.5,
+      y: -12.5,
+      width: 0.5,
+      height: 0.5,
+      actor: canvasOnlyFamiliarActor,
+    },
+    actor: canvasOnlyFamiliarActor,
+  };
+  globalThis.canvas = {
+    grid: { size: 50 },
+    scene: { grid: { distance: 5 } },
+    tokens: { placeables: [previewMinionToken, canvasOnlyMinionToken] },
+  };
+  const previewDraftStep = {
+    instanceId: "preview-command-step",
+    activityProfile: {
+      minionPlan: {
+        ...familiarPlan,
+        minionId: "preview-familiar-token",
+        steps: ["Stride"],
+        stepStates: [{ destination: { x: 50, y: 0 } }],
+      },
+    },
+  };
+  const minionHoverPreview = minionPlanStepPreview({
+    _context: fighterContext,
+    _findActiveStep: () => previewDraftStep,
+    _findDraftStep: () => previewDraftStep,
+  }, "preview-command-step", 0);
+  assert.equal(minionHoverPreview?.step.slug, "stride", "hovering a minion child Stride should preview that child action, not the owner Command Companion action");
+  assert.deepEqual(minionHoverPreview?.step.destination, { x: 50, y: 0 });
+  assert.equal(minionHoverPreview?.context.token.id, "preview-familiar-token", "minion child preview should use the minion token as the acting token");
+  assert.equal(minionHoverPreview?.context.token.width, 0.5, "minion child preview should preserve the minion token's actual visual width");
+
+  const flyingCommandView = decorateBuilder(buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [],
+    draft: {
+      steps: [{
+        instanceId: "flying-command-step",
+        name: "Command Companion",
+        actionCost: 1,
+        activityProfile: {
+          minionPlan: {
+            ...familiarPlan,
+            minionId: "preview-familiar-token",
+            steps: ["Stride"],
+            stepStates: [{}],
+          },
+        },
+      }],
+    },
+  }), "one");
+  assert.equal(flyingCommandView.draft.steps[0].minionPlan.steps[0].canCycleMovement, true, "fly-capable minion Stride child rows should show the movement-type button");
+  assert.equal(flyingCommandView.draft.steps[0].minionPlan.steps[0].movementToolLabel, "Walk");
+  const objectStepCommandView = decorateBuilder(buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [],
+    draft: {
+      steps: [{
+        instanceId: "object-step-command-step",
+        name: "Command Companion",
+        actionCost: 1,
+        activityProfile: {
+          minionPlan: {
+            ...familiarPlan,
+            minionId: "preview-familiar-token",
+            steps: [{ name: "Stride", slug: "stride" }],
+            stepStates: [{}],
+          },
+        },
+      }],
+    },
+  }), "one");
+  assert.equal(objectStepCommandView.draft.steps[0].minionPlan.steps[0].name, "Stride");
+  assert.equal(objectStepCommandView.draft.steps[0].minionPlan.steps[0].canChooseDestination, true, "object-backed minion Stride rows should still show destination controls");
+  assert.equal(objectStepCommandView.draft.steps[0].minionPlan.steps[0].canCycleMovement, true, "object-backed minion Stride rows should still show movement-type controls");
+  const canvasOnlyCommandView = decorateBuilder(buildActionBuilderModel({
+    context: { ...fighterContext, minions: [], companions: [] },
+    candidates: [],
+    draft: {
+      steps: [{
+        instanceId: "canvas-only-command-step",
+        name: "Command Companion",
+        actionCost: 1,
+        activityProfile: {
+          minionPlan: {
+            ...familiarPlan,
+            minionId: "canvas-only-familiar-token",
+            movementOptions: undefined,
+            steps: ["Stride"],
+            stepStates: [{}],
+          },
+        },
+      }],
+    },
+  }), "one");
+  assert.equal(
+    canvasOnlyCommandView.draft.steps[0].minionPlan.steps[0].canCycleMovement,
+    true,
+    "legacy minion Stride rows should read movement types from the live minion token actor when the draft plan has no stored options",
+  );
+  const staleWalkOnlyCommandView = decorateBuilder(buildActionBuilderModel({
+    context: { ...fighterContext, minions: [], companions: [] },
+    candidates: [],
+    draft: {
+      steps: [{
+        instanceId: "stale-walk-only-command-step",
+        name: "Command Companion",
+        actionCost: 1,
+        activityProfile: {
+          minionPlan: {
+            ...familiarPlan,
+            minionId: "canvas-only-familiar-token",
+            movementOptions: [{ action: "walk", speed: 25 }],
+            steps: ["Stride"],
+            stepStates: [{}],
+          },
+        },
+      }],
+    },
+  }), "one");
+  assert.equal(
+    staleWalkOnlyCommandView.draft.steps[0].minionPlan.steps[0].canCycleMovement,
+    true,
+    "stale minion Stride rows with walk-only stored options should refresh from the live minion token actor",
+  );
+
+  let staleCycleDraftStep = {
+    instanceId: "stale-walk-only-command-step",
+    activityProfile: {
+      minionPlan: {
+        ...familiarPlan,
+        minionId: "canvas-only-familiar-token",
+        movementOptions: [{ action: "walk", speed: 25 }],
+        steps: ["Stride"],
+        stepStates: [{}],
+      },
+    },
+  };
+  const staleCyclePanel = {
+    _context: { ...fighterContext, minions: [], companions: [] },
+    _canExecuteDraft: () => true,
+    _findActiveStep: () => staleCycleDraftStep,
+    _findDraftStep: () => staleCycleDraftStep,
+    _persistActiveDraftStep: async (step) => { staleCycleDraftStep = step; },
+    _syncDraftToGM: async () => {},
+    render: async () => {},
+  };
+  await cyclePanelMinionPlanMovement(staleCyclePanel, "stale-walk-only-command-step", 0);
+  assert.equal(
+    staleCycleDraftStep.activityProfile.minionPlan.stepStates[0].movementAction,
+    "fly",
+    "clicking a stale walk-only minion movement button should cycle to live actor movement modes",
+  );
+
+  let flyingDraftStep = {
+    instanceId: "flying-command-step",
+    activityProfile: {
+      minionPlan: {
+        ...familiarPlan,
+        minionId: "preview-familiar-token",
+        steps: ["Stride"],
+        stepStates: [{ destination: { x: 50, y: 0 }, movementPlan: { waypoints: [{ x: 50, y: 0 }] } }],
+      },
+    },
+  };
+  const flyingPanel = {
+    _context: fighterContext,
+    _canExecuteDraft: () => true,
+    _findActiveStep: () => flyingDraftStep,
+    _findDraftStep: () => flyingDraftStep,
+    _persistActiveDraftStep: async (step) => { flyingDraftStep = step; },
+    _syncDraftToGM: async () => {},
+    render: async () => {},
+  };
+  await cyclePanelMinionPlanMovement(flyingPanel, "flying-command-step", 0);
+  assert.equal(flyingDraftStep.activityProfile.minionPlan.stepStates[0].movementAction, "fly", "minion Stride movement cycle should use the minion's fly speed");
+  assert.equal(flyingDraftStep.activityProfile.minionPlan.stepStates[0].destination, null, "changing minion movement type should clear stale destinations");
+  const flyingPreview = minionPlanStepPreview(flyingPanel, "flying-command-step", 0);
+  assert.equal(flyingPreview?.step.movementAction, "fly", "minion Stride preview should preserve selected movement type");
+
+  const familiarAttackRolls = [];
+  familiarMinion.actor.attackStatistic = {
+    roll: async (params) => { familiarAttackRolls.push(params); },
+  };
+  const movedUpdates = [];
+  const minionMoves = [];
+  const movingMinionToken = {
+    id: "familiar-token",
+    name: "Familiar",
+    center: { x: 0, y: 0 },
+    document: {
+      id: "familiar-token",
+      x: -25,
+      y: -25,
+      width: 1,
+      height: 1,
+      update: async (update) => {
+        movedUpdates.push(update);
+        movingMinionToken.document.x = update.x;
+        movingMinionToken.document.y = update.y;
+        movingMinionToken.center = { x: update.x + 25, y: update.y + 25 };
+      },
+      move: async (waypoint, options = {}) => {
+        minionMoves.push({ waypoint, options });
+        movingMinionToken.document.x = waypoint.x;
+        movingMinionToken.document.y = waypoint.y;
+        movingMinionToken.center = { x: waypoint.x + 25, y: waypoint.y + 25 };
+        return true;
+      },
+      movement: { state: "completed", id: null },
+    },
+    actor: familiarMinion.actor,
+  };
+  const movingTargetToken = {
+    id: "target-switch",
+    name: "Target Switch",
+    center: { x: 300, y: 0 },
+    document: { id: "target-switch", width: 1, height: 1 },
+    setTarget: () => {},
+  };
+  globalThis.canvas = {
+    grid: { size: 50 },
+    scene: { grid: { distance: 5 } },
+    tokens: { placeables: [movingMinionToken, movingTargetToken] },
+  };
+  targetDraftStep = {
+    ...targetDraftStep,
+    activityProfile: {
+      minionPlan: {
+        ...targetDraftStep.activityProfile.minionPlan,
+        steps: ["Stride", "Stride"],
+        stepStates: [{ destination: { x: 250, y: 0 } }],
+      },
+    },
+  };
+  await executePanelMinionPlanStep(targetPanel, "command-step", 0);
+  assert.deepEqual(minionMoves[0], {
+    waypoint: { x: 225, y: -25, action: "walk", explicit: true, checkpoint: true, snapped: true },
+    options: { method: "api", showRuler: true },
+  }, "minion Stride play should move the companion to its selected destination without using the combat tracker");
+  assert.equal(targetDraftStep.activityProfile.minionPlan.stepStates[0].execution.status, "done");
+  const executedMinionCommandView = decorateBuilder(buildActionBuilderModel({
+    context: fighterContext,
+    candidates: [{ ...scoredCommand, key: "command-an-animal" }],
+    draft: { steps: [targetDraftStep] },
+  }), "one");
+  assert.equal(executedMinionCommandView.draft.steps[0].minionPlan.steps[0].canChooseDestination, false);
+  assert.equal(executedMinionCommandView.draft.steps[0].minionPlan.steps[0].canExecute, false);
+  assert.equal(executedMinionCommandView.draft.steps[0].minionPlan.steps[0].canRevertStep, true);
+  await revertPanelMinionPlanStep(targetPanel, "command-step", 0);
+  assert.deepEqual(movedUpdates.at(-1), { x: -25, y: -25 }, "minion Stride revert should restore the companion token origin");
+  assert.equal(targetDraftStep.activityProfile.minionPlan.stepStates[0].execution.status, "pending");
+
+  targetDraftStep = {
+    ...targetDraftStep,
+    activityProfile: {
+      minionPlan: {
+        ...targetDraftStep.activityProfile.minionPlan,
+        steps: ["Attack Roll", "Attack Roll"],
+      },
+    },
+  };
+  await executePanelMinionPlanStep(targetPanel, "command-step", 0);
+  assert.equal(familiarAttackRolls.length, 1, "familiar Attack Roll sub-action should call PF2e's familiar attack statistic roller");
+} finally {
+  globalThis.canvas = previousMinionPlannerCanvas;
+  globalThis.game = previousMinionPlannerGame;
+}
+
+{
+  const terrainCenters = actionMovementReachableCenters({ x: 0, y: 0 }, 10, { sceneDistance: 5, pixelSize: 5 }, null, null);
+  assert.ok(terrainCenters.some((center) => Number.isFinite(center.cost)), "action-reader reachable movement centers should preserve route cost for terrain-aware scoring");
+  const terrainTarget = { id: "terrain-target", name: "Terrain Target", distance: 10, hpPercent: 1, attackTargetable: true };
+  const terrainRouteScore = scoreCandidate({
+    ...fighterContext,
+    isGM: true,
+    profile: { ...fighterContext.profile, speed: 25, reach: 5 },
+    targets: [terrainTarget],
+    enemies: [terrainTarget],
+  }, {
+    id: "terrain-stride-strike",
+    name: "Stride -> Strike",
+    slug: "terrain-stride-strike",
+    actionCost: 2,
+    source: "generated-composite",
+    role: "mobility-attack",
+    activityProfile: {
+      includes: ["stride", "strike"],
+      includesStrike: true,
+      strideCount: 1,
+      attackCenter: { x: 5, y: 0, cost: 25 },
+    },
+    targetingProfile: { enemy: true },
+  });
+  assert.ok(terrainRouteScore.reasons.some((reason) => reason.includes("Terrain-aware route costs 25 ft of 25 ft")));
+}
 
 console.log("PF2e Combater self-test passed");

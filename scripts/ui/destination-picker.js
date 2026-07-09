@@ -654,7 +654,9 @@ export function chooseDestination({
     const candidateMovementPlan = candidatePlanFor(candidateWaypoints, destination);
     onPreview?.(destination, {
       hoverOnly: true,
-      ...(candidateMovementPlan ? { movementPlan: candidateMovementPlan } : {}),
+      ...(candidateMovementPlan
+        ? { movementPlan: { ...candidateMovementPlan, committedWaypointCount: waypoints.length } }
+        : {}),
       ...(vertical ? { elevation: pendingElevation } : {}),
     });
   });

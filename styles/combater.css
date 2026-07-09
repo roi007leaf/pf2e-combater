@@ -17,6 +17,7 @@
      was open. box-shadow gives the same look without the per-frame filter pass. */
   min-width: 360px;
   max-width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
 }
 
 .pf2e-combater .window-header {
@@ -34,6 +35,8 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 120px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pf2e-combater .combater-shell {
@@ -46,7 +49,9 @@
 
 .pf2e-combater.combater-panel .combater-shell {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  max-height: inherit;
   min-height: 0;
 }
 
@@ -68,6 +73,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* The plan/uncounted sections were full-width bands when stacked with the
@@ -326,6 +332,32 @@
   border-color: transparent;
 }
 
+.pf2e-combater .combater-minion-action-list {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 16px;
+  padding-left: 8px;
+  border-left: 2px solid rgb(134 201 158 / 32%);
+}
+
+.pf2e-combater .combater-minion-action-row {
+  border-color: transparent;
+  background: rgb(134 201 158 / 6%);
+}
+
+.pf2e-combater .combater-minion-action-chip {
+  min-width: 0;
+}
+
+.pf2e-combater .combater-chip-cost.is-minion-child {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  min-width: 24px;
+}
+
 .pf2e-combater .combater-plan-strip > .combater-sequence > .combater-chip {
   flex: 1 1 190px;
 }
@@ -413,6 +445,10 @@
 .pf2e-combater .combater-shell.is-compact .combater-sustained-panel,
 .pf2e-combater .combater-shell.is-compact .combater-uncounted-panel {
   display: none;
+}
+
+.pf2e-combater .combater-shell.is-compact .combater-step-details.has-minion-plan {
+  display: flex;
 }
 
 .pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-waiting) {
@@ -744,6 +780,21 @@
   margin-top: 2px;
 }
 
+.pf2e-combater .combater-chip-target.is-intel-target,
+.pf2e-combater .combater-target.is-intel-target {
+  cursor: pointer;
+  color: #86c99e;
+}
+
+.pf2e-combater .combater-chip-target.is-intel-target:hover,
+.pf2e-combater .combater-chip-target.is-intel-target:focus-visible,
+.pf2e-combater .combater-target.is-intel-target:hover,
+.pf2e-combater .combater-target.is-intel-target:focus-visible {
+  color: var(--combater-ink, #f1e5d0);
+  text-decoration: underline;
+  outline: none;
+}
+
 .pf2e-combater .combater-range {
   display: inline-flex;
   align-items: center;
@@ -930,20 +981,257 @@
   outline: none;
 }
 
-.combater-tactic-form {
+.pf2e-combater .combater-header-intel {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid #4e7862;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #1c2a24;
+  color: #86c99e;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-intel span {
+  overflow: hidden;
+  max-width: 82px;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-header-intel:hover,
+.pf2e-combater .combater-header-intel:focus-visible {
+  border-color: #86c99e;
+  color: var(--combater-ink);
+  outline: none;
+}
+
+.pf2e-combater-combatant-intel {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  border: 1px solid rgb(134 201 158 / 55%);
+  border-radius: 4px;
+  background: rgb(28 42 36 / 86%);
+  color: #86c99e;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.pf2e-combater-combatant-intel:hover,
+.pf2e-combater-combatant-intel:focus-visible {
+  border-color: #86c99e;
+  background: rgb(44 67 56 / 92%);
+  color: var(--combater-ink, #f1e5d0);
+  outline: none;
+}
+
+.pf2e-combater.pf2e-combater-tactic-window,
+.pf2e-combater.pf2e-combater-intel-window {
+  --combater-bg: #17191d;
+  --combater-ink: #f0eee8;
+  --combater-muted: #b7aea0;
+  --combater-line: #3d4148;
+  --combater-surface: #22262c;
+  --combater-surface-raised: #2b3037;
+  --combater-free: #86a8cb;
+  --combater-one: #66c78f;
+  --combater-two: #e0b35a;
+  --combater-three: #e06f67;
+  --combater-focus: #79aee8;
+  min-width: min(360px, calc(100vw - 24px));
+  max-width: min(720px, calc(100vw - 24px));
+  color: var(--combater-ink);
+}
+
+.pf2e-combater-tactic-window .window-content,
+.pf2e-combater-intel-window .window-content {
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  padding: 0;
+  background: #121418;
+}
+
+.pf2e-combater-intel-window .window-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.combater-tactic-shell,
+.combater-intel-shell {
+  overflow: hidden;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+}
+
+.pf2e-combater-intel-window .combater-intel-shell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  max-height: calc(100vh - 96px);
+  min-height: 0;
+}
+
+.combater-tactic-hero,
+.combater-intel-hero {
   display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--combater-line);
+  padding: 12px;
+  background: #1d2228;
+}
+
+.combater-tactic-hero-icon,
+.combater-intel-hero-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(134 201 158 / 42%);
+  border-radius: 8px;
+  background: rgb(134 201 158 / 12%);
+  color: #86c99e;
+  font-size: 17px;
+}
+
+.combater-tactic-hero-icon {
+  border-color: rgb(215 198 238 / 42%);
+  background: rgb(215 198 238 / 11%);
+  color: #d7c6ee;
+}
+
+.combater-tactic-hero h2,
+.combater-intel-hero h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.combater-tactic-hero p,
+.combater-intel-hero p,
+.combater-intel-empty {
+  margin: 4px 0 0;
+  color: var(--combater-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.combater-intel-shell > .combater-intel-empty {
+  margin: 0;
+  padding: 12px;
+}
+
+.combater-tactic-editor,
+.combater-intel-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.combater-intel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.combater-tactic-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.combater-tactic-custom-toggle {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
+.combater-tactic-choice {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.combater-tactic-choice > span {
+  color: var(--combater-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.combater-tactic-choice select {
+  width: 100%;
+  border: 1px solid #4b5360;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: var(--combater-surface);
+  color: var(--combater-ink);
   font-weight: 700;
 }
 
-.combater-tactic-custom-toggle input {
-  flex: 0 0 auto;
+.combater-tactic-custom-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  border: 1px solid #5c4e32;
+  border-radius: 8px;
+  padding: 9px;
+  background: #211f1c;
+  cursor: pointer;
+}
+
+.combater-tactic-custom-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.combater-tactic-custom-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #6d5934;
+  border-radius: 6px;
+  color: var(--combater-two);
+}
+
+.combater-tactic-custom-card strong,
+.combater-tactic-custom-card small,
+.combater-intel-category strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.combater-tactic-custom-card strong,
+.combater-intel-category strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.combater-tactic-custom-card small {
+  margin-top: 2px;
+  color: var(--combater-muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.combater-tactic-editor.is-custom .combater-tactic-custom-card {
+  border-color: var(--combater-two);
+  background: #2f281f;
 }
 
 .combater-tactic-custom-fields {
@@ -951,33 +1239,397 @@
   gap: 10px;
 }
 
-.combater-tactic-form:not(:has(input[name="customEnabled"]:checked)) .combater-tactic-custom-fields {
+.combater-tactic-editor:not(.is-custom) .combater-tactic-custom-fields {
   display: none;
 }
 
 .combater-tactic-fieldset {
   display: grid;
-  gap: 6px;
-  border: 1px solid var(--color-border-light-tertiary, #555);
-  border-radius: 6px;
-  padding: 8px;
+  gap: 8px;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #15171b;
 }
 
 .combater-tactic-fieldset legend {
   padding: 0 4px;
-  font-weight: 700;
+  color: var(--combater-ink);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .combater-tactic-slider {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px;
-  gap: 8px;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 220px);
+  gap: 10px;
   align-items: center;
 }
 
 .combater-tactic-slider span {
   min-width: 0;
+  color: var(--combater-ink);
+  font-size: 12px;
+  font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.combater-tactic-slider input {
+  width: 100%;
+}
+
+.combater-intel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 10px;
+}
+
+.combater-intel-shell.is-editable .combater-intel-grid {
+  grid-template-columns: 1fr;
+}
+
+.combater-intel-entry {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--combater-surface);
+}
+
+.combater-intel-shell.is-editable .combater-intel-entry {
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 8px;
+}
+
+.combater-intel-entry.has-revealed {
+  border-color: rgb(134 201 158 / 48%);
+  background: #1b2722;
+}
+
+.combater-intel-target-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.combater-intel-img,
+.combater-intel-img-placeholder {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #4b5360;
+  border-radius: 6px;
+  color: var(--combater-muted);
+  background: #17191d;
+}
+
+.combater-intel-img {
+  display: block;
+  object-fit: cover;
+}
+
+.combater-intel-img-placeholder {
+  display: inline-grid;
+  place-items: center;
+}
+
+.combater-intel-target-head h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.combater-intel-target-head span {
+  display: block;
+  margin-top: 2px;
+  color: var(--combater-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.combater-intel-editor {
+  display: grid;
+  gap: 7px;
+}
+
+.combater-intel-shell.is-editable .combater-intel-editor {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 6px;
+}
+
+.combater-intel-reveal-style {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  border: 1px solid #3a4654;
+  border-radius: 7px;
+  padding: 7px;
+  background: #171d23;
+}
+
+.combater-intel-reveal-style > span {
+  color: var(--combater-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.combater-intel-reveal-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.combater-intel-reveal-option {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid #4b5360;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgb(18 20 24 / 58%);
+  cursor: pointer;
+}
+
+.combater-intel-reveal-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.combater-intel-reveal-option strong {
+  color: var(--combater-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.combater-intel-reveal-option small {
+  min-width: 0;
+  color: var(--combater-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.combater-intel-reveal-option.is-selected {
+  border-color: #86c99e;
+  background: rgb(134 201 158 / 12%);
+}
+
+.combater-intel-category {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #4b5360;
+  border-radius: 7px;
+  padding: 7px;
+  background: #17191d;
+}
+
+.combater-intel-shell.is-editable .combater-intel-category {
+  min-height: 52px;
+  padding: 6px;
+}
+
+.combater-intel-category input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.combater-intel-category-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.combater-intel-category-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #4e7862;
+  border-radius: 6px;
+  color: #86c99e;
+}
+
+.combater-intel-shell.is-editable .combater-intel-category-mark {
+  width: 24px;
+  height: 24px;
+}
+
+.combater-intel-category.is-known {
+  border-color: #4e7862;
+  background: #1c2a24;
+}
+
+.combater-intel-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.combater-intel-fact {
+  display: inline-grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgb(134 201 158 / 24%);
+  border-radius: 5px;
+  padding: 3px 6px;
+  background: rgb(18 20 24 / 56%);
+  color: var(--combater-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.combater-intel-fact span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.combater-intel-fact-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #4e7862;
+  border-radius: 4px;
+  color: #86c99e;
+  font-size: 9px;
+}
+
+.combater-intel-fact.is-known {
+  border-color: #4e7862;
+  background: rgb(134 201 158 / 12%);
+  color: var(--combater-ink);
+}
+
+.combater-intel-revealed {
+  display: grid;
+  gap: 8px;
+}
+
+.combater-intel-revealed-section {
+  display: grid;
+  gap: 5px;
+}
+
+.combater-intel-revealed-section h4 {
+  margin: 0;
+  color: #86c99e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.combater-intel-revealed-section ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.combater-intel-revealed-section li {
+  border: 1px solid rgb(134 201 158 / 34%);
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: rgb(134 201 158 / 10%);
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.combater-tactic-actions,
+.combater-intel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  border-top: 1px solid var(--combater-line);
+  padding: 10px 12px 12px;
+  background: #14171b;
+}
+
+.combater-tactic-primary,
+.combater-tactic-secondary,
+.combater-intel-primary,
+.combater-intel-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid #4b5360;
+  border-radius: 6px;
+  padding: 6px 11px;
+  background: var(--combater-surface);
+  color: var(--combater-ink);
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.combater-tactic-primary,
+.combater-intel-primary {
+  gap: 6px;
+  border-color: #4e7862;
+  background: #1c2a24;
+  color: #a9dfbb;
+}
+
+.combater-tactic-primary {
+  border-color: #8c7a46;
+  background: #2c281f;
+  color: #ead282;
+}
+
+.combater-tactic-primary:hover,
+.combater-tactic-primary:focus-visible,
+.combater-tactic-secondary:hover,
+.combater-tactic-secondary:focus-visible,
+.combater-intel-primary:hover,
+.combater-intel-primary:focus-visible,
+.combater-intel-secondary:hover,
+.combater-intel-secondary:focus-visible {
+  border-color: var(--combater-focus);
+  color: var(--combater-ink);
+  outline: none;
+}
+
+@media (max-width: 560px) {
+  .combater-tactic-choice-grid,
+  .combater-tactic-slider,
+  .combater-intel-shell.is-editable .combater-intel-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .combater-intel-shell.is-editable .combater-intel-editor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .combater-intel-reveal-options {
+    grid-template-columns: 1fr;
+  }
+
+  .combater-tactic-actions,
+  .combater-intel-actions {
+    justify-content: stretch;
+  }
+
+  .combater-tactic-actions button,
+  .combater-intel-actions button {
+    flex: 1 1 100%;
+  }
 }
 
 /* Browse toggle: a blue accent pill (distinct from the gold Auto-fill); fills solid
@@ -1415,6 +2067,77 @@
   gap: 4px;
   color: var(--combater-focus);
   font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-detail-chip.is-minion-plan {
+  gap: 4px;
+  border-color: rgb(134 201 158 / 38%);
+  background: rgb(134 201 158 / 10%);
+  color: #86c99e;
+  white-space: normal;
+}
+
+.pf2e-combater .combater-minion-subturn {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgb(134 201 158 / 30%);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: rgb(134 201 158 / 8%);
+  color: var(--combater-ink);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pf2e-combater .combater-minion-subturn-head,
+.pf2e-combater .combater-minion-target {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: #86c99e;
+}
+
+.pf2e-combater .combater-minion-step {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgb(134 201 158 / 28%);
+  border-radius: 5px;
+  padding: 2px 5px;
+  background: rgb(18 20 24 / 58%);
+  color: var(--combater-ink);
+  overflow-wrap: anywhere;
+}
+
+.pf2e-combater .combater-minion-step.is-editable {
+  cursor: pointer;
+  border-color: rgb(134 201 158 / 46%);
+  background: rgb(134 201 158 / 12%);
+}
+
+.pf2e-combater .combater-minion-step.is-editable:hover,
+.pf2e-combater .combater-minion-step.is-editable:focus-visible {
+  color: #d9f4e2;
+  border-color: rgb(134 201 158 / 70%);
+  outline: none;
+  box-shadow: 0 0 0 1px rgb(134 201 158 / 38%);
+}
+
+.pf2e-combater .combater-minion-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: rgb(134 201 158 / 18%);
+  color: #86c99e;
+  font-size: 9px;
 }
 
 .pf2e-combater .combater-detail-chip.is-resolution,

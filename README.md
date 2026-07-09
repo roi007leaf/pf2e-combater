@@ -49,6 +49,16 @@ players plan their own turns.
   weapons; a 1-action Drop Prone when it helps.
 - **GM aggro targeting.** For GM-run NPCs, the planner weighs which player character is the best
   target (healer, caster, controller, defender, low HP) and pre-picks it.
+- **GM tactic personalities.** NPC turns get a tactic chip where the GM can set a role preset
+  (Boss, Lieutenant, Minion, Brute, Skirmisher, Artillery, Controller, Defender, Support), a
+  temperament (Aggressive, Cautious, Opportunist, Berserker, Coward), and optional custom priorities.
+  Auto-fill and Shuffle use that profile when ranking actions and choosing targets.
+- **Recall Knowledge Intel.** GMs can reveal individual NPC facts — traits, save DCs, weaknesses,
+  resistances, and immunities — and players can inspect only those revealed facts. Player Auto-fill
+  and Shuffle use revealed Intel, but never unrevealed defenses.
+- **Companion/minion support.** Command an Animal appears when a commandable companion, familiar, or
+  minion is detected, and its recommendation can show the two-action minion subturn it is trying to
+  set up.
 
 ## 🎯 On the canvas
 
@@ -86,15 +96,23 @@ players plan their own turns.
 - If a player is **not currently connected** (e.g. their PC is being run by the GM for the session),
   the GM gets full Auto-fill/edit/execute rights on that character — same as any NPC. The read-only
   "mirror the player's live plan" mode only applies while the owning player is actually online.
+- GMs can save an NPC tactic profile as an **actor default** for every copy of that creature, or as a
+  **token override** when one battlefield copy should behave differently.
+- GMs reveal Recall Knowledge Intel from the NPC's Combater panel. The Intel ledger is saved on the
+  NPC actor, so the same creature keeps those revealed facts in later combats.
+- Players see revealed NPC Intel from their own Combater panel's **Intel** button, the brain button
+  on visible NPC combat tracker rows, or by clicking an NPC target label inside a suggested/drafted
+  step. Players never get the GM editor and never see unrevealed NPC facts.
 
 ---
 
 ## 🧠 How Auto-fill decides
 
-> **🚧 Work in progress.** The **Auto-fill planner** and the **GM aggro/target-picking engine** are
-> actively evolving. The exact scores, weights, and heuristics below are current-but-not-final and
-> *will* change as they're tuned — treat the numbers as illustrative, not a contract. Feedback,
-> disagreements, and "it picked a weird turn here" reports are genuinely wanted: please
+> **🚧 Work in progress.** The **Auto-fill planner**, **NPC tactic personality**, and **GM
+> aggro/target-picking engine** are actively evolving. The exact scores, weights, and heuristics
+> below are current-but-not-final and *will* change as they're tuned — treat the numbers as
+> illustrative, not a contract. Feedback, disagreements, and "it picked a weird turn here" reports
+> are genuinely wanted: please
 > [open an issue](https://github.com/roi007leaf/pf2e-combater/issues) with the situation.
 
 <!-- -->
@@ -114,11 +132,11 @@ generic action), then gets adjusted for the actual situation:
 - **Disqualified outright** (never suggested) when there's no valid target, the target is out of
   range, the target is *immune* to the effect, or the action would be redundant (a buff the target
   already has, an aura that's already up, an untrained skill).
-- **Rewarded** for expected impact: a Strike that's in range and hits hard, and — *for the NPCs a GM
-  runs* — damage that lands on a **weakness**, a save spell weighed by the target's *actual* save odds
-  against the DC, and hitting the **most valuable target** (low HP, healer, caster, whoever's
-  threatening it). Players never get those hidden-knowledge factors — see
-  [No metagaming](#no-metagaming-players-never-see-hidden-enemy-stats) below.
+- **Rewarded** for expected impact: a Strike that's in range and hits hard, useful movement, setup
+  that enables a payoff, and good action economy. GM-run NPCs can also use full hidden defenses and
+  aggro target priorities. Players only get defense-aware bonuses or penalties when the GM has
+  revealed the exact matching Recall Knowledge Intel — see
+  [No metagaming](#no-metagaming-players-only-use-revealed-enemy-intel) below.
 - **Penalized** for waste: repositioning to a target already in reach, firing a volley weapon
   point-blank, or re-applying a buff someone already has.
 
@@ -133,18 +151,19 @@ generic action), then gets adjusted for the actual situation:
   whole turn** rather than leaving actions on the table.
 - Orders the result sensibly — setup before payoff (Demoralize/Feint first, Stand before you move).
 
-### No metagaming: players never see hidden enemy stats
+### No metagaming: players only use revealed enemy intel
 
-> Everything that depends on **hidden knowledge** — a target's weaknesses, resistances, immunities,
-> save DCs, AC, skill DCs, hidden traits, and "which PC is the juiciest target" — is **GM-only**. When
-> a player auto-fills, the enemy's defensive data is never even loaded, so none of those factors touch
-> the score, and any explanation text that would leak them is stripped out too.
+> Hidden target data stays hidden. Player Auto-fill never reads unrevealed NPC weaknesses,
+> resistances, immunities, save DCs, hidden traits, AC, or skill DCs. The only exception is
+> **Recall Knowledge Intel** the GM explicitly revealed, and even then only the exact revealed fact is
+> usable.
 
 That splits the scoring into two honest modes:
 
 - **Player auto-fill** ranks actions on what the player legitimately knows: the action's base value,
   whether the target is in range, the player's **own** average damage, the multiple attack penalty,
-  movement, action economy, and the player's own conditions.
+  movement, action economy, the player's own conditions, and any exact Recall Knowledge facts the GM
+  revealed for that NPC.
 - **GM auto-fill** (for the NPCs the GM runs) adds the full defense-aware math below — the GM already
   knows their monsters' stats, so there's no metagaming.
 
@@ -169,8 +188,8 @@ beats a poor-fit one from a high bucket every time.
 So there's no spell or action that gets *ignored* — unrecognized ones simply start at **20** and rise
 or fall on their situational fit like everything else.
 
-Beyond the base, a few of the actual values the engine uses (🔒 = **GM-only**, skipped for player
-auto-fill):
+Beyond the base, a few of the actual values the engine uses (🔒 = hidden-knowledge factor: GM-only
+by default; player auto-fill uses it only when the exact matching Recall Knowledge Intel is revealed):
 
 | Factor | Effect on score |
 | --- | --- |
@@ -242,6 +261,24 @@ Then the target's priority is **weighted by the action you'd use on it**, so the
 The finisher and immediate-threat cues need no hidden data, but because the whole layer only runs for
 **GM-controlled NPCs**, players never see or benefit from any of it.
 
+### NPC tactic personality: how the GM steers monster behavior
+
+For NPC turns, the tactic chip can stay on **Auto** or be set manually. Auto infers a role and
+temperament from the NPC's sheet and the current fight: ranged strikes and combat spells lean
+Artillery, healing and ally buffs lean Support, heavy melee and grab tools lean Brute, shield/guard
+tools lean Defender, level gaps can imply Boss or Minion, and low HP or melee pressure can shift the
+temperament.
+
+Manual presets override that inference. The role and temperament then add action and target weights:
+Bosses favor high-impact turns, Artillery favors ranged/spell pressure, Defenders value protection and
+control, Support values allies, Aggressive creatures push damage, Cautious creatures value survival,
+and Opportunists chase openings. The optional **Customize preset** layer exposes sliders for action
+style and target style, such as finishing wounded enemies, pressuring casters/healers/controllers,
+avoiding hard defenders, or preferring the nearest reachable enemy.
+
+These profiles never change PF2e legality or creature stats. They only bias which legal plan Auto-fill
+and Shuffle prefer.
+
 ### Worked examples
 
 **"Swing twice, or hit and run?"** — Fighter with a non-agile weapon (avg 11 damage), one goblin in
@@ -259,18 +296,26 @@ targeting a PC with **fire weakness 5**.
 - Fire spell: `+min(5 × 4, 45)` = **+20**
 - Cold spell (no weakness): **+0** → the fire spell is picked. If the PC were fire-*immune*, the fire
   spell takes **−70** and drops out of consideration entirely.
-- When that **PC** plans their own turn, they get no such adjustment against enemies — the planner
-  never reads a foe's weaknesses for a player.
+- When that **PC** plans their own turn, they get no such adjustment against enemies unless the GM has
+  revealed the matching weakness, resistance, or immunity as Recall Knowledge Intel.
 
 **"Is the save spell worth it?"** 🔒 *(GM-run NPC)* — an enemy caster's Fireball (basic Reflex) at a
 PC. The engine rolls the PC's save against the spell DC across all 20 die faces and weights the
 outcomes:
 `multiplier = P(crit fail) × 2 + P(fail) × 1 + P(success) × 0.5`. A weak-save target pushes the
 multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-save target drags it
-below a plain Strike. For a **player**, this whole comparison is skipped — the save spell is scored on
-its base value alone.
+below a plain Strike. For a **player**, this comparison only happens if the GM revealed that exact
+save DC as Recall Knowledge Intel; otherwise the save spell is scored on its base value alone.
 
-**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize (Intimidation) on two PCs. The engine rolls the Intimidation modifier against each PC's **Will DC** across all 20 die faces and weights the **degrees of success** — a critical success (frightened 2) counts extra, a critical failure counts against it. Against a low-Will PC that means frequent successes and the occasional crit, so Demoralize scores well; against a high-Will PC it slides toward failure and the NPC leans on the softer target. An **untrained** NPC also eats `−6` (or the action is hidden outright). Proficiency **rank** and skill **modifier** both feed this — rank gates/penalizes, the modifier drives the odds. For a **player**, the target's DC is never read, so a skill action is ranked on its base value and own conditions only.
+**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize
+(Intimidation) on two PCs. The engine rolls the Intimidation modifier against each PC's **Will DC**
+across all 20 die faces and weights the **degrees of success** — a critical success (frightened 2)
+counts extra, a critical failure counts against it. Against a low-Will PC that means frequent
+successes and the occasional crit, so Demoralize scores well; against a high-Will PC it slides toward
+failure and the NPC leans on the softer target. An **untrained** NPC also eats `−6` (or the action is
+hidden outright). Proficiency **rank** and skill **modifier** both feed this — rank gates/penalizes,
+the modifier drives the odds. For a **player**, target DC math only turns on for exact revealed Intel,
+so unrevealed DCs stay out of scoring.
 
 **"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
 martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded
@@ -321,6 +366,8 @@ editable, and **Browse** lets you build the turn by hand instead.
 - Open the panel from the **Token Controls** toolbar (the Combater tool), or it opens automatically
   on a combatant's turn (configurable in module settings).
 - Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself, then execute.
+- On an NPC turn, use the **Tactic** chip to set monster behavior and the **Intel** chip to reveal
+  Recall Knowledge facts players are allowed to use.
 
 ---
 

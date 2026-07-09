@@ -10,6 +10,8 @@ import { executionReadinessForStep, nextPendingExecutionStep } from "../../engin
 import { confidenceLabel } from "../../engine/confidence.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { t } from "../../i18n.js";
+import { actorMovementOptions } from "../../readers/actor-profile.js";
+import { intelTargetKey, isNpcIntelTarget } from "../../rules/intel-ledger.js";
 import { groupActionsByBuilderCategory } from "../action/categories.js";
 import { actionDetailChips, traitChips } from "../action/details.js";
 import { displayStepEntries } from "../display-steps.js";
@@ -124,6 +126,23 @@ function recommendationTargetIds(action) {
   ].filter(Boolean).map(String));
 }
 
+function targetForIntel(step, action = null) {
+  return step?.suggestedTarget
+    ?? step?.preferredTarget
+    ?? step?.target
+    ?? action?.suggestedTarget
+    ?? action?.preferredTarget
+    ?? action?.target
+    ?? null;
+}
+
+function targetIntelKey(step, action = null) {
+  const direct = intelTargetKey(targetForIntel(step, action));
+  if (direct) return direct;
+  const ids = Array.isArray(step?.targetTokenIds) ? step.targetTokenIds : [];
+  return String(ids[0] ?? "");
+}
+
 function isAutoStoredRecommendationTarget(step, action) {
   if (step?.targetSelection === "manual") return false;
   const ids = Array.isArray(step?.targetTokenIds) ? step.targetTokenIds.map(String).filter(Boolean) : [];
@@ -180,6 +199,231 @@ function areaLabel(areaMarker) {
   return Number.isFinite(distance) ? `Area: ${titleCase(shape)} ${distance} ft` : `Area: ${titleCase(shape)}`;
 }
 
+function minionPlanSource(...values) {
+  return values.find((value) => value && Array.isArray(value.steps) && value.steps.length) ?? null;
+}
+
+function normalizeMinionStepKey(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function titleCaseSlug(value) {
+  return String(value ?? "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function minionStepName(value) {
+  const direct = typeof value === "object" && value !== null
+    ? value.name ?? value.label ?? value.title
+    : value;
+  const name = String(direct ?? "").trim();
+  if (name) return name;
+  const slug = typeof value === "object" && value !== null
+    ? value.slug ?? value.key ?? value.action
+    : "";
+  return titleCaseSlug(slug) || t("Panel.UnknownAction", "Unknown action");
+}
+
+function minionStepKey(value, fallbackName = "") {
+  const raw = typeof value === "object" && value !== null
+    ? value.slug ?? value.key ?? value.action ?? value.name ?? value.label ?? value.title
+    : value;
+  return normalizeMinionStepKey(raw) || normalizeMinionStepKey(fallbackName);
+}
+
+function uniqueMinionStepNames(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const name = minionStepName(value);
+    const key = minionStepKey(value, name);
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    result.push(name);
+  }
+  return result;
+}
+
+function minionActionOptions(plan) {
+  return uniqueMinionStepNames([
+    ...(Array.isArray(plan?.actionOptions) ? plan.actionOptions : []),
+    ...(Array.isArray(plan?.steps) ? plan.steps : []),
+  ]);
+}
+
+function minionPlanDisplayLabel(plan, steps) {
+  const minion = String(plan?.minionName ?? t("MinionPlan.Minion", "Companion")).trim()
+    || t("MinionPlan.Minion", "Companion");
+  const stepText = steps.join(" -> ");
+  const target = String(plan?.targetName ?? "").trim();
+  return target
+    ? t("MinionPlan.Label", "{minion}: {steps} vs {target}", { minion, steps: stepText, target })
+    : t("MinionPlan.LabelNoTarget", "{minion}: {steps}", { minion, steps: stepText });
+}
+
+function normalizeMovementOptions(options) {
+  const seen = new Set();
+  const result = [];
+  for (const option of Array.isArray(options) ? options : []) {
+    const action = String(option?.action ?? "").trim().toLowerCase();
+    if (!action || seen.has(action)) continue;
+    seen.add(action);
+    const speed = Number(option?.speed);
+    result.push({ action, speed: Number.isFinite(speed) ? speed : 0 });
+  }
+  return result;
+}
+
+function tokenIdMatchesMinion(token, plan) {
+  const document = token?.document ?? token;
+  const wanted = String(plan?.minionId ?? "");
+  if (!wanted) return false;
+  const actor = tokenActor(token);
+  return [token?.id, token?.uuid, document?.id, document?.uuid, actor?.id, actor?.uuid]
+    .some((value) => String(value ?? "") === wanted);
+}
+
+function tokenActor(token) {
+  return token?.actor?.document
+    ?? token?.actor
+    ?? token?.document?.actor?.document
+    ?? token?.document?.actor
+    ?? null;
+}
+
+function canvasTokens() {
+  const placeables = globalThis.canvas?.tokens?.placeables;
+  return Array.isArray(placeables) ? placeables.filter(Boolean) : [];
+}
+
+function tokenNameMatchesMinion(token, plan) {
+  const wanted = String(plan?.minionName ?? "").trim().toLowerCase();
+  if (!wanted) return false;
+  const document = token?.document ?? token;
+  const actor = tokenActor(token);
+  return [token?.name, document?.name, actor?.name]
+    .some((value) => String(value ?? "").trim().toLowerCase() === wanted);
+}
+
+function contextMinionActor(plan, context) {
+  const wanted = String(plan?.minionId ?? "");
+  const minions = [
+    ...(Array.isArray(context?.minions) ? context.minions : []),
+    ...(Array.isArray(context?.companions) ? context.companions : []),
+  ];
+  const minion = minions.find((candidate) => tokenIdMatchesMinion(candidate?.token ?? candidate, plan)
+    || String(candidate?.id ?? "") === wanted
+    || String(candidate?.actor?.id ?? "") === wanted
+    || String(candidate?.actor?.uuid ?? "") === wanted);
+  return minion?.actor?.document ?? minion?.actor ?? tokenActor(minion?.token) ?? null;
+}
+
+function liveMinionActor(plan) {
+  const byId = canvasTokens().find((token) => tokenIdMatchesMinion(token, plan));
+  if (byId) return tokenActor(byId);
+  const byName = canvasTokens().find((token) => tokenNameMatchesMinion(token, plan));
+  return byName ? tokenActor(byName) : null;
+}
+
+function mergeMovementOptions(...optionLists) {
+  const merged = [];
+  const seen = new Set();
+  for (const option of optionLists.flat()) {
+    const action = String(option?.action ?? "").trim().toLowerCase();
+    if (!action || seen.has(action)) continue;
+    seen.add(action);
+    merged.push(option);
+  }
+  return merged;
+}
+
+function movementOptionsForMinionPlan(plan, context) {
+  const planned = normalizeMovementOptions(plan?.movementOptions);
+  const actor = liveMinionActor(plan) ?? contextMinionActor(plan, context);
+  const live = normalizeMovementOptions(actorMovementOptions(actor));
+  return mergeMovementOptions(planned, live);
+}
+
+function decorateMinionPlan(plan, { instanceId = "", canCycle = false, context = null } = {}) {
+  if (!plan) return null;
+  const actionOptions = minionActionOptions(plan);
+  const movementOptions = movementOptionsForMinionPlan(plan, context);
+  const displaySteps = plan.steps.map((step) => minionStepName(step));
+  const interactive = Boolean(instanceId && canCycle);
+  const canCycleAction = interactive && actionOptions.length > 1;
+  const stepStates = Array.isArray(plan.stepStates) ? plan.stepStates : [];
+  const movementActions = new Set(["stride", "step", "leap"]);
+  const nonTargetActions = new Set(["stride", "step", "leap", "stand", "seek", "drop-prone"]);
+  const steps = plan.steps.map((step, index) => {
+    const name = minionStepName(step);
+    const state = stepStates[index] ?? {};
+    const status = executionStatus(state);
+    const isDone = status === "done";
+    const actionSlug = minionStepKey(step, name);
+    const requiresDestination = movementActions.has(actionSlug);
+    const requiresTarget = !nonTargetActions.has(actionSlug);
+    const destinationSet = Boolean(state.destination);
+    const executionBlocked = requiresDestination && !destinationSet;
+    const movementAction = String(state.movementAction ?? movementOptions[0]?.action ?? "walk").toLowerCase();
+    const movementToolLabel = movementActionLabel(movementAction);
+    const canShowMovementControl = interactive && !isDone && actionSlug === "stride" && movementOptions.length > 0;
+    const canCycleMovement = canShowMovementControl && movementOptions.length > 1;
+    const movementToolTip = canCycleMovement
+      ? t("Panel.MovementCycle", "Stride on {label} Speed. Click to change.", { label: movementToolLabel })
+      : t("Panel.MovementLabel", "Stride on {label} Speed.", { label: movementToolLabel });
+    return {
+      id: `${plan.minionId ?? "minion"}-${index}`,
+      position: index + 1,
+      name,
+      canCycle: canCycleAction && !isDone,
+      canChooseTarget: interactive && !isDone && requiresTarget,
+      canChooseDestination: interactive && !isDone && requiresDestination,
+      canShowMovementControl,
+      canCycleMovement,
+      canExecute: interactive && !isDone,
+      canRemoveStep: interactive && !isDone,
+      canRevertStep: interactive && isDone,
+      isExecutionDone: isDone,
+      executionBlocked,
+      cycleInstanceId: instanceId,
+      cycleIndex: index,
+      targetName: plan.targetName ?? "",
+      targetLabel: requiresTarget && plan.targetName ? t("MinionPlan.TargetLabel", "vs {target}", { target: plan.targetName }) : "",
+      destinationLabel: destinationSet ? t("MinionPlan.DestinationSet", "Destination set") : "",
+      tooltip: isDone
+        ? t("MinionPlan.ExecutedStep", "This minion action has been executed.")
+        : t("MinionPlan.CycleStep", "Click to change this minion action. Right-click or Shift-click for previous."),
+      chooseTargetTooltip: t("MinionPlan.ChooseTarget", "Use current Foundry target for this minion action."),
+      chooseDestinationTooltip: t("MinionPlan.ChooseDestination", "Choose this minion action's destination."),
+      movementToolLabel,
+      movementToolTip,
+      executeTooltip: executionBlocked
+        ? t("MinionPlan.ChooseDestinationFirst", "Choose a destination before executing this minion action.")
+        : t("MinionPlan.ExecuteStep", "Execute this minion action."),
+      removeTooltip: t("Panel.Remove", "Remove"),
+      revertTooltip: t("MinionPlan.RevertStep", "Revert this minion action."),
+    };
+  });
+  return {
+    label: plan.label ?? minionPlanDisplayLabel(plan, displaySteps),
+    minionName: plan.minionName ?? t("MinionPlan.Minion", "Companion"),
+    targetName: plan.targetName ?? "",
+    actionOptions,
+    steps,
+    hasSteps: steps.length > 0,
+    hasChildRows: interactive && steps.length > 0,
+  };
+}
+
 export function executionStatus(step) {
   const status = String(step?.execution?.status ?? "pending").toLowerCase();
   return ["done", "failed"].includes(status) ? status : "pending";
@@ -198,6 +442,10 @@ function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
   const cost = step?.actionCost ?? step?.cost ?? 1;
   const targetName = step?.suggestedTarget?.name ?? step?.preferredTarget?.name ?? "";
   const rangeLabel = rangeLabelFor(step);
+  const minionPlan = decorateMinionPlan(minionPlanSource(step?.activityProfile?.minionPlan, step?.minionPlan));
+  const minionPlanLabel = minionPlan?.label ?? "";
+  const intelTarget = targetForIntel(step);
+  const targetKey = isNpcIntelTarget(intelTarget) ? targetIntelKey(step) : "";
   return {
     ...step,
     index: sourceIndex,
@@ -208,9 +456,14 @@ function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
     img: actionImage(step),
     reason: step?.reason ?? step?.reasons?.[0] ?? "",
     targetLabel: targetName ? `Target: ${targetName}` : "",
+    targetIntelKey: targetKey,
+    canOpenTargetIntel: Boolean(targetName && targetKey),
+    targetIntelTooltip: t("Intel.TargetTooltip", "View known intel for this target."),
     mapLabel: step?.mapPenalty > 0 ? `MAP -${step.mapPenalty}` : "",
     isRanged: Boolean(rangeLabel),
     rangeLabel,
+    minionPlan,
+    minionPlanLabel,
     sourceLabel: titleCase(step?.source),
   };
 }
@@ -272,7 +525,7 @@ function isSpeedBasedMovementStep(action) {
   return slug !== "step" && slug !== "crawl";
 }
 
-function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
+function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
@@ -292,15 +545,26 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     ? t("Panel.SustainLabel", "Sustain: {name}", { name: step.sustainedSpell.name })
     : "";
   const targetLabel = sustainLabel || stepTargetLabel(rawTargetName(step, action), { requiresTarget, requiresDestination });
+  const draftIntelTarget = targetForIntel(step, action);
+  const draftTargetIntelKey = isNpcIntelTarget(draftIntelTarget) ? targetIntelKey(step, action) : "";
+  const minionPlan = decorateMinionPlan(minionPlanSource(
+    step?.activityProfile?.minionPlan,
+    action?.activityProfile?.minionPlan,
+    display.minionPlan,
+  ), { instanceId: step?.instanceId, canCycle: canRunStep && !isExecutionDone, context });
+  const minionPlanAsChildren = Boolean(minionPlan?.hasChildRows);
+  const minionPlanLabel = minionPlan?.label ?? display.minionPlanLabel ?? "";
   const stepAreaLabel = areaLabel(step?.areaMarker);
   const readiness = isExecutionDone
     ? { status: "ready", choices: [], warning: "" }
     : executionReadinessForStep(step, action ?? step);
   const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
   const warning = isExecutionDone ? "" : (readiness.warning || rawWarning);
-  const canShowExecuteStep = canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
+  const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
+  const canDuplicateStep = readonly !== true && !step?.groupId && !minionPlanAsChildren;
+  const canRemoveDraftStep = readonly !== true && !minionPlanAsChildren;
   const isAttackStep = Number.isFinite(step?.attackIndex);
   const mapPenaltyValue = Number(step?.mapPenalty) || 0;
   const mapToolLabel = mapPenaltyValue > 0
@@ -330,6 +594,12 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     name: action?.name ?? step?.name ?? step?.actionKey ?? t("Panel.UnknownAction", "Unknown action"),
     reason: action?.reason ?? step?.reason ?? "",
     targetLabel,
+    targetIntelKey: draftTargetIntelKey,
+    canOpenTargetIntel: Boolean(targetLabel && !sustainLabel && draftTargetIntelKey),
+    targetIntelTooltip: t("Intel.TargetTooltip", "View known intel for this target."),
+    minionPlan,
+    minionPlanAsChildren,
+    minionPlanLabel,
     requiresDestination,
     requiresTarget,
     requiresArea,
@@ -342,7 +612,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     isExecutionDone,
     isExecutionFailed: status === "failed",
     canShowExecuteStep,
-    canExecuteStep: !isAwaitingGm && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true && readiness.status === "ready",
+    canExecuteStep: canShowExecuteStep && !isAwaitingGm && readiness.status === "ready",
+    canDuplicateStep,
+    canRemoveDraftStep,
     executionBlocked: executionBlocked || isAwaitingGm,
     executeTooltip: isAwaitingGm
       ? t("Panel.AwaitingGm", "Waiting for the GM\u2026")
@@ -360,11 +632,11 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     weaponToolLabel,
     weaponToolTip,
     canDragStep: canEditStepOrder,
-    canRevertStep: isExecutionDone && canRunStep,
+    canRevertStep: !minionPlanAsChildren && isExecutionDone && canRunStep,
     warning,
     traitChips: stepTraitChips,
     hasTraitChips: stepTraitChips.length > 0,
-    hasStepDetails: Boolean(targetLabel || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
+    hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
   };
 }
 
@@ -570,6 +842,7 @@ export function decorateBuilder(builder, activeTab, searchQuery = "", { sustaine
       awaitingGm,
       movementOptions,
       weaponOptions,
+      context: builder.context,
     }));
   const currentExecutionStep = nextPendingExecutionStep({ steps: rawDraftSteps });
   const draftSteps = rawDraftSteps.map((step) => ({
@@ -588,6 +861,7 @@ export function decorateBuilder(builder, activeTab, searchQuery = "", { sustaine
     awaitingGm,
     movementOptions,
     weaponOptions,
+    context: builder.context,
   }));
   const currentUncountedStep = nextPendingExecutionStep({ steps: rawUncountedSteps });
   const uncountedEntries = rawUncountedSteps.map((step) => ({

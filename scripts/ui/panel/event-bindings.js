@@ -14,6 +14,9 @@ export function activatePanelRenderBindings(panel, element) {
     ?.addEventListener("click", () => panel.refresh("button"));
   element.querySelector("[data-configure-tactic]")
     ?.addEventListener("click", () => panel._configureTacticPersonality());
+  element.querySelector("[data-configure-intel]")
+    ?.addEventListener("click", () => panel._configureIntelLedger());
+  activateMinionPlanStepBindings(panel, element);
 
   // Cost tabs, search, and the action add/favorite/open controls live in the detached
   // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
@@ -48,11 +51,10 @@ export function activatePanelRenderBindings(panel, element) {
       panel._cycleStepWeapon(button.dataset.cycleWeapon);
     });
   }
-
   activateDraftDragBindings(panel, element);
 
   for (const button of element.querySelectorAll("[data-auto-fill]")) {
-    button.addEventListener("click", () => panel._autoFillDraft());
+    button.addEventListener("click", (event) => panel._autoFillDraft({ forceFull: event.shiftKey }));
   }
 
   for (const button of element.querySelectorAll("[data-cycle-auto-fill]")) {
@@ -89,6 +91,84 @@ export function activatePanelRenderBindings(panel, element) {
     button.addEventListener("click", () => panel._chooseTarget(button.dataset.chooseTarget));
   }
 
+  for (const button of element.querySelectorAll("[data-choose-minion-target]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._chooseMinionTarget(button.dataset.chooseMinionTarget);
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-choose-minion-destination]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._chooseMinionDestination(
+        button.dataset.chooseMinionDestination,
+        Number(button.dataset.minionStepIndex),
+      );
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-cycle-minion-movement]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._cycleMinionPlanMovement(
+        button.dataset.cycleMinionMovement,
+        Number(button.dataset.minionStepIndex),
+      );
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-execute-minion-step]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._executeMinionPlanStep(
+        button.dataset.executeMinionStep,
+        Number(button.dataset.minionStepIndex),
+        event,
+      );
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-revert-minion-step]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._revertMinionPlanStep(
+        button.dataset.revertMinionStep,
+        Number(button.dataset.minionStepIndex),
+      );
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-remove-minion-step]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._removeMinionPlanStep(
+        button.dataset.removeMinionStep,
+        Number(button.dataset.minionStepIndex),
+      );
+    });
+  }
+
+  for (const target of element.querySelectorAll("[data-open-target-intel]")) {
+    target.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._openTargetIntel(target.dataset.openTargetIntel);
+    });
+    target.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      panel._openTargetIntel(target.dataset.openTargetIntel);
+    });
+  }
+
   for (const button of element.querySelectorAll("[data-choose-area]")) {
     button.addEventListener("click", () => panel._chooseArea(button.dataset.chooseArea));
   }
@@ -98,7 +178,10 @@ export function activatePanelRenderBindings(panel, element) {
   }
 
   for (const button of element.querySelectorAll("[data-open-draft-step]")) {
-    button.addEventListener("click", () => panel._openDraftStep(button.dataset.openDraftStep));
+    button.addEventListener("click", (event) => {
+      if (event.defaultPrevented || event.target?.closest?.("[data-cycle-minion-step]")) return;
+      panel._openDraftStep(button.dataset.openDraftStep);
+    });
   }
 
   for (const button of element.querySelectorAll("[data-open-draft-group]")) {
@@ -121,9 +204,45 @@ export function activatePanelRenderBindings(panel, element) {
     previewElement.addEventListener("pointercancel", (event) => panel._clearActionPreviewUnlessPicking(event));
   }
 
+  for (const previewElement of element.querySelectorAll("[data-preview-minion-step]")) {
+    previewElement.addEventListener("pointerenter", () => {
+      panel._showMinionActionPreview(
+        previewElement.dataset.previewMinionStep,
+        Number(previewElement.dataset.minionStepIndex),
+      );
+    });
+    previewElement.addEventListener("pointerleave", (event) => panel._clearActionPreviewUnlessPicking(event));
+    previewElement.addEventListener("pointercancel", (event) => panel._clearActionPreviewUnlessPicking(event));
+  }
+
   if (settingOrDefault(SETTINGS.rememberPanelPosition, true)) {
     element.addEventListener("pointerup", () => panel._savePosition(), { passive: true });
   }
+}
+
+function activateMinionPlanStepBindings(panel, element) {
+  const cycle = (event, direction) => {
+    const control = event.target?.closest?.("[data-cycle-minion-step]");
+    if (!control || !element.contains(control)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    panel._cycleMinionPlanStep(
+      control.dataset.cycleMinionStep,
+      Number(control.dataset.minionStepIndex),
+      direction,
+    );
+    return true;
+  };
+
+  // Capture phase wins over the enclosing row button (`data-open-draft-step`), so clicking a
+  // sub-action edits that sub-action instead of opening Command an Animal details.
+  element.addEventListener("click", (event) => cycle(event, event.shiftKey ? -1 : 1), { capture: true });
+  element.addEventListener("contextmenu", (event) => cycle(event, -1), { capture: true });
+  element.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    cycle(event, event.shiftKey ? -1 : 1);
+  }, { capture: true });
 }
 
 function activateDraftDragBindings(panel, element) {

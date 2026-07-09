@@ -1,0 +1,69 @@
+<div class="combater-tactic-shell">
+  <header class="combater-tactic-hero">
+    <div class="combater-tactic-hero-icon"><i class="fa-solid fa-chess-knight"></i></div>
+    <div>
+      <h2>{{title}}</h2>
+      <p>{{help}}</p>
+    </div>
+  </header>
+
+  <form class="combater-tactic-editor {{#if customEnabled}}is-custom{{/if}}" data-tactic-form>
+    <section class="combater-tactic-choice-grid">
+      <label class="combater-tactic-choice">
+        <span>{{roleLabel}}</span>
+        <select name="role">
+          {{#each roles}}
+            <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+          {{/each}}
+        </select>
+      </label>
+
+      <label class="combater-tactic-choice">
+        <span>{{temperamentLabel}}</span>
+        <select name="temperament">
+          {{#each temperaments}}
+            <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+          {{/each}}
+        </select>
+      </label>
+    </section>
+
+    <label class="combater-tactic-custom-card">
+      <input type="checkbox" name="customEnabled" {{#if customEnabled}}checked{{/if}}>
+      <span class="combater-tactic-custom-mark"><i class="fa-solid fa-sliders"></i></span>
+      <span>
+        <strong>{{customLabel}}</strong>
+        <small>{{customHelp}}</small>
+      </span>
+    </label>
+
+    <div class="combater-tactic-custom-fields" data-custom-sliders>
+      <fieldset class="combater-tactic-fieldset">
+        <legend>{{actionStyleLabel}}</legend>
+        {{#each actionSliders}}
+          <label class="combater-tactic-slider">
+            <span>{{label}}</span>
+            <input type="range" name="{{inputName}}" min="{{min}}" max="{{max}}" step="1" value="{{value}}">
+          </label>
+        {{/each}}
+      </fieldset>
+
+      <fieldset class="combater-tactic-fieldset">
+        <legend>{{targetStyleLabel}}</legend>
+        {{#each targetSliders}}
+          <label class="combater-tactic-slider">
+            <span>{{label}}</span>
+            <input type="range" name="{{inputName}}" min="{{min}}" max="{{max}}" step="1" value="{{value}}">
+          </label>
+        {{/each}}
+      </fieldset>
+    </div>
+  </form>
+
+  <footer class="combater-tactic-actions">
+    <button type="button" class="combater-tactic-secondary" data-tactic-close>{{cancelLabel}}</button>
+    <button type="button" class="combater-tactic-secondary" data-tactic-reset>{{resetLabel}}</button>
+    <button type="button" class="combater-tactic-secondary" data-tactic-save-actor>{{saveActorLabel}}</button>
+    <button type="button" class="combater-tactic-primary" data-tactic-save-token>{{saveTokenLabel}}</button>
+  </footer>
+</div>

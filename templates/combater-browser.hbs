@@ -30,9 +30,11 @@
           <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
             <i class="fa-solid fa-plus"></i>
           </button>
+          {{#unless hideUncounted}}
           <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}">
             <i class="fa-solid fa-bolt"></i>
           </button>
+          {{/unless}}
           {{#if canDragFavorite}}
             <span class="combater-chip-tool combater-step-drag" data-drag-favorite="{{favoriteEntryKey}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}">
               <i class="fa-solid fa-grip-vertical"></i>

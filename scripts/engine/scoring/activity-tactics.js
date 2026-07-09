@@ -20,7 +20,24 @@ function attackCenter(action) {
   const center = action?.activityProfile?.attackCenter;
   const x = Number(center?.x);
   const y = Number(center?.y);
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  const cost = Number(center?.cost);
+  return Number.isFinite(x) && Number.isFinite(y)
+    ? {
+      x,
+      y,
+      ...(Number.isFinite(cost) ? { cost } : {}),
+    }
+    : null;
+}
+
+function routeBudgetUse(profile, action) {
+  const center = attackCenter(action);
+  const cost = Number(center?.cost);
+  const strideCount = Number(action?.activityProfile?.strideCount ?? 0);
+  if (!Number.isFinite(cost) || cost <= 0 || strideCount <= 0) return null;
+  const budget = profileSpeed(profile) * strideCount;
+  if (!Number.isFinite(budget) || budget <= 0) return null;
+  return { cost, budget, remaining: budget - cost };
 }
 
 export function scoreActivityProfileTactics(context, action, {
@@ -58,6 +75,7 @@ export function scoreActivityProfileTactics(context, action, {
     const moveReach = speed * Number(action.activityProfile.strideCount ?? 1) + activityStrikeReach(profile, action);
     const center = attackCenter(action);
     const destinationThreatCount = center ? threatsAtCenter(context, center).length : null;
+    const routeUse = routeBudgetUse(profile, action);
 
     if (action.activityProfile?.retreatBeforeStrike) {
       nextScore += 66;
@@ -86,6 +104,19 @@ export function scoreActivityProfileTactics(context, action, {
         nextReasons.push(t("ScoreReason.PlanReturnsToCover", "Plan returns to cover after attacking."));
       }
     }
+
+    if (routeUse) {
+      const cost = Math.round(routeUse.cost);
+      const budget = Math.round(routeUse.budget);
+      nextReasons.push(t("ScoreReason.TerrainRouteCosts", "Terrain-aware route costs {cost} ft of {budget} ft.", { cost, budget }));
+      if (routeUse.remaining <= 5) {
+        nextScore -= 8;
+        nextReasons.push(t("ScoreReason.RouteLeavesLittleMovement", "Route leaves little movement to spare."));
+      } else if (routeUse.cost <= routeUse.budget * 0.6) {
+        nextScore += 4;
+        nextReasons.push(t("ScoreReason.RouteKeepsMovementFlexible", "Route keeps movement flexible."));
+      }
+    }
   }
 
   // Flank is a plain Stride (see positional-tactic-reader.js) that happens to land somewhere worth
@@ -108,6 +139,10 @@ export function scoreActivityProfileTactics(context, action, {
       const fragile = hpPercent(profile) < 0.5;
       nextScore += fragile ? 26 : 18;
       nextReasons.unshift(fragile ? t("ScoreReason.FragileAttackerKitesOutOf", "Fragile attacker kites out of melee before striking from range.") : t("ScoreReason.FightsBetterAtRangeKites", "Fights better at range; kites out of melee before striking."));
+      if (action.activityProfile?.meleeStrike && action.activityProfile?.finisher) {
+        nextScore += 48;
+        nextReasons.push(t("ScoreReason.KiteKeepsOffenseOnline", "Skirmish keeps pressure up while leaving melee."));
+      }
     }
   }
 

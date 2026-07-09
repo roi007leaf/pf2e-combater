@@ -8,7 +8,7 @@ import { isSelfCenteredAreaAction } from "../action/requirements.js";
 import { slugify as slugText } from "../action/text.js";
 import {
   actionTraitSlugs,
-  canUseTargetDefenses,
+  canUseTargetSave,
   contextActorDocument,
   damageAdjustment,
   damageTypes,
@@ -106,7 +106,7 @@ function offensiveTargetValue(context, action, role, target) {
   if (role === "grab" || action?.targetingProfile?.reach) {
     if (!inRange(action, target)) value -= 20;
   }
-  if (action?.saveProfile?.stat && canUseTargetDefenses(context)) {
+  if (action?.saveProfile?.stat && canUseTargetSave(context, target, action.saveProfile.stat)) {
     const dc = targetDc(target, action.saveProfile.stat);
     if (Number.isFinite(dc)) value += 30 - dc;
   }

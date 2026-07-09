@@ -85,11 +85,14 @@ function movementSpeedFeet(context, step, options = {}) {
   const token = contextToken(context, options);
   const speedKey = movementAction === "walk" ? "land" : movementAction;
   const speed = speedKey
-    ? token?.actor?.system?.movement?.speeds?.[speedKey]
+    ? token?.actor?.movement?.speeds?.[speedKey]
+      ?? token?.actor?.system?.movement?.speeds?.[speedKey]
+      ?? context?.actor?.document?.movement?.speeds?.[speedKey]
       ?? context?.actor?.document?.system?.movement?.speeds?.[speedKey]
+      ?? context?.actor?.movement?.speeds?.[speedKey]
       ?? context?.actor?.system?.movement?.speeds?.[speedKey]
     : null;
-  const value = numeric(speed?.total ?? speed?.value ?? speed?.base, NaN);
+  const value = numeric(speed?.value ?? speed?.total ?? speed?.base, NaN);
   if (Number.isFinite(value) && value > 0) return value;
   const profile = profileSpeed(context, NaN);
   if (Number.isFinite(profile) && profile > 0) return profile;

@@ -16,9 +16,11 @@ import {
 import { clearCombatDraftPlans, clearDraftPlan, clearSharedDraftPlan, isSharedDraftPlanEcho, writeSharedDraftPlanPayload } from "./state/draft-plans.js";
 import { clearMovementPreview } from "./ui/movement-preview.js";
 import { openPanelForCurrentCombatant, togglePanelForCurrentCombatant } from "./ui/CombaterPanel.js";
+import { registerCombatTrackerIntel } from "./ui/combat-tracker-intel.js";
 import { cancelDestinationPicker } from "./ui/destination-picker.js";
 import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
 import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
+import { INTEL_LEDGER_FLAG, INTEL_REVEAL_MODE_FLAG } from "./rules/intel-ledger.js";
 
 let activePanel = null;
 let refreshTimer = null;
@@ -238,8 +240,19 @@ function tokenUpdateChangesTacticOverride(changed) {
   ));
 }
 
+function actorUpdateChangesIntelLedger(changed) {
+  const flags = changed?.flags?.[MODULE_ID];
+  return Boolean(flags && (
+    Object.hasOwn(flags, INTEL_LEDGER_FLAG)
+    || Object.hasOwn(flags, `-=${INTEL_LEDGER_FLAG}`)
+    || Object.hasOwn(flags, INTEL_REVEAL_MODE_FLAG)
+    || Object.hasOwn(flags, `-=${INTEL_REVEAL_MODE_FLAG}`)
+  ));
+}
+
 Hooks.once("init", () => {
   registerSettings();
+  registerCombatTrackerIntel();
 
   game.keybindings.register(MODULE_ID, "togglePanel", {
     name: t("Keybind.ToggleName", "Toggle PF2e Combater"),
@@ -320,6 +333,7 @@ Hooks.once("socketlib.ready", () => {
 // closing whatever's open and dropping the toolbar toggle immediately, without a reload.
 Hooks.on("pf2e-combater.playerAccessChanged", () => {
   refreshSceneControls();
+  ui?.combat?.render?.(true);
   if (playerAccessAllowed() || !activePanel) return;
   closeActivePanel().catch((error) => console.warn(`${MODULE_ID} | Access-change close failed`, error));
 });
@@ -504,6 +518,7 @@ Hooks.on("updateActor", (actor, changes) => {
   // reset their just-chosen pinned Auto-fill plan back to the default -- refresh under a source
   // that isn't in CombaterPanel.js's RESET_PIN_REFRESH_SOURCES instead.
   scheduleDocumentRefresh(actor, isSharedDraftPlanEcho(changes) ? "shared-draft-sync" : "actor-update");
+  if (actorUpdateChangesIntelLedger(changes)) ui?.combat?.render?.(true);
 });
 
 Hooks.on("createItem", (item) => {

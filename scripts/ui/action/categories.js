@@ -2,6 +2,7 @@ import { t } from "../../i18n.js";
 
 const CATEGORY_ORDER = [
   { id: "situational", label: "Situational" },
+  { id: "companions", label: "Companion Actions" },
   { id: "attacks", label: "Attacks" },
   { id: "movement", label: "Movement" },
   { id: "defense", label: "Defense" },
@@ -92,6 +93,7 @@ export function builderActionCategory(action) {
   const profile = action?.activityProfile ?? {};
   const includesStrike = profile.includesStrike === true || includes.has("strike") || source === "strike";
 
+  if (source === "minion-action" || profile.minionBrowseAction === true) return categoryMeta("companions");
   if (isSituationalAction(action, profile, source, includesStrike)) return categoryMeta("situational");
   if (source.startsWith("spell") || itemType === "spell" || profile.spell === true) return categoryMeta("spells");
   if (source === "strike" || action?.attackTrait === true || action?.damageProfile || ATTACK_ROLES.has(role) || traits.has("attack")) return categoryMeta("attacks");

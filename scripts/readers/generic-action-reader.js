@@ -153,17 +153,39 @@ export function hideNonCombatSystemAction(slug, traits, tactic) {
   return !hasCombatRelevantSystemActionSignal(slug, normalizedTraits, tactic);
 }
 
+function genericActionVariants(action, context, profile) {
+  if (action.slug !== "command-an-animal" || !hasCompanionOrMinion(context, profile)) return [action];
+  return [{
+    ...action,
+    activityProfile: {
+      ...(action.activityProfile ?? {}),
+      commandActionCost: 1,
+      minionActionBudget: 2,
+    },
+  }];
+}
+
+function genericActionDisplayName(action) {
+  if (action.slug === "command-an-animal" && action.activityProfile?.minionActionBudget) {
+    return t("MinionPlan.CommandAction", "Command Companion");
+  }
+  return pf2eActionName(action.slug, action.name);
+}
+
 export function readGenericActions(context) {
-  return GENERIC_ACTIONS.filter((action) => !hideGenericActionForContext(action, context)).map((action) => {
+  const profile = contextProfile(context);
+  return GENERIC_ACTIONS
+    .filter((action) => !hideGenericActionForContext(action, context))
+    .flatMap((action) => genericActionVariants(action, context, profile))
+    .map((action) => {
     const itemAvailability = readGenericActionAvailabilityForAction(action, context);
-    const profile = contextProfile(context);
     // Wall proximity no longer grants Take Cover eligibility (see the catalog entry), so any
     // prone-triggered Take Cover is inherently the "stay prone for cover" tactic -- it conflicts
     // with also Standing up in the same plan (see requiresProneForCover in planner.js).
     const proneCover = action.slug === "take-cover" && hasCondition(profile, "prone");
     return {
       ...action,
-      name: pf2eActionName(action.slug, action.name),
+      name: genericActionDisplayName(action),
       source: "generic",
       confidence: "medium",
       detected: true,

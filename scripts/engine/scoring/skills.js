@@ -4,6 +4,7 @@ import {
   degreeDistribution,
   hasSpellcastingCapability,
   targetDc,
+  targetDcLabel,
   titleCase,
 } from "./facts.js";
 import {
@@ -66,7 +67,7 @@ export function trainedSkillRequirement(profile, action) {
   };
 }
 
-function actionSkillDcSlug(action) {
+export function actionSkillDcSlug(action) {
   if (action.targetDefense) return action.targetDefense;
   if (action.targetSave) return action.targetSave;
 
@@ -103,7 +104,8 @@ export function skillCheckScore(profile, target, action) {
   // Weight by degree: critical successes matter, and critical failures carry their own cost.
   const effectiveness = odds.criticalSuccess * 1.5 + odds.success - odds.criticalFailure * 0.5;
   let scoreDelta = Math.round((effectiveness - 0.5) * 40);
-  const reasons = [`${titleCase(action.skill)} ${signed(skill.mod)} vs ${titleCase(dcSlug)} DC ${dc}.`];
+  const dcReasonLabel = targetDcLabel(target, dcSlug, dc);
+  const reasons = [`${titleCase(action.skill)} ${signed(skill.mod)} vs ${dcReasonLabel}.`];
 
   if (skill.rank === 0) {
     scoreDelta -= 6;
@@ -125,7 +127,7 @@ export function skillCheckScore(profile, target, action) {
     dc,
     chance,
     scoreDelta,
-    label: `${titleCase(action.skill)} ${signed(skill.mod)} vs ${titleCase(dcSlug)} DC ${dc}`,
+    label: `${titleCase(action.skill)} ${signed(skill.mod)} vs ${dcReasonLabel}`,
     reasons,
   };
 }

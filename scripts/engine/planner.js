@@ -34,6 +34,7 @@ import {
   includesStand,
   isRepeatablePlanningAction,
 } from "./planner/conflicts.js";
+import { contextAllies } from "./target-pool.js";
 import { t } from "../i18n.js";
 
 export { isAttackAction } from "./planner/rules.js";
@@ -126,11 +127,51 @@ function candidateCategory(candidate) {
   return "other";
 }
 
-function autoFillEligibleCandidate(candidate) {
+function arrayValues(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  return [value];
+}
+
+function conditionSlugs(entity) {
+  const conditions = entity?.conditions;
+  if (!conditions) return new Set();
+  if (Array.isArray(conditions)) {
+    return new Set(conditions.map((condition) => normalizeSlug(condition?.slug ?? condition?.name ?? condition)).filter(Boolean));
+  }
+  return new Set([
+    ...arrayValues(conditions.slugs),
+    ...Object.entries(conditions.values ?? {})
+      .filter(([, value]) => Number(value) > 0)
+      .map(([slug]) => slug),
+  ].map(normalizeSlug).filter(Boolean));
+}
+
+function entityHasAnyCondition(entity, conditions) {
+  const wanted = arrayValues(conditions).map(normalizeSlug).filter(Boolean);
+  if (!wanted.length) return false;
+  const current = conditionSlugs(entity);
+  return wanted.some((condition) => current.has(condition));
+}
+
+function contextAutoFillMatches(context, candidate) {
+  const gate = candidate?.activityProfile?.contextAutoFill;
+  if (!gate || typeof gate !== "object") return false;
+  const profile = context?.profile ?? context?.actor?.profile ?? {};
+  if (entityHasAnyCondition(profile, gate.selfAnyCondition)) return true;
+  if (arrayValues(gate.alliesAnyCondition).length) {
+    return contextAllies(context).some((ally) => entityHasAnyCondition(ally, gate.alliesAnyCondition));
+  }
+  return false;
+}
+
+function autoFillEligibleCandidate(context, candidate) {
   const combatUse = String(candidate?.combatUse ?? candidate?.activityProfile?.combatUse ?? "auto").toLowerCase();
   const role = String(candidate?.role ?? "").toLowerCase();
   const utilitySubtype = String(candidate?.activityProfile?.utilitySubtype ?? "").toLowerCase();
   const confidence = String(candidate?.confidence ?? "").toLowerCase();
+  if (combatUse === "context-only" && contextAutoFillMatches(context, candidate)) return true;
   if (PLANNER_EXCLUDED_COMBAT_USE.has(combatUse)) return false;
   if (PLANNER_EXCLUDED_UTILITY_ROLES.has(role) || PLANNER_EXCLUDED_UTILITY_ROLES.has(utilitySubtype)) return false;
   if (["utility", "combat-utility"].includes(role) && confidence === "low") return false;
@@ -373,7 +414,7 @@ export function buildTurnPlans(context, candidates) {
   // all, so it can never appear in any generated plan or alt-plan cycle slot — keep the full,
   // pre-narrowing list around so the coverage backfill below can still reach it.
   const eligibleCandidates = candidates
-    .filter(autoFillEligibleCandidate)
+    .filter((candidate) => autoFillEligibleCandidate(context, candidate))
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))

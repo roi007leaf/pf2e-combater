@@ -33,6 +33,10 @@ import {
 } from "./tactic-helpers.js";
 import { pf2eSave, t } from "../../i18n.js";
 
+function saveIntelCategory(action) {
+  return action?.saveProfile?.stat === "perception" ? "perception" : "saves";
+}
+
 export function scoreCuratedRoleTactics(context, action, {
   role,
   profile,
@@ -182,22 +186,21 @@ export function scoreCuratedRoleTactics(context, action, {
       nextScore += 8;
       nextReasons.push(t("ScoreReason.BestAreaPlacementAvoids", "Best area placement avoids allies."));
     }
-    if (canUseTargetDefenses(context)) {
-      const saveDeltas = enemiesInArea
-        .map((enemy) => saveScoreDelta(context, action, enemy, profile))
-        .filter(Boolean);
-      const damageDeltas = enemiesInArea
-        .map((enemy) => damageAdjustment(context, action, enemy))
-        .filter(Boolean);
-      const tacticalDelta = Math.round(
-        saveDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.5
-        + damageDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.5,
-      );
-      nextScore += tacticalDelta;
-      const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
-      if (bestSave) nextReasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
-      for (const entry of damageDeltas.slice(0, 2)) nextReasons.push(...entry.reasons);
-    }
+    const saveDeltas = enemiesInArea
+      .filter((enemy) => canUseTargetDefenses(context, enemy, saveIntelCategory(action)))
+      .map((enemy) => saveScoreDelta(context, action, enemy, profile))
+      .filter(Boolean);
+    const damageDeltas = enemiesInArea
+      .map((enemy) => damageAdjustment(context, action, enemy))
+      .filter(Boolean);
+    const tacticalDelta = Math.round(
+      saveDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.5
+      + damageDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.5,
+    );
+    nextScore += tacticalDelta;
+    const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
+    if (bestSave) nextReasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
+    for (const entry of damageDeltas.slice(0, 2)) nextReasons.push(...entry.reasons);
   }
 
   if (isCurated(action) && role === "save-damage" && target) {
@@ -232,7 +235,7 @@ export function scoreCuratedRoleTactics(context, action, {
     }
   }
 
-  if (isCurated(action) && role === "control" && isAreaAction(action, role)) {
+  if (isCurated(action) && (role === "control" || role === "debuff") && isAreaAction(action, role)) {
     const placement = scoredAreaPlacement(action, context, {
       enemyValues: attackableEnemies(context),
       allyValues: contextAllies(context),
@@ -260,19 +263,18 @@ export function scoreCuratedRoleTactics(context, action, {
       const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
       nextScore += (appliedConditions.length ? 30 : 22) + enemiesInArea.length * 12;
       nextReasons.unshift(t("ScoreReason.CanAffect", "{p0} can affect {p1} {p2}{p3}.", { p0: action.name, p1: enemiesInArea.length, p2: plural(enemiesInArea.length, "enemy", "enemies"), p3: centerName }));
-      if (canUseTargetDefenses(context)) {
-        const saveDeltas = enemiesInArea
-          .map((enemy) => saveScoreDelta(context, action, enemy, profile))
-          .filter(Boolean);
-        const tacticalDelta = Math.round(
-          saveDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.4,
-        );
-        nextScore += tacticalDelta;
-        const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
-        if (bestSave) nextReasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
-      }
+      const saveDeltas = enemiesInArea
+        .filter((enemy) => canUseTargetDefenses(context, enemy, saveIntelCategory(action)))
+        .map((enemy) => saveScoreDelta(context, action, enemy, profile))
+        .filter(Boolean);
+      const tacticalDelta = Math.round(
+        saveDeltas.reduce((total, entry) => total + entry.scoreDelta, 0) * 0.4,
+      );
+      nextScore += tacticalDelta;
+      const bestSave = saveDeltas.toSorted((left, right) => right.scoreDelta - left.scoreDelta)[0];
+      if (bestSave) nextReasons.push(t("ScoreReason.AreaTargetsSave", "Area targets {save} saves ({label})", { save: pf2eSave(action.saveProfile?.stat), label: bestSave.label }));
     }
-  } else if (isCurated(action) && role === "control" && target) {
+  } else if (isCurated(action) && (role === "control" || role === "debuff") && target) {
     const requiredCondition = action.activityProfile?.requiresTargetCondition;
     const appliedConditions = [
       action.activityProfile?.appliesCondition,

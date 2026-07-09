@@ -1,5 +1,12 @@
 import { collectionValues } from "../../foundry-data.js";
 import { t } from "../../i18n.js";
+import {
+  canUseIntelCategory,
+  canUseIntelFact,
+  intelDefenseFactId,
+  intelTraitFactId,
+  isNpcIntelTarget,
+} from "../../rules/intel-ledger.js";
 import { slugify as slugText } from "../action/text.js";
 import { contextActorDocument as contextActorDocumentFromContext } from "../actor-context.js";
 
@@ -27,23 +34,32 @@ export function targetActorDocument(target) {
   return actor && typeof actor === "object" ? actor : null;
 }
 
+function targetRequiresIntel(target) {
+  const actor = targetActorDocument(target);
+  if (!actor) return false;
+  return String(actor.type ?? target?.actor?.type ?? target?.type ?? "").toLowerCase() !== "character";
+}
+
 function systemTraitSlugs(document) {
   return valueSlugs(document?.system?.traits?.value ?? document?.system?.traits);
 }
 
 export function targetTraitSlugs(context, target) {
-  const visible = [
+  const values = [
     target?.traits,
     target?.traitSlugs,
     target?.system?.traits?.value,
     target?.system?.traits,
+    systemTraitSlugs(targetActorDocument(target)),
   ].flatMap(valueSlugs);
 
-  const hidden = canUseTargetDefenses(context)
-    ? systemTraitSlugs(targetActorDocument(target))
-    : [];
+  if (!targetRequiresIntel(target)) {
+    return new Set(values.filter(Boolean));
+  }
 
-  return new Set([...visible, ...hidden].filter(Boolean));
+  return new Set(values
+    .filter(Boolean)
+    .filter((trait) => canUseIntelFact(context, target, "traits", intelTraitFactId(trait))));
 }
 
 export function hasSpellcastingCapability(context) {
@@ -215,6 +231,14 @@ function entryValue(entry) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function visibleDefenseEntries(context, target, category, value, { showValue = true } = {}) {
+  const entries = defenseEntries(value);
+  if (!target || !targetRequiresIntel(target)) return entries;
+  if (!canUseIntelCategory(context, target, category)) return [];
+  return entries.filter((entry) =>
+    canUseIntelFact(context, target, category, intelDefenseFactId(entry, { showValue })));
+}
+
 function matchesDamageType(entry, type) {
   const defenseType = entryType(entry);
   if (!defenseType || !type) return false;
@@ -223,28 +247,37 @@ function matchesDamageType(entry, type) {
   return false;
 }
 
-function maxDefenseValue(entries, types) {
-  if (!types.length) return 0;
-  return Math.max(0, ...defenseEntries(entries)
+function maxDefenseEntry(entries, types) {
+  if (!types.length) return null;
+  return defenseEntries(entries)
     .filter((entry) => types.some((type) => matchesDamageType(entry, type)))
-    .map(entryValue));
+    .reduce((best, entry) => entryValue(entry) > entryValue(best) ? entry : best, null);
 }
 
-function hasImmunity(target, types) {
+function defenseAmountReason(entry, amount) {
+  if (entry?.exactValueHidden && entry?.intelBandLabel) return String(entry.intelBandLabel).toLowerCase();
+  return amount;
+}
+
+function hasImmunity(entries, types) {
   if (!types.length) return false;
-  return defenseEntries(target?.immunities)
-    .some((entry) => types.some((type) => matchesDamageType(entry, type)));
+  return defenseEntries(entries).some((entry) => types.some((type) => matchesDamageType(entry, type)));
 }
 
 export function damageAdjustment(context, action, target) {
-  if (!canUseTargetDefenses(context) || !target) return null;
+  if (!target) return null;
   const types = damageTypes(action);
   if (!types.length) return null;
 
   const average = damageAverage(action);
-  const resistance = maxDefenseValue(target.resistances, types);
-  const weakness = maxDefenseValue(target.weaknesses, types);
-  const immune = hasImmunity(target, types);
+  const resistances = visibleDefenseEntries(context, target, "resistances", target.resistances);
+  const weaknesses = visibleDefenseEntries(context, target, "weaknesses", target.weaknesses);
+  const immunities = visibleDefenseEntries(context, target, "immunities", target.immunities, { showValue: false });
+  const resistanceEntry = maxDefenseEntry(resistances, types);
+  const weaknessEntry = maxDefenseEntry(weaknesses, types);
+  const resistance = entryValue(resistanceEntry);
+  const weakness = entryValue(weaknessEntry);
+  const immune = hasImmunity(immunities, types);
   const reasons = [];
   let scoreDelta = 0;
 
@@ -254,11 +287,19 @@ export function damageAdjustment(context, action, target) {
   }
   if (resistance > 0) {
     scoreDelta -= Math.min(35, resistance * 3);
-    reasons.push(t("ScoreReason.TargetResists", "{target} resists {types} {amount}.", { target: target.name, types: types.join("/"), amount: resistance }));
+    reasons.push(t("ScoreReason.TargetResists", "{target} resists {types} {amount}.", {
+      target: target.name,
+      types: types.join("/"),
+      amount: defenseAmountReason(resistanceEntry, resistance),
+    }));
   }
   if (weakness > 0) {
     scoreDelta += Math.min(45, weakness * 4);
-    reasons.push(t("ScoreReason.TargetWeakness", "{target} has {types} weakness {amount}.", { target: target.name, types: types.join("/"), amount: weakness }));
+    reasons.push(t("ScoreReason.TargetWeakness", "{target} has {types} weakness {amount}.", {
+      target: target.name,
+      types: types.join("/"),
+      amount: defenseAmountReason(weaknessEntry, weakness),
+    }));
   }
   if (Number.isFinite(average) && average > 0 && resistance > average * 0.75) {
     scoreDelta -= 18;
@@ -356,7 +397,8 @@ function saveExpectedMultiplier(action, target, profile) {
 }
 
 export function saveScoreDelta(context, action, target, profile) {
-  if (!canUseTargetDefenses(context) || !action?.saveProfile?.stat || !target) return null;
+  if (!action?.saveProfile?.stat || !target) return null;
+  if (!canUseTargetSave(context, target, action.saveProfile.stat)) return null;
   const saveDc = targetDc(target, action.saveProfile.stat);
   if (!Number.isFinite(saveDc)) return null;
 
@@ -365,9 +407,10 @@ export function saveScoreDelta(context, action, target, profile) {
     const average = damageAverage(action);
     const multiplierDelta = Math.round((expected.multiplier - 0.7) * 34);
     const damageDelta = Number.isFinite(average) ? Math.round(Math.min(36, average * expected.multiplier * 0.7)) : 0;
+    const dcLabel = targetDcLabel(target, action.saveProfile.stat, saveDc);
     const label = expected.incapacitated
-      ? `${titleCase(action.saveProfile.stat)} DC ${saveDc} vs spell DC ${expected.dc} (incapacitation: target resists a degree better).`
-      : `${titleCase(action.saveProfile.stat)} DC ${saveDc} vs spell DC ${expected.dc}.`;
+      ? `${dcLabel} vs spell DC ${expected.dc} (incapacitation: target resists a degree better).`
+      : `${dcLabel} vs spell DC ${expected.dc}.`;
     return {
       scoreDelta: multiplierDelta + damageDelta,
       label,
@@ -377,7 +420,7 @@ export function saveScoreDelta(context, action, target, profile) {
 
   return {
     scoreDelta: Math.max(-18, Math.min(18, 22 - saveDc)),
-    label: `${titleCase(action.saveProfile.stat)} DC ${saveDc}.`,
+    label: `${targetDcLabel(target, action.saveProfile.stat, saveDc)}.`,
   };
 }
 
@@ -440,7 +483,7 @@ export function hasEffectSlug(entity, slug) {
 }
 
 export function targetHasMatchingDefense(context, target, types) {
-  if (!canUseTargetDefenses(context) || !types.length) return false;
+  if (!types.length) return false;
   return ["resistances", "weaknesses", "immunities"].some((key) => {
     const direct = defenseEntries(target?.[key]);
     const document = targetActorDocument(target);
@@ -448,14 +491,26 @@ export function targetHasMatchingDefense(context, target, types) {
       document?.system?.attributes?.[key]
         ?? document?.system?.[key],
     );
-    return [...direct, ...actorValues]
+    return visibleDefenseEntries(context, target, key, [...direct, ...actorValues], { showValue: key !== "immunities" })
       .some((entry) => types.some((type) => matchesDamageType(entry, type)));
   });
 }
 
-export function canUseTargetDefenses(context) {
-  if (typeof context?.isGM === "boolean") return context.isGM;
-  return globalThis.game?.user?.isGM === true;
+export function canUseTargetSave(context, target = null, saveSlug = null) {
+  if (!target || !saveSlug) return false;
+  if (!targetRequiresIntel(target)) return context?.isGM === true;
+  const category = saveSlug === "perception" ? "perception" : "saves";
+  return canUseIntelFact(context, target, category, saveSlug);
+}
+
+export function canUseTargetDefenses(context, target = null, category = null) {
+  const isGM = typeof context?.isGM === "boolean" ? context.isGM : globalThis.game?.user?.isGM === true;
+  if (target && category) return isGM || canUseIntelCategory(context, target, category);
+  if (target) {
+    return isGM || ["traits", "saves", "perception", "weaknesses", "resistances", "immunities"]
+      .some((entry) => canUseIntelCategory(context, target, entry));
+  }
+  return isGM;
 }
 
 export function titleCase(value) {
@@ -470,6 +525,14 @@ function numericDc(...values) {
     if (Number.isFinite(number) && number > 0) return number;
   }
   return null;
+}
+
+export function targetDcLabel(target, dcSlug, dc = targetDc(target, dcSlug)) {
+  const band = dcSlug === "perception"
+    ? target?.intelPerceptionBand
+    : target?.intelSaveBands?.[dcSlug];
+  if (band?.label) return `${titleCase(dcSlug)}: ${band.label}`;
+  return `${titleCase(dcSlug)} DC ${dc}`;
 }
 
 export function targetDc(target, dcSlug) {

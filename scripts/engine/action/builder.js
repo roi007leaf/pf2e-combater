@@ -21,6 +21,8 @@ export const ACTION_BUILDER_TABS = [
 
 const TAB_BY_COST = new Map(ACTION_BUILDER_TABS.map((tab) => [tab.cost, tab]));
 const TAB_IDS = ACTION_BUILDER_TABS.map((tab) => tab.id);
+const COMMAND_ANIMAL_SLUG = "command-an-animal";
+const MINION_ACTION_SOURCE = "minion-action";
 // Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
 const QUICKENED_BUILDER_SLUGS = new Set(["strike", "stride"]);
 const COMPOSITE_ATOMIC_PARTS = new Set(["crawl", "draw", "interact", "stand", "step", "stride"]);
@@ -636,6 +638,138 @@ function builderActionRows(actions, { includeSyntheticInteract = true, keepCompo
   return rows;
 }
 
+function minionActionBudget(action, plan = action?.activityProfile?.minionPlan) {
+  const value = Number(plan?.actionBudget ?? action?.activityProfile?.minionActionBudget ?? 2);
+  return Math.max(1, Math.min(3, Number.isFinite(value) ? Math.round(value) : 2));
+}
+
+function isMinionCommandAction(action) {
+  return String(action?.slug ?? "").toLowerCase() === COMMAND_ANIMAL_SLUG
+    && action?.activityProfile?.minionPlan;
+}
+
+function minionPlanFromDraftStep(step) {
+  return step?.activityProfile?.minionPlan ?? step?.action?.activityProfile?.minionPlan ?? null;
+}
+
+function minionDraftPlanForAction(draft, action) {
+  const plan = action?.activityProfile?.minionPlan;
+  const minionId = String(plan?.minionId ?? "");
+  const minionName = String(plan?.minionName ?? "").toLowerCase();
+  const commandKey = String(actionBuilderKey(action));
+  for (const step of draft?.steps ?? []) {
+    const stepPlan = minionPlanFromDraftStep(step);
+    if (!stepPlan) continue;
+    const sameMinion = minionId
+      ? String(stepPlan.minionId ?? "") === minionId
+      : String(stepPlan.minionName ?? "").toLowerCase() === minionName;
+    if (!sameMinion) continue;
+    const stepKeys = [
+      step?.actionKey,
+      step?.key,
+      step?.action?.key,
+      step?.action?.baseKey,
+      step?.action?.slug,
+      step?.slug,
+    ].map((value) => String(value ?? ""));
+    if (stepKeys.includes(commandKey) || stepKeys.includes(COMMAND_ANIMAL_SLUG)) return stepPlan;
+  }
+  return null;
+}
+
+function uniqueMinionOptions(plan) {
+  const seen = new Set();
+  const options = [];
+  for (const value of [
+    ...(Array.isArray(plan?.actionOptions) ? plan.actionOptions : []),
+    ...(Array.isArray(plan?.steps) ? plan.steps : []),
+  ]) {
+    const name = String(value ?? "").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    options.push(name);
+  }
+  return options;
+}
+
+function minionBrowseRole(option) {
+  const slug = slugify(option);
+  if (["stride", "step", "leap", "stand", "drop-prone"].includes(slug)) return "mobility";
+  if (slug === "seek") return "utility";
+  return "damage";
+}
+
+function minionBrowseRow(commandAction, option, index, draft) {
+  const plan = commandAction.activityProfile.minionPlan;
+  const existingPlan = minionDraftPlanForAction(draft, commandAction);
+  const budget = minionActionBudget(commandAction, existingPlan ?? plan);
+  const used = Array.isArray(existingPlan?.steps) ? existingPlan.steps.length : 0;
+  const hasOpenCommand = Boolean(existingPlan && used < budget);
+  const minion = String(plan.minionName ?? t("MinionPlan.Minion", "Companion")).trim()
+    || t("MinionPlan.Minion", "Companion");
+  const actionName = String(option ?? "").trim() || t("Panel.UnknownAction", "Unknown action");
+  const commandKey = actionBuilderKey(commandAction);
+  return {
+    ...commandAction,
+    id: `${commandKey}::minion::${slugify(actionName)}::${index}`,
+    name: t("MinionPlan.BrowseActionName", "{minion}: {action}", { minion, action: actionName }),
+    slug: `minion-${slugify(actionName)}`,
+    source: MINION_ACTION_SOURCE,
+    role: minionBrowseRole(actionName),
+    score: scoreValue(commandAction) + Math.max(0, 100 - index) / 100000,
+    actionCost: 1,
+    cost: 1,
+    tabCost: 1,
+    budgetCost: hasOpenCommand ? 0 : 1,
+    hideFromBuilder: false,
+    hideUncounted: true,
+    minionCommandKey: commandKey,
+    minionCommandAction: commandAction,
+    minionActionName: actionName,
+    minionActionBudget: budget,
+    minionPlanFull: Boolean(existingPlan && used >= budget),
+    reason: hasOpenCommand
+      ? t("MinionPlan.BrowseAppendReason", "Add {action} to {minion}'s commanded turn.", { action: actionName, minion })
+      : t("MinionPlan.BrowseStartReason", "Spend 1 action to command {minion}; add {action} as its first minion action.", { action: actionName, minion }),
+    activityProfile: {
+      ...(commandAction.activityProfile ?? {}),
+      minionBrowseAction: true,
+      minionActionName: actionName,
+      minionActionBudget: budget,
+      minionPlan: { ...plan, actionBudget: budget },
+    },
+  };
+}
+
+function expandMinionCommandRows(actions, draft) {
+  const rows = [];
+  for (const action of actions) {
+    if (!isMinionCommandAction(action)) {
+      rows.push(action);
+      continue;
+    }
+    const budget = minionActionBudget(action);
+    const commandAction = {
+      ...action,
+      name: t("MinionPlan.CommandAction", "Command Companion"),
+      hideFromBuilder: true,
+      activityProfile: {
+        ...(action.activityProfile ?? {}),
+        minionActionBudget: budget,
+        minionPlan: {
+          ...action.activityProfile.minionPlan,
+          actionBudget: budget,
+        },
+      },
+    };
+    rows.push(commandAction);
+    uniqueMinionOptions(commandAction.activityProfile.minionPlan)
+      .forEach((option, index) => rows.push(minionBrowseRow(commandAction, option, index, draft)));
+  }
+  return rows;
+}
+
 // A Strike auto-filled with no reachable target and nothing to fix it is never useful: it is out
 // of range from where it executes AND no earlier step moves the actor closer. (A Strike that
 // follows a Stride is left alone; the move may bring it into range.) `projectedAction` is the
@@ -671,6 +805,14 @@ function actionUnavailableReason(action) {
 // off-budget uncounted "+" ignores it. `disabled` stays false either way so
 // the row remains visible and interactive (e.g. hover preview, uncounted add).
 function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
+  if (action?.minionPlanFull === true) {
+    return {
+      disabled: false,
+      disabledReason: t("MinionPlan.NoActionsLeft", "Companion has no actions left."),
+      overBudget: true,
+    };
+  }
+
   // A rejected candidate (e.g. no attackable enemy target right now) keeps `available` true --
   // only the ITEM's own usability is false/true, not whether this moment's context has a valid
   // target -- so normalizeDraftOnlyActions' pre-computed disabledReason is the only signal that
@@ -713,10 +855,11 @@ function favoriteEntryKey(favorites, key, baseKey, baseKeyCounts) {
 }
 
 function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned }) {
-  const cost = normalizeCost(action?.actionCost ?? action?.cost);
+  const cost = normalizeCost(action?.tabCost ?? action?.actionCost ?? action?.cost);
+  const budgetCost = normalizeCost(action?.budgetCost ?? action?.actionCost ?? action?.cost);
   const tab = tabForCost(cost);
   const availabilityWarning = action?.available === false || action?.disabled === true ? actionUnavailableReason(action) : "";
-  const disabled = disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned });
+  const disabled = disabledState(action, budgetCost, { normalRemaining, quickenedRemaining, reactionPlanned });
   const confidence = action?.confidence ?? "low";
   const favoriteEntry = favoriteEntryKey(favorites, key, baseKey, baseKeyCounts);
   return {
@@ -725,6 +868,7 @@ function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normal
     baseKey,
     tabId: tab.id,
     cost,
+    budgetCost,
     favorite: favoriteEntry !== null,
     favoriteEntryKey: favoriteEntry,
     ...disabled,
@@ -953,7 +1097,10 @@ export function buildActionBuilderModel({
   // "+" push had no way to split them into their Stride/Strike atoms -- CombaterPanel._addAction
   // now atomizes on add the same way Auto-fill does (builderAtomicActionsForStep), so nothing is
   // ever hidden from Browse just because the planner also knows how to use it.
-  const normalizedCandidates = builderActionRows(candidates ?? [], { keepComposites: true });
+  const normalizedCandidates = expandMinionCommandRows(
+    builderActionRows(candidates ?? [], { keepComposites: true }),
+    draft,
+  );
   const draftOnlyActions = builderActionRows(normalizeDraftOnlyActions(unavailableActions, rejected), { includeSyntheticInteract: false, keepComposites: true });
   const { keyedActions, baseKeyCounts } = assignActionKeys(normalizedCandidates);
   const sortedKeyedActions = [...keyedActions].toSorted((left, right) => {
@@ -1034,7 +1181,7 @@ export function buildActionBuilderModel({
   );
   const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions);
 
-  for (const action of decoratedActions) {
+  for (const action of decoratedActions.filter((entry) => entry.hideFromBuilder !== true)) {
     tabs[action.tabId].all.push(action);
   }
   for (const action of decoratedDraftOnlyActions.filter(showDisabledInBuilder)) {

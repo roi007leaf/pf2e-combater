@@ -105,7 +105,12 @@ function movementPointKey(point) {
 const reachableCentersCache = new Map();
 
 export function movementReachableCenters(origin, distanceFeet, metrics, token = null, context = null) {
-  const cacheKey = `${movementPointKey(origin)}|${distanceFeet}`;
+  const cacheKey = [
+    movementPointKey(origin),
+    distanceFeet,
+    token?.id ?? token?.document?.id ?? "",
+    (globalThis.canvas?.scene?.regions?.size ?? globalThis.canvas?.regions?.placeables?.length ?? 0),
+  ].join("|");
   const cached = reachableCentersCache.get(cacheKey);
   if (cached) return cached;
 
@@ -122,7 +127,12 @@ export function movementReachableCenters(origin, distanceFeet, metrics, token = 
     const key = movementPointKey(center);
     if (seen.has(key)) continue;
     seen.add(key);
-    centers.push({ x: center.x, y: center.y });
+    centers.push({
+      x: center.x,
+      y: center.y,
+      ...(Number.isFinite(Number(center.cost)) ? { cost: Number(center.cost) } : {}),
+      ...(Array.isArray(center.route) ? { route: center.route } : {}),
+    });
   }
   reachableCentersCache.set(cacheKey, centers);
   return centers;

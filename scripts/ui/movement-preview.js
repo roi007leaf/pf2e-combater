@@ -178,6 +178,12 @@ function pointKey(point) {
   return `${point.x},${point.y}`;
 }
 
+function sameReachableCenter(left, right) {
+  if (!left || !right) return false;
+  const epsilon = 0.01;
+  return Math.abs(left.x - right.x) < epsilon && Math.abs(left.y - right.y) < epsilon;
+}
+
 function movementRoutePreviewForStep(context, step, origin, gridSize, options = {}) {
   return movementRouteForStep(context, step, {
     ...movementRouteOptions(gridSize, options),
@@ -721,7 +727,15 @@ export function movementPreviewForStep(context, step, options = {}) {
     // zero-length repeat) AND made the grid re-center on wherever the cursor currently was instead of
     // staying anchored to the last REAL commit.
     const allWaypointCenters = movementWaypointsForStep(step, destinationCenter);
-    const priorWaypointCenters = allWaypointCenters?.length > 1 ? allWaypointCenters.slice(0, -1) : null;
+    const committedWaypointCount = numeric(step?.movementPlan?.committedWaypointCount, NaN);
+    const priorWaypointCenters = Number.isFinite(committedWaypointCount)
+      ? (allWaypointCenters ?? []).slice(
+        0,
+        Math.max(0, Math.min(Math.trunc(committedWaypointCount), Math.max(0, (allWaypointCenters?.length ?? 0) - 1))),
+      )
+      : allWaypointCenters?.length > 1
+        ? allWaypointCenters.slice(0, -1)
+        : null;
     if (priorWaypointCenters?.length) {
       const priorRoute = movementWaypointRouteForPreview(context, step, origin, priorWaypointCenters, gridSize, movementOptions);
       const remainingDistanceFeet = priorRoute.reachable ? Math.max(0, priorRoute.maxCost - priorRoute.cost) : 0;
@@ -740,6 +754,7 @@ export function movementPreviewForStep(context, step, options = {}) {
         movementOptions,
       );
       const reachable = priorRoute.reachable && candidateRoute.reachable;
+      const destinationAvailable = destinationVisible && reachable;
       return {
         ...bareReachablePreview,
         reachableCenters: remainingCenters,
@@ -749,17 +764,30 @@ export function movementPreviewForStep(context, step, options = {}) {
         destinationCenter,
         destinationPlacement,
         destinationMarker: xMarkerForPlacement(destinationPlacement),
-        destinationAvailable: destinationVisible && reachable,
+        destinationAvailable,
+        destinationIllegalReason: destinationAvailable
+          ? ""
+          : !destinationVisible
+            ? "Destination is not visible."
+            : !priorRoute.reachable
+              ? priorRoute.reason
+              : candidateRoute.reason || "Destination is unavailable.",
       };
     }
-    const reachable = centers.some((center) => center.x === destinationCenter.x && center.y === destinationCenter.y);
+    const reachable = centers.some((center) => sameReachableCenter(center, destinationCenter));
+    const destinationAvailable = destinationVisible && reachable;
     return {
       ...bareReachablePreview,
       explicitDestination: true,
       destinationCenter,
       destinationPlacement,
       destinationMarker: xMarkerForPlacement(destinationPlacement),
-      destinationAvailable: destinationVisible && reachable,
+      destinationAvailable,
+      destinationIllegalReason: destinationAvailable
+        ? ""
+        : destinationVisible
+          ? "Destination is outside reachable movement grid."
+          : "Destination is not visible.",
     };
   }
 
@@ -771,12 +799,47 @@ export function movementPreviewForStep(context, step, options = {}) {
 
 function tokenCenter(token) {
   if (!token) return null;
-  if (token.center) return { x: token.center.x, y: token.center.y };
   const document = token.document ?? token;
   const size = canvasGridSize();
+  const x = numeric(document.x ?? token.x, NaN);
+  const y = numeric(document.y ?? token.y, NaN);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    return {
+      x: x + (numeric(document.width, 1) * size) / 2,
+      y: y + (numeric(document.height, 1) * size) / 2,
+    };
+  }
+  if (token.center) return { x: token.center.x, y: token.center.y };
+  return null;
+}
+
+function snapAxisToFootprint(rawValue, topLeftValue, size, cells) {
+  if (cells % 2 !== 0) return topLeftValue + size / 2;
+  return rawValue - topLeftValue < size / 2 ? topLeftValue : topLeftValue + size;
+}
+
+function gridTopLeftForPoint(point) {
+  try {
+    const topLeft = globalThis.canvas?.grid?.getTopLeftPoint?.(point);
+    if (topLeft && Number.isFinite(Number(topLeft.x)) && Number.isFinite(Number(topLeft.y))) {
+      return { x: Number(topLeft.x), y: Number(topLeft.y) };
+    }
+  } catch (_error) {
+    // Fall through to keeping the raw center; only Foundry's grid API knows scene offsets.
+  }
+  return null;
+}
+
+function snappedTokenCenter(center, token) {
+  const raw = directPoint(center);
+  if (!raw) return null;
+  const size = canvasGridSize();
+  const topLeft = gridTopLeftForPoint(raw);
+  if (!topLeft) return raw;
+  const footprint = tokenFootprint(token);
   return {
-    x: numeric(document.x ?? token.x, 0) + (numeric(document.width, 1) * size) / 2,
-    y: numeric(document.y ?? token.y, 0) + (numeric(document.height, 1) * size) / 2,
+    x: snapAxisToFootprint(raw.x, topLeft.x, size, footprint.widthCells),
+    y: snapAxisToFootprint(raw.y, topLeft.y, size, footprint.heightCells),
   };
 }
 
@@ -787,12 +850,16 @@ function canvasContext(context, step) {
   const plannedCenter = directPoint(context?.token?.plannedCenter);
   const contextCenter = directPoint(context?.token?.center);
   const targetContextCenter = directPoint(target?.token?.center);
+  const tokenForFootprint = activeToken ?? context?.token;
+  const rawCenter = contextCenter ?? tokenCenter(activeToken) ?? context?.token?.center;
+  const center = plannedCenter
+    ?? (activeToken ? snappedTokenCenter(rawCenter, tokenForFootprint) : rawCenter);
 
   return {
     ...context,
     token: {
       ...(context?.token ?? {}),
-      center: plannedCenter ?? contextCenter ?? tokenCenter(activeToken) ?? context?.token?.center,
+      center,
       width: numeric(activeToken?.document?.width ?? activeToken?.width ?? context?.token?.width, 1) || 1,
       height: numeric(activeToken?.document?.height ?? activeToken?.height ?? context?.token?.height, 1) || 1,
     },
@@ -857,12 +924,28 @@ function drawXMarker(graphics, marker, scale, color = 0xf0eee8) {
   }
 }
 
-// Ring marking where the Stride begins, sized to the actor's footprint (like the destination X), so
-// the overlay reads as "from here to there". `scale` is px-per-foot; pixelSize is px-per-cell.
+function tokenVisualFootprint(token, fallback = null) {
+  const document = token?.document ?? token ?? {};
+  const fallbackWidth = numeric(fallback?.widthCells, 1) || 1;
+  const fallbackHeight = numeric(fallback?.heightCells, 1) || 1;
+  const rawWidthCells = numeric(document.width, NaN);
+  const rawHeightCells = numeric(document.height, NaN);
+  return {
+    widthCells: Number.isFinite(rawWidthCells) && rawWidthCells > 0 ? rawWidthCells : fallbackWidth,
+    heightCells: Number.isFinite(rawHeightCells) && rawHeightCells > 0 ? rawHeightCells : fallbackHeight,
+  };
+}
+
+// Ring marking where the Stride begins, sized to the actor's visual footprint (not the movement
+// occupancy floor), so Tiny familiars get a Tiny ring while Large creatures still get a large ring.
+// `scale` is px-per-foot; pixelSize is px-per-cell.
 function drawOriginMarker(graphics, origin, footprint, scale, color = 0x66c78f) {
   if (!origin || typeof graphics.drawCircle !== "function") return;
   const { pixelSize } = previewGridSize();
-  const cells = Math.max(1, Math.min(footprint?.widthCells ?? 1, footprint?.heightCells ?? 1));
+  const cells = Math.max(0.25, Math.min(
+    numeric(footprint?.widthCells, 1) || 1,
+    numeric(footprint?.heightCells, 1) || 1,
+  ));
   const radius = (cells * pixelSize) / 2;
   const x = origin.x * scale;
   const y = origin.y * scale;
@@ -927,14 +1010,26 @@ function ghostSpriteScale(token) {
   return { x: x > 0 ? x : 1, y: y > 0 ? y : 1 };
 }
 
+function ghostVisualSize(token, placement, scale) {
+  const { sceneDistance } = previewGridSize();
+  const fallbackFootprint = {
+    widthCells: numeric(placement?.width, 0) / sceneDistance,
+    heightCells: numeric(placement?.height, 0) / sceneDistance,
+  };
+  const visualFootprint = tokenVisualFootprint(token, fallbackFootprint);
+  const width = visualFootprint.widthCells * sceneDistance * scale;
+  const height = visualFootprint.heightCells * sceneDistance * scale;
+  return { width, height };
+}
+
 // A translucent copy of the actor's own token art at a candidate landing square, so the preview
 // shows what will actually be there instead of only an abstract colored box. Best-effort: silently
 // omitted (never a hard error) if this Foundry version doesn't expose a token texture the way any of
 // the above paths expect, or PIXI.Sprite isn't available (e.g. this file's own headless self-tests).
-// `placement` is the SAME {x, y, width, height} (scene units) object drawPlacement/drawXMarker
-// already render the destination box/X from -- reusing it (rather than separately recomputing a size
-// from footprint * gridSize) guarantees the ghost's un-ringed footprint size is pixel-identical to
-// that box; the ring subject scale on top of it then matches the real token's rendered size.
+// `placement` is the fallback {x, y, width, height} (scene units) object drawPlacement/drawXMarker
+// use for the destination box/X. The sprite's normal size prefers the token document's visual
+// width/height directly, so sub-cell tokens (Tiny familiars, 0.5 x 0.5) do not get inflated to the
+// movement-footprint floor of one whole grid square.
 function drawGhostToken(graphics, token, center, placement, scale) {
   if (!center || !placement || typeof graphics.addChild !== "function") return;
   const Sprite = globalThis.PIXI?.Sprite;
@@ -949,8 +1044,9 @@ function drawGhostToken(graphics, token, center, placement, scale) {
     sprite.alpha = 0.55;
     sprite.anchor?.set?.(0.5, 0.5);
     const spriteScale = ghostSpriteScale(token);
-    const width = numeric(placement.width, 0) * scale * spriteScale.x;
-    const height = numeric(placement.height, 0) * scale * spriteScale.y;
+    const visualSize = ghostVisualSize(token, placement, scale);
+    const width = visualSize.width * spriteScale.x;
+    const height = visualSize.height * spriteScale.y;
     if (width > 0) sprite.width = width;
     if (height > 0) sprite.height = height;
     const rotation = numeric(token?.document?.rotation, 0);
@@ -1135,6 +1231,15 @@ function computeMovementPreview(context, step) {
   const toSceneToken = (token) => token
     ? ({ ...token, center: toScene(token.center) })
     : token;
+  const toSceneCombatant = (entry) => entry
+    ? ({
+      ...entry,
+      center: toScene(entry.center),
+      token: toSceneToken(entry.token),
+    })
+    : entry;
+  const toSceneCombatants = (entries) =>
+    Array.isArray(entries) ? entries.map((entry) => toSceneCombatant(entry)).filter(Boolean) : entries;
   const toSceneMovementPlan = (movementPlan) => movementPlan
     ? {
       ...movementPlan,
@@ -1151,7 +1256,7 @@ function computeMovementPreview(context, step) {
       ...(step.destination ? { destination: toScene(step.destination) } : {}),
       ...(step.movementPlan ? { movementPlan: toSceneMovementPlan(step.movementPlan) } : {}),
       preferredTarget: step.preferredTarget
-        ? { ...step.preferredTarget, token: toSceneToken(step.preferredTarget.token) }
+        ? toSceneCombatant(step.preferredTarget)
         : step.preferredTarget,
       activityProfile: step.activityProfile
         ? {
@@ -1171,17 +1276,14 @@ function computeMovementPreview(context, step) {
       width: rawContext.token?.width,
       height: rawContext.token?.height,
     },
+    targets: toSceneCombatants(rawContext.targets),
+    enemies: toSceneCombatants(rawContext.enemies),
+    allies: toSceneCombatants(rawContext.allies),
     battlefield: {
       ...(rawContext.battlefield ?? {}),
-      targets: (rawContext.battlefield?.targets ?? []).map((target) => ({
-        ...target,
-        token: {
-          ...(target.token ?? {}),
-          center: toScene(target.token?.center),
-          width: target.token?.width,
-          height: target.token?.height,
-        },
-      })),
+      targets: toSceneCombatants(rawContext.battlefield?.targets ?? []),
+      enemies: toSceneCombatants(rawContext.battlefield?.enemies ?? []),
+      allies: toSceneCombatants(rawContext.battlefield?.allies ?? []),
     },
   };
   const preview = movementPreviewForStep(sceneContext, sceneStep, { gridSize: sceneDistance, collisionScale: scale });
@@ -1301,7 +1403,7 @@ export function showMovementPreview(context, step) {
   }
 
   // Circle the Stride's starting square so it's clear where the movement begins.
-  drawOriginMarker(graphics, preview.origin, preview.footprint, scale, AVAILABLE_COLOR);
+  drawOriginMarker(graphics, preview.origin, tokenVisualFootprint(liveToken, preview.footprint), scale, AVAILABLE_COLOR);
   // Pin the live readout to the point being placed (destination), showing the elevation it lands at.
   const pendingElevation = Number.isFinite(preview.elevationDelta)
     ? (Number(preview.originElevation) || 0) + preview.elevationDelta

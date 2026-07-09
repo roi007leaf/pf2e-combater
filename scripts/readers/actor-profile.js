@@ -60,14 +60,15 @@ function readHp(actor) {
   };
 }
 
-function readSpeed(actor) {
-  // Prepared PF2e actors expose land Speed under system.movement.speeds.land;
+export function readActorSpeed(actor) {
+  // Prepared PF2e actors expose land Speed under movement.speeds.land or system.movement.speeds.land;
   // the older/compendium shape uses system.attributes.speed.
-  const land = actor?.system?.movement?.speeds?.land;
+  const realActor = actor?.document ?? actor;
+  const land = realActor?.movement?.speeds?.land ?? realActor?.system?.movement?.speeds?.land;
   const fromMovement = numericValue(land?.value ?? land?.total ?? land?.base, null);
   if (fromMovement !== null) return fromMovement;
 
-  const speed = actor?.system?.attributes?.speed;
+  const speed = realActor?.system?.attributes?.speed;
   return numericValue(
     speed?.value
       ?? speed?.total
@@ -76,7 +77,7 @@ function readSpeed(actor) {
   );
 }
 
-// PF2e creature speed keys (system.movement.speeds) -> the Foundry movement-action a Stride uses
+// PF2e creature speed keys (movement.speeds / system.movement.speeds) -> the Foundry movement-action a Stride uses
 // when travelling on that speed. "land" is the default walking Stride.
 const MOVEMENT_SPEED_ACTIONS = { land: "walk", fly: "fly", burrow: "burrow", swim: "swim", climb: "climb" };
 
@@ -91,7 +92,10 @@ function movementActionAvailable(action) {
 // to offer a per-Stride movement-type picker and to size reachable range by the chosen speed.
 export function actorMovementOptions(actor) {
   const realActor = actor?.document ?? actor;
-  const speeds = realActor?.system?.movement?.speeds;
+  const speeds = {
+    ...(realActor?.system?.movement?.speeds ?? {}),
+    ...(realActor?.movement?.speeds ?? {}),
+  };
   const seen = new Set();
   const options = [];
   const add = (action, speed) => {
@@ -122,7 +126,7 @@ export function actorMovementOptions(actor) {
   }
 
   // Walking is always available as the baseline, even on the legacy/compendium data shape.
-  if (!seen.has("walk")) add("walk", readSpeed(realActor));
+  if (!seen.has("walk")) add("walk", readActorSpeed(realActor));
 
   options.sort((left, right) => (left.action === "walk" ? -1 : right.action === "walk" ? 1 : 0));
   return options;
@@ -400,7 +404,7 @@ export function readActorProfile(actor) {
     effects: readEffects(actor),
     combatState: readCombatState(actor),
     hp: readHp(actor),
-    speed: readSpeed(actor),
+    speed: readActorSpeed(actor),
     reach,
     meleeReach: reach,
     defenses: readDefenses(actor),

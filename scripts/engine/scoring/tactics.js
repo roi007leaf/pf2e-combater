@@ -1,5 +1,6 @@
 import { battlefieldPressure } from "../../rules/battlefield-analysis.js";
 import { targetHasMarkState } from "../../rules/combat-state.js";
+import { planMinionSubturn } from "../../rules/minion-planner.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
 import { bestBuffRecipient } from "./buffs.js";
 import { scoreActivityProfileTactics } from "./activity-tactics.js";
@@ -121,6 +122,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
   let areaHitCount = null;
   let areaPlacementCenter = null;
   let areaPlacementAimPoint = null;
+  let minionPlan = null;
   let score = baseScore(action);
 
   if (Number(action.interactDrawCost) > 0) {
@@ -337,8 +339,15 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
   }
 
   if (action.slug === "command-an-animal") {
+    minionPlan = planMinionSubturn(context, {
+      minionActionBudget: action.activityProfile?.minionActionBudget,
+    });
     score += 18;
     reasons.push(t("ScoreReason.CompanionOrMinionCan", "Companion or minion can contribute this turn."));
+    if (minionPlan) {
+      score += minionPlan.scoreDelta;
+      reasons.push(...minionPlan.reasons);
+    }
   }
 
   if (action.slug === "administer-first-aid") {
@@ -407,5 +416,6 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
     areaHitCount,
     areaPlacementCenter,
     areaPlacementAimPoint,
+    minionPlan,
   };
 }

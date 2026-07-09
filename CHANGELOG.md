@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.1.4]
+
+### Added
+
+- **Recall Knowledge Intel is now tracked on NPC actors and survives future combats.** GMs can mark
+  individual discovered facts such as traits, Fortitude/Reflex/Will saves, Perception, weaknesses,
+  resistances, and immunities. Revealed data is saved to the actor so the same NPC keeps its known
+  facts when it appears again.
+- **Players can open a styled Known Intel window for enemy combatants.** Player-facing Intel follows
+  the combat tracker/token display name, so hidden NPC actor names stay hidden until Foundry itself
+  reveals them. The window refreshes while open when names or revealed facts change.
+- **GMs can reveal either exact values or level-scaled bands.** Exact mode shows real DCs and
+  amounts; banded mode shows Low, Mid, or High to players while GMs still see the actual numbers in
+  the editor.
+- **Auto-fill and Shuffle now respect player knowledge.** GM planning can use full NPC defenses,
+  while player-side scoring only uses Recall Knowledge facts the GM has revealed, so hidden saves,
+  weaknesses, resistances, immunities, and Perception no longer leak into player recommendations.
+- **Command an Animal now supports companion/familiar subturn planning.** The action shows nested
+  minion steps in the Combater panel and follows PF2e's Minion trait: one command action grants the
+  minion its two-action turn.
+- **Shift-click Auto-fill can now replace the current plan with a complete recalculated plan.** This
+  gives players a fast way to discard a partial/manual draft and rebuild the whole turn from the
+  current battlefield state.
+
+### Changed
+
+- **Companion detection now works for canvas-only animal, construct, and undead companions.** These
+  companions do not need to be in the combat tracker and do not need PF2e's `minion` trait to feed
+  Command an Animal substeps; eidolons remain excluded because they use the shared-action rules.
+- **Command an Animal substeps now use full execution controls.** Movement substeps get a destination
+  picker, executed minion substeps get their own revert button, and familiar Attack Roll substeps
+  track their executed state independently of the parent command row.
+- **Minion Stride substeps now show and use the companion or familiar's own movement modes.** The
+  panel reads live PF2e movement data such as land, fly, swim, and climb speeds; the movement button
+  can cycle modes when more than one mode is available, and destination picking, hover preview, and
+  execution all use the selected mode.
+- **Intel and tactic UI layout was tightened.** Long tactic labels wrap instead of widening the
+  header, player NPC Intel avoids duplicate text, and GM/player Intel windows use purpose-built
+  controls instead of generic dialogs.
+
+### Fixed
+
+- **Self-buff spells such as Agile Feet no longer get enemy targets just because their text mentions
+  an offensive or movement action.** These spells now score and display as caster-focused buffs
+  instead of pointing at the selected enemy.
+- **The Combater panel now scrolls internally when the planned turn grows taller than the window.**
+  The actor header and toolbar stay fixed while the plan list scrolls, so nested composite and
+  companion turns no longer run off the bottom of the window.
+- **Minion movement buttons now update reliably even for older drafts that only stored Walk.** The
+  click handler refreshes from the live companion/familiar actor before cycling, so pressing Walk can
+  switch to Fly or another available movement mode instead of doing nothing.
+
 ## [1.1.3]
 
 ### Added

@@ -3,38 +3,64 @@ import { readVisionerDetectionState } from "../integrations/visioner.js";
 import { collectionValues } from "../foundry-data.js";
 import { movementActionsSpent } from "./token-refresh.js";
 import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
+import {
+  INTEL_REVEAL_MODES,
+  bandedIntelDefenseEntry,
+  canUseIntelCategory,
+  canUseIntelFact,
+  intelSaveBand,
+  intelDefenseFactId,
+  intelTraitFactId,
+  readIntelLedger,
+  readIntelRevealMode,
+} from "../rules/intel-ledger.js";
 
 const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
 
-function actorSummary(actor, { includeDocument = true } = {}) {
+function actorSummary(actor, { includeDocument = true, intelLedger = null, intelRevealMode = null } = {}) {
   if (!actor) return null;
   const summary = {
     id: actor.id,
     uuid: actor.uuid,
     name: actor.name,
+    type: actor.type,
     img: actor.img,
     documentName: actor.documentName ?? "Actor",
+    ...(intelLedger ? { intelLedger } : {}),
+    ...(intelRevealMode ? { intelRevealMode } : {}),
   };
   if (includeDocument) summary.document = actor;
   return summary;
 }
 
-function tokenDisplayName(token, actor = tokenActor(token)) {
+function tokenDisplayName(token, actor = tokenActor(token), combatant = null) {
+  const document = token?.document ?? token;
+  if (game?.user?.isGM !== true
+    && globalThis.game?.pf2e?.settings?.tokens?.nameVisibility
+    && combatant?.playersCanSeeName !== true
+    && document?.playersCanSeeName === false) {
+    return globalThis.game?.i18n?.localize?.("COMBATANT.Unknown") || "Unknown";
+  }
+  if (game?.user?.isGM !== true
+    && globalThis.game?.pf2e?.settings?.tokens?.nameVisibility
+    && combatant?.playersCanSeeName === false) {
+    return globalThis.game?.i18n?.localize?.("COMBATANT.Unknown") || "Unknown";
+  }
   return token?.name
-    ?? token?.document?.name
+    ?? document?.name
     ?? actor?.name
     ?? null;
 }
 
-function tokenSummary(token) {
+function tokenSummary(token, { combatant = null } = {}) {
   const document = token?.document ?? token;
   if (!document) return null;
   const actor = tokenActor(token);
   return {
     id: document.id,
     uuid: document.uuid,
-    name: tokenDisplayName(token, actor),
+    name: tokenDisplayName(token, actor, combatant),
     img: document.texture?.src ?? token?.texture?.src,
     disposition: tokenDisposition(token),
     center: tokenCenter(token),
@@ -57,9 +83,21 @@ function tokenHidden(token) {
     || token?.isVisible === false;
 }
 
+function combatantHidden(combatant) {
+  const document = combatant?.document ?? combatant;
+  return combatant?.hidden === true || document?.hidden === true;
+}
+
 function canUseTokenForPlayerContext(token) {
   if (game?.user?.isGM === true) return true;
   return !tokenHidden(token);
+}
+
+function canUseCombatantForPlayerContext(combatant) {
+  if (game?.user?.isGM === true) return true;
+  if (!combatant) return true;
+  if (typeof combatant.visible === "boolean") return combatant.visible;
+  return !combatantHidden(combatant);
 }
 
 function actorType(actor) {
@@ -214,16 +252,87 @@ function readImmunities(actor) {
   return plainValue(actor?.system?.attributes?.immunities ?? actor?.system?.immunities);
 }
 
-function readDefensiveMeta(actor, canSeeDefenses) {
+function defenseEntries(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value instanceof Map) return Array.from(value.values());
+  if (typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function intelTargetForActor(actor, intelLedger, intelRevealMode = readIntelRevealMode(actor)) {
+  return { actor, intelLedger, intelRevealMode };
+}
+
+function readKnownSaves(actor, target) {
+  const saves = readSaves(actor);
+  const revealMode = readIntelRevealMode(target);
+  return Object.fromEntries(Object.entries(saves)
+    .filter(([save, value]) => Number.isFinite(Number(value)) && canUseIntelFact(null, target, "saves", save))
+    .map(([save, value]) => {
+      if (revealMode !== INTEL_REVEAL_MODES.band) return [save, value];
+      return [save, intelSaveBand(value, actor)?.approximateDc ?? value];
+    }));
+}
+
+function readKnownSaveBands(actor, target) {
+  if (readIntelRevealMode(target) !== INTEL_REVEAL_MODES.band) return {};
+  const saves = readSaves(actor);
+  return Object.fromEntries(Object.entries(saves)
+    .filter(([save, value]) => Number.isFinite(Number(value)) && canUseIntelFact(null, target, "saves", save))
+    .map(([save, value]) => [save, intelSaveBand(value, actor)])
+    .filter(([, band]) => band));
+}
+
+function readKnownPerception(actor, target) {
+  if (!canUseIntelFact(null, target, "perception", "perception")) return { dc: null, mod: null };
+  const perception = readPerception(actor);
+  if (readIntelRevealMode(target) !== INTEL_REVEAL_MODES.band || !Number.isFinite(Number(perception.dc))) {
+    return perception;
+  }
+  const band = intelSaveBand(perception.dc, actor);
+  if (!band) return perception;
+  return {
+    dc: band.approximateDc,
+    mod: band.approximateDc - 10,
+    intelBand: band.id,
+    intelBandLabel: band.label,
+    exactValueHidden: true,
+  };
+}
+
+function readKnownPerceptionBand(actor, target) {
+  if (readIntelRevealMode(target) !== INTEL_REVEAL_MODES.band) return null;
+  if (!canUseIntelFact(null, target, "perception", "perception")) return null;
+  return intelSaveBand(readPerception(actor).dc, actor);
+}
+
+function readKnownDefense(actor, target, category, readValue, { showValue = true } = {}) {
+  if (!canUseIntelCategory(null, target, category)) return null;
+  const entries = defenseEntries(readValue(actor))
+    .filter((entry) =>
+      canUseIntelFact(null, target, category, intelDefenseFactId(entry, { showValue })));
+  return readIntelRevealMode(target) === INTEL_REVEAL_MODES.band
+    ? entries.map((entry) => bandedIntelDefenseEntry(entry, actor, { showValue }))
+    : entries;
+}
+
+function readDefensiveMeta(actor, canSeeDefenses, intelLedger = readIntelLedger(actor)) {
+  const intelRevealMode = readIntelRevealMode(actor);
   if (!canSeeDefenses) {
+    const intelTarget = intelTargetForActor(actor, intelLedger, intelRevealMode);
+    const perception = readKnownPerception(actor, intelTarget);
     return {
       ac: null,
-      saves: {},
-      perception: { dc: null, mod: null },
-      perceptionDC: null,
-      resistances: null,
-      weaknesses: null,
-      immunities: null,
+      saves: readKnownSaves(actor, intelTarget),
+      intelSaveBands: readKnownSaveBands(actor, intelTarget),
+      perception,
+      intelPerceptionBand: readKnownPerceptionBand(actor, intelTarget),
+      perceptionDC: perception.dc,
+      resistances: readKnownDefense(actor, intelTarget, "resistances", readResistances),
+      weaknesses: readKnownDefense(actor, intelTarget, "weaknesses", readWeaknesses),
+      immunities: readKnownDefense(actor, intelTarget, "immunities", readImmunities, { showValue: false }),
+      intelRevealMode,
     };
   }
 
@@ -238,6 +347,7 @@ function readDefensiveMeta(actor, canSeeDefenses) {
     resistances: readResistances(actor),
     weaknesses: readWeaknesses(actor),
     immunities: readImmunities(actor),
+    intelRevealMode,
   };
 }
 
@@ -257,25 +367,34 @@ function attackTargetableConditions(conditions) {
     && !hasCondition(conditions, "unnoticed");
 }
 
-function tokenEntry(token, originToken, { canSeeDefenses = false } = {}) {
+function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = null } = {}) {
   const actor = tokenActor(token);
+  const intelLedger = readIntelLedger(actor);
+  const intelRevealMode = readIntelRevealMode(actor);
+  const intelTarget = intelTargetForActor(actor, intelLedger, intelRevealMode);
   const conditions = readConditions(actor);
   const effects = readEffects(actor, { includeHidden: canSeeDefenses });
   const visionerDetectionState = readVisionerDetectionState(tokenSummary(originToken), tokenSummary(token));
   return {
     id: token?.id ?? token?.document?.id,
-    name: tokenDisplayName(token, actor),
+    name: tokenDisplayName(token, actor, combatant),
     disposition: tokenDisposition(token),
-    actor: actorSummary(actor, { includeDocument: canSeeDefenses }),
-    token: tokenSummary(token),
+    actor: actorSummary(actor, { includeDocument: canSeeDefenses, intelLedger, intelRevealMode }),
+    token: tokenSummary(token, { combatant }),
     distance: measureDistance(originToken, token),
+    intelLedger,
+    intelRevealMode,
+    traits: canSeeDefenses
+      ? actorTraitSlugs(actor)
+      : actorTraitSlugs(actor).filter((trait) =>
+        canUseIntelFact(null, intelTarget, "traits", intelTraitFactId(trait))),
     visionerDetectionState,
     attackTargetable: attackTargetableDetectionState(visionerDetectionState)
       && attackTargetableConditions(conditions),
     hpPercent: hpPercent(actor),
     conditions,
     effects,
-    ...readDefensiveMeta(actor, canSeeDefenses),
+    ...readDefensiveMeta(actor, canSeeDefenses, intelLedger),
   };
 }
 
@@ -400,12 +519,53 @@ function actorTraitSlugs(actor) {
   return [];
 }
 
-// Familiars carry an explicit `system.master.id` link (exposed as `actor.familiar` by the PF2e
-// system). Animal/construct/undead companions have no such schema field, so the only available
-// signal is the shared "minion" trait (PF2e's own term for "familiar, companion, or other minion
-// whose actions are controlled by another creature") plus common ownership. Eidolons carry the
-// separate "eidolon" trait and are excluded on purpose: they act via shared actions each round,
-// not via Command an Animal.
+function actorTraitSet(actor) {
+  return new Set(actorTraitSlugs(actor).map((trait) => String(trait).toLowerCase()).filter(Boolean));
+}
+
+function isEidolonActor(actor) {
+  return actorType(actor) === "eidolon" || actorTraitSet(actor).has("eidolon");
+}
+
+function isFamiliarActor(actor) {
+  return actorType(actor) === "familiar";
+}
+
+function isCompanionActor(actor) {
+  if (actorType(actor) !== "character") return false;
+  const traits = actorTraitSet(actor);
+  return traits.has("minion") && !isEidolonActor(actor);
+}
+
+function actorReferenceIds(actor) {
+  return new Set([
+    actor?.id,
+    actor?.uuid,
+    actor?.document?.id,
+    actor?.document?.uuid,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean));
+}
+
+function familiarMasterIds(familiar) {
+  const master = familiar?.system?.master ?? {};
+  return [
+    master.id,
+    master.uuid,
+    master.actorId,
+    master.value,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean);
+}
+
+function familiarBelongsToActor(actor, familiar) {
+  if (!isFamiliarActor(familiar)) return false;
+  if (familiar === actor?.familiar) return true;
+  const actorIds = actorReferenceIds(actor);
+  return familiarMasterIds(familiar).some((id) => actorIds.has(id));
+}
+
+// PF2e models familiars as `familiar` actors with `system.master.id`, while animal/construct
+// companions are `character` actors with the `minion` trait. Ordinary NPC animals are not owned
+// minions and must not be treated as Command an Animal subturns.
 function sharesNonDefaultOwner(actorA, actorB) {
   const ownerLevel = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;
   const ownershipA = actorA?.ownership;
@@ -419,8 +579,9 @@ function sharesNonDefaultOwner(actorA, actorB) {
 
 function isCommandableMinion(actor, candidate) {
   if (!candidate || candidate === actor) return false;
-  if (candidate === actor?.familiar) return true;
-  return actorTraitSlugs(candidate).includes("minion") && sharesNonDefaultOwner(actor, candidate);
+  if (isEidolonActor(candidate)) return false;
+  if (familiarBelongsToActor(actor, candidate)) return true;
+  return isCompanionActor(candidate) && sharesNonDefaultOwner(actor, candidate);
 }
 
 export function readCombatContext(refreshSource = "manual", options = {}) {
@@ -433,19 +594,24 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
 
   const activeToken = tokenForCombatant(combatant, actor);
   const activeDisposition = numericDisposition(activeToken);
-  const activeTokenName = tokenDisplayName(activeToken, actor);
+  const activeTokenName = tokenDisplayName(activeToken, actor, combatant);
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
+  const combatants = collectionValues(combat.combatants);
+  const combatantForToken = (token) => combatants.find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
   const tokens = placeables
     .filter((token) => tokenActor(token))
     .filter(canUseTokenForPlayerContext);
   // Familiars/companions/eidolons are excluded from the encounter tracker by the PF2e system
   // itself (their actions happen on the master's turn), so they never appear in `combatTokens`.
   // Minion detection has to run against the wider `tokens` pool instead.
-  const minionTokens = tokens.filter((token) => isCommandableMinion(actor, tokenActor(token)));
+  const minionTokens = tokens.filter((token) =>
+    !tokenInCombat(combat, token) && isCommandableMinion(actor, tokenActor(token)));
   const minions = minionTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
 
-  const combatTokens = tokens.filter((token) => tokenInCombat(combat, token));
+  const combatTokens = tokens
+    .filter((token) => tokenInCombat(combat, token))
+    .filter((token) => canUseCombatantForPlayerContext(combatantForToken(token)));
   const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
   const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
 
@@ -454,8 +620,8 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const enemyTokens = otherTokens
     .filter((token) => isEnemyDisposition(token, activeDisposition));
 
-  const allies = allyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
-  const enemies = enemyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
+  const allies = allyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) }));
+  const enemies = enemyTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) }));
 
   const userTargets = Array.from(game?.user?.targets ?? []);
   const matchedTargetTokens = enemyTokens.filter((token) =>
@@ -466,7 +632,7 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const targetTokens = matchedTargetTokens.length ? matchedTargetTokens : nearestEnemyTokens.slice(0, 1);
   const targets = targetTokens
     .filter(Boolean)
-    .map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
+    .map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) }));
   const movementSpent = movementActionsSpent({ ...combat, combatant });
 
   return {
@@ -488,7 +654,7 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
       name: activeTokenName ?? actor.name,
       profile: readActorProfile(actor),
     },
-    token: tokenSummary(activeToken),
+    token: tokenSummary(activeToken, { combatant }),
     actionsSpent: {
       movement: movementSpent,
       normal: movementSpent,

@@ -1,0 +1,107 @@
+<div class="combater-intel-shell {{#if editable}}is-editable{{else}}is-readonly{{/if}}">
+  <header class="combater-intel-hero">
+    <div class="combater-intel-hero-icon"><i class="fa-solid fa-brain"></i></div>
+    <div>
+      <h2>{{title}}</h2>
+      <p>{{help}}</p>
+    </div>
+  </header>
+
+  {{#if hasEntries}}
+    <form class="combater-intel-body" data-intel-form>
+      <div class="combater-intel-grid">
+        {{#each entries}}
+          <article class="combater-intel-entry {{#if hasRevealed}}has-revealed{{/if}}" data-intel-entry>
+            <header class="combater-intel-target-head">
+              {{#if img}}
+                <img class="combater-intel-img" src="{{img}}" alt="">
+              {{else}}
+                <span class="combater-intel-img-placeholder"><i class="fa-solid fa-user-secret"></i></span>
+              {{/if}}
+              <div>
+                <h3>{{name}}</h3>
+                <span
+                  data-intel-status
+                  data-intel-known-label="{{knownLabel}}"
+                  data-intel-none-label="{{noneLabel}}"
+                  data-intel-selected-label="{{selectedLabel}}"
+                >{{#if hasRevealed}}{{knownLabel}}{{else}}{{noneLabel}}{{/if}}</span>
+              </div>
+            </header>
+
+            {{#if ../editable}}
+              <div class="combater-intel-editor">
+                <section class="combater-intel-reveal-style">
+                  <span>{{revealStyleLabel}}</span>
+                  <div class="combater-intel-reveal-options">
+                    {{#each revealModeOptions}}
+                      <label class="combater-intel-reveal-option {{#if checked}}is-selected{{/if}}">
+                        <input type="radio" name="{{inputName}}" value="{{id}}" data-intel-reveal-mode {{#if checked}}checked{{/if}}>
+                        <strong>{{label}}</strong>
+                        <small>{{hint}}</small>
+                      </label>
+                    {{/each}}
+                  </div>
+                </section>
+                {{#each categories}}
+                  <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category>
+                    <header class="combater-intel-category-head">
+                      <span class="combater-intel-category-mark">
+                        <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
+                      </span>
+                      <span class="combater-intel-category-text">
+                        <strong>{{label}}</strong>
+                      </span>
+                    </header>
+                    <div class="combater-intel-facts">
+                      {{#each facts}}
+                        <label class="combater-intel-fact {{#if checked}}is-known{{/if}}" data-intel-fact>
+                          <input type="checkbox" name="{{inputName}}" value="{{id}}" {{#if checked}}checked{{/if}}>
+                          <span class="combater-intel-fact-mark">
+                            <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
+                          </span>
+                          <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
+                        </label>
+                      {{/each}}
+                    </div>
+                  </section>
+                {{/each}}
+              </div>
+            {{else}}
+              {{#if hasRevealed}}
+                <div class="combater-intel-revealed">
+                  {{#each categories}}
+                    {{#if hasValues}}
+                      <section class="combater-intel-revealed-section">
+                        <h4>{{label}}</h4>
+                        <ul>
+                          {{#each values}}<li>{{this}}</li>{{/each}}
+                        </ul>
+                      </section>
+                    {{/if}}
+                  {{/each}}
+                </div>
+              {{else}}
+                <p class="combater-intel-empty">{{../noRevealedData}}</p>
+              {{/if}}
+            {{/if}}
+          </article>
+        {{/each}}
+      </div>
+    </form>
+  {{else}}
+    <p class="combater-intel-empty">{{noTargetsLabel}}</p>
+  {{/if}}
+
+  <footer class="combater-intel-actions">
+    {{#if editable}}
+      <button type="button" class="combater-intel-secondary" data-intel-close>{{cancelLabel}}</button>
+      <button type="button" class="combater-intel-primary" data-intel-save>
+        <i class="fa-solid fa-floppy-disk"></i>
+        <span>{{saveLabel}}</span>
+      </button>
+    {{else}}
+      <button type="button" class="combater-intel-primary" data-intel-close>{{closeLabel}}</button>
+    {{/if}}
+  </footer>
+</div>

@@ -7,10 +7,10 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Spell items: **1802**
 - Combat-castable spells: **1543**
 - Non-combat cast-time skipped: **259**
-- Auto-fill eligible: **1375**
-- Browse-only: **28**
-- Context-only: **140**
-- Never auto-fill: **0**
+- Auto-fill eligible: **1361**
+- Browse-only: **36**
+- Context-only: **145**
+- Never auto-fill: **1**
 - Needs review: **0**
 
 ## Auto-fill Eligible
@@ -20,7 +20,6 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Vampiric Maiden (`vampiric-maiden`, rank 4) -> `save-damage`, high confidence
 - Invoke True Name (`invoke-true-name`, rank 1) -> `setup`, medium confidence
 - Rainbow Fumarole (`rainbow-fumarole`, rank 8) -> `control`, medium confidence
-- Liberating Command (`liberating-command`, rank 1) -> `control`, medium confidence
 - Hungry Depths (`hungry-depths`, rank 7) -> `area-damage`, high confidence
 - Cry of Destruction (`cry-of-destruction`, rank 1) -> `area-damage`, high confidence
 - Elemental Toss (`elemental-toss`, rank 1) -> `damage`, high confidence
@@ -28,24 +27,19 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Soothing Ballad (`soothing-ballad`, rank 7) -> `healing`, high confidence
 - Helpful Reload (`helpful-reload`, rank 2) -> `buff`, medium confidence
 - Phantasmal Calamity (`phantasmal-calamity`, rank 6) -> `area-damage`, high confidence
-- Empty Inside (`empty-inside`, rank 1) -> `combat-utility`, medium confidence
 - Steal Shadow (`steal-shadow`, rank 3) -> `save-damage`, high confidence
 - Rusting Grasp (`rusting-grasp`, rank 4) -> `control`, medium confidence
 - Whirlpool (`whirlpool`, rank 8) -> `area-damage`, high confidence
 - Ooze Form (`ooze-form`, rank 3) -> `control`, medium confidence
 - Eclipse Burst (`eclipse-burst`, rank 7) -> `area-damage`, high confidence
 - Fearful Feast (`fearful-feast`, rank 4) -> `healing`, high confidence
-- Revealing Light (`revealing-light`, rank 2) -> `control`, medium confidence
-- Shattering Gem (`shattering-gem`, rank 1) -> `save-damage`, high confidence
+- Revealing Light (`revealing-light`, rank 2) -> `debuff`, medium confidence
+- Shattering Gem (`shattering-gem`, rank 1) -> `defense`, high confidence
 - Untamed Shift (`untamed-shift`, rank 1) -> `buff`, medium confidence
-- Figment (`figment`, rank 1) -> `buff`, medium confidence
 - Massacre (`massacre`, rank 9) -> `area-damage`, high confidence
-- Cup of Dust (`cup-of-dust`, rank 3) -> `control`, medium confidence
-- Magic Passage (`magic-passage`, rank 5) -> `control`, high confidence
-- Dawnflower's Light (`dawnflowers-light`, rank 4) -> `control`, medium confidence
+- Cup of Dust (`cup-of-dust`, rank 3) -> `debuff`, medium confidence
 - Entangle Fate (`entangle-fate`, rank 4) -> `control`, medium confidence
 - Bonewall Bulwark (`bonewall-bulwark`, rank 3) -> `damage`, medium confidence
-- Unbroken Panoply (`unbroken-panoply`, rank 1) -> `buff`, medium confidence
 - Heart's Hook (`hearts-hook`, rank 1) -> `control`, medium confidence
 - Luminous Stardust Healing (`luminous-stardust-healing`, rank 2) -> `healing`, high confidence
 - Elemental Form (`elemental-form`, rank 5) -> `control`, high confidence
@@ -64,7 +58,6 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Shatter (`shatter`, rank 2) -> `damage`, medium confidence
 - Ash Cloud (`ash-cloud`, rank 2) -> `area-damage`, high confidence
 - Carrion Mire (`carrion-mire`, rank 2) -> `control`, medium confidence
-- Magnetic Repulsion (`magnetic-repulsion`, rank 2) -> `control`, medium confidence
 - Focusing Hum (`focusing-hum`, rank 3) -> `control`, medium confidence
 - Mind Games (`mind-games`, rank 2) -> `control`, medium confidence
 - Necrotic Radiation (`necrotic-radiation`, rank 4) -> `save-damage`, high confidence
@@ -87,7 +80,6 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Infuse Vitality (`infuse-vitality`, rank 1) -> `buff`, medium confidence
 - Word of Freedom (`word-of-freedom`, rank 4) -> `control`, medium confidence
 - Battlefield Persistence (`battlefield-persistence`, rank 3) -> `buff`, medium confidence
-- Humanoid Form (`humanoid-form`, rank 2) -> `buff`, medium confidence
 - Leaden Steps (`leaden-steps`, rank 1) -> `control`, medium confidence
 - Pollen Pods (`pollen-pods`, rank 7) -> `save-damage`, high confidence
 - Black Tentacles (`black-tentacles`, rank 5) -> `area-damage`, high confidence
@@ -100,11 +92,9 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Blur (`blur`, rank 2) -> `control`, high confidence
 - Canopy Crawler (`canopy-crawler`, rank 2) -> `setup`, medium confidence
 - Hasted Assault (`hasted-assault`, rank 7) -> `buff`, medium confidence
-- Helpful Steps (`helpful-steps`, rank 1) -> `control`, high confidence
 - Hidebound (`hidebound`, rank 2) -> `buff`, medium confidence
 - Fungal Infestation (`fungal-infestation`, rank 2) -> `area-damage`, high confidence
 - Musical Shift (`musical-shift`, rank 8) -> `control`, medium confidence
-- Spirit Sense (`spirit-sense`, rank 2) -> `buff`, medium confidence
 - Sepulchral Mask (`sepulchral-mask`, rank 1) -> `area-damage`, high confidence
 - Behold the Weave (`behold-the-weave`, rank 3) -> `control`, medium confidence
 - Cone of Cold (`cone-of-cold`, rank 5) -> `area-damage`, high confidence
@@ -112,7 +102,6 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Glass Form (`glass-form`, rank 4) -> `control`, high confidence
 - Summon Healing Servitor (`summon-healing-servitor`, rank 5) -> `healing`, high confidence
 - Delay Consequence (`delay-consequence`, rank 1) -> `buff`, medium confidence
-- Crisis of Faith (`crisis-of-faith`, rank 3) -> `save-damage`, high confidence
 - Spike Stones (`spike-stones`, rank 4) -> `area-damage`, high confidence
 - Purifying Veil (`purifying-veil`, rank 4) -> `save-damage`, high confidence
 - Blinding Bottle (`blinding-bottle`, rank 5) -> `area-damage`, high confidence
@@ -157,13 +146,12 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Flammable Fumes (`flammable-fumes`, rank 5) -> `area-damage`, high confidence
 - Ignition (`ignition`, rank 1) -> `damage`, high confidence
 - Lift Nature's Caul (`lift-natures-caul`, rank 1) -> `control`, medium confidence
-- Knock (`knock`, rank 2) -> `buff`, medium confidence
 - Shielding Formation (`shielding-formation`, rank 4) -> `buff`, medium confidence
 - Community Restoration (`community-restoration`, rank 4) -> `healing`, high confidence
 - Menacing Lament (`menacing-lament`, rank 2) -> `control`, medium confidence
 - Dim the Light (`dim-the-light`, rank 1) -> `control`, high confidence
 - Airlift (`airlift`, rank 4) -> `control`, medium confidence
-- Ill Omen (`ill-omen`, rank 1) -> `control`, medium confidence
+- Ill Omen (`ill-omen`, rank 1) -> `debuff`, medium confidence
 - Ymeri's Mark (`ymeris-mark`, rank 4) -> `save-damage`, high confidence
 - Necrotize (`necrotize`, rank 6) -> `save-damage`, high confidence
 - Foul Miasma (`foul-miasma`, rank 4) -> `control`, medium confidence
@@ -174,13 +162,12 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Tempest Cloak (`tempest-cloak`, rank 3) -> `control`, high confidence
 - Heatvision (`heatvision`, rank 3) -> `control`, high confidence
 - Duplicate Foe (`duplicate-foe`, rank 7) -> `healing`, high confidence
-- Reed Whistle (`reed-whistle`, rank 1) -> `buff`, medium confidence
 - Parch (`parch`, rank 1) -> `control`, medium confidence
-- Beseech the Sphinx (`beseech-the-sphinx`, rank 1) -> `setup`, medium confidence
+- Beseech the Sphinx (`beseech-the-sphinx`, rank 1) -> `buff`, medium confidence
 - Wall of Force (`wall-of-force`, rank 6) -> `control`, high confidence
 - Power Word Stun (`power-word-stun`, rank 8) -> `control`, medium confidence
 - Arrow Salvo (`arrow-salvo`, rank 6) -> `area-damage`, high confidence
-- Bane (`bane`, rank 1) -> `control`, medium confidence
+- Bane (`bane`, rank 1) -> `debuff`, medium confidence
 - Phantom Orchestra (`phantom-orchestra`, rank 6) -> `area-damage`, high confidence
 - Anathematic Reprisal (`anathematic-reprisal`, rank 4) -> `save-damage`, high confidence
 - Withering Grasp (`withering-grasp`, rank 1) -> `damage`, high confidence
@@ -189,7 +176,7 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Oneiric Mire (`oneiric-mire`, rank 3) -> `control`, medium confidence
 - Ferrous Form (`ferrous-form`, rank 8) -> `control`, medium confidence
 - Monstrosity Form (`monstrosity-form`, rank 8) -> `control`, medium confidence
-- Schadenfreude (`schadenfreude`, rank 1) -> `control`, medium confidence
+- Schadenfreude (`schadenfreude`, rank 1) -> `debuff`, medium confidence
 - Dancing Shield (`dancing-shield`, rank 2) -> `defense`, medium confidence
 - Weapon Storm (`weapon-storm`, rank 4) -> `control`, medium confidence
 - The Parrot's Whisper (`the-parrots-whisper`, rank 2) -> `control`, medium confidence
@@ -200,7 +187,7 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Chilling Spray (`chilling-spray`, rank 1) -> `area-damage`, high confidence
 - Spellwrack (`spellwrack`, rank 6) -> `control`, medium confidence
 - Horizon Thunder Sphere (`horizon-thunder-sphere`, rank 1) -> `damage`, high confidence
-- False Vitality (`false-vitality`, rank 2) -> `buff`, medium confidence
+- False Vitality (`false-vitality`, rank 2) -> `defense`, medium confidence
 - Impeccable Flow (`impeccable-flow`, rank 2) -> `buff`, medium confidence
 - Shadow Projectile (`shadow-projectile`, rank 3) -> `save-damage`, high confidence
 - Untwisting Iron Augmentation (`untwisting-iron-augmentation`, rank 7) -> `buff`, medium confidence
@@ -267,7 +254,6 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Magnetic Dominion (`magnetic-dominion`, rank 9) -> `control`, medium confidence
 - Shrink the Span (`shrink-the-span`, rank 3) -> `mobility`, medium confidence
 - Debilitating Terror (`debilitating-terror`, rank 1) -> `control`, medium confidence
-- Lock (`lock`, rank 1) -> `buff`, medium confidence
 - Summon Lesser Servitor (`summon-lesser-servitor`, rank 1) -> `summon`, medium confidence
 - Bound in Death (`bound-in-death`, rank 6) -> `control`, medium confidence
 - Curse of Lost Time (`curse-of-lost-time`, rank 3) -> `healing`, high confidence
@@ -503,7 +489,7 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Nullify (`nullify`, rank 10) -> `combat-utility`, medium confidence
 - Outcast's Curse (`outcasts-curse`, rank 4) -> `control`, medium confidence
 - Arcane Explosion (`arcane-explosion`, rank 9) -> `healing`, high confidence
-- Tailwind (`tailwind`, rank 1) -> `control`, high confidence
+- Tailwind (`tailwind`, rank 1) -> `buff`, high confidence
 - Dinosaur Form (`dinosaur-form`, rank 4) -> `control`, medium confidence
 - Sand Form (`sand-form`, rank 3) -> `control`, high confidence
 - Ranger's Bramble (`rangers-bramble`, rank 3) -> `control`, medium confidence
@@ -1394,9 +1380,17 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 
 ## Browse-only Utility
 
+- Figment (`figment`, rank 1) -> `combat-utility`, medium confidence
+- Magic Passage (`magic-passage`, rank 5) -> `exploration-utility`, high confidence
+- Dawnflower's Light (`dawnflowers-light`, rank 4) -> `combat-utility`, medium confidence
+- Unbroken Panoply (`unbroken-panoply`, rank 1) -> `defense`, medium confidence
 - Illusory Object (`illusory-object`, rank 1) -> `exploration-utility`, low confidence
+- Helpful Steps (`helpful-steps`, rank 1) -> `exploration-utility`, medium confidence
+- Spirit Sense (`spirit-sense`, rank 2) -> `exploration-utility`, medium confidence
 - Undertow (`undertow`, rank 3) -> `exploration-utility`, low confidence
+- Knock (`knock`, rank 2) -> `exploration-utility`, high confidence
 - Vital Luminance (`vital-luminance`, rank 4) -> `exploration-utility`, low confidence
+- Lock (`lock`, rank 1) -> `exploration-utility`, medium confidence
 - Cleanse Air (`cleanse-air`, rank 2) -> `exploration-utility`, low confidence
 - Approximate (`approximate`, rank 1) -> `exploration-utility`, low confidence
 - Quick Sort (`quick-sort`, rank 1) -> `exploration-utility`, low confidence
@@ -1427,13 +1421,18 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 ## Context-only
 
 - Project Image (`project-image`, rank 7) -> `combat-utility`, low confidence
+- Liberating Command (`liberating-command`, rank 1) -> `healing`, high confidence
 - Nothing Up My Sleeve (`nothing-up-my-sleeve`, rank 3) -> `combat-utility`, low confidence
+- Empty Inside (`empty-inside`, rank 1) -> `healing`, medium confidence
 - Negate Aroma (`negate-aroma`, rank 1) -> `combat-utility`, low confidence
 - Tortoise and the Hare (`tortoise-and-the-hare`, rank 4) -> `combat-utility`, low confidence
 - Whispering Quiet (`whispering-quiet`, rank 1) -> `combat-utility`, low confidence
+- Magnetic Repulsion (`magnetic-repulsion`, rank 2) -> `defense`, medium confidence
 - Sky Laughs at Waves (`sky-laughs-at-waves`, rank 1) -> `combat-utility`, low confidence
+- Humanoid Form (`humanoid-form`, rank 2) -> `transformation`, medium confidence
 - Reverse Gravity (`reverse-gravity`, rank 7) -> `combat-utility`, low confidence
 - Flame Wisp (`flame-wisp`, rank 2) -> `combat-utility`, low confidence
+- Crisis of Faith (`crisis-of-faith`, rank 3) -> `save-damage`, high confidence
 - Commanding Lash (`commanding-lash`, rank 4) -> `combat-utility`, low confidence
 - Summon Irii (`summon-irii`, rank 8) -> `combat-utility`, low confidence
 - Item Facade (`item-facade`, rank 1) -> `combat-utility`, low confidence
@@ -1595,6 +1594,7 @@ _none_
 - Object Reading (`object-reading`, rank 1) -> `combat-utility`, low confidence
 - Claim Curse (`claim-curse`, rank 3) -> `combat-utility`, low confidence
 - Soothing Blossoms (`soothing-blossoms`, rank 3) -> `combat-utility`, low confidence
+- Reed Whistle (`reed-whistle`, rank 1) -> `combat-utility`, low confidence
 - Clawsong (`clawsong`, rank 2) -> `combat-utility`, low confidence
 - Lucky Break (`lucky-break`, rank 4) -> `combat-utility`, low confidence
 - Destructive Aura (`destructive-aura`, rank 4) -> `combat-utility`, low confidence
@@ -1746,9 +1746,14 @@ _none_
 
 ## Utility Fallbacks
 
+- Magic Passage (`magic-passage`, rank 5) -> `exploration-utility`, high confidence
 - Illusory Object (`illusory-object`, rank 1) -> `exploration-utility`, low confidence
+- Helpful Steps (`helpful-steps`, rank 1) -> `exploration-utility`, medium confidence
+- Spirit Sense (`spirit-sense`, rank 2) -> `exploration-utility`, medium confidence
 - Undertow (`undertow`, rank 3) -> `exploration-utility`, low confidence
+- Knock (`knock`, rank 2) -> `exploration-utility`, high confidence
 - Vital Luminance (`vital-luminance`, rank 4) -> `exploration-utility`, low confidence
+- Lock (`lock`, rank 1) -> `exploration-utility`, medium confidence
 - Cleanse Air (`cleanse-air`, rank 2) -> `exploration-utility`, low confidence
 - Approximate (`approximate`, rank 1) -> `exploration-utility`, low confidence
 - Quick Sort (`quick-sort`, rank 1) -> `exploration-utility`, low confidence
@@ -1778,7 +1783,31 @@ _none_
 
 ## Curated Overrides
 
+- Invoke True Name (`invoke-true-name`, rank 1) -> `setup`, medium confidence
+- Liberating Command (`liberating-command`, rank 1) -> `healing`, high confidence
+- Empty Inside (`empty-inside`, rank 1) -> `healing`, medium confidence
+- Revealing Light (`revealing-light`, rank 2) -> `debuff`, medium confidence
+- Shattering Gem (`shattering-gem`, rank 1) -> `defense`, high confidence
+- Figment (`figment`, rank 1) -> `combat-utility`, medium confidence
+- Cup of Dust (`cup-of-dust`, rank 3) -> `debuff`, medium confidence
+- Magic Passage (`magic-passage`, rank 5) -> `exploration-utility`, high confidence
+- Dawnflower's Light (`dawnflowers-light`, rank 4) -> `combat-utility`, medium confidence
+- Unbroken Panoply (`unbroken-panoply`, rank 1) -> `defense`, medium confidence
+- Magnetic Repulsion (`magnetic-repulsion`, rank 2) -> `defense`, medium confidence
+- Humanoid Form (`humanoid-form`, rank 2) -> `transformation`, medium confidence
+- Helpful Steps (`helpful-steps`, rank 1) -> `exploration-utility`, medium confidence
+- Spirit Sense (`spirit-sense`, rank 2) -> `exploration-utility`, medium confidence
+- Crisis of Faith (`crisis-of-faith`, rank 3) -> `save-damage`, high confidence
 - Fear (`fear`, rank 1) -> `debuff`, high confidence
+- Knock (`knock`, rank 2) -> `exploration-utility`, high confidence
+- Ill Omen (`ill-omen`, rank 1) -> `debuff`, medium confidence
+- Reed Whistle (`reed-whistle`, rank 1) -> `combat-utility`, low confidence
+- Beseech the Sphinx (`beseech-the-sphinx`, rank 1) -> `buff`, medium confidence
+- Bane (`bane`, rank 1) -> `debuff`, medium confidence
+- Schadenfreude (`schadenfreude`, rank 1) -> `debuff`, medium confidence
+- False Vitality (`false-vitality`, rank 2) -> `defense`, medium confidence
+- Lock (`lock`, rank 1) -> `exploration-utility`, medium confidence
+- Tailwind (`tailwind`, rank 1) -> `buff`, high confidence
 - Shield (`shield`, rank 1) -> `defense`, high confidence
 - Ray of Frost (`ray-of-frost`, rank 1) -> `damage`, medium confidence
 - Electric Arc (`electric-arc`, rank 1) -> `damage`, high confidence

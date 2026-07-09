@@ -49,6 +49,19 @@ export function contextForDraftStep(panel, instanceId) {
 // The persistent reachable-area grid -- drawn once when the picker starts, and again after a real
 // click commits a waypoint/destination (to show remaining budget), but NEVER for a mere hover.
 export function showDestinationPickerPreview(panel, instanceId = panel._destinationPicker?.instanceId) {
+  if (panel._destinationPicker?.minion === true) {
+    const picker = panel._destinationPicker;
+    if (instanceId !== picker.instanceId || !picker.context || !picker.action) return false;
+    const preview = picker.preview ?? {};
+    showMovementPreview(picker.context, {
+      ...picker.action,
+      ...(preview.destination ? { destination: preview.destination } : {}),
+      ...(preview.movementPlan ? { movementPlan: preview.movementPlan } : {}),
+      ...(Number.isFinite(preview.elevation) ? { plannedElevation: preview.elevation } : {}),
+      requiresDestination: true,
+    });
+    return true;
+  }
   const step = panel._findDraftStep(instanceId);
   if (!panel._context || !step) return false;
   const preview = panel._destinationPicker?.instanceId === instanceId ? panel._destinationPicker.preview : null;

@@ -1,4 +1,23 @@
 <div class="combater-shell{{#unless expanded}} is-compact{{/unless}}">
+  {{#*inline "minionPlanDetails"}}
+    {{#if minionPlan}}
+      <span class="combater-minion-subturn" data-tooltip="{{minionPlan.label}}">
+        <span class="combater-minion-subturn-head"><i class="fa-solid fa-paw"></i> {{minionPlan.minionName}}</span>
+        {{#each minionPlan.steps}}
+          {{#if canCycle}}
+            <span class="combater-minion-step is-editable" role="button" tabindex="0" data-cycle-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}">
+              <span class="combater-minion-step-index">{{position}}</span>{{name}}
+            </span>
+          {{else}}
+            <span class="combater-minion-step"><span class="combater-minion-step-index">{{position}}</span>{{name}}</span>
+          {{/if}}
+        {{/each}}
+        {{#if minionPlan.targetName}}<span class="combater-minion-target">vs {{minionPlan.targetName}}</span>{{/if}}
+      </span>
+    {{else}}
+      {{#if minionPlanLabel}}<span class="combater-detail-chip is-minion-plan"><i class="fa-solid fa-paw"></i> {{minionPlanLabel}}</span>{{/if}}
+    {{/if}}
+  {{/inline}}
   {{#*inline "draftSequence"}}
   {{#*inline "draftStepChip"}}
           <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
@@ -16,10 +35,11 @@
                   {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> {{localize "PF2E_COMBATER.Panel.Failed"}}</span>{{/if}}
                 </span>
                 {{#if hasStepDetails}}
-                <span class="combater-step-details">
-                  {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
+                <span class="combater-step-details {{#if minionPlan}}has-minion-plan{{/if}}">
+                  {{#if targetLabel}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
                   {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
+                  {{#unless minionPlanAsChildren}}{{> minionPlanDetails}}{{/unless}}
                   {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
                   {{#if hasTraitChips}}
@@ -83,13 +103,11 @@
                   <i class="fa-solid fa-grip-vertical"></i>
                 </span>
               {{/if}}
-              {{#unless groupId}}
-                {{#unless readonly}}
+              {{#if canDuplicateStep}}
                 <button type="button" class="combater-chip-tool" data-duplicate-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.DuplicateStep"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DuplicateStepAria" name=name}}">
                   <i class="fa-solid fa-clone"></i>
                 </button>
-                {{/unless}}
-              {{/unless}}
+              {{/if}}
               {{#unless isExecutionDone}}
                 {{#if awaitingGm}}
                 <span class="combater-chip-tool combater-step-waiting" data-tooltip="{{awaitingGmLabel}}" aria-label="{{awaitingGmLabel}}">
@@ -110,13 +128,74 @@
                 </button>
                 {{/if}}
               {{/if}}
-              {{#unless readonly}}
+              {{#if canRemoveDraftStep}}
               <button type="button" class="combater-chip-tool danger" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Remove"}}">
                 <i class="fa-solid fa-trash"></i>
               </button>
-              {{/unless}}
+              {{/if}}
             </span>
           </span>
+          {{#if minionPlanAsChildren}}
+            <span class="combater-minion-action-list">
+              {{#each minionPlan.steps}}
+                <span class="combater-header-step combater-minion-action-row" data-preview-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}">
+                  <button type="button" class="combater-chip combater-minion-action-chip" {{#if canCycle}}data-cycle-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}"{{/if}} data-tooltip="{{tooltip}}" aria-label="{{tooltip}}">
+                    <span class="combater-chip-cost is-minion-child" aria-label="{{position}}">
+                      <span class="combater-minion-step-index">{{position}}</span>
+                    </span>
+                    <span class="combater-step-main">
+                      <span class="combater-step-headline">
+                        <i class="fa-solid fa-paw"></i>
+                        <span class="combater-chip-name">{{name}}</span>
+                      </span>
+                      {{#if targetLabel}}
+                        <span class="combater-step-details">
+                          <span class="combater-chip-target">{{targetLabel}}</span>
+                        </span>
+                      {{/if}}
+                      {{#if destinationLabel}}
+                        <span class="combater-step-details">
+                          <span class="combater-chip-target">{{destinationLabel}}</span>
+                        </span>
+                      {{/if}}
+                    </span>
+                  </button>
+                  <span class="combater-step-tools">
+                    {{#if canChooseTarget}}
+                      <button type="button" class="combater-chip-tool" data-choose-minion-target="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{chooseTargetTooltip}}" aria-label="{{chooseTargetTooltip}}">
+                        <i class="fa-solid fa-crosshairs"></i>
+                      </button>
+                    {{/if}}
+                    {{#if canChooseDestination}}
+                      <button type="button" class="combater-chip-tool" data-choose-minion-destination="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{chooseDestinationTooltip}}" aria-label="{{chooseDestinationTooltip}}">
+                        <i class="fa-solid fa-location-crosshairs"></i>
+                      </button>
+                    {{/if}}
+                    {{#if canShowMovementControl}}
+                      <button type="button" class="combater-chip-tool combater-movement-cycle {{#unless canCycleMovement}}is-readonly{{/unless}}" {{#if canCycleMovement}}data-cycle-minion-movement="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}"{{else}}disabled{{/if}} data-tooltip="{{movementToolTip}}" aria-label="{{movementToolTip}}">
+                        <i class="fa-solid fa-shoe-prints"></i><span class="combater-movement-value">{{movementToolLabel}}</span>
+                      </button>
+                    {{/if}}
+                    {{#if canExecute}}
+                      <button type="button" class="combater-chip-tool combater-step-run is-execute {{#if executionBlocked}}is-disabled{{/if}}" data-execute-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{executeTooltip}}" aria-label="{{executeTooltip}}" {{#if executionBlocked}}disabled{{/if}}>
+                        <i class="fa-solid fa-play"></i>
+                      </button>
+                    {{/if}}
+                    {{#if canRevertStep}}
+                      <button type="button" class="combater-chip-tool combater-step-run is-revert" data-revert-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{revertTooltip}}" aria-label="{{revertTooltip}}">
+                        <i class="fa-solid fa-rotate-left"></i>
+                      </button>
+                    {{/if}}
+                    {{#if canRemoveStep}}
+                      <button type="button" class="combater-chip-tool danger" data-remove-minion-step="{{cycleInstanceId}}" data-minion-step-index="{{cycleIndex}}" data-tooltip="{{removeTooltip}}" aria-label="{{removeTooltip}}">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    {{/if}}
+                  </span>
+                </span>
+              {{/each}}
+            </span>
+          {{/if}}
   {{/inline}}
   <div class="combater-plan-strip">
     <div class="combater-sequence" data-drag-list aria-label="{{localize "PF2E_COMBATER.Panel.PlannedSequenceAria"}}">
@@ -166,9 +245,10 @@
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}
                   <span class="combater-chip-name">{{name}}</span>
                 </span>
-                {{#if targetLabel}}<span class="combater-chip-target">{{targetLabel}}</span>{{/if}}
+                {{#if targetLabel}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{/if}}
                 {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
                 {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
+                {{> minionPlanDetails}}
               </span>
             </button>
           {{/if}}
@@ -239,6 +319,12 @@
           <button type="button" class="combater-header-tactic {{#if tacticPersonality.isOverride}}is-override{{/if}}" data-configure-tactic data-tooltip="{{tacticPersonality.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.TacticAria"}}">
             <i class="fa-solid fa-chess-knight"></i>
             <span class="combater-header-tactic-label">{{tacticPersonality.label}}</span>
+          </button>
+        {{/if}}
+        {{#if intelLedger.visible}}
+          <button type="button" class="combater-header-intel" data-configure-intel data-tooltip="{{intelLedger.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.IntelAria"}}">
+            <i class="fa-solid fa-brain"></i>
+            <span>{{intelLedger.label}}</span>
           </button>
         {{/if}}
         {{#if builder}}
@@ -331,9 +417,14 @@
                       {{#if isExecutionFailed}}<span class="combater-exec-badge is-failed" data-tooltip="{{executionTooltip}}"><i class="fa-solid fa-triangle-exclamation"></i> {{localize "PF2E_COMBATER.Panel.Failed"}}</span>{{/if}}
                     </h4>
                     {{#if hasStepDetails}}
+                      {{#if awaitingGm}}
                       <span class="combater-target{{#if awaitingGm}} is-awaiting{{/if}}">
                         {{#if awaitingGm}}<i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}{{else}}{{#if targetLabel}}{{targetLabel}}{{/if}}{{#if areaLabel}} {{areaLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}{{/if}}
                       </span>
+                      {{else}}
+                      {{#if targetLabel}}<span class="combater-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{#if areaLabel}}<span class="combater-target">{{areaLabel}}</span>{{/if}}{{#if warning}}<span class="combater-target is-warning">{{warning}}</span>{{/if}}{{else}}{{#if areaLabel}}<span class="combater-target">{{areaLabel}}{{#if warning}} - {{warning}}{{/if}}</span>{{else}}{{#if warning}}<span class="combater-target">{{warning}}</span>{{/if}}{{/if}}{{/if}}
+                      {{/if}}
+                      {{> minionPlanDetails}}
                     {{/if}}
                   </div>
                   <div class="combater-uncounted-tools">

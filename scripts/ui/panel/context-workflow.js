@@ -14,6 +14,7 @@ import {
 import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { actorStrikeOptions } from "../../readers/action/reader.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
+import { intelLedgerView, isNpcIntelTarget } from "../../rules/intel-ledger.js";
 import { tacticPersonalityView } from "../../rules/tactic-personality.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
@@ -50,7 +51,36 @@ function actorHasActiveNonGmOwner(actor) {
 function isPlayerControlledActor(actor) {
   const document = actor?.document ?? actor;
   if (!document) return false;
+  if (String(document.type ?? "").toLowerCase() === "character") return true;
   return actorHasActiveNonGmOwner(document);
+}
+
+function activeNpcIntelTarget(context) {
+  if (game?.user?.isGM !== true) return null;
+  const target = {
+    id: context?.token?.id ?? context?.actor?.id,
+    name: context?.token?.name ?? context?.actor?.name,
+    actor: context?.actor,
+    token: context?.token,
+  };
+  return isNpcIntelTarget(target) ? target : null;
+}
+
+export function panelIntelLedgerView(context) {
+  const target = activeNpcIntelTarget(context);
+  if (target) {
+    return intelLedgerView({
+      ...context,
+      intelTargets: [target],
+    });
+  }
+  if (game?.user?.isGM === true && isPlayerControlledActor(context?.actor?.document ?? context?.actor)) {
+    return intelLedgerView({
+      ...context,
+      isGM: false,
+    });
+  }
+  return intelLedgerView(context);
 }
 
 export function viewPanelContext(panel, context) {
@@ -77,6 +107,7 @@ export function viewPanelContext(panel, context) {
     activeTab: panel.activeTab,
     browserOpen: Boolean(panel._browser),
     tacticPersonality: tacticPersonalityView(context),
+    intelLedger: panelIntelLedgerView(context),
     showDebug,
     showAutoFill,
     autoFillCycle: {

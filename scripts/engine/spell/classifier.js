@@ -220,7 +220,13 @@ function targetText(spell) {
 function targetsSelfOnly(spell, rangeProfile) {
   if (rangeProfile.self) return true;
   const target = targetText(spell);
-  return target.includes("self") || target.includes("you");
+  if (target.includes("self") || target.includes("you")) return true;
+  if (target || rangeProfile.maxRange || rangeProfile.touch) return false;
+
+  const text = spellText(spell);
+  const selfBenefit = /\byou gain\b|\byou ignore\b|\byour (?:speed|movement|ac|armor class|saving throws?|saves|attacks?|strikes?)\b/.test(text);
+  const otherTarget = /\btarget\b|\bcreature\b|\bally\b|\ballies\b|\benem(?:y|ies)\b|\bfoe\b|\bwilling\b/.test(text);
+  return selfBenefit && !otherTarget;
 }
 
 function isHealing(spell, traits, damageProfile) {

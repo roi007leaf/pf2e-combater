@@ -1,16 +1,19 @@
 import { classTacticAdjustment } from "../rules/class-tactics.js";
+import { canUseIntelCategory } from "../rules/intel-ledger.js";
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
 import { backingStrikeForAction, backingStrikesForAction } from "./backing-strike.js";
 import {
   actionTraitSlugs,
   canUseTargetDefenses,
+  canUseTargetSave,
   isAttackLikeAction,
   isMeleeStrikeFallback,
   isRangedStrike,
   isSpellAction,
 } from "./scoring/facts.js";
 import {
+  actionSkillDcSlug,
   ownSkillReliabilityScore,
   skillCheckScore,
   trainedSkillRequirement,
@@ -37,6 +40,7 @@ import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 // DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
 // 11 succeeds on a roll of 11 or higher — exactly half of a d20's outcomes.
 const HIDDEN_TARGET_FLAT_CHECK_DISCOUNT = 0.5;
+const PLAYER_INTEL_CATEGORIES = ["saves", "perception", "weaknesses", "resistances", "immunities"];
 
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
@@ -66,7 +70,8 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     ? GENERIC_ACTIONS.find((generic) => generic.slug === "grapple") ?? null
     : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
-  const skillCheck = canUseTargetDefenses(context) ? skillCheckScore(profile, target, action) : null;
+  const skillDcSlug = actionSkillDcSlug(action);
+  const skillCheck = canUseTargetSave(context, target, skillDcSlug) ? skillCheckScore(profile, target, action) : null;
   const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
   const spellAdjustment = spellTacticalAdjustment(action, role, context);
 
@@ -79,6 +84,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     areaHitCount,
     areaPlacementCenter,
     areaPlacementAimPoint,
+    minionPlan,
   } = scoreRoleTactics(context, action, { role, profile, target });
 
   const classAdjustment = classTacticAdjustment(profile, action, {
@@ -125,7 +131,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   // costs at a representative realized action value (~55) so it competes as the
   // whole-turn investment it is.
   const multiActionOffensive = String(action.source).startsWith("spell")
-    ? ["damage", "area-damage", "save-damage", "control"].includes(role)
+    ? ["damage", "area-damage", "save-damage", "control", "debuff"].includes(role)
     : ["mobility-attack", "multiattack"].includes(role) && !includesStand(action);
   if (multiActionOffensive && Number(action.actionCost) >= 2 && score > baseScore(action)) {
     const extraActions = Math.min(2, Number(action.actionCost) - 1);
@@ -166,9 +172,11 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
       ...(backingStrike ? { backingStrike } : {}),
       ...(backingStrikes ? { backingStrikes } : {}),
       ...(backingManeuver ? { backingManeuver } : {}),
+      ...(minionPlan ? { minionPlan } : {}),
     },
   }, {
     isGM: canUseTargetDefenses(context),
     fallbackReason: defaultReason(action),
+    playerIntelCategories: PLAYER_INTEL_CATEGORIES.filter((category) => canUseIntelCategory(context, target, category)),
   });
 }

@@ -134,11 +134,16 @@ const panelTemplateSource = [
   readFileSync(new URL("../../../templates/combater-panel.hbs", import.meta.url), "utf8"),
   readFileSync(new URL("../../../templates/combater-browser.hbs", import.meta.url), "utf8"),
 ].join("\n");
+const tacticWindowTemplateSource = readFileSync(new URL("../../../templates/tactic-window.hbs", import.meta.url), "utf8");
+const intelWindowTemplateSource = readFileSync(new URL("../../../templates/intel-window.hbs", import.meta.url), "utf8");
 const panelSource = readFileSync(new URL("../../ui/CombaterPanel.js", import.meta.url), "utf8");
 const panelContextWorkflowSource = readFileSync(new URL("../../ui/panel/context-workflow.js", import.meta.url), "utf8");
 const panelViewModelSource = readFileSync(new URL("../../ui/panel/view-model.js", import.meta.url), "utf8");
 const panelAutoFillContextSource = readFileSync(new URL("../../ui/panel/auto-fill-context.js", import.meta.url), "utf8");
 const browserSource = readFileSync(new URL("../../ui/CombaterBrowser.js", import.meta.url), "utf8");
+const tacticWindowSource = readFileSync(new URL("../../ui/tactic-window.js", import.meta.url), "utf8");
+const intelWindowSource = readFileSync(new URL("../../ui/intel-window.js", import.meta.url), "utf8");
+const combatTrackerIntelSource = readFileSync(new URL("../../ui/combat-tracker-intel.js", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../../settings.js", import.meta.url), "utf8");
 const foundryDataSource = readFileSync(new URL("../../foundry-data.js", import.meta.url), "utf8");
@@ -152,6 +157,7 @@ const actorContextSource = readFileSync(new URL("../actor-context.js", import.me
 const backingStrikeSource = readFileSync(new URL("../backing-strike.js", import.meta.url), "utf8");
 const candidatesSource = readFileSync(new URL("../candidates.js", import.meta.url), "utf8");
 const scoringSource = readFileSync(new URL("../scoring.js", import.meta.url), "utf8");
+const recommendationSafetySource = readFileSync(new URL("../recommendation-safety.js", import.meta.url), "utf8");
 const scoringTacticsSource = readFileSync(new URL("../scoring/tactics.js", import.meta.url), "utf8");
 const scoringActivityTacticsSource = readFileSync(new URL("../scoring/activity-tactics.js", import.meta.url), "utf8");
 const scoringRoleTacticsSource = readFileSync(new URL("../scoring/role-tactics.js", import.meta.url), "utf8");
@@ -165,6 +171,8 @@ const scoringSpellsSource = readFileSync(new URL("../scoring/spells.js", import.
 const scoringTargetsSource = readFileSync(new URL("../scoring/targets.js", import.meta.url), "utf8");
 const aggroSource = readFileSync(new URL("../../rules/aggro.js", import.meta.url), "utf8");
 const tacticPersonalitySource = readFileSync(new URL("../../rules/tactic-personality.js", import.meta.url), "utf8");
+const intelLedgerSource = readFileSync(new URL("../../rules/intel-ledger.js", import.meta.url), "utf8");
+const minionPlannerSource = readFileSync(new URL("../../rules/minion-planner.js", import.meta.url), "utf8");
 const actionBuilderSource = readFileSync(new URL("../action/builder.js", import.meta.url), "utf8");
 const actionBuilderProjectionSource = readFileSync(new URL("../action/builder-projection.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("../action/executor.js", import.meta.url), "utf8");
@@ -240,24 +248,148 @@ assert.ok(panelViewModelSource.includes("icons/actions/OneAction.webp"), "panel 
 assert.ok(panelTemplateSource.includes("combater-chip-img") && panelTemplateSource.includes("combater-action-img"), "panel should show item images beside action names");
 assert.ok(panelContextWorkflowSource.includes("tacticPersonalityView"), "panel context should expose resolved tactic personality view data");
 assert.ok(panelTemplateSource.includes("data-configure-tactic"), "panel template should render the GM NPC tactic chip");
+assert.ok(panelContextWorkflowSource.includes("panelIntelLedgerView") && panelContextWorkflowSource.includes("activeNpcIntelTarget")
+  && panelContextWorkflowSource.includes("return intelLedgerView(context)"),
+  "panel context should expose GM active-NPC Intel editing and player readonly revealed enemy Intel");
+assert.ok(panelContextWorkflowSource.includes("isPlayerControlledActor") && panelContextWorkflowSource.includes("isGM: false"),
+  "GM-selected player tokens should open player-facing Known Intel instead of the GM NPC reveal editor");
+assert.ok(panelTemplateSource.includes("data-configure-intel"), "panel template should render the Recall Knowledge intel chip");
+assert.ok(panelEventBindingsSource.includes("data-configure-intel") && panelEventBindingsSource.includes("_configureIntelLedger"),
+  "panel bindings should open Recall Knowledge intel config from the header chip");
+assert.ok(panelSource.includes("INTEL_LEDGER_FLAG") && panelSource.includes("setFlag(MODULE_ID, INTEL_LEDGER_FLAG"),
+  "panel should persist Recall Knowledge intel on target actors");
+assert.ok(panelSource.includes("INTEL_REVEAL_MODE_FLAG") && panelSource.includes("setFlag(MODULE_ID, INTEL_REVEAL_MODE_FLAG")
+  && intelWindowTemplateSource.includes("data-intel-reveal-mode"),
+  "GM Recall Knowledge editor should persist exact-vs-band reveal style per NPC");
+assert.ok(panelSource.includes("openIntelWindow") && panelSource.includes("_saveIntelLedger"),
+  "panel should let players inspect revealed Recall Knowledge facts without write controls");
+assert.ok(intelWindowSource.includes("ApplicationV2") && intelWindowTemplateSource.includes("combater-intel-shell")
+  && !intelWindowSource.includes("DialogV2"),
+  "player-visible Recall Knowledge facts should share a reusable styled Intel window");
+assert.ok(intelWindowSource.includes("resolveIntelWindowView") && intelWindowSource.includes("renderCombatTracker")
+  && intelWindowSource.includes("updateToken") && panelSource.includes("viewProvider")
+  && panelSource.includes('readCombatContext("intel-window"') && combatTrackerIntelSource.includes("combatantIntelViewById"),
+  "open Known Intel windows should refresh from current combat context and combat tracker rows while they stay open");
+assert.ok(mainSource.includes("registerCombatTrackerIntel") && mainSource.includes("actorUpdateChangesIntelLedger"),
+  "main should wire player combat tracker Intel and refresh it when GM revealed data changes");
+assert.ok(combatTrackerIntelSource.includes("renderCombatTracker") && combatTrackerIntelSource.includes("data-combatant-id")
+  && combatTrackerIntelSource.includes("openIntelWindow") && combatTrackerIntelSource.includes("playerAccessAllowed"),
+  "players should be able to open revealed NPC Recall Knowledge facts from combat tracker rows");
+assert.ok(combatContextSource.includes("combatant?.playersCanSeeName") && combatContextSource.includes("COMBATANT.Unknown")
+  && combatTrackerIntelSource.includes("combatantDisplayName") && combatTrackerIntelSource.includes("rowCombatantName")
+  && combatTrackerIntelSource.includes("playersCanSeeName") && intelLedgerSource.includes("displayName"),
+  "player-visible Recall Knowledge windows should follow combat tracker/token display names instead of leaking actor names");
+assert.ok(panelViewModelSource.includes("canOpenTargetIntel") && panelTemplateSource.includes("data-open-target-intel"),
+  "Combater panel target labels should expose target-specific Recall Knowledge data affordances");
+assert.ok(panelEventBindingsSource.includes("data-open-target-intel") && panelEventBindingsSource.includes("_openTargetIntel"),
+  "target Intel labels should open known target data without triggering parent action clicks");
+assert.ok(panelSource.includes("_openTargetIntel") && panelSource.includes("intelTargetMatchesKey"),
+  "panel should resolve clicked target labels to current battlefield targets before opening Known Intel");
 assert.ok(panelTemplateSource.includes("combater-header-tactic-label"),
   "NPC tactic chip should wrap its label in a dedicated span so long inferred Auto labels can use two lines");
 assert.ok(panelEventBindingsSource.includes("data-configure-tactic") && panelEventBindingsSource.includes("_configureTacticPersonality"),
   "panel bindings should open tactic personality config from the header chip");
+assert.ok(panelSource.includes("openTacticWindow") && panelSource.includes("_applyTacticPersonalityDecision"),
+  "NPC tactic configuration should use the styled tactic window and keep panel persistence in one callback");
 assert.ok(
   /combater-header-tactic-label\s*\{[\s\S]*?white-space:\s*normal;[\s\S]*?-webkit-line-clamp:\s*2;/.test(panelStyleSource),
   "NPC tactic chip label should wrap to two lines instead of forcing the header wider",
 );
 assert.ok(panelSource.includes("TACTIC_PERSONALITY_FLAG") && panelSource.includes("TACTIC_PERSONALITY_OVERRIDE_FLAG"),
   "panel should write actor default and token override tactic flags");
-assert.ok(panelSource.includes('name="customEnabled"') && panelSource.includes("data-custom-sliders"),
-  "tactic dialog should hide custom sliders behind an explicit Customize toggle");
-assert.ok(panelStyleSource.includes('input[name="customEnabled"]:checked') && panelStyleSource.includes(".combater-tactic-custom-fields"),
-  "tactic dialog CSS should show slider fields only when Customize is checked");
+assert.ok(tacticWindowSource.includes("ApplicationV2") && tacticWindowTemplateSource.includes('name="customEnabled"')
+  && tacticWindowTemplateSource.includes("data-custom-sliders") && !tacticWindowSource.includes("DialogV2"),
+  "tactic window should hide custom sliders behind an explicit Customize toggle");
+assert.ok(panelStyleSource.includes(".combater-tactic-editor:not(.is-custom)") && panelStyleSource.includes(".combater-tactic-custom-fields"),
+  "tactic window CSS should show slider fields only when Customize is checked");
 assert.ok(panelSource.includes("unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG"),
   "panel should support resetting the token tactic override");
 assert.ok(combatContextSource.includes("documentName: document.documentName") && combatContextSource.includes("document,"),
   "combat context token summary should retain the TokenDocument so token tactic override flags can resolve");
+assert.ok(scoringFactsSource.includes("canUseIntelCategory") && intelLedgerSource.includes("INTEL_LEDGER_FLAG"),
+  "hidden defenses should be gated by Recall Knowledge intel categories");
+assert.ok(combatContextSource.includes("readIntelLedger") && combatContextSource.includes("intelLedger"),
+  "combat context should expose actor-saved Recall Knowledge intel to players without exposing the Actor document");
+assert.ok(intelLedgerSource.includes("revealedIntelDetails") && intelLedgerSource.includes("hasPlayerVisibleIntel"),
+  "intel ledger view should include revealed fact details and become visible to players with known data");
+assert.ok(intelLedgerSource.includes("availableIntelDetails") && intelWindowSource.includes("entry.available")
+  && panelStyleSource.includes(".combater-intel-shell.is-editable .combater-intel-entry"),
+  "GM Recall Knowledge editor should show available system data in a compact edit layout before reveal");
+assert.ok(intelWindowSource.includes("_syncIntelEditorState") && intelWindowTemplateSource.includes("data-intel-category")
+  && intelWindowTemplateSource.includes("data-intel-status"),
+  "GM Recall Knowledge editor should update category card state immediately when reveal checkboxes change");
+assert.ok(intelLedgerSource.includes("intelTargets") && intelLedgerSource.includes("actorDefense"),
+  "intel ledger view should support combat-tracker actor rows without a full Combater panel context");
+assert.ok(intelLedgerSource.includes("isNpcIntelTarget") && panelViewModelSource.includes("isNpcIntelTarget")
+  && combatTrackerIntelSource.includes("isNpcIntelTarget"),
+  "Recall Knowledge intel affordances should be restricted to NPC targets, not player characters on NPC turns");
+assert.ok(scoringSource.includes("playerIntelCategories") && recommendationSafetySource.includes("PLAYER_INTEL_REASON_PATTERNS"),
+  "player-visible learned intel reasons should be allowed only for known Recall Knowledge categories");
+assert.ok(intelLedgerSource.includes("canUseIntelFact") && scoringFactsSource.includes("canUseTargetSave")
+  && scoringTargetsSource.includes("canUseTargetSave(context, target, action.saveProfile.stat)")
+  && scoringSource.includes("actionSkillDcSlug"),
+  "player scoring should use revealed save intel for DC math without enabling unrelated hidden defenses");
+assert.ok(intelLedgerSource.includes('id: "perception"') && intelLedgerSource.includes("function perceptionFacts")
+  && combatContextSource.includes('target, "perception", "perception"')
+  && scoringFactsSource.includes('saveSlug === "perception" ? "perception" : "saves"'),
+  "Perception should be a separate Recall Knowledge category from Fortitude/Reflex/Will saves");
+assert.ok(intelLedgerSource.includes("SAVE_MODERATE_DCS_BY_LEVEL") && intelLedgerSource.includes("intelSaveBand")
+  && combatContextSource.includes("intelSaveBands") && scoringFactsSource.includes("targetDcLabel"),
+  "banded Recall Knowledge reveal style should hide exact NPC numbers while keeping player scoring usable");
+assert.ok(intelLedgerSource.includes("canSeeExactIntelLabels") && intelWindowSource.includes("label.dataset.exactLabel"),
+  "GM Intel windows should render exact numbers even when the saved player reveal style is banded");
+assert.ok(intelWindowTemplateSource.includes("data-intel-fact") && intelWindowSource.includes("availableFacts")
+  && combatContextSource.includes("readKnownDefense") && combatContextSource.includes("intelDefenseFactId"),
+  "Recall Knowledge intel should reveal individual facts, not entire hidden categories");
+assert.ok(scoringTacticsSource.includes("planMinionSubturn") && minionPlannerSource.includes("export function planMinionSubturn"),
+  "Command an Animal should build a nested minion subturn plan");
+assert.ok(genericActionReaderSource.includes("genericActionVariants") && genericActionReaderSource.includes("minionActionBudget: 2")
+  && minionPlannerSource.includes("function minionActionBudget") && !scoringTacticsSource.includes("action.actionCost ?? action.activityProfile?.commandActionCost"),
+  "Command an Animal for minions should stay one owner action and grant the minion's two-action turn");
+assert.ok(scoringSource.includes("minionPlan") && panelViewModelSource.includes("decorateMinionPlan")
+  && panelTemplateSource.includes("combater-minion-subturn") && panelDraftWorkflowSource.includes("activityProfile: { minionPlan"),
+  "minion subturn plans should flow through Auto-fill draft steps into visible nested panel chips");
+assert.ok(minionPlannerSource.includes("actionOptions")
+  && minionPlannerSource.includes("movementOptions")
+  && panelTemplateSource.includes("combater-minion-action-row")
+  && panelTemplateSource.includes("data-cycle-minion-step")
+  && panelTemplateSource.includes("data-cycle-minion-movement")
+  && panelTemplateSource.includes("data-choose-minion-target")
+  && panelTemplateSource.includes("data-choose-minion-destination")
+  && panelTemplateSource.includes("data-preview-minion-step")
+  && panelTemplateSource.includes("data-execute-minion-step")
+  && panelTemplateSource.includes("data-revert-minion-step")
+  && panelTemplateSource.includes("data-remove-minion-step")
+  && panelEventBindingsSource.includes("_cycleMinionPlanStep")
+  && panelEventBindingsSource.includes("_cycleMinionPlanMovement")
+  && panelEventBindingsSource.includes("_chooseMinionTarget")
+  && panelEventBindingsSource.includes("_chooseMinionDestination")
+  && panelEventBindingsSource.includes("_showMinionActionPreview")
+  && panelEventBindingsSource.includes("_executeMinionPlanStep")
+  && panelEventBindingsSource.includes("_revertMinionPlanStep")
+  && panelEventBindingsSource.includes("_removeMinionPlanStep")
+  && panelEventBindingsSource.includes("activateMinionPlanStepBindings")
+  && panelEventBindingsSource.includes("capture: true")
+  && panelEventBindingsSource.includes("stopImmediatePropagation")
+  && panelDraftWorkflowSource.includes("export function choosePanelMinionDestination")
+  && panelDraftWorkflowSource.includes("export function minionPlanStepPreview")
+  && panelDraftWorkflowSource.includes("export function showPanelMinionActionPreview")
+  && panelDraftWorkflowSource.includes("export async function choosePanelMinionTarget")
+  && panelDraftWorkflowSource.includes("export async function executePanelMinionPlanStep")
+  && panelDraftWorkflowSource.includes("export async function cyclePanelMinionPlanMovement")
+  && panelDraftWorkflowSource.includes("export async function revertPanelMinionPlanStep")
+  && panelDraftWorkflowSource.includes("export async function removePanelMinionPlanStep")
+  && panelDraftWorkflowSource.includes("export function cycleMinionPlanStep"),
+  "Command an Animal sub-actions should render as indented editable child actions with target, destination, play, and revert controls");
+assert.ok(combatContextSource.includes("isFamiliarActor")
+  && combatContextSource.includes("familiarMasterIds")
+  && combatContextSource.includes("isCompanionActor")
+  && combatContextSource.includes("isEidolonActor")
+  && combatContextSource.includes("!tokenInCombat(combat, token)")
+  && combatContextSource.includes('actorType(actor) !== "character"'),
+  "Command an Animal companion detection should follow PF2e familiar master links and character minion companion actors while excluding eidolons and ordinary NPC animals");
+assert.ok(actionReachSource.includes("cost: Number(center.cost)") && scoringActivityTacticsSource.includes("Terrain-aware route costs"),
+  "reachable movement routes should preserve terrain costs for activity scoring");
 assert.ok(mainSource.includes("tacticPersonalityOverride") && mainSource.includes("tactic-update"),
   "token tactic override flag updates should refresh the active panel without requiring token geometry changes");
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
@@ -387,8 +519,9 @@ assert.ok(
   panelEventBindingsSource.includes("export function activatePanelRenderBindings")
     && panelEventBindingsSource.includes("function activateDraftDragBindings")
     && panelEventBindingsSource.includes("data-cycle-auto-fill")
+    && panelEventBindingsSource.includes("forceFull: event.shiftKey")
     && panelEventBindingsSource.includes("data-preview-draft-step"),
-  "panel event bindings should own render-time DOM listeners, drag reorder wiring, auto-fill cycling, and preview hover wiring",
+  "panel event bindings should own render-time DOM listeners, drag reorder wiring, auto-fill Shift replacement, cycling, and preview hover wiring",
 );
 for (const pattern of [
   "[data-add-sustain-spell]",
@@ -631,6 +764,11 @@ assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel templa
   assert.deepEqual(flier.map((option) => option.action), ["walk", "fly"], "only walking and the actor's real fly speed should be offered");
   assert.equal(flier[0].speed, 25, "walking option should carry the land speed");
   assert.equal(flier[1].speed, 60, "fly option should carry the fly speed");
+  const minionFlier = actorMovementOptions({
+    movement: { speeds: { land: { value: 25 }, fly: { value: 25 } } },
+  });
+  assert.deepEqual(minionFlier.map((option) => option.action), ["walk", "fly"], "minion actor movement facade should offer land and fly speeds");
+  assert.equal(minionFlier[1].speed, 25, "minion actor movement facade should read fly.value");
   const grounded = actorMovementOptions({ system: { attributes: { speed: { value: 30 } } } });
   assert.deepEqual(grounded.map((option) => option.action), ["walk"], "an actor with only a land speed offers no movement-type choice");
 }
@@ -929,6 +1067,18 @@ assert.ok(
 assert.ok(
   /\.pf2e-combater \.combater-step-details\s*\{[\s\S]*?flex-wrap:\s*wrap;/.test(panelStyleSource),
   "selected action metadata should wrap instead of overlapping",
+);
+assert.ok(
+  /\.pf2e-combater\.combater-panel \.window-content\s*\{[\s\S]*?overflow:\s*hidden;/.test(panelStyleSource),
+  "main panel window content should be viewport-capped so the plan list can scroll inside it",
+);
+assert.ok(
+  /\.pf2e-combater\.combater-panel \.combater-shell\s*\{[\s\S]*?max-height:\s*inherit;/.test(panelStyleSource),
+  "main panel shell should inherit the capped content height instead of growing past the viewport",
+);
+assert.ok(
+  /\.pf2e-combater\.combater-panel \.combater-plan\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?scrollbar-gutter:\s*stable;/.test(panelStyleSource),
+  "main panel plan list should own vertical scrolling without shifting content when the scrollbar appears",
 );
 assert.ok(
   panelTemplateSource.includes('data-action="toggle-compact"'),
@@ -2963,15 +3113,16 @@ assert.ok(
   "each draft step should expose a duplicate control",
 );
 assert.ok(
-  /\{\{#unless groupId\}\}[\s\S]*?data-duplicate-draft-step="\{\{instanceId\}\}"/.test(panelTemplateSource),
-  "the duplicate control should be gated behind groupId so grouped composite atoms can't be duplicated individually",
+  panelViewModelSource.includes("canDuplicateStep")
+    && /\{\{#if canDuplicateStep\}\}[\s\S]*?data-duplicate-draft-step="\{\{instanceId\}\}"/.test(panelTemplateSource),
+  "the duplicate control should be gated by the view model so grouped composite atoms and minion command parents can't be duplicated individually",
 );
 assert.ok(
   /duplicatePanelDraftStep\(panel, instanceId\)[\s\S]*draftStepId\(\)[\s\S]*panel\._writeActiveDraftPlan\(markManualDraft\(/.test(panelDraftWorkflowSource),
   "duplicating a step should clone it with a fresh instanceId and persist through the same manual-draft write path as remove/move",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*panel\._writeActiveDraftPlan\(/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*panel\._writeActiveDraftPlan\(/.test(panelDraftWorkflowSource),
   "auto-fill should sync updated player plan to GM",
 );
 assert.ok(
@@ -2980,7 +3131,7 @@ assert.ok(
   "pressing Auto-fill should load the best fresh plan even after cycling alternatives",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null \} = \{\}\) \{[\s\S]*if \(panel\._autoFillInFlight\) return;[\s\S]*panel\._autoFillInFlight = true;[\s\S]*\} finally \{[\s\S]*panel\._autoFillInFlight = false;/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\) \{[\s\S]*if \(panel\._autoFillInFlight\) return;[\s\S]*panel\._autoFillInFlight = true;[\s\S]*\} finally \{[\s\S]*panel\._autoFillInFlight = false;/.test(panelDraftWorkflowSource),
   "a second Auto-fill invocation while one is already running must be a no-op -- two overlapping runs previously corrupted the resulting draft (e.g. a Stride wrongly warning the actor is prone)",
 );
 assert.ok(
@@ -2988,7 +3139,7 @@ assert.ok(
   "re-matching a draft step to its live candidate must not fall back to an item.uuid comparison when the step has no item at all -- an unguarded === there matched undefined against undefined, mis-keying any generic item-less action (Stride, Demoralize, ...) to whichever OTHER item-less candidate happened to sort first that pass",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null \} = \{\}\)[\s\S]*if \(!plan\) panel\._pinnedPlanId = null/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\)[\s\S]*if \(!plan\) panel\._pinnedPlanId = null/.test(panelDraftWorkflowSource),
   "pressing Auto-fill should reset the alternative-plan cursor",
 );
 assert.ok(
@@ -3010,7 +3161,8 @@ assert.ok(
   "GM execution should write the shared draft back to the owned actor flag",
 );
 assert.ok(
-  /canExecuteStep:[^\n]*canRunStep/.test(panelViewModelSource)
+  panelViewModelSource.includes("const canShowExecuteStep = !minionPlanAsChildren && canRunStep")
+  && /canExecuteStep:[^\n]*canShowExecuteStep/.test(panelViewModelSource)
   && /canReset:[^\n]*gmCanRunPlayerPlan/.test(panelViewModelSource),
   "per-step execute/reset controls should be enabled for a GM viewing a player's shared plan",
 );
@@ -3046,7 +3198,7 @@ assert.ok(
   "executing a draft step should allow GM execution, not just editing",
 );
 assert.ok(
-  /canRevertStep: isExecutionDone && canRunStep/.test(panelViewModelSource),
+  /canRevertStep: !minionPlanAsChildren && isExecutionDone && canRunStep/.test(panelViewModelSource),
   "per-step revert should be available to the owner or a GM running a player's shared plan",
 );
 assert.ok(
@@ -3174,6 +3326,7 @@ for (const selectorHook of [
   "data-open-draft-step",
   "data-preview-step",
   "data-preview-draft-step",
+  "data-preview-minion-step",
 ]) {
   assert.ok(panelTemplateSource.includes(selectorHook), `panel template should expose ${selectorHook}`);
   assert.ok(panelEventBindingsSource.includes(selectorHook), `panel event bindings should bind ${selectorHook}`);
