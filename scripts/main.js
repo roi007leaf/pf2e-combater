@@ -21,6 +21,7 @@ import { cancelDestinationPicker } from "./ui/destination-picker.js";
 import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
 import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
 import { INTEL_LEDGER_FLAG, INTEL_REVEAL_MODE_FLAG } from "./rules/intel-ledger.js";
+import { registerRecallKnowledgeChatHooks, resolveRecallKnowledgeRequest } from "./ui/recall-knowledge.js";
 
 let activePanel = null;
 let refreshTimer = null;
@@ -253,6 +254,7 @@ function actorUpdateChangesIntelLedger(changed) {
 Hooks.once("init", () => {
   registerSettings();
   registerCombatTrackerIntel();
+  registerRecallKnowledgeChatHooks();
 
   game.keybindings.register(MODULE_ID, "togglePanel", {
     name: t("Keybind.ToggleName", "Toggle PF2e Combater"),
@@ -325,6 +327,7 @@ Hooks.once("socketlib.ready", () => {
   }
   socket.register("promptRetchDc", promptRetchDc);
   socket.register("promptRetchResult", promptRetchResult);
+  socket.register("resolveRecallKnowledge", resolveRecallKnowledgeRequest);
   socket.register("receiveSharedDraft", receiveSharedDraft);
   setSocket(socket);
 });
@@ -336,6 +339,10 @@ Hooks.on("pf2e-combater.playerAccessChanged", () => {
   ui?.combat?.render?.(true);
   if (playerAccessAllowed() || !activePanel) return;
   closeActivePanel().catch((error) => console.warn(`${MODULE_ID} | Access-change close failed`, error));
+});
+
+Hooks.on("pf2e-combater.preflightSettingChanged", () => {
+  scheduleRefresh("preflight-setting");
 });
 
 Hooks.once("ready", async () => {

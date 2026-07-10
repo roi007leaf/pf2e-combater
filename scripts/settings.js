@@ -8,6 +8,7 @@ const SETTINGS = {
   hideUntrainedSkillActions: "hideUntrainedSkillActions",
   includeUnknownCustomActions: "includeUnknownCustomActions",
   hideAutoFillFromPlayers: "hideAutoFillFromPlayers",
+  nativeRollContextPreflight: "nativeRollContextPreflight",
   showDebugTab: "showDebugTab",
   disableForPlayers: "disableForPlayers",
 };
@@ -74,6 +75,16 @@ export function registerSettings() {
     config: true,
     type: Boolean,
     default: false,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.nativeRollContextPreflight, {
+    name: "PF2E_COMBATER.Settings.NativeRollContextPreflight.Name",
+    hint: "PF2E_COMBATER.Settings.NativeRollContextPreflight.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => Hooks.callAll("pf2e-combater.preflightSettingChanged"),
   });
 
   game.settings.register(MODULE_ID, SETTINGS.showDebugTab, {

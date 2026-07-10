@@ -315,9 +315,42 @@ assert.ok(intelLedgerSource.includes("revealedIntelDetails") && intelLedgerSourc
 assert.ok(intelLedgerSource.includes("availableIntelDetails") && intelWindowSource.includes("entry.available")
   && panelStyleSource.includes(".combater-intel-shell.is-editable .combater-intel-entry"),
   "GM Recall Knowledge editor should show available system data in a compact edit layout before reveal");
+assert.ok(intelWindowSource.includes("categoryColumns")
+  && intelWindowTemplateSource.includes("combater-intel-category-column")
+  && panelStyleSource.includes(".combater-intel-category-column")
+  && panelStyleSource.includes("flex-direction: column")
+  && panelStyleSource.includes("align-self: stretch"),
+  "GM Recall Knowledge category cards should use independent vertical stacks without grid-row gaps");
+assert.ok(panelStyleSource.includes("--color-pf-text-critical-success")
+  && panelStyleSource.includes("--color-pf-text-success")
+  && panelStyleSource.includes("--color-pf-text-failure")
+  && panelStyleSource.includes("--color-pf-text-critical-failure")
+  && panelStyleSource.includes("color-mix(in srgb, var(--rk-success)"),
+  "Recall Knowledge degree colors should inherit PF2e system colors with translucent row washes");
+assert.ok(panelStyleSource.includes("--rk-success-ink: color-mix(in srgb, var(--rk-success) 46%, white)")
+  && panelStyleSource.includes("--rk-success-wash: color-mix(in srgb, var(--rk-success) 8%, rgb(255 255 255 / 10%))")
+  && panelStyleSource.includes("color: var(--rk-success-ink)"),
+  "Recall Knowledge success styling should adapt PF2e blue for readable dark adjudication surfaces");
+assert.ok(panelStyleSource.includes("--color-proficiency-untrained")
+  && panelStyleSource.includes("--color-proficiency-trained")
+  && panelStyleSource.includes("--color-proficiency-expert")
+  && panelStyleSource.includes("--color-proficiency-master")
+  && panelStyleSource.includes("--color-proficiency-legendary")
+  && panelStyleSource.includes("td.rank-4"),
+  "Recall Knowledge proficiency labels should inherit every PF2e system rank color");
 assert.ok(intelWindowSource.includes("_syncIntelEditorState") && intelWindowTemplateSource.includes("data-intel-category")
   && intelWindowTemplateSource.includes("data-intel-status"),
   "GM Recall Knowledge editor should update category card state immediately when reveal checkboxes change");
+assert.ok(intelWindowSource.includes("_revealAll")
+  && intelWindowTemplateSource.includes("data-intel-reveal-all")
+  && panelStyleSource.includes(".combater-intel-reveal-all"),
+  "GM Recall Knowledge editor should offer a per-NPC reveal-all control for every fact chip");
+assert.ok(intelWindowSource.includes("_toggleCategory")
+  && intelWindowTemplateSource.includes("data-intel-reveal-category")
+  && intelWindowTemplateSource.includes("class=\"combater-intel-category-mark\"")
+  && intelWindowTemplateSource.includes("{{markIcon}}")
+  && panelStyleSource.includes(".combater-intel-category-mark:hover"),
+  "GM Recall Knowledge category marker should toggle every fact and show partial state");
 assert.ok(intelLedgerSource.includes("intelTargets") && intelLedgerSource.includes("actorDefense"),
   "intel ledger view should support combat-tracker actor rows without a full Combater panel context");
 assert.ok(intelLedgerSource.includes("isNpcIntelTarget") && panelViewModelSource.includes("isNpcIntelTarget")
@@ -471,6 +504,12 @@ assert.ok(
     && panelPickerWorkflowSource.includes("export async function choosePanelArea")
     && panelPickerWorkflowSource.includes("export async function removePanelAreaTemplate"),
   "panel picker workflow should own destination picking, target capture, area picking, and area-template removal",
+);
+assert.ok(
+  panelEventBindingsSource.includes("useBestTarget: event.shiftKey")
+    && panelPickerWorkflowSource.includes("plannedTargetSelection")
+    && panelPickerWorkflowSource.includes('targetSelection: useBestTarget ? "recommended" : "manual"'),
+  "Shift-clicking target selection should commit the scored Best target while normal click keeps the current Foundry target",
 );
 for (const pattern of [
   "chooseDestination({",
@@ -706,6 +745,35 @@ assert.deepEqual(
   }).map((chip) => chip.label),
   ["Rank 3", "Slots 2/4", "Arcane Spontaneous", "DC 21 Reflex basic", "20-ft Burst", "Sustain", "Incapacitation", "Manipulate"],
   "spell action detail chips should show rank, resource, entry, resolution, area, duration, and notable traits",
+);
+assert.deepEqual(
+  actionDetailChips({
+    name: "Demoralize",
+    source: "generic",
+    suggestedTarget: { type: "enemy", id: "ogre", name: "Ogre" },
+  }).map(({ label, tooltip, class: className }) => ({ label, tooltip, class: className })),
+  [{
+    label: "Best target: Ogre",
+    tooltip: "Ogre is this action's highest-ranked target.",
+    class: "is-best-target",
+  }],
+  "action detail chips should name the scored best combatant target",
+);
+const dropProneWithStaleTarget = {
+  name: "Drop Prone",
+  slug: "drop-prone",
+  role: "defense",
+  suggestedTarget: { type: "enemy", id: "wraith", name: "War Wraith" },
+};
+assert.equal(
+  requiresTargetForAction(dropProneWithStaleTarget),
+  false,
+  "Drop Prone should stay targetless even when stale recommendation metadata contains an enemy",
+);
+assert.deepEqual(
+  actionDetailChips(dropProneWithStaleTarget),
+  [],
+  "self-only Drop Prone should not render a Best target chip",
 );
 assert.deepEqual(
   traitChips({ name: "Arm", traits: ["agile", "reach-10", { slug: "magical" }] }).map((chip) => chip.label),

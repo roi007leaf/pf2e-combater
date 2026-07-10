@@ -9,6 +9,7 @@ import {
 import { executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
+import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
 import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { intelTargetKey, isNpcIntelTarget } from "../../rules/intel-ledger.js";
@@ -63,6 +64,7 @@ function actionGlyphIcon(cost) {
 }
 
 const GENERIC_ACTION_IMG = "systems/pf2e/icons/actions/Passive.webp";
+const MAX_WHY_REASONS = 5;
 
 function actionImage(source) {
   return source?.img
@@ -71,6 +73,50 @@ function actionImage(source) {
     ?? source?.strike?.imageUrl
     ?? source?.action?.img
     ?? GENERIC_ACTION_IMG;
+}
+
+function finiteScoreLabel(...sources) {
+  for (const source of sources) {
+    const value = Number(source?.autoFillScore ?? source?.score);
+    if (!Number.isFinite(value)) continue;
+    return t("Panel.ScoreLabel", "Score {score}", { score: Math.round(value) });
+  }
+  return "";
+}
+
+function pushReason(result, reason) {
+  const value = String(reason ?? "").trim();
+  if (!value || result.includes(value)) return;
+  result.push(value);
+}
+
+function normalizedWhyReasons(...sources) {
+  const result = [];
+  for (const source of sources) {
+    if (!source) continue;
+    const explicit = Array.isArray(source?.autoFillReasons) ? source.autoFillReasons : [];
+    for (const reason of explicit) pushReason(result, reason);
+    pushReason(result, source?.autoFillReason);
+    const reasons = Array.isArray(source?.reasons) ? source.reasons : [];
+    for (const reason of reasons) pushReason(result, reason);
+    pushReason(result, source?.reason);
+  }
+  return result.slice(0, MAX_WHY_REASONS);
+}
+
+function whyDetails(...sources) {
+  const reasons = normalizedWhyReasons(...sources);
+  const summary = reasons[0] ?? "";
+  const scoreLabel = finiteScoreLabel(...sources);
+  return {
+    hasReasons: reasons.length > 0,
+    label: t("Panel.WhyThisPlan", "Why"),
+    title: t("Panel.WhyThisPlanTitle", "Why this plan?"),
+    scoreLabel,
+    summary,
+    reasons,
+    tooltip: scoreLabel ? `${scoreLabel}: ${summary}` : summary,
+  };
 }
 
 function stepTraitSlugs(step) {
@@ -446,6 +492,7 @@ function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
   const minionPlanLabel = minionPlan?.label ?? "";
   const intelTarget = targetForIntel(step);
   const targetKey = isNpcIntelTarget(intelTarget) ? targetIntelKey(step) : "";
+  const why = whyDetails(step);
   return {
     ...step,
     index: sourceIndex,
@@ -454,7 +501,8 @@ function decorateStep(step, displayIndex, sourceIndex = displayIndex) {
     costLabel: actionCostLabel(cost),
     actionGlyphIcon: actionGlyphIcon(cost),
     img: actionImage(step),
-    reason: step?.reason ?? step?.reasons?.[0] ?? "",
+    reason: why.summary,
+    why,
     targetLabel: targetName ? `Target: ${targetName}` : "",
     targetIntelKey: targetKey,
     canOpenTargetIntel: Boolean(targetName && targetKey),
@@ -559,7 +607,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     ? { status: "ready", choices: [], warning: "" }
     : executionReadinessForStep(step, action ?? step);
   const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
-  const warning = isExecutionDone ? "" : (readiness.warning || rawWarning);
+  const rkWarnings = isExecutionDone ? [] : rkWarningsForStep(context, step, action ?? step);
+  const advisoryWarning = rkWarningLabel(rkWarnings);
+  const warning = isExecutionDone ? "" : (readiness.warning || rawWarning || advisoryWarning);
   const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
@@ -583,6 +633,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const isStrikeAtom = action?.executable === "strike" || action?.source === "strike";
   const canCycleWeapon = Boolean(step?.groupId) && isStrikeAtom && canRunStep && !isExecutionDone && weaponOptions.length > 1;
   const weaponToolTip = t("Panel.WeaponCycle", "Attacking with {label}. Click to change.", { label: weaponToolLabel });
+  const persistedWhy = whyDetails(step);
+  const why = persistedWhy.hasReasons ? persistedWhy : whyDetails(action, display);
   return {
     ...display,
     ...step,
@@ -592,7 +644,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     instanceId: step?.instanceId,
     readonly,
     name: action?.name ?? step?.name ?? step?.actionKey ?? t("Panel.UnknownAction", "Unknown action"),
-    reason: action?.reason ?? step?.reason ?? "",
+    reason: why.summary,
+    why,
     targetLabel,
     targetIntelKey: draftTargetIntelKey,
     canOpenTargetIntel: Boolean(targetLabel && !sustainLabel && draftTargetIntelKey),
@@ -618,7 +671,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     executionBlocked: executionBlocked || isAwaitingGm,
     executeTooltip: isAwaitingGm
       ? t("Panel.AwaitingGm", "Waiting for the GM\u2026")
-      : (executionBlocked ? (readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing.")) : t("Panel.ExecuteStep", "Execute this step")),
+      : (executionBlocked
+          ? (readiness.warning || t("Notify.ResolveChoices", "Resolve required choices before executing."))
+          : (advisoryWarning ? `${t("Panel.ExecuteStep", "Execute this step")} ${advisoryWarning}` : t("Panel.ExecuteStep", "Execute this step"))),
     awaitingGm: isAwaitingGm,
     awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM\u2026"),
     canCycleMap: isAttackStep && canRunStep && !isExecutionDone,

@@ -19,6 +19,7 @@ import {
   trainedSkillRequirement,
 } from "./scoring/skills.js";
 import { spellTacticalAdjustment } from "./scoring/spells.js";
+import { nativeRollContextPreflight } from "./scoring/roll-preflight.js";
 import { blockedCandidateResult } from "./scoring/gates.js";
 import {
   bestTargetForAction,
@@ -35,6 +36,8 @@ import { sanitizeScoredRecommendation } from "./recommendation-safety.js";
 import { detectionState } from "./target-pool.js";
 import { t } from "../i18n.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
+import { deterministicPreferenceAdjustment } from "../state/preference-profile.js";
+import { SETTINGS, settingOrDefault } from "../settings.js";
 
 // PF2e core rule: affecting a hidden creature (any attack roll or save-requiring effect) needs a
 // DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
@@ -45,6 +48,7 @@ const PLAYER_INTEL_CATEGORIES = ["saves", "perception", "weaknesses", "resistanc
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const role = action.curated?.role ?? action.role;
+  const preference = deterministicPreferenceAdjustment(context, action);
   const requiredTraining = trainedSkillRequirement(profile, action);
   if (requiredTraining) {
     return {
@@ -53,6 +57,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
       suggestedTarget: null,
       reason: requiredTraining.reason,
       reasons: [requiredTraining.reason],
+      preference,
     };
   }
 
@@ -74,9 +79,15 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   const skillCheck = canUseTargetSave(context, target, skillDcSlug) ? skillCheckScore(profile, target, action) : null;
   const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
   const spellAdjustment = spellTacticalAdjustment(action, role, context);
+  const preflightAllowed = context?.isGM === true
+    || (typeof context?.isGM !== "boolean" && globalThis.game?.user?.isGM === true)
+    || settingOrDefault(SETTINGS.nativeRollContextPreflight, false);
+  const nativePreflight = preflightAllowed
+    ? nativeRollContextPreflight(context, action, { target })
+    : { available: false, status: "disabled", scoreApplied: false };
 
   const blocked = blockedCandidateResult(context, action, { role, target, profile, siblingSpells });
-  if (blocked) return blocked;
+  if (blocked) return { ...blocked, preference };
 
   let {
     score,
@@ -156,11 +167,20 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(t("ScoreReason.HiddenTargetFlatCheck", "{target} is hidden; a flat check is needed before this can affect them.", { target: target.name }));
   }
 
+  if (preference.scoreDelta) {
+    score += preference.scoreDelta;
+    reasons.push(preference.reason);
+  }
+
+  if (nativePreflight.available && nativePreflight.reason) reasons.push(nativePreflight.reason);
+
   return sanitizeScoredRecommendation({
     ...action,
     ...(backingManeuver ? { executable: backingManeuver.executable, slug: backingManeuver.slug, skill: backingManeuver.skill } : {}),
     score,
     skillCheck,
+    preference,
+    nativePreflight,
     suggestedTarget,
     reason: reasons[0] ?? defaultReason(action),
     reasons,

@@ -80,6 +80,7 @@ import {
   viewPanelContext,
 } from "./panel/context-workflow.js";
 import { openIntelWindow } from "./intel-window.js";
+import { resetRecallKnowledgeAttemptsForTarget } from "./recall-knowledge.js";
 import { openTacticWindow } from "./tactic-window.js";
 import {
   TACTIC_PERSONALITY_FLAG,
@@ -93,6 +94,7 @@ import {
   intelTargetMatchesKey,
 } from "../rules/intel-ledger.js";
 import { readCombatContext } from "../state/combat-context.js";
+import { setPlanPreferenceFeedback } from "../state/preference-profile.js";
 import {
   debugAction,
   DEFAULT_TAB,
@@ -469,6 +471,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await openIntelWindow(view, {
       mode: view.editable === true ? "edit" : "view",
       onSave: (decision) => this._saveIntelLedger(decision),
+      onResetAttempts: async (target) => {
+        const actor = this._context?.actor?.document ?? this._context?.actor;
+        const count = await resetRecallKnowledgeAttemptsForTarget(target, { actors: [actor] });
+        await this.refresh("rk-attempt-reset");
+        return count;
+      },
       viewProvider,
     });
   }
@@ -734,6 +742,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return togglePanelFavorite(this, actionKey);
   }
 
+  async _setPlanPreferenceFeedback(value) {
+    if (!this._canEditDraft() || !this._context) return;
+    const plan = this._builder?.draft;
+    if (!plan?.steps?.length) return;
+    setPlanPreferenceFeedback(this._context, plan, value);
+    await this.render({ force: true });
+  }
+
   async _reorderFavorite(key, targetKey) {
     return reorderPanelFavorite(this, key, targetKey);
   }
@@ -798,8 +814,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return choosePanelDestination(this, instanceId);
   }
 
-  async _chooseTarget(instanceId) {
-    return choosePanelTarget(this, instanceId);
+  async _chooseTarget(instanceId, options = {}) {
+    return choosePanelTarget(this, instanceId, options);
   }
 
   async _removeAreaTemplate(instanceId) {

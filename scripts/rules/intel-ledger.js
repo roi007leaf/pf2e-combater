@@ -10,6 +10,7 @@ export const INTEL_REVEAL_MODES = {
 };
 
 export const INTEL_LEDGER_CATEGORIES = [
+  { id: "identity", label: "Identity" },
   { id: "traits", label: "Traits" },
   { id: "saves", label: "Saves" },
   { id: "perception", label: "Perception" },
@@ -20,6 +21,29 @@ export const INTEL_LEDGER_CATEGORIES = [
 
 const CATEGORY_IDS = new Set(INTEL_LEDGER_CATEGORIES.map((entry) => entry.id));
 export const NONE_FACT_ID = "__none";
+const CREATURE_IDENTIFICATION_TRAITS = new Set([
+  "aberration",
+  "animal",
+  "astral",
+  "beast",
+  "celestial",
+  "construct",
+  "dragon",
+  "dream",
+  "elemental",
+  "ethereal",
+  "fey",
+  "fiend",
+  "fungus",
+  "humanoid",
+  "monitor",
+  "ooze",
+  "plant",
+  "shade",
+  "spirit",
+  "time",
+  "undead",
+]);
 
 const SAVE_MODERATE_DCS_BY_LEVEL = new Map([
   [-1, 13],
@@ -213,6 +237,14 @@ function actorTraitSlugs(actor) {
   return [];
 }
 
+export function intelIdentityTrait(target) {
+  const actor = targetActor(target) ?? target;
+  const traits = target?.traits ?? target?.traitSlugs ?? actorTraitSlugs(actor);
+  return (Array.isArray(traits) ? traits : [])
+    .map((trait) => String(trait ?? "").toLowerCase())
+    .find((trait) => CREATURE_IDENTIFICATION_TRAITS.has(trait)) ?? null;
+}
+
 function actorSaves(actor) {
   const saves = actor?.system?.saves ?? {};
   return {
@@ -398,6 +430,15 @@ function traitFacts(enemy) {
     .filter((entry) => entry.label);
 }
 
+function identityFacts(enemy) {
+  const actor = targetActor(enemy);
+  const name = String(enemy?.identityName ?? actor?.name ?? "").trim();
+  if (!name) return [];
+  const category = intelIdentityTrait(enemy);
+  const label = category ? `${name} (${titleCase(category)})` : name;
+  return [fact("identity", label, { exactLabel: label, bandLabel: label })];
+}
+
 function defenseFacts(enemy, category, { showValue = true, revealMode = INTEL_REVEAL_MODES.exact } = {}) {
   return defenseEntries(enemy?.[category] ?? actorDefense(targetActor(enemy), category))
     .map((entry) => fact(intelDefenseFactId(entry, { showValue }), defenseLabel(entry, { showValue, revealMode, target: enemy }), {
@@ -408,6 +449,7 @@ function defenseFacts(enemy, category, { showValue = true, revealMode = INTEL_RE
 
 function availableIntelFacts(enemy, { revealMode = readIntelRevealMode(enemy) } = {}) {
   return {
+    identity: identityFacts(enemy),
     traits: traitFacts(enemy),
     saves: saveFacts(enemy, { revealMode }),
     perception: perceptionFacts(enemy, { revealMode }),
@@ -436,6 +478,7 @@ function selectedFacts(available, value) {
 function revealedIntelFacts(availableFacts, values) {
   const known = (category) => selectedFacts(availableFacts[category] ?? [], values[category]);
   return {
+    identity: known("identity"),
     traits: known("traits"),
     saves: known("saves"),
     perception: known("perception"),
@@ -472,7 +515,10 @@ function tokenName(target) {
     ?? null;
 }
 
-function targetName(target, actor, isGM) {
+function targetName(target, actor, isGM, values) {
+  const identityKnown = values?.identity === true
+    || (Array.isArray(values?.identity) && values.identity.length > 0);
+  if (!isGM && identityKnown && actor?.name) return actor.name;
   return tokenName(target)
     ?? target?.name
     ?? (isGM ? actor?.name : null)
@@ -495,7 +541,7 @@ export function intelLedgerView(context) {
     const revealed = revealedIntelDetails(availableFacts, values);
     return {
       id: entityKey(enemy) ?? enemy?.id ?? enemy?.token?.id ?? enemy?.name,
-      name: targetName(enemy, actor, isGM),
+      name: targetName(enemy, actor, isGM, values),
       actor,
       img: enemy?.token?.img ?? enemy?.actor?.img ?? actor?.img ?? "",
       values,

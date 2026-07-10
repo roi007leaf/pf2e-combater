@@ -65,6 +65,13 @@ export function activatePanelRenderBindings(panel, element) {
     });
   }
 
+  for (const button of element.querySelectorAll("[data-plan-preference]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      panel._setPlanPreferenceFeedback(Number(button.dataset.planPreference));
+    });
+  }
+
   for (const button of element.querySelectorAll("[data-reset-execution]")) {
     button.addEventListener("click", () => panel._resetExecution());
   }
@@ -88,7 +95,9 @@ export function activatePanelRenderBindings(panel, element) {
   }
 
   for (const button of element.querySelectorAll("[data-choose-target]")) {
-    button.addEventListener("click", () => panel._chooseTarget(button.dataset.chooseTarget));
+    button.addEventListener("click", (event) => panel._chooseTarget(button.dataset.chooseTarget, {
+      useBestTarget: event.shiftKey,
+    }));
   }
 
   for (const button of element.querySelectorAll("[data-choose-minion-target]")) {

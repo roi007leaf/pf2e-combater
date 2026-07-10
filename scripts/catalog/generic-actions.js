@@ -267,7 +267,7 @@ const GENERIC_ACTION_DEFS = [
     role: "knowledge",
     requiresTarget: true,
     playerFacing: true,
-    executable: "chat-guidance",
+    executable: "recall-knowledge",
   },
   {
     id: "administer-first-aid",

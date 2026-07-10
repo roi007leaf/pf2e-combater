@@ -1,10 +1,18 @@
 import { executeDraftStep } from "../../engine/action/executor.js";
+import { contextActorDocument } from "../../engine/actor-context.js";
+import { rollRecallKnowledge } from "../../engine/execution/recall-knowledge.js";
 import { executionReadinessForStep } from "../../engine/execution/state.js";
+import { resolveTarget } from "../../engine/execution/targets.js";
 import { revertDraftExecution, revertDraftStep } from "../../engine/action/revert.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
 import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
-import { requestRetchDc, requestRetchResult } from "../../socket.js";
+import { recallKnowledgeAttemptState } from "../../rules/recall-knowledge.js";
+import { requestRecallKnowledgeResolution, requestRetchDc, requestRetchResult } from "../../socket.js";
 import { clearActionPreview } from "../action/preview.js";
+import {
+  promptRecallKnowledgeQuestion,
+  resolveRecallKnowledgeRequest,
+} from "../recall-knowledge.js";
 import { isSustainAction, sustainedSpellDraftFields } from "./view-model.js";
 import { t } from "../../i18n.js";
 
@@ -74,6 +82,11 @@ export async function executePanelDraftStep(panel, instanceId, event) {
       return;
     }
 
+    if (String(action?.slug ?? action?.id ?? "") === "recall-knowledge") {
+      await resolvePanelRecallKnowledge(panel, step, action);
+      return;
+    }
+
     clearActionPreview();
     const result = await executeDraftStep({
       context: panel._contextForDraftStep(step.instanceId) ?? panel._context,
@@ -86,6 +99,96 @@ export async function executePanelDraftStep(panel, instanceId, event) {
     globalThis.console?.error?.("pf2e-combater | Execute step failed", error);
     globalThis.ui?.notifications?.error?.(t("Notify.ExecuteFailed", "Could not execute the step; see the console."));
   }
+}
+
+function recallKnowledgePayload(actor, target, question, messageId) {
+  const targetActor = target?.token?.actor ?? target?.token?.document?.actor ?? null;
+  return {
+    actorUuid: actor?.uuid ?? null,
+    actorName: actor?.name ?? "",
+    targetActorUuid: targetActor?.uuid ?? null,
+    targetName: targetActor?.name ?? target?.label ?? "",
+    question: question?.id ?? "",
+    messageId,
+  };
+}
+
+export async function resolvePanelRecallKnowledge(panel, step, action) {
+  const context = panel._contextForDraftStep(step.instanceId) ?? panel._context;
+  const actor = contextActorDocument(context, { allowActorFallback: true });
+  const target = resolveTarget(step, action, {});
+  if (!actor || !target?.token) {
+    globalThis.ui?.notifications?.warn?.(t(
+      "RecallKnowledge.TargetRequired",
+      "Choose a creature target before using Recall Knowledge.",
+    ));
+    return;
+  }
+
+  const targetActor = target.token?.actor ?? target.token?.document?.actor ?? null;
+  const attemptState = recallKnowledgeAttemptState(actor, targetActor);
+  if (attemptState.blocked) {
+    globalThis.ui?.notifications?.warn?.(t(
+      "RecallKnowledge.Blocked",
+      "A failed Recall Knowledge check prevents further attempts against this creature.",
+    ));
+    return;
+  }
+  if (globalThis.game?.user?.isGM !== true && !globalThis.game?.users?.activeGM) {
+    globalThis.ui?.notifications?.warn?.(t(
+      "RecallKnowledge.GMUnavailable",
+      "Recall Knowledge requires an active GM and socketlib.",
+    ));
+    return;
+  }
+  const question = await promptRecallKnowledgeQuestion();
+  if (!question) return;
+  clearActionPreview();
+  const rollResult = await rollRecallKnowledge({ actor, target: target.token, question: question.id });
+  if (rollResult.status !== "done") {
+    await applyPanelExecutionResult(panel, step, rollResult);
+    return;
+  }
+  const payload = recallKnowledgePayload(actor, target, question, rollResult.messageId);
+  if (!payload.actorUuid || !payload.targetActorUuid) {
+    globalThis.ui?.notifications?.warn?.(t(
+      "RecallKnowledge.DocumentsUnavailable",
+      "Recall Knowledge actor or target is unavailable.",
+    ));
+    return;
+  }
+
+  let result;
+  if (globalThis.game?.user?.isGM === true) {
+    result = await resolveRecallKnowledgeRequest(payload);
+  } else {
+    globalThis.ui?.notifications?.info?.(t(
+      "RecallKnowledge.WaitingGM",
+      "Roll sent. Waiting for the GM to adjudicate Recall Knowledge.",
+    ));
+    await setPanelAwaitingGm(panel, step.instanceId, true);
+    try {
+      result = await requestRecallKnowledgeResolution(payload);
+    } finally {
+      await setPanelAwaitingGm(panel, step.instanceId, false);
+    }
+  }
+
+  if (!result?.completed) {
+    globalThis.ui?.notifications?.warn?.(result?.reason ?? t(
+      "RecallKnowledge.GMUnavailable",
+      "Recall Knowledge requires an active GM and socketlib.",
+    ));
+    return;
+  }
+  if (result.revealed > 0) {
+    globalThis.ui?.notifications?.info?.(t(
+      "RecallKnowledge.IntelRevealed",
+      "GM added {count} Recall Knowledge fact(s) to Intel.",
+      { count: result.revealed },
+    ));
+  }
+  await applyPanelExecutionResult(panel, step, rollResult);
 }
 
 export function handlePanelExecutionChoice(panel, step, choice, event, result = null) {

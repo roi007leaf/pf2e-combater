@@ -29,6 +29,10 @@
         "Name": "Hide Auto-fill from players",
         "Hint": "Remove the Auto-fill button for players so they plan their own turns instead of accepting the generic recommendation. The GM still sees Auto-fill."
       },
+      "NativeRollContextPreflight": {
+        "Name": "Show PF2e check previews to players",
+        "Hint": "Allow players to see PF2e check-preview chips using only target Intel revealed to them. GMs always see previews. Disabled by default and does not change Auto-fill ranking."
+      },
       "ShowDebugTab": {
         "Name": "Show GM debug tab",
         "Hint": "Allow GMs to inspect scoring inputs, rejected actions, and detected actor actions."
@@ -48,7 +52,7 @@
       "DuplicateStepAria": "Duplicate {name}",
       "RevertStep": "Revert this step",
       "SetDestination": "Set destination",
-      "UseCurrentTarget": "Use current target",
+      "UseCurrentTarget": "Use current Foundry target. Shift-click to use Best target.",
       "SetTemplate": "Set template",
       "RemoveTemplate": "Remove template",
       "Remove": "Remove",
@@ -78,8 +82,8 @@
       "AddSustain": "Add Sustain a Spell",
       "SustainAria": "Sustain {name}",
       "UncountedActions": "Uncounted actions",
-      "ChooseTarget": "Choose target",
-      "ChooseTargetAria": "Choose target for {name}",
+      "ChooseTarget": "Use current Foundry target. Shift-click to use Best target.",
+      "ChooseTargetAria": "Choose target for {name}. Shift-click to use Best target.",
       "ChooseDestination": "Choose destination",
       "ChooseDestinationAria": "Choose destination for {name}",
       "PlaceTemplate": "Place template",
@@ -155,6 +159,8 @@
       "Range": "Range",
       "Self": "Self",
       "TargetsSelf": "Targets self",
+      "BestTarget": "Best target: {name}",
+      "BestTargetTooltip": "{name} is this action's highest-ranked target.",
       "Sustain": "Sustain"
     },
     "Warning": {
@@ -320,6 +326,7 @@
       "SyncFailed": "Could not sync plan with GM.",
       "NoDestinationPicker": "Canvas destination picker is not available.",
       "TargetFirst": "Target a token in Foundry first.",
+      "NoBestTarget": "No Best target is available for this action.",
       "RemoveTemplateFailed": "Could not remove the placed template region.",
       "ReadOnly": "This draft is read-only.",
       "NoAreaStep": "No draft step is available for area placement.",
@@ -932,11 +939,21 @@
       "RevealExactHint": "Players see the actual DCs and amounts.",
       "RevealBand": "Bands only",
       "RevealBandHint": "Players see Low, Mid, or High for level-scaled numbers.",
+      "RevealAll": "Reveal all",
+      "RevealAllTooltip": "Select every available Recall Knowledge fact for this NPC. Save Intel to reveal them to players.",
+      "ToggleCategoryAll": "Select or clear all {category} facts",
       "DialogUnavailable": "Intel ledger is unavailable.",
       "ConfigureTitle": "Recall Knowledge Intel",
       "Save": "Save intel",
       "Saved": "Intel ledger updated.",
-      "SaveFailed": "Could not update intel ledger."
+      "SaveFailed": "Could not update intel ledger.",
+      "ResetAttempts": "Reset RK attempts",
+      "ResetAttemptsTooltip": "Reset every actor's Recall Knowledge attempt progression against this NPC.",
+      "ResetAttemptsTitle": "Reset Recall Knowledge Attempts",
+      "ResetAttemptsConfirm": "Reset all Recall Knowledge attempts against {target}? This restores first-attempt DCs and removes failure blocks.",
+      "AttemptsReset": "Reset Recall Knowledge attempts against {target} for {count} actor(s).",
+      "NoAttemptsToReset": "No tracked Recall Knowledge attempts against {target}.",
+      "ResetAttemptsFailed": "Could not reset Recall Knowledge attempts."
     },
     "MinionPlan": {
       "Minion": "Companion",

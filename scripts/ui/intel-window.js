@@ -70,16 +70,24 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
     })),
     selectedCount,
     totalCount,
+    markIcon: selectedCount === 0 ? "fa-plus" : (selectedCount === totalCount ? "fa-check" : "fa-minus"),
     countLabel: factCountLabel(values.length),
     detailLabel: editable
       ? (selectedCount > 0 ? selectedCountLabel(selectedCount, totalCount) : factPreviewLabel(values) || t("Intel.NoSystemValues", "No system values found"))
       : factCountLabel(values.length),
     emptyLabel: t("Intel.NoSystemValues", "No system values found"),
+    revealAllLabel: t("Intel.ToggleCategoryAll", "Select or clear all {category} facts", { category: category.label }),
   };
 }
 
-function entryModel(entry, categories, index) {
+function entryModel(entry, categories, index, { canResetAttempts = false } = {}) {
   const revealMode = normalizeIntelRevealMode(entry.revealMode);
+  const categoryModels = categories.map((category) => categoryModel(
+    entry,
+    category,
+    index,
+    { editable: entry.editable === true },
+  ));
   return {
     ...entry,
     index,
@@ -100,18 +108,38 @@ function entryModel(entry, categories, index) {
       inputName: revealModeInputName(index),
       checked: option.id === revealMode,
     })),
-    categories: categories.map((category) => categoryModel(entry, category, index, { editable: entry.editable === true })),
+    categories: categoryModels,
+    categoryColumns: [
+      categoryModels.filter((_category, categoryIndex) => categoryIndex % 2 === 0),
+      categoryModels.filter((_category, categoryIndex) => categoryIndex % 2 === 1),
+    ],
     knownLabel: t("Intel.KnownFacts", "Revealed facts"),
     noneLabel: t("Intel.NoRevealedDataShort", "Nothing revealed"),
     selectedLabel: t("Intel.SelectedFacts", "Selected to reveal"),
     revealStyleLabel: t("Intel.RevealStyle", "Reveal style"),
+    revealAllLabel: t("Intel.RevealAll", "Reveal all"),
+    revealAllTooltip: t(
+      "Intel.RevealAllTooltip",
+      "Select every available Recall Knowledge fact for this NPC. Save Intel to reveal them to players.",
+    ),
+    canResetAttempts,
+    resetAttemptsLabel: t("Intel.ResetAttempts", "Reset RK attempts"),
+    resetAttemptsTooltip: t(
+      "Intel.ResetAttemptsTooltip",
+      "Reset every actor's Recall Knowledge attempt progression against this NPC.",
+    ),
   };
 }
 
-function windowContext(view, mode) {
+function windowContext(view, mode, { canResetAttempts = false } = {}) {
   const editable = mode === "edit" && view?.editable === true;
   const categories = view?.categories ?? [];
-  const entries = (view?.entries ?? []).map((entry, index) => entryModel({ ...entry, editable }, categories, index));
+  const entries = (view?.entries ?? []).map((entry, index) => entryModel(
+    { ...entry, editable },
+    categories,
+    index,
+    { canResetAttempts: editable && canResetAttempts },
+  ));
   return {
     editable,
     entries,
@@ -166,11 +194,12 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   constructor(view, options = {}) {
-    const { mode, onSave, viewProvider, ...appOptions } = options;
+    const { mode, onSave, onResetAttempts, viewProvider, ...appOptions } = options;
     super({ id: randomId(`${MODULE_ID}-intel`), ...appOptions });
     this._view = view ?? {};
     this._mode = mode ?? (view?.editable === true ? "edit" : "view");
     this._onSave = typeof onSave === "function" ? onSave : null;
+    this._onResetAttempts = typeof onResetAttempts === "function" ? onResetAttempts : null;
     this._viewProvider = this._mode === "view" && typeof viewProvider === "function" ? viewProvider : null;
     this._liveRefreshHooks = [];
     this._liveRefreshTimer = null;
@@ -186,7 +215,7 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext(options) {
     await super._prepareContext(options);
     this._view = resolveIntelWindowView(this._view, this._viewProvider);
-    return windowContext(this._view, this._mode);
+    return windowContext(this._view, this._mode, { canResetAttempts: Boolean(this._onResetAttempts) });
   }
 
   _registerLiveRefreshHooks() {
@@ -252,6 +281,17 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  async _resetAttempts(index, button) {
+    const entry = this._view.entries?.[index];
+    if (!entry?.actor || !this._onResetAttempts) return;
+    button.disabled = true;
+    try {
+      await this._onResetAttempts(entry.actor);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   _syncFactState(fact) {
     if (!fact) return;
     const checked = fact.querySelector("input[type='checkbox']")?.checked === true;
@@ -265,9 +305,11 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!category) return;
     const inputs = Array.from(category.querySelectorAll("input[type='checkbox']"));
     const checkedCount = inputs.filter((input) => input.checked === true).length;
+    const allChecked = inputs.length > 0 && checkedCount === inputs.length;
     category.classList.toggle("is-known", checkedCount > 0);
     const icon = category.querySelector(".combater-intel-category-mark i");
-    icon?.classList.toggle("fa-check", checkedCount > 0);
+    icon?.classList.toggle("fa-check", allChecked);
+    icon?.classList.toggle("fa-minus", checkedCount > 0 && !allChecked);
     icon?.classList.toggle("fa-plus", checkedCount === 0);
   }
 
@@ -302,10 +344,39 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     for (const entry of this.element.querySelectorAll("[data-intel-entry]")) this._syncEntryState(entry);
   }
 
+  _revealAll(entry) {
+    if (!entry) return;
+    for (const input of entry.querySelectorAll("[data-intel-category] input[type='checkbox']")) {
+      input.checked = true;
+    }
+    for (const fact of entry.querySelectorAll("[data-intel-fact]")) this._syncFactState(fact);
+    for (const category of entry.querySelectorAll("[data-intel-category]")) this._syncCategoryState(category);
+    this._syncEntryState(entry);
+  }
+
+  _toggleCategory(category) {
+    if (!category) return;
+    const inputs = Array.from(category.querySelectorAll("input[type='checkbox']"));
+    const checked = !(inputs.length > 0 && inputs.every((input) => input.checked === true));
+    for (const input of inputs) input.checked = checked;
+    for (const fact of category.querySelectorAll("[data-intel-fact]")) this._syncFactState(fact);
+    this._syncCategoryState(category);
+    this._syncEntryState(category.closest("[data-intel-entry]"));
+  }
+
   _onRender(context, options) {
     super._onRender(context, options);
     this.element.querySelector("[data-intel-close]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[data-intel-save]")?.addEventListener("click", (event) => this._save(event.currentTarget));
+    for (const button of this.element.querySelectorAll("[data-intel-reset-attempts]")) {
+      button.addEventListener("click", () => this._resetAttempts(Number(button.dataset.intelResetAttempts), button));
+    }
+    for (const button of this.element.querySelectorAll("[data-intel-reveal-all]")) {
+      button.addEventListener("click", () => this._revealAll(button.closest("[data-intel-entry]")));
+    }
+    for (const button of this.element.querySelectorAll("[data-intel-reveal-category]")) {
+      button.addEventListener("click", () => this._toggleCategory(button.closest("[data-intel-category]")));
+    }
     this._syncIntelEditorState();
     for (const input of this.element.querySelectorAll("[data-intel-fact] input[type='checkbox']")) {
       input.addEventListener("change", () => {

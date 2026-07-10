@@ -28,6 +28,36 @@ function descriptionText(item) {
   return String(raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function spellRank(item) {
+  const rank = Number(item?.system?.level?.value ?? item?.system?.rank?.value ?? item?.system?.level ?? item?.rank);
+  return Number.isFinite(rank) ? rank : null;
+}
+
+function rankOverrideFor(curated, rank) {
+  const overrides = curated?.rankOverrides;
+  if (!overrides || !Number.isFinite(rank)) return null;
+  return overrides[rank] ?? overrides[String(rank)] ?? null;
+}
+
+function curatedForRank(curated, rank) {
+  const override = rankOverrideFor(curated, rank);
+  if (!override || typeof override !== "object") return curated;
+  const base = { ...curated };
+  delete base.rankOverrides;
+  return {
+    ...base,
+    ...override,
+    activityProfile: {
+      ...(base.activityProfile ?? {}),
+      ...(override.activityProfile ?? {}),
+    },
+    reasons: [
+      ...(Array.isArray(override.reasons) ? override.reasons : []),
+      ...(Array.isArray(base.reasons) ? base.reasons : []),
+    ],
+  };
+}
+
 function mergeTactic(curated, inferred) {
   if (!curated) return inferred;
   return {
@@ -65,13 +95,15 @@ function bucketName(combatUse) {
 function auditEntry(item) {
   const slug = itemSlug(item);
   const inferred = classifySpell(item);
+  const rank = spellRank(item);
   const curated = findCuratedSpell(slug);
-  const tactic = mergeTactic(curated, inferred);
+  const rankedCurated = curatedForRank(curated, rank);
+  const tactic = mergeTactic(rankedCurated, inferred);
   const combatUse = defaultCombatUse(tactic);
   return {
     name: item?.name ?? "(unnamed)",
     slug,
-    rank: Number(item?.system?.level?.value ?? item?.system?.level ?? 0),
+    rank: rank ?? 0,
     traits: traitList(item),
     source: curated ? "spell-curated" : (tactic ? "spell-inferred" : "spell-unknown"),
     role: tactic?.role ?? null,

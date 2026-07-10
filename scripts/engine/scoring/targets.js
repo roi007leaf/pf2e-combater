@@ -23,6 +23,7 @@ import {
   targetTraitSlugs,
 } from "./facts.js";
 import { canAttackTarget, contextEnemies, firstContextTarget } from "../target-pool.js";
+import { profileReach } from "./tactic-helpers.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
 const ELEMENT_DAMAGE_FALLBACKS = {
@@ -124,13 +125,47 @@ function offensiveTargetValue(context, action, role, target) {
   return value;
 }
 
+function targetMatchesTraitRequirements(context, action, target) {
+  const profile = action?.targetingProfile ?? {};
+  const traits = targetTraitSlugs(context, target);
+
+  const requiresAny = Array.isArray(profile.requiresAnyTrait)
+    ? profile.requiresAnyTrait.map(slugText).filter(Boolean)
+    : [];
+  if (requiresAny.length && !requiresAny.some((trait) => traits.has(trait))) return false;
+
+  const requiresAll = Array.isArray(profile.requiresAllTraits)
+    ? profile.requiresAllTraits.map(slugText).filter(Boolean)
+    : [];
+  if (requiresAll.length && !requiresAll.every((trait) => traits.has(trait))) return false;
+
+  if (profile.requiresLiving === true && ["undead", "construct", "object"].some((trait) => traits.has(trait))) {
+    return false;
+  }
+
+  return true;
+}
+
 function canAffectTarget(context, action, target) {
+  if (!targetMatchesTraitRequirements(context, action, target)) return false;
   if (action?.slug === "demoralize" && hasDemoralizeImmunity(target)) return false;
   if (isExtractElementAction(action) && !canExtractElementFromTarget(context, action, target)) return false;
   if (isExploitVulnerabilityAction(action) && hasExploitVulnerabilityMark(target)) return false;
   const mark = action?.activityProfile?.targetMark;
   if (mark && targetHasMarkState(target, mark)) return false;
   return true;
+}
+
+function targetSelectionRange(context, action) {
+  const max = maxRange(action);
+  if (Number.isFinite(max) && max !== Infinity) return max;
+  if (action?.targetingProfile?.reach === true) return profileReach(context?.profile ?? context?.actor?.profile);
+  return max;
+}
+
+function targetInSelectionRange(context, action, target) {
+  const max = targetSelectionRange(context, action);
+  return !Number.isFinite(max) || max === Infinity || (target?.distance ?? Infinity) <= max;
 }
 
 function targetPoolForAction(context, action, role, needsTargetableEnemy) {
@@ -166,23 +201,17 @@ export function bestTargetForAction(context, action, role) {
   }
 
   if (isOffensiveRole(role)) {
-    const reachable = enemyValues.filter((enemy) => {
-      const max = maxRange(action);
-      return !Number.isFinite(max) || max === Infinity || (enemy?.distance ?? Infinity) <= max;
-    });
+    const reachable = enemyValues.filter((enemy) => targetInSelectionRange(context, action, enemy));
     if (reachable.length) {
       return reachable.toSorted((left, right) =>
         offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
       )[0];
     }
-    return inRange(action, target) && canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
+    return targetInSelectionRange(context, action, target) && canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
   }
 
   if (needsTargetableEnemy) {
-    const reachable = enemyValues.filter((enemy) => {
-      const max = maxRange(action);
-      return !Number.isFinite(max) || max === Infinity || (enemy?.distance ?? Infinity) <= max;
-    });
+    const reachable = enemyValues.filter((enemy) => targetInSelectionRange(context, action, enemy));
     return reachable[0] ?? null;
   }
 
@@ -195,9 +224,8 @@ export function bestTargetForAction(context, action, role) {
 
 export function distinctTargetsFor(context, action, role) {
   const count = Number.isFinite(action.activityProfile?.distinctStrikeCount) ? action.activityProfile.distinctStrikeCount : 2;
-  const max = maxRange(action);
   const reachable = attackableEnemies(context)
-    .filter((enemy) => !Number.isFinite(max) || max === Infinity || (enemy?.distance ?? Infinity) <= max)
+    .filter((enemy) => targetInSelectionRange(context, action, enemy))
     .toSorted((left, right) => offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left));
 
   if (!reachable.length) return [];

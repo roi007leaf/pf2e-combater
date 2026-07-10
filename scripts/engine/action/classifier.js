@@ -216,6 +216,39 @@ function readRangeProfile(action) {
   return { maxRange: Math.max(...values) };
 }
 
+function readTargetRequirementProfile(text) {
+  const profile = {};
+  if (/\badjacent\b/.test(text)) profile.maxRange = 5;
+  if (/\bliving creature\b|\bliving target\b|\bliving being\b/.test(text)) profile.requiresLiving = true;
+  if (/\bwraith creature\b|\banother wraith\b|\btarget wraith\b/.test(text)) {
+    profile.requiresAnyTrait = ["wraith"];
+  }
+  return profile;
+}
+
+function mergeTargetingProfile(...profiles) {
+  const result = {};
+  for (const profile of profiles) {
+    if (!profile || typeof profile !== "object") continue;
+    const { maxRange, range, requiresAnyTrait, requiresAllTraits, ...rest } = profile;
+    Object.assign(result, rest);
+
+    const currentMax = Number(result.maxRange ?? result.range);
+    const nextMax = Number(maxRange ?? range);
+    if (Number.isFinite(nextMax) && nextMax > 0) {
+      result.maxRange = Number.isFinite(currentMax) && currentMax > 0
+        ? Math.min(currentMax, nextMax)
+        : nextMax;
+    }
+
+    const anyTraits = Array.isArray(requiresAnyTrait) ? requiresAnyTrait : [];
+    if (anyTraits.length) result.requiresAnyTrait = [...new Set([...(result.requiresAnyTrait ?? []), ...anyTraits])];
+    const allTraits = Array.isArray(requiresAllTraits) ? requiresAllTraits : [];
+    if (allTraits.length) result.requiresAllTraits = [...new Set([...(result.requiresAllTraits ?? []), ...allTraits])];
+  }
+  return result;
+}
+
 function readMovementDistance(text) {
   const match = text.match(/\b(?:stride|move|fly|burrow|leap|jump)s? up to (\d+) feet\b/);
   const distance = Number(match?.[1]);
@@ -515,6 +548,7 @@ function classifySystemActionBase(action, parsedCost) {
   const damageProfile = readDamageProfile(action);
   const templateProfile = readTemplateProfile(action);
   const rangeProfile = readRangeProfile(action);
+  const targetRequirementProfile = readTargetRequirementProfile(text);
   const eventProfile = readEventProfile(text, actionCost);
   const targetConditionRequirement = readTargetConditionRequirement(action);
   const gatingProfile = {
@@ -614,7 +648,7 @@ function classifySystemActionBase(action, parsedCost) {
   if (acSetupProfile && !saveProfile && !damageProfile && (!mentionsStrike || mentionsFutureAttack)) {
     return inferred("setup", {
       activityProfile: acSetupProfile,
-      targetingProfile: { enemy: true, ...rangeProfile },
+      targetingProfile: mergeTargetingProfile({ enemy: true }, rangeProfile, targetRequirementProfile),
       setupFor: ["strike", "damage"],
       gatingProfile,
       confidence: acSetupProfile.appliesCondition === "off-guard" ? "high" : "medium",
@@ -1127,7 +1161,7 @@ function classifySystemActionBase(action, parsedCost) {
   if (saveProfile && damageProfile && offensive) {
     return inferred("save-damage", {
       activityProfile: withTargetConditionRequirement(baseProfile(["damage"]), targetConditionRequirement),
-      targetingProfile: { enemy: true, ...rangeProfile },
+      targetingProfile: mergeTargetingProfile({ enemy: true }, rangeProfile, targetRequirementProfile),
       saveProfile,
       damageProfile,
       gatingProfile,
@@ -1139,7 +1173,7 @@ function classifySystemActionBase(action, parsedCost) {
   if (saveProfile && offensive) {
     return inferred("control", {
       activityProfile: withTargetConditionRequirement(baseProfile(["control"]), targetConditionRequirement),
-      targetingProfile: { enemy: true, ...rangeProfile },
+      targetingProfile: mergeTargetingProfile({ enemy: true }, rangeProfile, targetRequirementProfile),
       saveProfile,
       gatingProfile,
       confidence: "medium",
@@ -1254,7 +1288,7 @@ function classifySystemActionBase(action, parsedCost) {
   if (captureRestraintProfile && !isEquipmentActivation(action)) {
     return inferred("control", {
       activityProfile: withTargetConditionRequirement(captureRestraintProfile, targetConditionRequirement),
-      targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+      targetingProfile: mergeTargetingProfile({ enemy: true, reach: true }, rangeProfile, targetRequirementProfile),
       gatingProfile,
       confidence: captureRestraintProfile.appliesCondition ? "high" : "medium",
       reasons: [t("ActReason.CaptureActionCanRestrain", "Capture action can restrain or immobilize a target.")],
@@ -1268,14 +1302,14 @@ function classifySystemActionBase(action, parsedCost) {
     return proseDamage
       ? inferred("damage", {
         activityProfile: baseAttackProfile(),
-        targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+        targetingProfile: mergeTargetingProfile({ enemy: true, reach: true }, rangeProfile, targetRequirementProfile),
         gatingProfile,
         confidence: "low",
         reasons: [t("ActReason.OffensiveActionDealsDamage", "Offensive action deals damage.")],
       })
       : inferred("control", {
         activityProfile: baseProfile(["control"]),
-        targetingProfile: { enemy: true, reach: true, ...rangeProfile },
+        targetingProfile: mergeTargetingProfile({ enemy: true, reach: true }, rangeProfile, targetRequirementProfile),
         gatingProfile,
         confidence: "low",
         reasons: [t("ActReason.OffensiveManeuverPressuresA", "Offensive maneuver pressures a target.")],

@@ -196,6 +196,10 @@ export function readGenericActions(context) {
         ...(action.activityProfile ?? {}),
         ...(proneCover ? { requiresProneCover: true } : {}),
       },
+      targetingProfile: {
+        ...(action.targetingProfile ?? {}),
+        ...(Number.isFinite(Number(action.maxRange)) ? { maxRange: Number(action.maxRange) } : {}),
+      },
     };
   });
 }

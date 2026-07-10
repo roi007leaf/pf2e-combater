@@ -28,7 +28,8 @@ export function readSpellActions(context) {
     return castRanks.flatMap((castRank) => {
       const effectiveItem = heightenedSpellForRank(item, castRank);
       const inferred = classifySpell(effectiveItem);
-      const tactic = mergeSpellTactic(curated, inferred);
+      const curatedForRank = curatedSpellForCastRank(curated, castRank);
+      const tactic = mergeSpellTactic(curatedForRank, inferred);
       if (!curated && tactic?.role === "weapon-strike") {
         const averageDamage = bestReadyStrikeAverageDamage(actor, context);
         if (averageDamage !== null) {
@@ -39,8 +40,8 @@ export function readSpellActions(context) {
       const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
       const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
       const parsedTime = readSpellActionCost(effectiveItem);
-      const actionCosts = curated?.actionCost !== undefined
-        ? [curated.actionCost]
+      const actionCosts = curatedForRank?.actionCost !== undefined
+        ? [curatedForRank.actionCost]
         : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
       const spellAvailability = readSpellAvailability(actor, item, entry, castRank);
       const rankSuffix = Number.isFinite(castRank) && castRank !== rank ? `-r${castRank}` : "";
@@ -49,7 +50,7 @@ export function readSpellActions(context) {
       return actionCosts.map((actionCost) => ({
         ...(tactic ?? {}),
         id: actionCosts.length > 1 ? `${actionIdBase}-${actionCost}a` : actionIdBase,
-        name: spellNameForRank(curated?.name ?? item.name, rank, castRank),
+        name: spellNameForRank(curatedForRank?.name ?? item.name, rank, castRank),
         slug,
         actionCost,
         actualActionCost: parsedTime.actionCost,
@@ -67,7 +68,7 @@ export function readSpellActions(context) {
           : (enemyInRange ? "" : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange })),
         item,
         effectiveItem,
-        curated,
+        curated: curatedForRank ?? curated,
         variantGroup,
         variableActionCost: actionCosts.length > 1,
         role: tactic?.role ?? "unknown",
@@ -166,7 +167,8 @@ export function readConsumableSpellActions(context) {
     const curated = findCuratedSpell(slug);
     const rank = spellRank(embeddedSpell);
     const inferred = classifySpell(embeddedSpell);
-    const tactic = mergeSpellTactic(curated, inferred);
+    const curatedForRank = curatedSpellForCastRank(curated, rank);
+    const tactic = mergeSpellTactic(curatedForRank, inferred);
     if (!curated && tactic?.role === "weapon-strike") {
       const averageDamage = bestReadyStrikeAverageDamage(actor, context);
       if (averageDamage !== null) tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
@@ -175,8 +177,8 @@ export function readConsumableSpellActions(context) {
     const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
     const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
     const parsedTime = readSpellActionCost(embeddedSpell);
-    const actionCosts = curated?.actionCost !== undefined
-      ? [curated.actionCost]
+    const actionCosts = curatedForRank?.actionCost !== undefined
+      ? [curatedForRank.actionCost]
       : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
     const bestEntry = bestConsumableCastingEntry(actor, embeddedSpell, item);
     const availability = readConsumableSpellAvailability(item, bestEntry);
@@ -185,7 +187,7 @@ export function readConsumableSpellActions(context) {
     return actionCosts.map((actionCost) => ({
       ...(tactic ?? {}),
       id: actionCosts.length > 1 ? `${variantGroup}-${actionCost}a` : variantGroup,
-      name: curated?.name ?? embeddedSpell.name,
+      name: curatedForRank?.name ?? embeddedSpell.name,
       slug,
       actionCost,
       actualActionCost: parsedTime.actionCost,
@@ -201,7 +203,7 @@ export function readConsumableSpellActions(context) {
         : (enemyInRange ? "" : t("Avail.NoTargetWithin", "No target within {range} feet.", { range: maxRange })),
       item,
       effectiveItem: embeddedSpell,
-      curated,
+      curated: curatedForRank ?? curated,
       variantGroup,
       variableActionCost: actionCosts.length > 1,
       role: tactic?.role ?? "unknown",
@@ -279,6 +281,30 @@ function mergeObjects(...objects) {
 
 function mergeArrays(...values) {
   return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : []).filter(Boolean))];
+}
+
+function rankOverrideFor(curated, castRank) {
+  const rank = Number(castRank);
+  const overrides = curated?.rankOverrides;
+  if (!overrides || !Number.isFinite(rank)) return null;
+  return overrides[rank] ?? overrides[String(rank)] ?? null;
+}
+
+function curatedSpellForCastRank(curated, castRank) {
+  const override = rankOverrideFor(curated, castRank);
+  if (!override || typeof override !== "object") return curated;
+  const base = { ...curated };
+  delete base.rankOverrides;
+  return {
+    ...base,
+    ...override,
+    activityProfile: mergeObjects(base.activityProfile, override.activityProfile),
+    targetingProfile: mergeObjects(base.targetingProfile, override.targetingProfile),
+    saveProfile: mergeObjects(base.saveProfile, override.saveProfile),
+    damageProfile: mergeObjects(base.damageProfile, override.damageProfile),
+    setupFor: mergeArrays(base.setupFor, override.setupFor),
+    reasons: mergeArrays(override.reasons, base.reasons),
+  };
 }
 
 function preferredSpellRole(curated, inferred) {

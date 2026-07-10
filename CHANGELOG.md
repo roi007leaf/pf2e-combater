@@ -1,5 +1,90 @@
 # Changelog
 
+## [1.1.5]
+
+### Added
+
+- **Deterministic Preference Learning lets each user teach Auto-fill which complete turn plans they
+  prefer.** Use the thumbs-up or thumbs-down buttons under the visible plan to rate that exact
+  ordered sequence; pressing the active button again removes the rating. Future Auto-fill and
+  Shuffle rankings receive a capped, predictable adjustment for similar actions, roles, action
+  costs, resource use, plan length, and ordering. Feedback is stored locally per user and actor, so
+  it changes recommendations without changing actor data, PF2e rules, or another user's choices.
+- **Native Roll-Context Preflight shows what PF2e's live check context says before an action is
+  rolled.** GMs always see supported previews, regardless of settings. A GM-controlled world
+  setting only controls whether players see them and is disabled by default. Supported action
+  details show a distinct violet PF2e chip with Hit, Success, target-failure chance, or the named
+  check modifier, using the actor's contextual PF2e modifiers and only target information that user
+  is allowed to know. For GMs, the preview can use the creature's actual defenses. For players, an
+  exactly revealed save or Perception fact produces a chance calculated against the revealed value;
+  a Low/Mid/High reveal instead uses that band's level-scaled representative DC, producing an
+  estimate whose tooltip is explicitly marked as approximate. If the required defense is still
+  unrevealed, the chip stops at the named modifier and shows no target DC or success chance.
+  Revealed identity and trait facts can supply matching PF2e roll-context traits, while unrevealed
+  traits stay excluded. The plain-language tooltip shows the check and modifier breakdown.
+  Preflight remains informational only: it audits the recommendation but does not change its score
+  or expose hidden enemy data.
+- **Action cards now identify the scored Best target.** A dedicated chip names the combatant used by
+  recommendation scoring and Native Roll-Context Preflight. Normal target-button clicks still use
+  the current Foundry target, while Shift-click commits the scored Best target directly. Self-only
+  and targetless actions omit the chip and target control. When an existing draft already contains
+  movement, Best target is evaluated from the projected position where the appended action will
+  occur, not the token's current square.
+- **Recall Knowledge now uses one player-rolled secret d20 and a GM adjudication workflow.** The
+  player chooses what they want to learn, then their client rolls once; that same die is combined
+  with every standard skill and Lore modifier and sent only to the GM. The GM sees applicable
+  skills, standard/broad/specific Lore DCs, and color-coded PF2e degrees of success in both the GM's
+  dialog and blind chat card (including natural 20/1 adjustments), then chooses the final result
+  instead of making a second roll. Success or critical success opens the recalled target's full
+  Intel editor with basic identity and creature category already selected, while the player's
+  chosen focus guides the additional facts. The GM can adjust learned facts and reveal style before
+  saving; failures preserve failed-attempt and Dubious Knowledge handling without exposing hidden
+  DCs or the secret outcome to the player client.
+- **Recall Knowledge follow-up attempts now progress per recalling actor and NPC.** Attempt numbers
+  persist correctly, and later checks use PF2e's system-provided increasing standard, broad Lore,
+  and specific Lore DC progressions. A failed check makes further attempts against that creature
+  fruitless. GMs can use Reset RK Attempts in the NPC Intel editor to restore first-attempt DCs and
+  remove failure blocks for every actor that has tried to identify that NPC.
+
+### Changed
+
+- **Curated spell-review overrides now capture 87 reviewed PF2e spell entries.** Reviewed roles and
+  combat-use policies distinguish buffs, defenses, debuffs, transformations, summons, healing,
+  exploration utility, Browse-only choices, and context-only choices. Rank-specific handling keeps
+  low-rank utility forms out of Auto-fill while allowing their later battle-form versions where
+  appropriate, and condition-aware remedies can enter Auto-fill only when their supported context
+  is present.
+- **The GM Recall Knowledge editor now uses two independent, full-width category stacks without
+  blank grid gaps.** Its global Reveal all control handles every fact, and each category's title icon
+  toggles all chips in that category on or off.
+- **Recall Knowledge result tables now inherit PF2e's degree-of-success and proficiency colors.**
+  Applicable standard skills and broad/specific Lore DCs carry their calculated outcome colors in
+  both GM adjudication and blind chat, while Untrained through Legendary labels use the matching
+  PF2e rank colors.
+- **The GM Recall Knowledge adjudicator now highlights outcomes calculated from the secret roll.**
+  A summary names the matching skill and DC for each result, and matching degree buttons receive a
+  prominent PF2e-colored outline and d20 icon. When standard and Lore applicability produce
+  different results, every matching button is highlighted instead of guessing which check the GM
+  will use; the GM can still choose any final degree.
+
+### Fixed
+
+- **Native preflight now treats Athletics maneuvers as skill checks instead of AC attacks.** Trip,
+  Disarm, and Tumble Through preview against Reflex DC; Grapple, Shove, and Reposition preview
+  against Fortitude DC. Their PF2e `attack` trait still supplies roll options without changing the
+  defense used by the check.
+- **Demoralize's 30-foot limit now reaches target scoring and the action UI.** The generic action's
+  PF2e range is propagated into targeting metadata, so Best target and preflight exclude creatures
+  beyond 30 feet from the action's current or projected origin, and the UI can show its real range.
+- **Drop Prone is always treated as self-only and targetless.** Stale enemy recommendation metadata
+  can no longer add a Best target chip or target-selection control to the action.
+- **Reset RK Attempts now fully clears tracked progress and stale failure blocks.** Resetting removes
+  both current and legacy per-target attempt keys instead of allowing Foundry's nested flag merge to
+  preserve deleted history, so the next check reliably returns to attempt 1.
+- **PF2e's pure-blue Success color is now readable in the dark Recall Knowledge adjudication
+  dialog.** The dialog derives a muted dark surface and lighter blue text/borders from the system
+  color, improving contrast without replacing PF2e's outcome palette or changing light chat cards.
+
 ## [1.1.4]
 
 ### Added

@@ -4,6 +4,7 @@ import {
   canUseIntelCategory,
   canUseIntelFact,
   intelDefenseFactId,
+  intelIdentityTrait,
   intelTraitFactId,
   isNpcIntelTarget,
 } from "../../rules/intel-ledger.js";
@@ -40,6 +41,10 @@ function targetRequiresIntel(target) {
   return String(actor.type ?? target?.actor?.type ?? target?.type ?? "").toLowerCase() !== "character";
 }
 
+function contextIsGM(context) {
+  return context?.isGM === true || globalThis.game?.user?.isGM === true;
+}
+
 function systemTraitSlugs(document) {
   return valueSlugs(document?.system?.traits?.value ?? document?.system?.traits);
 }
@@ -57,9 +62,15 @@ export function targetTraitSlugs(context, target) {
     return new Set(values.filter(Boolean));
   }
 
+  if (contextIsGM(context)) {
+    return new Set(values.filter(Boolean));
+  }
+
   return new Set(values
     .filter(Boolean)
-    .filter((trait) => canUseIntelFact(context, target, "traits", intelTraitFactId(trait))));
+    .filter((trait) => canUseIntelFact(context, target, "traits", intelTraitFactId(trait))
+      || (canUseIntelCategory(context, target, "identity")
+        && String(trait).toLowerCase() === intelIdentityTrait(target))));
 }
 
 export function hasSpellcastingCapability(context) {
@@ -325,6 +336,19 @@ function spellDc(action, profile) {
   );
 }
 
+function actionUsesSpellDc(action) {
+  return String(action?.source ?? "").toLowerCase().startsWith("spell")
+    || action?.activityProfile?.spell === true
+    || action?.item?.type === "spell";
+}
+
+function saveDcLabel(action, dc) {
+  const label = actionUsesSpellDc(action)
+    ? t("ScoreReason.SpellDcLabel", "spell DC")
+    : t("ScoreReason.ActionDcLabel", "action DC");
+  return `${label} ${dc}`;
+}
+
 export function degreeDistribution(rollBonus, dc) {
   if (!Number.isFinite(rollBonus) || !Number.isFinite(dc)) return null;
   const outcomes = { criticalFailure: 0, failure: 0, success: 0, criticalSuccess: 0 };
@@ -408,9 +432,10 @@ export function saveScoreDelta(context, action, target, profile) {
     const multiplierDelta = Math.round((expected.multiplier - 0.7) * 34);
     const damageDelta = Number.isFinite(average) ? Math.round(Math.min(36, average * expected.multiplier * 0.7)) : 0;
     const dcLabel = targetDcLabel(target, action.saveProfile.stat, saveDc);
+    const actionDcLabel = saveDcLabel(action, expected.dc);
     const label = expected.incapacitated
-      ? `${dcLabel} vs spell DC ${expected.dc} (incapacitation: target resists a degree better).`
-      : `${dcLabel} vs spell DC ${expected.dc}.`;
+      ? `${dcLabel} vs ${actionDcLabel} (incapacitation: target resists a degree better).`
+      : `${dcLabel} vs ${actionDcLabel}.`;
     return {
       scoreDelta: multiplierDelta + damageDelta,
       label,

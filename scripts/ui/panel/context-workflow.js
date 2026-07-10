@@ -5,6 +5,7 @@ import { buildCandidates } from "../../engine/candidates.js";
 import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
 import { readActionFavorites } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
+import { deterministicPlanPreferenceAdjustment } from "../../state/preference-profile.js";
 import {
   hasSharedDraftPlan,
   readDraftPlan,
@@ -95,6 +96,7 @@ export function viewPanelContext(panel, context) {
   const autoFillCycleIndex = autoFillCycle.findIndex((plan) => plan?.id === selectedAutoFill?.id);
   const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
   const draftSteps = panel._builder?.draft?.steps ?? [];
+  const planPreference = deterministicPlanPreferenceAdjustment(context, panel._builder?.draft);
 
   return {
     actor: context?.actor ?? null,
@@ -102,6 +104,10 @@ export function viewPanelContext(panel, context) {
     plan: autoFill,
     headerSteps: groupDraftSteps(draftSteps),
     headerSummary: "",
+    planPreference: {
+      ...planPreference,
+      visible: draftSteps.length > 0 && panel._builder?.readonly !== true,
+    },
     builder: panel._builder,
     expanded: panel.expanded,
     activeTab: panel.activeTab,

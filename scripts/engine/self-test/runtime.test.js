@@ -60,6 +60,7 @@ import {
 } from "../area/duration.js";
 import { scoreCandidate } from "../scoring.js";
 import { canUseTargetSave, damageAdjustment, saveScoreDelta, targetHasMatchingDefense, targetTraitSlugs } from "../scoring/facts.js";
+import { rkWarningsForStep } from "../scoring/rk-warnings.js";
 import { contextAllies, contextEnemies, contextTargets, firstContextTarget, selfTargetReference, targetReference } from "../target-pool.js";
 import { buildCandidates } from "../candidates.js";
 import { classifySystemAction } from "../action/classifier.js";
@@ -120,6 +121,7 @@ import { clearActionPreview, showActionPreview } from "../../ui/action/preview.j
 import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } from "../../ui/panel/draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
 import { panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
+import { choosePanelTarget } from "../../ui/panel/picker-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../../ui/range-overlay.js";
@@ -430,7 +432,8 @@ try {
   globalThis.canvas = previousAutoTargetCanvas;
 }
 assert.ok(
-  panelPickerWorkflowSource.includes('targetSelection: "manual"') && panelDraftWorkflowSource.includes('targetSelection: "manual"'),
+  panelPickerWorkflowSource.includes('targetSelection: useBestTarget ? "recommended" : "manual"')
+    && panelDraftWorkflowSource.includes('targetSelection: "manual"'),
   "manual target picks should be marked so old auto-target draft fields can be ignored safely",
 );
 assert.deepEqual(
@@ -796,6 +799,22 @@ try {
 
   globalThis.game.user.targets = new Set([targetToken]);
   assert.deepEqual(currentTargetSelection().targetTokenIds, ["target-token"]);
+  let bestTargetStep = {
+    instanceId: "best-target-step",
+    suggestedTarget: { type: "enemy", id: "best-target-token", name: "Best Goblin" },
+  };
+  const bestTargetPanel = {
+    _context: executionContext,
+    _canExecuteDraft: () => true,
+    _findDraftStep: () => bestTargetStep,
+    _findActiveStep: () => bestTargetStep,
+    _persistActiveDraftStep: async (step) => { bestTargetStep = step; },
+    render: async () => {},
+  };
+  await choosePanelTarget(bestTargetPanel, "best-target-step", { useBestTarget: true });
+  assert.deepEqual(bestTargetStep.targetTokenIds, ["best-target-token"], "Shift-target should use scored Best target, not current Foundry target");
+  assert.equal(bestTargetStep.targetLabel, "Target: Best Goblin");
+  assert.equal(bestTargetStep.targetSelection, "recommended");
   assert.deepEqual(
     executionReadinessForStep({ instanceId: "current-target-step" }, executionTargetAction).choices,
     ["target"],
@@ -3002,6 +3021,49 @@ assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const explainablePlan = decoratePlan({
+  id: "why-plan",
+  steps: [{
+    id: "why-strike",
+    slug: "strike",
+    name: "Longsword",
+    actionCost: 1,
+    score: 84,
+    reason: "Target is in range.",
+    reasons: ["Target is in range.", "Average damage about 12.", "Aggressive tactic favors damage."],
+  }],
+});
+assert.equal(explainablePlan.steps[0].why.hasReasons, true, "recommended steps should expose a why-this-plan reason list");
+assert.equal(explainablePlan.steps[0].why.scoreLabel, "Score 84");
+assert.deepEqual(explainablePlan.steps[0].why.reasons, [
+  "Target is in range.",
+  "Average damage about 12.",
+  "Aggressive tactic favors damage.",
+]);
+
+const explainableDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-why", round: 1 }, combatant: { id: "c-why" }, actor: { uuid: "Actor.why" } },
+  candidates: builderCandidates,
+  draft: {
+    source: "auto-fill",
+    steps: [{
+      instanceId: "draft-why",
+      actionKey: "fireball",
+      actionCost: 2,
+      autoFillScore: 91,
+      autoFillReason: "Area can catch multiple enemies.",
+      autoFillReasons: ["Area can catch multiple enemies.", "Commits 2 actions to one effect."],
+    }],
+  },
+  favorites: new Set(),
+}), "one");
+assert.equal(explainableDraftModel.draft.steps[0].why.hasReasons, true, "auto-filled draft rows should keep the generated scoring explanation");
+assert.equal(explainableDraftModel.draft.steps[0].why.summary, "Area can catch multiple enemies.");
+assert.deepEqual(explainableDraftModel.draft.steps[0].why.reasons, [
+  "Area can catch multiple enemies.",
+  "Commits 2 actions to one effect.",
+]);
 
 const orderedFavoritesModel = buildActionBuilderModel({
   context: { combat: { id: "combat-2", round: 1 }, combatant: { id: "c2" }, actor: { uuid: "Actor.a2" } },
@@ -13040,6 +13102,16 @@ const nearDemoralize = readActionSources({
   targets: [{ ...fighterContext.targets[0], distance: 20 }],
 }).find((action) => action.slug === "demoralize");
 assert.equal(nearDemoralize.available, true);
+assert.equal(nearDemoralize.targetingProfile?.maxRange, 30, "Demoralize candidate should carry its PF2e 30-foot range into scoring and UI");
+const nearDemoralizeTarget = { ...fighterContext.targets[0], id: "near-demoralize", name: "Near Ogre", distance: 20, hpPercent: 1 };
+const temptingFarDemoralizeTarget = { ...fighterContext.targets[0], id: "far-demoralize", name: "Far Injured Ogre", distance: 35, hpPercent: 0.01 };
+const rangedDemoralizeScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [nearDemoralizeTarget],
+  enemies: [nearDemoralizeTarget, temptingFarDemoralizeTarget],
+}, nearDemoralize);
+assert.equal(rangedDemoralizeScore.suggestedTarget?.name, "Near Ogre", "Demoralize Best target must exclude creatures beyond 30 feet");
 
 const demoralizeImmuneTarget = {
   ...fighterContext.targets[0],
@@ -13652,6 +13724,24 @@ const inRangeControlScored = scoreCandidate({
   targets: [{ ...fighterContext.targets[0], distance: 20 }],
 }, outOfRangeControlCandidate);
 assert.equal(inRangeControlScored.suggestedTarget?.name, "Ogre");
+
+const reachOnlyControlScored = scoreCandidate({
+  ...fighterContext,
+  targets: [{ ...fighterContext.targets[0], distance: 20 }],
+}, {
+  id: "reach-only-control",
+  name: "Robes of Welcome",
+  slug: "robes-of-welcome",
+  actionCost: 2,
+  source: "system-inferred",
+  role: "control",
+  targetingProfile: { enemy: true, reach: true },
+});
+assert.equal(
+  reachOnlyControlScored.suggestedTarget,
+  null,
+  "reach-only offensive actions must not target distant enemies",
+);
 
 const selfOnlyBuffCandidate = {
   id: "self-rage",
@@ -15137,6 +15227,11 @@ try {
   );
   assert.equal(hideUntrainedSkillActionsSetting?.config?.default, true);
   assert.equal(hideUntrainedSkillActionsSetting?.config?.scope, "world");
+  const preflightSetting = registeredSettings.find((entry) =>
+    entry.key === SETTINGS.nativeRollContextPreflight,
+  );
+  assert.equal(preflightSetting?.config?.default, false);
+  assert.equal(preflightSetting?.config?.scope, "world");
 
   const visibleUntrainedPcSkillGate = buildCandidates(skillGateContext({
     athletics: { rank: 0, mod: 5 },
@@ -16846,6 +16941,28 @@ try {
   const playerHiddenNameIntelContext = readCombatContext("player-hidden-name-rk-intel-test");
   assert.equal(playerHiddenNameIntelContext.battlefield.targets[0].name, "Unknown");
   assert.equal(intelLedgerView(playerHiddenNameIntelContext).entries[0].name, "Unknown", "player Intel should follow the combat tracker's hidden token name");
+  centipedeActor.flags["pf2e-combater"].intelLedger = normalizeIntelLedger({
+    identity: ["identity"],
+    saves: true,
+    perception: true,
+    weaknesses: true,
+  });
+  const playerKnownIdentityIntelContext = readCombatContext("player-known-identity-rk-intel-test");
+  const playerKnownIdentityIntelView = intelLedgerView(playerKnownIdentityIntelContext);
+  assert.equal(playerKnownIdentityIntelView.entries[0].name, "Giant Centipede", "revealed identity should replace hidden token name in Known Intel");
+  assert.deepEqual(playerKnownIdentityIntelContext.battlefield.targets[0].traits, ["animal"], "identity should reveal only creature category, not every mechanical trait");
+  assert.deepEqual(
+    Array.from(targetTraitSlugs({ isGM: false }, playerKnownIdentityIntelContext.battlefield.targets[0])),
+    ["animal"],
+    "revealed creature category should be usable without exposing other hidden traits",
+  );
+  assert.deepEqual(playerKnownIdentityIntelView.entries[0].revealed.identity, ["Giant Centipede (Animal)"]);
+  centipedeActor.flags["pf2e-combater"].intelLedger = normalizeIntelLedger({
+    saves: true,
+    perception: true,
+    weaknesses: true,
+    traits: true,
+  });
   const centipedeCombatant = globalThis.game.combat.combatants.find((combatant) => combatant.tokenId === enemyToken.id);
   centipedeCombatant.playersCanSeeName = true;
   const playerCombatantVisibleNameIntelContext = readCombatContext("player-combatant-visible-name-rk-intel-test");
@@ -18969,12 +19086,114 @@ const reviewedSpellExpectations = [
   ["false-vitality", "defense", undefined],
   ["lock", "exploration-utility", "browse-only"],
   ["tailwind", "buff", undefined],
+  ["dragon-form", "transformation", undefined],
+  ["ferrous-form", "transformation", undefined],
+  ["monstrosity-form", "transformation", undefined],
+  ["untamed-form", "transformation", undefined],
+  ["darkened-forest-form", "transformation", undefined],
+  ["pest-form", "transformation", undefined],
+  ["scintillating-safeguard", "defense", undefined],
+  ["sigil", "exploration-utility", "browse-only"],
+  ["malediction", "debuff", undefined],
+  ["gentle-breeze", "healing", "context-only"],
+  ["crescent-scepter", "defense", undefined],
+  ["purging-toxins", "healing", "context-only"],
+  ["familiar-form", "transformation", "browse-only"],
+  ["extract-poison", "combat-utility", "browse-only"],
+  ["empty-pack", "exploration-utility", "browse-only"],
+  ["stupefy", "debuff", undefined],
+  ["shape-wood", "exploration-utility", "browse-only"],
+  ["putrefy-food-and-drink", "exploration-utility", "browse-only"],
+  ["cloud-dragons-cloak", "defense", undefined],
+  ["protectors-sphere", "defense", undefined],
+  ["angel-form", "transformation", undefined],
+  ["verdant-sprout", "exploration-utility", "browse-only"],
+  ["ravenous-portal", "summon", "browse-only"],
+  ["anticipate-peril", "setup", "browse-only"],
+  ["the-four-hunters", "buff", undefined],
+  ["synchronize-steps", "buff", undefined],
+  ["inside-ropes", "exploration-utility", "browse-only"],
+  ["bottomless-stomach", "combat-utility", "browse-only"],
+  ["untwisting-iron-buffer", "defense", undefined],
+  ["conjured-conveyance", "exploration-utility", "browse-only"],
+  ["aberrant-form", "transformation", undefined],
+  ["catch-your-name", "setup", "browse-only"],
+  ["with-friends-like-these", "debuff", undefined],
+  ["adapt-self", "buff", "browse-only"],
+  ["sure-strike", "buff", undefined],
+  ["excise-lexicon", "combat-utility", "browse-only"],
+  ["faerie-fire", "debuff", undefined],
+  ["boost-eidolon", "buff", undefined],
+  ["imitate-fauna", "exploration-utility", "browse-only"],
+  ["interposing-earth", "defense", undefined],
+  ["halcyon-mists", "healing", undefined],
+  ["safe-passage", "defense", "context-only"],
+  ["cosmic-form", "transformation", undefined],
+  ["iron-gut", "exploration-utility", "browse-only"],
+  ["manifest-will", "buff", undefined],
+  ["deep-sight", "buff", "browse-only"],
+  ["ancestral-defense", "defense", undefined],
+  ["enfeeble", "debuff", undefined],
+  ["ghoulish-cravings", "debuff", undefined],
+  ["protector-tree", "defense", undefined],
+  ["sparkleskin", "defense", undefined],
+  ["mind-reading", "combat-utility", "browse-only"],
+  ["mimic-undead", "exploration-utility", "browse-only"],
+  ["phantasmal-minion", "summon", "browse-only"],
+  ["distracting-decoy", "debuff", undefined],
+  ["plant-form", "transformation", undefined],
+  ["goblin-pox", "debuff", undefined],
+  ["rising-surf", "mobility", undefined],
+  ["croak-voice", "control", "context-only"],
+  ["penumbral-shroud", "buff", "browse-only"],
+  ["control-water", "control", "context-only"],
+  ["tempest-form", "transformation", undefined],
+  ["vanishing-tracks", "exploration-utility", "browse-only"],
 ];
 for (const [slug, role, combatUse] of reviewedSpellExpectations) {
   const reviewedSpell = findCuratedSpell(slug);
   assert.equal(reviewedSpell?.role, role, `${slug} should use reviewed spell role ${role}`);
   if (combatUse !== undefined) assert.equal(reviewedSpell?.combatUse, combatUse, `${slug} should use reviewed combatUse ${combatUse}`);
 }
+const rankReviewedSpells = readSpellActions({
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "pest-form",
+          name: "Pest Form",
+          slug: "pest-form",
+          system: {
+            slug: "pest-form",
+            traits: { value: ["concentrate", "manipulate", "polymorph"] },
+            level: { value: 1 },
+            time: { value: "2" },
+            location: { value: "rank-review-entry", signature: true },
+            duration: { value: "10 minutes" },
+          },
+        }],
+        spellcastingEntry: [{
+          id: "rank-review-entry",
+          system: {
+            prepared: { value: "spontaneous" },
+            slots: {
+              slot1: { value: 1, max: 1 },
+              slot2: { value: 1, max: 1 },
+            },
+          },
+        }],
+      },
+    },
+  },
+  targets: [],
+  battlefield: { enemies: [], allies: [], targets: [] },
+}).filter((spell) => spell.slug === "pest-form");
+const rank1PestForm = rankReviewedSpells.find((spell) => spell.castRank === 1);
+const rank2PestForm = rankReviewedSpells.find((spell) => spell.castRank === 2);
+assert.equal(rank1PestForm?.role, "exploration-utility", "rank 1 Pest Form should use out-of-combat review override");
+assert.equal(rank1PestForm?.combatUse, "browse-only");
+assert.equal(rank2PestForm?.role, "transformation", "heightened Pest Form should keep transformation category");
+assert.equal(rank2PestForm?.combatUse, undefined);
 assert.equal(
   mageHandClassification.role,
   "exploration-utility",
@@ -19216,6 +19435,65 @@ const triggerReactionClassification = classifySystemAction({
   },
 }, { actionCost: "reaction", type: "reaction" });
 assert.equal(triggerReactionClassification, null);
+
+const robesOfWelcomeClassification = classifySystemAction({
+  name: "Robes of Welcome",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    traits: { value: ["divine", "void"] },
+    description: {
+      value: "<p>Effect The war wraith wraps their robes around an adjacent living creature, exposing it to void's embrace.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(robesOfWelcomeClassification.targetingProfile.maxRange, 5);
+assert.equal(robesOfWelcomeClassification.targetingProfile.requiresLiving, true);
+
+const absorbWraithClassification = classifySystemAction({
+  name: "Absorb Wraith",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    traits: { value: ["divine", "void"] },
+    description: {
+      value: "<p>Effect The war wraith extends their hand toward another wraith creature within 100 feet. The target wraith dissolves and streaks toward the war wraith in a straight line, dealing 3d10 void damage. An unwilling target can resist with a DC 28 Will save.</p>",
+    },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(absorbWraithClassification.targetingProfile.maxRange, 100);
+assert.deepEqual(absorbWraithClassification.targetingProfile.requiresAnyTrait, ["wraith"]);
+
+const nonWraithAbsorbScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [{ ...fighterContext.targets[0], name: "Calder Stoneplow", distance: 30, traits: ["human"] }],
+}, absorbWraithClassification);
+assert.equal(
+  nonWraithAbsorbScore.suggestedTarget,
+  null,
+  "Absorb Wraith must not target a non-wraith creature",
+);
+
+const wraithAbsorbScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [{ ...fighterContext.targets[0], name: "Lesser Wraith", distance: 30, traits: ["undead", "wraith"] }],
+}, absorbWraithClassification);
+assert.equal(wraithAbsorbScore.suggestedTarget?.name, "Lesser Wraith");
+
+const undeadRobesScore = scoreCandidate({
+  ...fighterContext,
+  isGM: true,
+  targets: [{ ...fighterContext.targets[0], name: "Skeleton Guard", distance: 5, traits: ["undead"] }],
+}, robesOfWelcomeClassification);
+assert.equal(
+  undeadRobesScore.suggestedTarget,
+  null,
+  "living-creature actions must not target known undead creatures",
+);
 
 // An enemy-targeted setup (Taunt-style off-guard) suggests the enemy, not self.
 const enemySetupTarget = scoreCandidate(fighterContext, {
@@ -22026,6 +22304,23 @@ assert.equal(saveScoreDelta({ isGM: true }, intelFireAction, intelTarget, { spel
 intelTarget.actor = actorWithIntelLedger({ saves: true, weaknesses: true, resistances: true });
 assert.ok(saveScoreDelta({ isGM: true }, intelFireAction, intelTarget, { spellDc: 21 })?.label.includes("Reflex DC 17"));
 assert.ok(damageAdjustment({ isGM: true }, intelFireAction, intelTarget)?.reasons.some((reason) => reason.includes("resists fire 10")));
+const npcSaveAction = {
+  id: "absorb-wraith",
+  name: "Absorb Wraith",
+  slug: "absorb-wraith",
+  source: "system-inferred",
+  role: "debuff",
+  actionCost: 2,
+  saveProfile: { stat: "fortitude", dc: 28, basic: false },
+  targetingProfile: { enemy: true, maxRange: 100 },
+};
+const npcSaveReason = saveScoreDelta(
+  { isGM: true },
+  npcSaveAction,
+  { ...intelTarget, saves: { fortitude: 21 } },
+  {},
+)?.label;
+assert.equal(npcSaveReason, "Fortitude DC 21 vs action DC 28.", "NPC action save reasons should not call the action DC a spell DC");
 
 const intelColdAction = {
   ...intelFireAction,
@@ -22068,6 +22363,14 @@ assert.equal(canUseIntelCategory({ isGM: false }, granularIntelTarget, "weakness
 assert.equal(canUseIntelFact({ isGM: false }, granularIntelTarget, "weaknesses", "fire-5"), true);
 assert.equal(canUseIntelFact({ isGM: false }, granularIntelTarget, "weaknesses", "cold-5"), false);
 assert.deepEqual(Array.from(targetTraitSlugs({ isGM: false }, granularIntelTarget)).sort(), ["ooze"]);
+const unrevealedNpcTraitTarget = {
+  actor: {
+    type: "npc",
+    system: { traits: { value: ["undead"] } },
+  },
+};
+assert.deepEqual(Array.from(targetTraitSlugs({ isGM: false }, unrevealedNpcTraitTarget)), []);
+assert.deepEqual(Array.from(targetTraitSlugs({ isGM: true }, unrevealedNpcTraitTarget)), ["undead"]);
 assert.ok(damageAdjustment({ isGM: false }, intelFireAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("weakness 5")));
 assert.ok(!damageAdjustment({ isGM: false }, intelFireAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("resists fire")));
 assert.ok(damageAdjustment({ isGM: false }, intelColdAction, granularIntelTarget)?.reasons.some((reason) => reason.includes("resists cold 10")));
@@ -22076,6 +22379,66 @@ assert.ok(saveScoreDelta({ isGM: false }, intelFireAction, granularIntelTarget, 
 assert.equal(saveScoreDelta({ isGM: false }, intelWillAction, granularIntelTarget, { spellDc: 21 }), null);
 assert.equal(targetHasMatchingDefense({ isGM: false }, granularIntelTarget, ["cold"]), true);
 assert.equal(targetHasMatchingDefense({ isGM: false }, granularIntelTarget, ["mental"]), false);
+
+const warningFireStep = { action: intelFireAction, suggestedTarget: granularIntelTarget };
+assert.equal(
+  rkWarningsForStep({ isGM: false }, warningFireStep, intelFireAction).includes("Known resistance reduces this."),
+  false,
+  "player warnings must not use unrevealed resistances even when raw target data is present",
+);
+assert.ok(
+  rkWarningsForStep({ isGM: true }, warningFireStep, intelFireAction).includes("Known resistance reduces this."),
+  "GM warnings should see actual resistance data",
+);
+const warningColdTarget = {
+  ...granularIntelTarget,
+  actor: actorWithIntelLedger({ immunities: ["cold"] }),
+  immunities: [{ type: "cold" }],
+};
+assert.ok(
+  rkWarningsForStep({ isGM: false }, { action: intelColdAction, suggestedTarget: warningColdTarget }, intelColdAction)
+    .includes("Known immunity blocks this."),
+  "player warnings should use revealed immunity facts",
+);
+const highSaveTarget = {
+  id: "high-save-ooze",
+  name: "High Save Ooze",
+  level: 5,
+  actor: actorWithIntelLedger({ saves: ["reflex"] }, { level: 5 }),
+  saves: { reflex: 32 },
+};
+assert.ok(
+  rkWarningsForStep({ isGM: false }, { action: intelFireAction, suggestedTarget: highSaveTarget }, intelFireAction)
+    .includes("Reflex looks High."),
+  "revealed high saves should warn players before execution",
+);
+assert.ok(
+  rkWarningsForStep({ isGM: false }, {
+    action: { ...intelFireAction, source: "strike", attackTrait: true },
+    suggestedTarget: { ...highSaveTarget, visionerDetectionState: "hidden" },
+  }).includes("Target hidden."),
+  "hidden selected targets should surface a pre-execute warning",
+);
+const previousRkWarningsCanvas = globalThis.canvas;
+try {
+  globalThis.canvas = {
+    scene: { grid: { distance: 5 } },
+    grid: { size: 50, distance: 5 },
+  };
+  const provokeWarnings = rkWarningsForStep({
+    isGM: true,
+    token: { center: { x: 0, y: 0 } },
+    battlefield: {
+      enemies: [{ name: "Reactive Guard", center: { x: 50, y: 0 }, reactiveStrike: true, threatReach: 10 }],
+    },
+  }, {
+    action: { slug: "stride", requiresDestination: true },
+    destination: { x: 100, y: 0 },
+  });
+  assert.ok(provokeWarnings.includes("Destination may provoke."));
+} finally {
+  globalThis.canvas = previousRkWarningsCanvas;
+}
 
 const previousMinionPlannerCanvas = globalThis.canvas;
 const previousMinionPlannerGame = globalThis.game;

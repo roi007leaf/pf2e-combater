@@ -3,6 +3,7 @@ import { projectContextForDraftStepOrigin } from "../../engine/action/builder.js
 import { tokensInAreaMarker } from "../../engine/area/region.js";
 import {
   currentTargetSelection,
+  plannedTargetSelection,
   setTokenTargets,
   targetTokenId,
 } from "../../engine/action/executor.js";
@@ -161,21 +162,25 @@ export function choosePanelDestination(panel, instanceId) {
   if (!picker.native) showDestinationPickerPreview(panel, instanceId);
 }
 
-export async function choosePanelTarget(panel, instanceId) {
+export async function choosePanelTarget(panel, instanceId, { useBestTarget = false } = {}) {
   if (!panel._canExecuteDraft()) return;
   const step = panel._findDraftStep(instanceId);
   if (!panel._context || !step) return;
   cancelPanelPickers(panel);
-  const selection = currentTargetSelection();
+  const current = panel._findActiveStep(instanceId) ?? step;
+  const selection = useBestTarget
+    ? plannedTargetSelection({ ...(current?.action ?? {}), ...current })
+    : currentTargetSelection();
   if (!selection.targetTokenIds.length) {
-    globalThis.ui?.notifications?.warn?.(t("Notify.TargetFirst", "Target a token in Foundry first."));
+    globalThis.ui?.notifications?.warn?.(useBestTarget
+      ? t("Notify.NoBestTarget", "No Best target is available for this action.")
+      : t("Notify.TargetFirst", "Target a token in Foundry first."));
     return;
   }
-  const current = panel._findActiveStep(instanceId) ?? step;
   await panel._persistActiveDraftStep(stepWithRetryReset(current, {
     targetTokenIds: selection.targetTokenIds,
     targetLabel: selection.targetLabel,
-    targetSelection: "manual",
+    targetSelection: useBestTarget ? "recommended" : "manual",
   }));
   await panel.render({ force: true });
 }

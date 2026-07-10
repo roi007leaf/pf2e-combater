@@ -20,7 +20,7 @@
   {{/inline}}
   {{#*inline "draftSequence"}}
   {{#*inline "draftStepChip"}}
-          <span class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
+          <div class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}">
             <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if mapLabel}} ({{mapLabel}}){{/if}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
               {{#unless isGroupChild}}
               <span class="combater-chip-cost" aria-label="{{costLabel}}">
@@ -134,7 +134,21 @@
               </button>
               {{/if}}
             </span>
-          </span>
+            {{#if why.hasReasons}}
+              <details class="combater-step-why" data-tooltip="{{why.tooltip}}">
+                <summary>
+                  <i class="fa-solid fa-circle-question"></i>
+                  <span>{{why.label}}</span>
+                  {{#if why.scoreLabel}}<span class="combater-step-why-score">{{why.scoreLabel}}</span>{{/if}}
+                </summary>
+                <ul>
+                  {{#each why.reasons}}
+                    <li>{{this}}</li>
+                  {{/each}}
+                </ul>
+              </details>
+            {{/if}}
+          </div>
           {{#if minionPlanAsChildren}}
             <span class="combater-minion-action-list">
               {{#each minionPlan.steps}}
@@ -257,6 +271,17 @@
         <span class="combater-empty-chip">{{localize "PF2E_COMBATER.Panel.NoSelectedActions"}}</span>
       {{/each}}
     </div>
+    {{#if planPreference.visible}}
+    <div class="combater-plan-preference" data-tooltip="{{planPreference.tooltip}}">
+      <span class="combater-plan-preference-label">{{planPreference.label}}</span>
+      <button type="button" class="combater-chip-tool combater-plan-preference-button is-positive {{#if planPreference.positive}}is-active{{/if}}" data-plan-preference="1" data-tooltip="{{planPreference.positiveTitle}}" aria-label="{{planPreference.positiveTitle}}" aria-pressed="{{#if planPreference.positive}}true{{else}}false{{/if}}">
+        <i class="{{#if planPreference.positive}}fa-solid{{else}}fa-regular{{/if}} fa-thumbs-up"></i>
+      </button>
+      <button type="button" class="combater-chip-tool combater-plan-preference-button is-negative {{#if planPreference.negative}}is-active{{/if}}" data-plan-preference="-1" data-tooltip="{{planPreference.negativeTitle}}" aria-label="{{planPreference.negativeTitle}}" aria-pressed="{{#if planPreference.negative}}true{{else}}false{{/if}}">
+        <i class="{{#if planPreference.negative}}fa-solid{{else}}fa-regular{{/if}} fa-thumbs-down"></i>
+      </button>
+    </div>
+    {{/if}}
     {{#if headerSummary}}
     <p class="combater-reason">{{headerSummary}}</p>
     {{/if}}

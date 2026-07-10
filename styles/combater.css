@@ -413,6 +413,61 @@
   align-items: center;
 }
 
+.pf2e-combater .combater-step-why {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 1px 0 2px 34px;
+  color: var(--combater-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.pf2e-combater .combater-step-why summary {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  border: 1px solid rgb(121 174 232 / 22%);
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: rgb(121 174 232 / 7%);
+  color: var(--combater-focus);
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.pf2e-combater .combater-step-why summary::-webkit-details-marker {
+  display: none;
+}
+
+.pf2e-combater .combater-step-why summary:hover,
+.pf2e-combater .combater-step-why summary:focus-visible {
+  border-color: rgb(121 174 232 / 48%);
+  outline: none;
+}
+
+.pf2e-combater .combater-step-why[open] summary {
+  margin-bottom: 4px;
+}
+
+.pf2e-combater .combater-step-why-score {
+  color: var(--combater-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-step-why ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 5px 7px 5px 18px;
+  border-left: 1px solid rgb(121 174 232 / 22%);
+  color: var(--combater-text);
+}
+
+.pf2e-combater .combater-step-why li {
+  overflow-wrap: anywhere;
+}
+
 .pf2e-combater .combater-chip-tool.combater-step-drag {
   cursor: grab;
   color: var(--combater-muted);
@@ -1352,14 +1407,65 @@
   font-weight: 700;
 }
 
+.combater-intel-reset-attempts {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 28px;
+  margin: 3px 0 0;
+  border: 1px solid rgb(208 149 73 / 55%);
+  border-radius: 6px;
+  background: rgb(208 149 73 / 10%);
+  color: #e2bd84;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.combater-intel-target-head .combater-intel-reset-attempts span {
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.combater-intel-reset-attempts:hover,
+.combater-intel-reset-attempts:focus-visible {
+  border-color: #e2bd84;
+  background: rgb(208 149 73 / 18%);
+  color: #f0d3a5;
+}
+
 .combater-intel-editor {
   display: grid;
   gap: 7px;
 }
 
 .combater-intel-shell.is-editable .combater-intel-editor {
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: 1fr;
+  align-items: start;
   gap: 6px;
+}
+
+.combater-intel-category-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+
+.combater-intel-category-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.combater-intel-category-column > .combater-intel-category {
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .combater-intel-reveal-style {
@@ -1372,11 +1478,42 @@
   background: #171d23;
 }
 
-.combater-intel-reveal-style > span {
+.combater-intel-reveal-style-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.combater-intel-reveal-style-head > span {
   color: var(--combater-muted);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.combater-intel-reveal-all {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+  width: auto;
+  min-height: 26px;
+  margin: 0;
+  border: 1px solid rgb(134 201 158 / 55%);
+  border-radius: 5px;
+  padding: 3px 8px;
+  background: rgb(134 201 158 / 10%);
+  color: #a9dfbc;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.combater-intel-reveal-all:hover,
+.combater-intel-reveal-all:focus-visible {
+  border-color: #a9dfbc;
+  background: rgb(134 201 158 / 18%);
+  color: #c7efd5;
 }
 
 .combater-intel-reveal-options {
@@ -1431,6 +1568,8 @@
 }
 
 .combater-intel-shell.is-editable .combater-intel-category {
+  align-self: start;
+  align-content: start;
   min-height: 52px;
   padding: 6px;
 }
@@ -1453,9 +1592,22 @@
   place-items: center;
   width: 30px;
   height: 30px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
   border: 1px solid #4e7862;
   border-radius: 6px;
+  padding: 0;
+  background: transparent;
   color: #86c99e;
+  cursor: pointer;
+}
+
+.combater-intel-category-mark:hover,
+.combater-intel-category-mark:focus-visible {
+  border-color: #a9dfbc;
+  background: rgb(134 201 158 / 14%);
+  color: #c7efd5;
 }
 
 .combater-intel-shell.is-editable .combater-intel-category-mark {
@@ -1611,10 +1763,6 @@
   .combater-tactic-slider,
   .combater-intel-shell.is-editable .combater-intel-entry {
     grid-template-columns: 1fr;
-  }
-
-  .combater-intel-shell.is-editable .combater-intel-editor {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .combater-intel-reveal-options {
@@ -2063,10 +2211,30 @@
   color: var(--combater-two);
 }
 
+.pf2e-combater .combater-detail-chip.is-preflight {
+  border-color: rgb(181 154 246 / 48%);
+  background: rgb(132 96 220 / 18%);
+  color: #cbb9ff;
+  box-shadow: inset 0 0 0 1px rgb(203 185 255 / 7%);
+}
+
+.pf2e-combater .combater-detail-chip.is-best-target {
+  border-color: rgb(121 174 232 / 48%);
+  background: rgb(121 174 232 / 14%);
+  color: #afd5ff;
+  box-shadow: inset 0 0 0 1px rgb(175 213 255 / 6%);
+}
+
 .pf2e-combater .combater-detail-chip.is-range {
   gap: 4px;
   color: var(--combater-focus);
   font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-detail-chip.is-preference {
+  border-color: rgb(134 201 158 / 36%);
+  background: rgb(134 201 158 / 10%);
+  color: #86c99e;
 }
 
 .pf2e-combater .combater-detail-chip.is-minion-plan {
@@ -2172,6 +2340,336 @@
 .pf2e-combater .combater-favorite.is-active {
   border-color: #8d6f35;
   color: var(--combater-two);
+}
+
+.pf2e-combater .combater-plan-preference {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.pf2e-combater .combater-plan-preference-label {
+  color: var(--combater-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pf2e-combater .combater-plan-preference-button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 26px;
+}
+
+.pf2e-combater .combater-plan-preference-button.is-positive.is-active {
+  border-color: #4f9f6e;
+  background: rgb(79 159 110 / 18%);
+  color: #86c99e;
+}
+
+.pf2e-combater .combater-plan-preference-button.is-negative.is-active {
+  border-color: var(--combater-three);
+  background: rgb(229 91 123 / 16%);
+  color: var(--combater-three);
+}
+
+.pf2e-combater-rk-roll h4 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 5px;
+}
+
+.pf2e-combater-rk-roll .rk-meta,
+.pf2e-combater-rk-roll .rk-die {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pf2e-combater-rk-roll .rk-question {
+  margin: 4px 0;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.pf2e-combater-rk-roll table,
+.pf2e-combater-rk-adjudication table {
+  width: 100%;
+  margin: 6px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pf2e-combater-rk-roll th,
+.pf2e-combater-rk-roll td,
+.pf2e-combater-rk-adjudication th,
+.pf2e-combater-rk-adjudication td {
+  padding: 3px 5px;
+  text-align: left;
+}
+
+.pf2e-combater-rk-roll tbody tr:nth-child(odd),
+.pf2e-combater-rk-adjudication tbody tr:nth-child(odd) {
+  background: rgb(0 0 0 / 9%);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll, .pf2e-combater-rk-outcome-dialog) {
+  --rk-critical-success: var(--color-pf-text-critical-success, rgb(0 128 0));
+  --rk-success: var(--color-pf-text-success, rgb(0 0 255));
+  --rk-failure: var(--color-pf-text-failure, rgb(255 69 0));
+  --rk-critical-failure: var(--color-pf-text-critical-failure, rgb(255 0 0));
+  --rk-success-ink: var(--rk-success);
+  --rk-critical-success-wash: color-mix(in srgb, var(--rk-critical-success) 18%, transparent);
+  --rk-success-wash: color-mix(in srgb, var(--rk-success) 16%, transparent);
+  --rk-failure-wash: color-mix(in srgb, var(--rk-failure) 16%, transparent);
+  --rk-critical-failure-wash: color-mix(in srgb, var(--rk-critical-failure) 18%, transparent);
+  --rk-broad-color: transparent;
+  --rk-specific-color: transparent;
+  --rk-broad-wash: transparent;
+  --rk-specific-wash: transparent;
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-outcome-dialog) {
+  --rk-success-ink: color-mix(in srgb, var(--rk-success) 46%, white);
+  --rk-success-wash: color-mix(in srgb, var(--rk-success) 8%, rgb(255 255 255 / 10%));
+}
+
+.pf2e-combater-rk-adjudication .rk-calculated-outcomes {
+  margin: 10px 0 8px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-left: 4px solid var(--color-border-highlight, #ff6400);
+  border-radius: 4px;
+  padding: 7px 9px;
+  background: rgb(255 255 255 / 6%);
+}
+
+.pf2e-combater-rk-adjudication .rk-calculated-outcomes p {
+  margin: 0;
+}
+
+.pf2e-combater-rk-adjudication .rk-calculated-outcomes ul {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pf2e-combater-rk-adjudication .rk-calculated-outcomes li {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.pf2e-combater-rk-adjudication .rk-calculated-degree {
+  flex: 0 0 auto;
+  border: 1px solid var(--rk-outcome-color);
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: var(--rk-outcome-wash);
+  color: color-mix(in srgb, var(--rk-outcome-color) 48%, white);
+  font-weight: 700;
+}
+
+:is(
+  .pf2e-combater-rk-adjudication .rk-calculated-degree,
+  .pf2e-combater-rk-outcome-dialog .form-footer button.rk-calculated-outcome
+).rk-degree-criticalsuccess {
+  --rk-outcome-color: var(--rk-critical-success);
+  --rk-outcome-wash: var(--rk-critical-success-wash);
+}
+
+:is(
+  .pf2e-combater-rk-adjudication .rk-calculated-degree,
+  .pf2e-combater-rk-outcome-dialog .form-footer button.rk-calculated-outcome
+).rk-degree-success {
+  --rk-outcome-color: var(--rk-success-ink);
+  --rk-outcome-wash: var(--rk-success-wash);
+}
+
+:is(
+  .pf2e-combater-rk-adjudication .rk-calculated-degree,
+  .pf2e-combater-rk-outcome-dialog .form-footer button.rk-calculated-outcome
+).rk-degree-failure {
+  --rk-outcome-color: var(--rk-failure);
+  --rk-outcome-wash: var(--rk-failure-wash);
+}
+
+:is(
+  .pf2e-combater-rk-adjudication .rk-calculated-degree,
+  .pf2e-combater-rk-outcome-dialog .form-footer button.rk-calculated-outcome
+).rk-degree-criticalfailure {
+  --rk-outcome-color: var(--rk-critical-failure);
+  --rk-outcome-wash: var(--rk-critical-failure-wash);
+}
+
+.pf2e-combater-rk-outcome-dialog .form-footer button.rk-calculated-outcome {
+  border: 2px solid var(--rk-outcome-color);
+  background: var(--rk-outcome-wash);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--rk-outcome-color) 45%, transparent),
+    0 0 12px color-mix(in srgb, var(--rk-outcome-color) 28%, transparent);
+  color: color-mix(in srgb, var(--rk-outcome-color) 48%, white);
+  font-weight: 800;
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td[class^="rank-"] {
+  font-weight: 700;
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td.rank-0 {
+  color: var(--color-proficiency-untrained, #424242);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td.rank-1 {
+  color: var(--color-proficiency-trained, #171f69);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td.rank-2 {
+  color: var(--color-proficiency-expert, #3c005e);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td.rank-3 {
+  color: var(--color-proficiency-master, #664400);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) td.rank-4 {
+  color: var(--color-proficiency-legendary, #5e0000);
+}
+
+.pf2e-combater-rk-adjudication td.rank-0 {
+  color: color-mix(in srgb, var(--color-proficiency-untrained, #424242) 55%, white);
+}
+
+.pf2e-combater-rk-adjudication td.rank-1 {
+  color: color-mix(in srgb, var(--color-proficiency-trained, #171f69) 55%, white);
+}
+
+.pf2e-combater-rk-adjudication td.rank-2 {
+  color: color-mix(in srgb, var(--color-proficiency-expert, #3c005e) 55%, white);
+}
+
+.pf2e-combater-rk-adjudication td.rank-3 {
+  color: color-mix(in srgb, var(--color-proficiency-master, #664400) 55%, white);
+}
+
+.pf2e-combater-rk-adjudication td.rank-4 {
+  color: color-mix(in srgb, var(--color-proficiency-legendary, #5e0000) 55%, white);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) tbody tr.rk-degree-criticalsuccess {
+  box-shadow: inset 4px 0 0 var(--rk-critical-success);
+  background: var(--rk-critical-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) tbody tr.rk-degree-success {
+  box-shadow: inset 4px 0 0 var(--rk-success-ink);
+  background: var(--rk-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) tbody tr.rk-degree-failure {
+  box-shadow: inset 4px 0 0 var(--rk-failure);
+  background: var(--rk-failure-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) tbody tr.rk-degree-criticalfailure {
+  box-shadow: inset 4px 0 0 var(--rk-critical-failure);
+  background: var(--rk-critical-failure-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) tbody tr.is-lore-result {
+  box-shadow:
+    inset 3px 0 0 var(--rk-broad-color),
+    inset 6px 0 0 var(--rk-specific-color);
+  background-image: linear-gradient(
+    90deg,
+    var(--rk-broad-wash) 0 50%,
+    var(--rk-specific-wash) 50% 100%
+  );
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-broad-criticalsuccess {
+  --rk-broad-color: var(--rk-critical-success);
+  --rk-broad-wash: var(--rk-critical-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-specific-criticalsuccess {
+  --rk-specific-color: var(--rk-critical-success);
+  --rk-specific-wash: var(--rk-critical-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-broad-success {
+  --rk-broad-color: var(--rk-success-ink);
+  --rk-broad-wash: var(--rk-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-specific-success {
+  --rk-specific-color: var(--rk-success-ink);
+  --rk-specific-wash: var(--rk-success-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-broad-failure {
+  --rk-broad-color: var(--rk-failure);
+  --rk-broad-wash: var(--rk-failure-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-specific-failure {
+  --rk-specific-color: var(--rk-failure);
+  --rk-specific-wash: var(--rk-failure-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-broad-criticalfailure {
+  --rk-broad-color: var(--rk-critical-failure);
+  --rk-broad-wash: var(--rk-critical-failure-wash);
+}
+
+:is(.pf2e-combater-rk-adjudication, .pf2e-combater-rk-roll) .rk-specific-criticalfailure {
+  --rk-specific-color: var(--rk-critical-failure);
+  --rk-specific-wash: var(--rk-critical-failure-wash);
+}
+
+.pf2e-combater-rk-adjudication .rk-dc-chip {
+  display: inline-block;
+  margin: 1px 2px 1px 0;
+  border: 1px solid currentcolor;
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: rgb(0 0 0 / 20%);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pf2e-combater-rk-adjudication .rk-dc-chip.rk-degree-criticalsuccess {
+  color: var(--rk-critical-success);
+}
+
+.pf2e-combater-rk-adjudication .rk-dc-chip.rk-degree-success {
+  color: var(--rk-success-ink);
+}
+
+.pf2e-combater-rk-adjudication .rk-dc-chip.rk-degree-failure {
+  color: var(--rk-failure);
+}
+
+.pf2e-combater-rk-adjudication .rk-dc-chip.rk-degree-criticalfailure {
+  color: var(--rk-critical-failure);
+}
+
+.pf2e-combater-rk-roll .rk-die {
+  align-items: center;
+  margin-top: 6px;
+  border: 1px solid rgb(0 0 0 / 25%);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.pf2e-combater-rk-roll .rk-die strong {
+  font-size: 18px;
 }
 
 .pf2e-combater .combater-action-row.is-disabled {

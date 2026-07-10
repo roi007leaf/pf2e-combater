@@ -11,7 +11,7 @@
     <form class="combater-intel-body" data-intel-form>
       <div class="combater-intel-grid">
         {{#each entries}}
-          <article class="combater-intel-entry {{#if hasRevealed}}has-revealed{{/if}}" data-intel-entry>
+          <article class="combater-intel-entry {{#if hasRevealed}}has-revealed{{/if}}" data-intel-entry data-intel-entry-index="{{index}}">
             <header class="combater-intel-target-head">
               {{#if img}}
                 <img class="combater-intel-img" src="{{img}}" alt="">
@@ -27,12 +27,36 @@
                   data-intel-selected-label="{{selectedLabel}}"
                 >{{#if hasRevealed}}{{knownLabel}}{{else}}{{noneLabel}}{{/if}}</span>
               </div>
+              {{#if canResetAttempts}}
+                <button
+                  type="button"
+                  class="combater-intel-reset-attempts"
+                  data-intel-reset-attempts="{{index}}"
+                  data-tooltip="{{resetAttemptsTooltip}}"
+                  aria-label="{{resetAttemptsLabel}}"
+                >
+                  <i class="fa-solid fa-rotate-left"></i>
+                  <span>{{resetAttemptsLabel}}</span>
+                </button>
+              {{/if}}
             </header>
 
             {{#if ../editable}}
               <div class="combater-intel-editor">
                 <section class="combater-intel-reveal-style">
-                  <span>{{revealStyleLabel}}</span>
+                  <div class="combater-intel-reveal-style-head">
+                    <span>{{revealStyleLabel}}</span>
+                    <button
+                      type="button"
+                      class="combater-intel-reveal-all"
+                      data-intel-reveal-all
+                      data-tooltip="{{revealAllTooltip}}"
+                      aria-label="{{revealAllLabel}}"
+                    >
+                      <i class="fa-solid fa-check-double"></i>
+                      <span>{{revealAllLabel}}</span>
+                    </button>
+                  </div>
                   <div class="combater-intel-reveal-options">
                     {{#each revealModeOptions}}
                       <label class="combater-intel-reveal-option {{#if checked}}is-selected{{/if}}">
@@ -43,29 +67,41 @@
                     {{/each}}
                   </div>
                 </section>
-                {{#each categories}}
-                  <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category>
-                    <header class="combater-intel-category-head">
-                      <span class="combater-intel-category-mark">
-                        <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
-                      </span>
-                      <span class="combater-intel-category-text">
-                        <strong>{{label}}</strong>
-                      </span>
-                    </header>
-                    <div class="combater-intel-facts">
-                      {{#each facts}}
-                        <label class="combater-intel-fact {{#if checked}}is-known{{/if}}" data-intel-fact>
-                          <input type="checkbox" name="{{inputName}}" value="{{id}}" {{#if checked}}checked{{/if}}>
-                          <span class="combater-intel-fact-mark">
-                            <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
-                          </span>
-                          <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
-                        </label>
+                <div class="combater-intel-category-columns">
+                  {{#each categoryColumns}}
+                    <div class="combater-intel-category-column">
+                      {{#each this}}
+                        <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category>
+                          <header class="combater-intel-category-head">
+                            <button
+                              type="button"
+                              class="combater-intel-category-mark"
+                              data-intel-reveal-category
+                              data-tooltip="{{revealAllLabel}}"
+                              aria-label="{{revealAllLabel}}"
+                            >
+                              <i class="fa-solid {{markIcon}}"></i>
+                            </button>
+                            <span class="combater-intel-category-text">
+                              <strong>{{label}}</strong>
+                            </span>
+                          </header>
+                          <div class="combater-intel-facts">
+                            {{#each facts}}
+                              <label class="combater-intel-fact {{#if checked}}is-known{{/if}}" data-intel-fact>
+                                <input type="checkbox" name="{{inputName}}" value="{{id}}" {{#if checked}}checked{{/if}}>
+                                <span class="combater-intel-fact-mark">
+                                  <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
+                                </span>
+                                <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
+                              </label>
+                            {{/each}}
+                          </div>
+                        </section>
                       {{/each}}
                     </div>
-                  </section>
-                {{/each}}
+                  {{/each}}
+                </div>
               </div>
             {{else}}
               {{#if hasRevealed}}

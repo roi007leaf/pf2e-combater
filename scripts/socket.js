@@ -38,6 +38,15 @@ export async function requestRetchResult(args = {}) {
 
 // PLAYER → all GMs: hand off a shared draft plan (fire-and-forget). Returns false when socketlib
 // isn't available so the caller can warn.
+export async function requestRecallKnowledgeResolution(args = {}) {
+  if (!socket) return null;
+  try {
+    return await socket.executeAsGM("resolveRecallKnowledge", args);
+  } catch (_error) {
+    return null;
+  }
+}
+
 export function shareDraftPlan(payload) {
   if (!socket) return false;
   try {

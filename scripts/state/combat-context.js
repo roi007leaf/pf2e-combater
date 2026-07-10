@@ -10,6 +10,7 @@ import {
   canUseIntelFact,
   intelSaveBand,
   intelDefenseFactId,
+  intelIdentityTrait,
   intelTraitFactId,
   readIntelLedger,
   readIntelRevealMode,
@@ -387,7 +388,9 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     traits: canSeeDefenses
       ? actorTraitSlugs(actor)
       : actorTraitSlugs(actor).filter((trait) =>
-        canUseIntelFact(null, intelTarget, "traits", intelTraitFactId(trait))),
+        canUseIntelFact(null, intelTarget, "traits", intelTraitFactId(trait))
+        || (canUseIntelCategory(null, intelTarget, "identity")
+          && String(trait).toLowerCase() === intelIdentityTrait(actor))),
     visionerDetectionState,
     attackTargetable: attackTargetableDetectionState(visionerDetectionState)
       && attackTargetableConditions(conditions),

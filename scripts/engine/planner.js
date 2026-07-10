@@ -36,6 +36,10 @@ import {
 } from "./planner/conflicts.js";
 import { contextAllies } from "./target-pool.js";
 import { t } from "../i18n.js";
+import {
+  boundedPlanPreferenceDelta,
+  deterministicPlanPreferenceAdjustment,
+} from "../state/preference-profile.js";
 
 export { isAttackAction } from "./planner/rules.js";
 
@@ -383,6 +387,13 @@ function toPlan(context, steps, sortedCandidates, budget) {
   const orderedSteps = orderPlanSteps(steps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
+  const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget);
+  const componentScoreDelta = orderedSteps.reduce(
+    (total, step) => total + (Number(step?.preference?.scoreDelta) || 0),
+    0,
+  );
+  const directPreference = deterministicPlanPreferenceAdjustment(context, { steps: orderedSteps, totalCost });
+  const preferenceScoreDelta = boundedPlanPreferenceDelta(componentScoreDelta, directPreference.scoreDelta);
 
   return {
     id: orderedSteps.map((step) => step.id).join("+"),
@@ -391,7 +402,12 @@ function toPlan(context, steps, sortedCandidates, budget) {
     steps: orderedSteps,
     totalCost,
     actionBudget: budget,
-    score: planScore(context, orderedSteps, sortedCandidates, budget),
+    score: tacticalScore - componentScoreDelta + preferenceScoreDelta,
+    preference: {
+      ...directPreference,
+      componentScoreDelta,
+      scoreDelta: preferenceScoreDelta,
+    },
     confidence: combineConfidence(orderedSteps.map((step) => step.confidence)),
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",

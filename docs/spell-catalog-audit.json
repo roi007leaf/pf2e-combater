@@ -4,9 +4,9 @@
     "activeCount": 1543,
     "skippedCount": 259,
     "byCombatUse": {
-      "auto": 1361,
-      "browse-only": 36,
-      "context-only": 145,
+      "auto": 1340,
+      "browse-only": 62,
+      "context-only": 140,
       "never-auto-fill": 1,
       "review": 0
     }
@@ -802,9 +802,9 @@
           "oracle"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You take the form of a cloud of minuscule ash particles. You gain fast healing 3, resistance 10 to piercing and slashing damage, and immunity to bleed, falling damage, and precision damage. You can't move through solid o"
       },
@@ -1084,7 +1084,7 @@
           "oracle"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -1170,7 +1170,7 @@
           "wood"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -1288,7 +1288,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -1715,6 +1715,25 @@
         "desc": "You push into the target's mind and daze it with a mental jolt. The jolt deals 1d6 mental damage, with a basic Will save. If the target critically fails the save, it is also @UUID[Compendium.pf2e.conditionitems.Item.dfCM"
       },
       {
+        "name": "Heroic Feat",
+        "slug": "heroic-feat",
+        "rank": 6,
+        "traits": [
+          "concentrate",
+          "cursebound",
+          "focus",
+          "manipulate",
+          "mental",
+          "oracle"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You gain the ability to perform a specialized combat technique from the vast wealth of martial knowledge your mystery provides. When you Cast this Spell, you use the action granted by one common fighter feat. If you Cast"
+      },
+      {
         "name": "Shielded Arm",
         "slug": "shielded-arm",
         "rank": 1,
@@ -1989,11 +2008,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Calling upon powerful magic, you gain a Large dragon battle form. When you Cast this Spell, choose one type of common dragon or another type to which your GM allows access. While in this form, you gain the dragon trait. "
       },
       {
@@ -2021,9 +2040,9 @@
           "concentrate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Trigger You are hit by a physical Strike. You swiftly raise a reflective barrier, reducing physical damage and rebounding it onto your attacker. You gain resistance 10 against one physical damage type the triggering atta"
       },
@@ -2678,11 +2697,11 @@
           "metal",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Your body transforms entirely into flexible iron. You gain resistance 10 to physical damage, except adamantine. You're immune to death effects, disease, drained, @UUID[Compendium.pf2e.conditionitems.Item.HL2l2VRSaQHu9lUw"
       },
       {
@@ -2694,11 +2713,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You transform into the shape of a legendary monster, assuming a Huge battle form. You must have enough space to expand into or the spell is lost. When you cast this spell, choose phoenix, cave worm, or sea serpent. While"
       },
       {
@@ -2778,24 +2797,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You dig an earthen trench across the surrounding terrain, which must be soil, clay, sand, or other soft earth, but not flooring or stone. The trench is 5 feet wide, 5 feet deep, and up to 15 feet long. You can shape the "
-      },
-      {
-        "name": "Untamed Form",
-        "slug": "untamed-form",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "druid",
-          "focus",
-          "manipulate",
-          "polymorph"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You reach within for a different part of yourself, and you set it free, transforming your body into another form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest For"
       },
       {
         "name": "Wronged Monk's Wrath",
@@ -2907,7 +2908,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -3203,9 +3204,9 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You dance, @UUID[Compendium.pf2e.actionspf2e.Item.Bcxarzksqt9ezrs6]{Striding} up to half your Speed. At either the start or end of your Stride, you create an area of magical darkness in a 10-foot burst centered on your l"
       },
@@ -3332,11 +3333,11 @@
         "traits": [
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "Trigger An effect would deal physical or energy damage to you or a creature in range. A sparkling magical barrier envelops each target, shielding them against the triggering effect. Choose one type of physical or energy "
       },
       {
@@ -3754,22 +3755,6 @@
         "desc": "You let out the mighty cry of a majestic eagle that pierces eardrums. This cry deals 4d8 sonic damage. Each creature in the area must attempt a Fortitude saving throw. Critical Success The creature is unaffected. Success"
       },
       {
-        "name": "Sigil",
-        "slug": "sigil",
-        "rank": 1,
-        "traits": [
-          "cantrip",
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "stealth-defense",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You harmlessly place your unique magical sigil, which is about 1 square inch in size, on the targeted creature or object. The mark can be visible or invisible, and you can change it from one state to another by using an "
-      },
-      {
         "name": "Diadem of Divine Radiance",
         "slug": "diadem-of-divine-radiance",
         "rank": 5,
@@ -3797,7 +3782,7 @@
           "focus"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -3828,11 +3813,11 @@
           "manipulate",
           "mental"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You incite distress in the minds of your enemies, making it more difficult for them to defend themselves. Enemies in the area must succeed at a Will save or take a –1 status penalty to AC as long as they're in the area. "
       },
       {
@@ -3876,7 +3861,7 @@
           "light"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -4075,7 +4060,7 @@
           "sorcerer"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -4303,20 +4288,21 @@
         "desc": "You launch a volley of splinters at your foes. Make a spell attack roll against a single creature. On a hit, the splinters deal 4d6 piercing damage. The splinters deal double damage on a critical hit and @Damage[(floor(@"
       },
       {
-        "name": "Darkened Forest Form",
-        "slug": "darkened-forest-form",
-        "rank": 1,
+        "name": "Bee-Man's Summons",
+        "slug": "bee-mans-summons",
+        "rank": 2,
         "traits": [
-          "animist",
-          "focus",
-          "polymorph"
+          "auditory",
+          "concentrate",
+          "linguistic",
+          "mental"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
-        "desc": "Your apparition casts a feral shadow over your form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest Form}. When you transform into a form granted by a spell, you ga"
+        "desc": "You recreate the Bee-Man's infamous ability to sense when someone utters their name. During the spell's duration, you mentally sense whenever someone (referred to as a speaker) speaks your full name while within the spel"
       },
       {
         "name": "Synaptic Pulse",
@@ -4395,29 +4381,11 @@
           "concentrate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
         "desc": "When you Cast the Spell, you gain a perfect sense of time. You can learn exactly what time it is, down to the second. You can instead choose to gain a perfect sense of the calendar if you have knowledge in that area—if y"
-      },
-      {
-        "name": "Gentle Breeze",
-        "slug": "gentle-breeze",
-        "rank": 2,
-        "traits": [
-          "air",
-          "concentrate",
-          "healing",
-          "manipulate",
-          "vitality"
-        ],
-        "source": "spell-inferred",
-        "role": "healing",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "A light, soothing breeze flows through the area, making it easier to rest and recover. Medicine checks attempted to benefit living creatures in the area get a +2 status bonus. Any living creature in the area also gets a "
       },
       {
         "name": "Arctic Rift",
@@ -4463,11 +4431,11 @@
           "visual",
           "wizard"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You hold up any object, which takes on the appearance of glowing regalia in the eyes of those who look on you, representing the political or religious institute most feared by each creature. If a creature attempts to att"
       },
       {
@@ -4485,41 +4453,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You call forth a sheet of metal, forming a wall of iron, low-grade cold iron, or standard-grade silver up to 60 feet long, 30 feet high, and 1/4 inch thick. The wall doesn't need to stand vertically but must form a strai"
-      },
-      {
-        "name": "Purging Toxins",
-        "slug": "purging-toxins",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "focus",
-          "manipulate",
-          "oracle",
-          "poison"
-        ],
-        "source": "spell-inferred",
-        "role": "damage",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "In the right dose, a scourge can become a cure. Deal poison damage equal to the spell's rank to the target, then attempt a counteract check against one disease or poison afflicting the target. The target is then temporar"
-      },
-      {
-        "name": "Familiar Form",
-        "slug": "familiar-form",
-        "rank": 4,
-        "traits": [
-          "concentrate",
-          "focus",
-          "manipulate",
-          "polymorph"
-        ],
-        "source": "spell-inferred",
-        "role": "transformation",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You transform into a Tiny animal that commonly serves as a spellcaster's familiar. You gain the effects of the spell pest form, heightened to the level of familiar form you cast. However, you can transform into only a ba"
       },
       {
         "name": "Confetti Cloud",
@@ -4549,21 +4482,6 @@
         "desc": "You channel a magical ward through your attack and attempt to plant it on a foe. This ward increases your defenses against that foe, as long as you keep attacking that foe to maintain it. Make a melee Strike with a weapo"
       },
       {
-        "name": "Extract Poison",
-        "slug": "extract-poison",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "With the lightest touch, you can siphon the poison from an object and save it for your own later use, making an assassin's blade or politician's wine less deadly while you become all the more so. Attempt a counteract che"
-      },
-      {
         "name": "Ordained Purpose",
         "slug": "ordained-purpose",
         "rank": 4,
@@ -4581,22 +4499,6 @@
         "desc": "You call upon the authority of cosmic forces of order, overwhelming creatures with remorse and agony for acting outside of their station and purpose. Enemies in the area take 4d6 mental damage and must attempt a Will sav"
       },
       {
-        "name": "Empty Pack",
-        "slug": "empty-pack",
-        "rank": 2,
-        "traits": [
-          "illusion",
-          "manipulate",
-          "subtle"
-        ],
-        "source": "spell-inferred",
-        "role": "stealth-defense",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You render every item inside the container you touch @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible}, although the container itself remains visible. The items within are @UUID[Compendium.pf2e.condi"
-      },
-      {
         "name": "Stupefy",
         "slug": "stupefy",
         "rank": 2,
@@ -4605,12 +4507,29 @@
           "manipulate",
           "mental"
         ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You dull the target's mind, depending on its Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg]{Stupefied 1} until the start of your ne"
+      },
+      {
+        "name": "Extend Boost",
+        "slug": "extend-boost",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "focus",
+          "spellshape",
+          "summoner"
+        ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
-        "desc": "You dull the target's mind, depending on its Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg]{Stupefied 1} until the start of your ne"
+        "desc": "You focus on the intricacies of the magic binding you to your eidolon to extend the duration of your boost eidolon or reinforce eidolon spell. If your next action is to cast @UUID[Compendium.pf2e.spells-srd.Item.HStu2Yhw"
       },
       {
         "name": "Channel Arrogance",
@@ -4627,23 +4546,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You channel your heightened sense of self-worth into a creature, forcing them to acknowledge your true worth. You can Cast this Spell using 1 action if you know the target isn't worthy of you spending your time to genera"
-      },
-      {
-        "name": "Shape Wood",
-        "slug": "shape-wood",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "plant",
-          "wood"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You shape the wood into a rough shape of your choice. The shaping power is too crude to produce with intricate parts, fine details, moving pieces, or the like. You cannot use this spell to enhance the value of the wooden"
       },
       {
         "name": "Blood in the Water",
@@ -4751,21 +4653,6 @@
         "desc": "You conjure four types of elementals who combine forces to form into a chaotic storm. The confluence has AC 28 and 120 Hit Points, weakness 10 to area effects, and immunity to bleed and poison. Creatures can move through"
       },
       {
-        "name": "Putrefy Food and Drink",
-        "slug": "putrefy-food-and-drink",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You cause otherwise edible food to rot and spoil instantly, and water and other liquids to become brackish and undrinkable. @UUID[Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp]{Holy Water}, @UUID[Compendium.pf2e.eq"
-      },
-      {
         "name": "Songbird's Call",
         "slug": "songbirds-call",
         "rank": 4,
@@ -4860,11 +4747,11 @@
           "air",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "Trigger You or an ally in range is targeted by a ranged attack. A cloud of mist enshrouds the target, appearing much like the deflecting clouds created by cloud dragons. The target is treated as @UUID[Compendium.pf2e.con"
       },
       {
@@ -4945,11 +4832,11 @@
           "focus",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "buff",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "A protective aura emanates out from you, safeguarding you and your allies. You gain resistance 3 to all damage. Your allies also gain this resistance while in the area. @UUID[Compendium.pf2e.spell-effects.Item.3bcUiWwc5K"
       },
       {
@@ -5069,7 +4956,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -5224,11 +5111,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Invoking the celestial realms, you transform into a Medium angel battle form. When you cast this spell, choose balisse, choral, kuribu, or tennin. The battle form is Small if you choose choral or kuribu. While in this fo"
       },
       {
@@ -5281,22 +5168,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You conjure a jagged lance of stone and then launch it at a foe. Make a spell attack roll against the target. On a hit, you deal 6d6 piercing damage and the lance impales the creature, giving it a –10-foot circumstance p"
-      },
-      {
-        "name": "Verdant Sprout",
-        "slug": "verdant-sprout",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "plant"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "You imbue a single ordinary, inexpensive plant seed with primal energy and throw it onto a surface, where it gradually sprouts into a Medium plant. After 10 minutes, the plant is sturdy enough to provide standard cover, "
       },
       {
         "name": "Runic Body",
@@ -5383,21 +5254,6 @@
         "desc": "Razor-sharp thorns and claws erupt from your skin or scales. Whenever a creature touches you or hits you with a melee unarmed attack, it takes 1 piercing damage. Additionally, if you become @UUID[Compendium.pf2e.conditio"
       },
       {
-        "name": "Ravenous Portal",
-        "slug": "ravenous-portal",
-        "rank": 4,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You place a ward upon the door that triggers when a creature attempts to open, unlock, or destroy the door. When that happens, the door transforms into a @UUID[Compendium.pf2e.pathfinder-monster-core-2.Actor.h74BX4Iw78gW"
-      },
-      {
         "name": "Blood Feast",
         "slug": "blood-feast",
         "rank": 5,
@@ -5412,21 +5268,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Your head splits vertically into an enormous maw, which feasts upon the target's blood, dealing 12d6 piercing damage, depending on your spell attack roll. After the spell, your head sews back together as if it had never "
-      },
-      {
-        "name": "Anticipate Peril",
-        "slug": "anticipate-peril",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You grant the target brief foresight. The target gains a +1 status bonus to its next initiative roll, after which the spell ends. Heightened (+2) The status bonus increases by 1, to a maximum of +4 at 7th rank. @UUID[Com"
       },
       {
         "name": "Heinous Future",
@@ -5456,11 +5297,11 @@
           "linguistic",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "This is a story of four evenly matched hunters who sought to capture a falling star. Each hunter was known by the region they came from, and this spell focuses on one of their attributes. When you cast this spell, you mu"
       },
       {
@@ -5471,11 +5312,11 @@
           "concentrate",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "You link the minds of two targets, enabling them to move in tandem. When one of the targets Steps, the other target can use a reaction to Step. When one of the targets Strides, the other target can use a reaction to Stri"
       },
       {
@@ -5547,21 +5388,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Imitating raptorial creatures, you attack with such speed it drives a sonic shockwave. Make a melee Strike against a creature in your reach; if you hit, you deal an additional 3d8 sonic damage. Regardless of the result o"
-      },
-      {
-        "name": "Inside Ropes",
-        "slug": "inside-ropes",
-        "rank": 1,
-        "traits": [
-          "cantrip",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "You pull a large handful of guts from your midsection. Removing these guts doesn't harm you. You can use the guts as 50 feet of rope to help you @UUID[Compendium.pf2e.actionspf2e.Item.pprgrYQ1QnIDGZiy]{Climb}, and they h"
       },
       {
         "name": "Sound Body",
@@ -5657,22 +5483,6 @@
         "desc": "You open your cloak or create a gap with your hands, drawing the target into a pocket dimension just large enough for its basic comfort. No other creature can enter this extradimensional space, and the target can bring a"
       },
       {
-        "name": "Bottomless Stomach",
-        "slug": "bottomless-stomach",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "extradimensional",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You create a shimmering extradimensional space accessible from the target's mouth. The space can hold objects and equipment, up to a total of 10 Bulk. This extradimensional storage doesn't hamper the target's ability to "
-      },
-      {
         "name": "Dirge of Remembrance",
         "slug": "dirge-of-remembrance",
         "rank": 4,
@@ -5747,29 +5557,12 @@
           "concentrate",
           "focus"
         ],
-        "source": "spell-inferred",
-        "role": "buff",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You send currents of protective ki to the surface of your body that protect you from harm, at least until your enemies dissipate them. You gain 15 temporary Hit Points, which last for up to 3 rounds. Heightened (+1) The "
-      },
-      {
-        "name": "Conjured Conveyance",
-        "slug": "conjured-conveyance",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "plant",
-          "wood"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You conjure an intricate vehicle, carved entirely from wood, to serve as a method of conveyance. The vehicle appears in an unoccupied area of your choice within range. The vehicle can be piloted using Arcana, Driving Lor"
       },
       {
         "name": "Roar of the Dragon",
@@ -5815,11 +5608,26 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Trigger You would take fire damage. You consume and ingest fire, making it less harmful to you. You gain resistance 5 to fire damage until the end of the current turn. During the remaining duration of the spell, you can "
+      },
+      {
+        "name": "Store Time",
+        "slug": "store-time",
+        "rank": 1,
+        "traits": [
+          "animist",
+          "focus"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You store time for later use. When you Cast this Spell and the first time you Sustain it each round, you gain a bonus reaction that you can use for any animist or apparition reaction you have. As normal, this reaction is"
       },
       {
         "name": "Undeath's Blessing",
@@ -5950,11 +5758,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Harnessing the power of vile entities, you transform yourself into a Large aberration. You must have enough space to expand into or the spell is lost. When you cast this spell, choose chuul, gogiteth, gug, or otyugh. Whi"
       },
       {
@@ -5973,20 +5781,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You whisper baleful secrets that transcend language and carry magically to the ears of your foes. The words take physical form, weakening the life force of the targets, each of which must attempt a Fortitude save. Critic"
-      },
-      {
-        "name": "Catch Your Name",
-        "slug": "catch-your-name",
-        "rank": 6,
-        "traits": [
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "Trigger A creature on your plane speaks your private or true name Requirements You know your own true name. You learn a private name (but not the true name) of the creature who spoke your name, as well as their precise l"
       },
       {
         "name": "Nudge Fate",
@@ -6029,11 +5823,11 @@
           "manipulate",
           "mental"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You create a subtle dissonance between creatures, driving them apart. Each target must attempt a Will save. Critical Success The creature is unaffected. Success The creature becomes @UUID[Compendium.pf2e.conditionitems.I"
       },
       {
@@ -6070,24 +5864,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You implant a subconscious suggestion deep within the target's mind for them to follow when a trigger you specify occurs. You suggest a course of action to the target. Your directive must be phrased in such a way as to s"
-      },
-      {
-        "name": "Adapt Self",
-        "slug": "adapt-self",
-        "rank": 1,
-        "traits": [
-          "cleric",
-          "concentrate",
-          "focus",
-          "manipulate",
-          "morph"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You make subtle changes to your body to adapt to the situation. Choose one of the following options that applies to you. If you are in water, you gain a swim Speed equal to half your Speed. If you are in water, you becom"
       },
       {
         "name": "Zealous Conviction",
@@ -6164,11 +5940,11 @@
           "concentrate",
           "fortune"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "The next time you make an attack roll before the end of your turn, roll it twice and use the better result. The attack ignores circumstance penalties to the attack roll and any flat check required due to the target being"
       },
       {
@@ -6207,6 +5983,23 @@
         "desc": "Your patron fills a creature with fervor, empowering their blows. The target gains a +2 status bonus to damage rolls. Heightened (+2) The status bonus to damage increases by 1. @UUID[Compendium.pf2e.spell-effects.Item.Tp"
       },
       {
+        "name": "Filter Air",
+        "slug": "filter-air",
+        "rank": 4,
+        "traits": [
+          "air",
+          "concentrate",
+          "manipulate",
+          "subtle"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "Trigger You're exposed to a poison or disease that has the inhaled trait, and you're aware of the exposure Requirements You breathe air. You suck in a rough breath of air, and your body automatically filters out the harm"
+      },
+      {
         "name": "Spiritual Attunement",
         "slug": "spiritual-attunement",
         "rank": 4,
@@ -6214,7 +6007,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -6247,7 +6040,7 @@
           "focus"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -6269,23 +6062,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "Trigger You or an ally within range attempts a saving throw. You twist the forces of fate to make a moment dire or uneventful, with no in-between. The target gains a +1 status bonus to the triggering saving throw. If the"
-      },
-      {
-        "name": "Excise Lexicon",
-        "slug": "excise-lexicon",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "linguistic",
-          "manipulate",
-          "mental"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You reach into a creature's mind and extract its knowledge of a word. Choose a word to excise when you Cast the Spell. The word must be a mundane word, not a proper noun, and not a word of power such as those used as ver"
       },
       {
         "name": "Claim Undead",
@@ -6494,11 +6270,11 @@
           "light",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "All creatures in the area when you cast the spell are limned in colorful, heatless fire of a color of your choice for the duration. Visible creatures can't be @UUID[Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W]{C"
       },
       {
@@ -6510,11 +6286,11 @@
           "concentrate",
           "summoner"
         ],
-        "source": "spell-inferred",
-        "role": "setup",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You focus deeply on the link between you and your eidolon and boost the power of your eidolon's attacks. Your eidolon gains a +2 status bonus to damage rolls with its unarmed attacks. If your eidolon's Strikes deal more "
       },
       {
@@ -6529,7 +6305,7 @@
           "sorcerer"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -6606,24 +6382,6 @@
         "desc": "Area (continued) four 10-foot-by-10-foot spaces You create illusory hazards, such as spinning blades or a puddle of acid, in four 10-foot-by–10-foot spaces within range. The hazards are merely a mental projection, and a "
       },
       {
-        "name": "Imitate Fauna",
-        "slug": "imitate-fauna",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "focus",
-          "illusion",
-          "manipulate",
-          "ranger"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You use your knowledge of nature to pass the target off as a common animal of the same size, representing a species chosen when the spell is cast. This covers the target's visual appearance, scent, and voice. The target "
-      },
-      {
         "name": "Breath of Life",
         "slug": "breath-of-life",
         "rank": 5,
@@ -6647,11 +6405,11 @@
           "earth",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "Trigger You are the target of a Strike or would attempt a Reflex save against a damaging area effect. You raise a flimsy barrier of earth to shield you from harm. This barrier is 1 inch thick, 5 feet long, 5 feet high, a"
       },
       {
@@ -6888,27 +6646,12 @@
           "manipulate",
           "water"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "healing",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "In a moment of dire need, you call upon ancestral power to strengthen and sustain. A soothing mist gathers around the target, granting 1d8 temporary Hit Points and ending one source of persistent acid, bleed, fire, poiso"
-      },
-      {
-        "name": "Safe Passage",
-        "slug": "safe-passage",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "Area 10-foot-wide, 10-foot-tall, 60-foot-long section of terrain You make passage through the area safe for a brief amount of time. Anyone passing through the area gains the following benefits against harmful effects of "
       },
       {
         "name": "Song of the Fallen",
@@ -6936,11 +6679,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You recreate your form entirely out of cosmic energy, transforming into a Large battle form. You must have enough space to expand into, or the spell is lost. When you cast this spell, choose to take on the powers of the "
       },
       {
@@ -7023,7 +6766,7 @@
           "ranger"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -7060,20 +6803,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Your voice projects like cracking thunder as you summon a localized storm, creating a fearsome surge of lightning and wind that deals 6d6 electricity damage. Each creature must attempt a Reflex saving throw. Critical Suc"
-      },
-      {
-        "name": "Iron Gut",
-        "slug": "iron-gut",
-        "rank": 2,
-        "traits": [
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "Your mouth, esophagus, and stomach become incredibly elastic and tougher than metal. For the duration of the spell, you can reach down your throat to store or retrieve a single object of light or negligible Bulk in your "
       },
       {
         "name": "Enthrall",
@@ -7155,27 +6884,12 @@
           "hex",
           "witch"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "You unleash energy from the broken connection to your patron. You are @UUID[Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W]{Concealed} from creatures beyond the edge of the emanation but can't use that concealment "
-      },
-      {
-        "name": "Deep Sight",
-        "slug": "deep-sight",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "Your eyes darken until they become entirely pitch black. You grant yourself the ability to see in the darkness. You gain darkvision. If you already have darkvision, you gain greater darkvision. Heightened (7th) The durat"
       },
       {
         "name": "Frostbite",
@@ -7205,11 +6919,11 @@
           "mental",
           "oracle"
         ],
-        "source": "spell-inferred",
-        "role": "buff",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "Trigger You are about to attempt a Will save. Your ancestor protects you against those who would bend your will. You roll the triggering save twice and use the better result."
       },
       {
@@ -7255,11 +6969,11 @@
           "concentrate",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You sap the target's strength, depending on its Fortitude save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.MIRkyAjyBeXivMa7]{Enfeebled 1} until the start of"
       },
       {
@@ -7437,11 +7151,11 @@
           "manipulate",
           "mental"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You touch the target to afflict it with the overwhelming desire to eat raw meat. The target must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems."
       },
       {
@@ -7571,7 +7285,7 @@
           "mental"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -7623,9 +7337,9 @@
           "water"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You surround yourself in a bubble-like shroud of seawater that fills your space completely and moves with you. You can breathe, speak, and perceive normally while within your personal ocean, and you gain a swim Speed equ"
       },
@@ -7675,11 +7389,11 @@
           "plant",
           "wood"
         ],
-        "source": "spell-inferred",
-        "role": "buff",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "A Medium tree suddenly grows in an unoccupied square within range. The tree has AC 10 and 10 Hit Points. Whenever an ally adjacent to the tree is hit by a Strike, the tree interposes its branches and takes the damage fir"
       },
       {
@@ -7705,11 +7419,11 @@
           "concentrate",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You coat a creature's body in a layer of brilliantly sparkling glitter. The target gains a +2 status bonus on Deception checks to @UUID[Compendium.pf2e.actionspf2e.Item.GkmbTGfg8KcgynOA]{Create a Diversion} and to @UUID["
       },
       {
@@ -7778,23 +7492,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Area (continued) five 30-foot lines Lines of burning starlight form a constellation around you. Draw five lines, one at a time; each line must anchor at you or a creature or object already connected to a previous line, a"
-      },
-      {
-        "name": "Mind Reading",
-        "slug": "mind-reading",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "detection",
-          "manipulate",
-          "mental"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "With a cursory mental touch, you attempt to read the target's mind. It must attempt a Will save. The target then becomes temporarily immune to your mind reading for 1 hour. Critical Success The target perceives vague sur"
       },
       {
         "name": "Heal Companion",
@@ -7947,7 +7644,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -8302,7 +7999,7 @@
           "wizard"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -8377,6 +8074,23 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You curse the target, filling it with terror at the loss of its blood. The target must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.TBSHQ"
+      },
+      {
+        "name": "Traveler's Transit",
+        "slug": "travelers-transit",
+        "rank": 4,
+        "traits": [
+          "cleric",
+          "concentrate",
+          "focus",
+          "manipulate"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You add power to your muscles, allowing you to swim or climb walls with ease. When you Cast this Spell, you gain either a climb Speed or a swim Speed. The Speed is equal to your land Speed. Heightened (5th) You can choos"
       },
       {
         "name": "Carryall",
@@ -8552,7 +8266,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -9043,7 +8757,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -9908,7 +9622,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -10280,7 +9994,7 @@
           "wizard"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -10423,9 +10137,9 @@
           "stance"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You take on the stance of the flowing winds, sending out waves of energy at a distance. You can make wind crash unarmed Strikes as ranged Strikes against targets within 30 feet. These deal 1d6 bludgeoning damage; are in "
       },
@@ -11000,7 +10714,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -11057,6 +10771,21 @@
         "confidence": "high",
         "curated": false,
         "desc": "You exhort your fallen comrades to return to the battle. Each allied creature within the emanation whose @UUID[Compendium.pf2e.conditionitems.Item.yZRUzMqrMmfLu0V1]{Dying} value is 2 or less regains 4d10 Hit Points and c"
+      },
+      {
+        "name": "Stonesense",
+        "slug": "stonesense",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You gain tremorsense as an imprecise sense to a range of 100 feet, but you can only sense vibrations through natural stone (not masonry, adobe, or any other manufactured edifice)."
       },
       {
         "name": "Temporal Distortion",
@@ -11173,9 +10902,9 @@
           "wood"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Wood shapes itself according to your will readily, making staircases appear as you climb up the side of a tree, automatically weaving vines into ladders, or lowering branches to lift you up to the top. When you Cast this"
       },
@@ -11721,7 +11450,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -12025,6 +11754,22 @@
         "desc": "You conjure grease, choosing an area or target. Area [4 contiguous 5-foot squares] All solid ground in the area is covered with grease. Each creature standing on the greasy surface must succeed at a Reflex save or an Acr"
       },
       {
+        "name": "Unfolding Wind Blitz",
+        "slug": "unfolding-wind-blitz",
+        "rank": 7,
+        "traits": [
+          "air",
+          "concentrate",
+          "focus"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You blitz forward so quickly that you soar through the air, and nothing can react to you. Fly up to twice your Speed. This movement doesn't trigger reactions. At any point along the way, you can make Strikes with an unar"
+      },
+      {
         "name": "Fated Healing",
         "slug": "fated-healing",
         "rank": 1,
@@ -12050,7 +11795,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -12065,7 +11810,7 @@
           "focus"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -12082,7 +11827,7 @@
           "visual"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -12506,9 +12251,9 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Drawing from deep wells of spiritual power, you take on a special qi form. In your qi form, your hair, feathers, skin, or scales change color and begin to glow. In this form, you gain a fly Speed equal to your land Speed"
       },
@@ -12643,9 +12388,9 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You create a puff of colorful smoke that quickly disperses while you become temporarily @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible}. You become @UUID[Compendium.pf2e.conditionitems.Item.VRSef5y"
       },
@@ -12693,7 +12438,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -12989,22 +12734,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You create a translucent wall of light, which draws power from the celestial realms. You create either a 5-foot-thick wall in a straight line up to 60 feet long and 10 feet high or a 5-foot-thick, 10-foot-radius ring wit"
-      },
-      {
-        "name": "Inner Upheaval",
-        "slug": "inner-upheaval",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "focus",
-          "monk"
-        ],
-        "source": "spell-inferred",
-        "role": "damage",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You focus your qi into devastating magical attacks. Make an unarmed Strike or @UUID[Compendium.pf2e.classfeatures.Item.NLHHHiAcdnZ5ohc2]{Flurry of Blows} (this doesn't change the limit on using only one flourish per turn"
       },
       {
         "name": "Shields of the Spirit",
@@ -13402,7 +13131,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -13417,7 +13146,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -13825,7 +13554,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -14179,9 +13908,9 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "The blessings of your god make your feet faster and your movements more fluid. You gain a +5-foot status bonus to your Speed and ignore difficult terrain. As part of casting agile feet, you can Stride, Step, or @UUID[Com"
       },
@@ -14231,7 +13960,7 @@
           "focus"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -14296,7 +14025,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -14649,7 +14378,7 @@
           "unholy"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -14748,7 +14477,7 @@
           "wood"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -14969,7 +14698,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -15131,9 +14860,9 @@
           "water"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Your apparition solidifies around you into roaring water and spraying mist. For the duration of this spell, you have lesser cover against ranged attacks and gain a +10-foot status bonus to each Speed you have. When you f"
       },
@@ -15749,9 +15478,9 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Powerful winds carry you smoothly through the air, giving you a fly Speed equal to your Speed. When this spell's duration would end, if you're still flying, you float to the ground, as @UUID[Compendium.pf2e.spells-srd.It"
       },
@@ -15824,22 +15553,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You utter a curse that a creature will meet a certain end—a death by freezing, stabbing, or another means you devise. Choose one type of damage from the following list: acid, bludgeoning, cold, electricity, fire, piercin"
-      },
-      {
-        "name": "Pest Form",
-        "slug": "pest-form",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "polymorph"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You transform into the battle form of a Tiny animal, such as a cat, insect, lizard, or rat. You can decide the specific type of animal (such as a rat or praying mantis), but this has no effect on the form's Size or stati"
       },
       {
         "name": "Momentary Recovery",
@@ -15918,7 +15631,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -16120,7 +15833,7 @@
           "morph"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -16501,7 +16214,7 @@
           "sorcerer"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -16585,7 +16298,7 @@
           "scrying"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -16622,6 +16335,23 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You surround yourself in a mantle of blazing fire magic, and your skin and anything you're wearing morphs into burning hot lava. The air around you swelters with heat, and tiny sparks of flame dance behind you as you pas"
+      },
+      {
+        "name": "Mirror Image",
+        "slug": "mirror-image",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "illusion",
+          "manipulate",
+          "visual"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "Three illusory images of you swirl about your space, potentially causing those who attack you to hit one of the images instead of you. Any attack that would hit you has a random chance of hitting one of your images inste"
       },
       {
         "name": "Visions of Danger",
@@ -17249,6 +16979,41 @@
         "desc": "You shape a wall of solid stone. You create a 1-inch-thick wall of stone up to 120 feet long, and 20 feet high. You can shape the wall's path, placing each 5 feet of the wall on the border between squares. The wall doesn"
       },
       {
+        "name": "Angelic Wings",
+        "slug": "angelic-wings",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "focus",
+          "light",
+          "manipulate",
+          "sorcerer"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "Wings of pure light spread out from your back, granting you a fly Speed equal to your Speed. Your wings cast bright light in a 30-foot radius. When this spell's duration would end, if you're still flying, you float to th"
+      },
+      {
+        "name": "Wind Jump",
+        "slug": "wind-jump",
+        "rank": 5,
+        "traits": [
+          "air",
+          "concentrate",
+          "focus",
+          "monk"
+        ],
+        "source": "spell-inferred",
+        "role": "setup",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": false,
+        "desc": "You gain a fly Speed equal to your Speed. You must end your turn on solid ground, or you fall. Heightened (6th) At the end of your turn, you can attempt a @Check[acrobatics|dc:30] check to find purchase in midair. If you"
+      },
+      {
         "name": "Detonate Magic",
         "slug": "detonate-magic",
         "rank": 9,
@@ -17800,9 +17565,9 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Your movements leave a vague glowing path behind you, like a misty echo of your presence. While your form is not discernible, your size is. This path hangs in space and is not anchored to any surface, so it tracks your m"
       },
@@ -18080,9 +17845,9 @@
           "monk"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You empty your body of substance, becoming one with nothingness. You gain resistance to physical damage equal to your level. You move at half your normal Speed, but can move in any direction (including up and down). Whil"
       },
@@ -19004,7 +18769,7 @@
           "oracle"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -19021,7 +18786,7 @@
           "wizard"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -19118,9 +18883,9 @@
           "monk"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "Accelerated by your qi, you move with such speed you become a blur. Move two times: two Strides, two Steps, or one Stride and one Step (in either order). You gain the @UUID[Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ"
       },
@@ -19134,7 +18899,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -19216,7 +18981,7 @@
           "concentrate"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "mobility",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -19859,7 +19624,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -20083,7 +19848,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -20503,7 +20268,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -20533,9 +20298,9 @@
           "focus"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "setup",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You travel on a rushing wind. Move two times: two Strides, two Steps, or one Stride and one Step (in either order). You can Stride or Step into the air during this movement, moving upward at a 45-degree angle at most; if"
       },
@@ -20668,7 +20433,7 @@
           "stance"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -20685,7 +20450,7 @@
           "revelation"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -20951,7 +20716,7 @@
           "ranger"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -21175,7 +20940,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "transformation",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -21583,7 +21348,7 @@
           "polymorph"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -21770,9 +21535,9 @@
           "oracle"
         ],
         "source": "spell-inferred",
-        "role": "control",
+        "role": "stealth-defense",
         "combatUse": "auto",
-        "confidence": "high",
+        "confidence": "medium",
         "curated": false,
         "desc": "You take the form of your ancestral spirits, becoming @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible} and quasi-corporeal. You gain resistance 10 to all damage (except force, spirit and damage from"
       },
@@ -21895,21 +21660,6 @@
         "desc": "The faint scent of poppies and a soothing calm fill the area, urging creatures to lay down and take a rest, to do nothing at all, ever again. Creatures in the area when you Cast the Spell must attempt a Will save. Creatu"
       },
       {
-        "name": "Mimic Undead",
-        "slug": "mimic-undead",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You take death and wrap it about you like a cloak-your colors wash out and your skin grows cold to the touch. Your heartbeat, breathing, and similar life functions become very difficult to detect. Senses such as lifesens"
-      },
-      {
         "name": "Savor the Sting",
         "slug": "savor-the-sting",
         "rank": 1,
@@ -21942,22 +21692,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Trigger A creature within 10 feet of you Strikes and deals damage to you. Fiery wings briefly envelop your arms, and with a swift wingbeat, you flutter away from your attacker in a shower of searing sparks. You deal 1d6 "
-      },
-      {
-        "name": "Phantasmal Minion",
-        "slug": "phantasmal-minion",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "summon"
-        ],
-        "source": "spell-inferred",
-        "role": "stealth-defense",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You summon a @UUID[Compendium.pf2e.pathfinder-bestiary.Actor.j7NNPfZwD19BwSEZ]{Phantasmal Minion}. The minion is roughly the shape of a humanoid. You can choose to have it be @UUID[Compendium.pf2e.conditionitems.Item.zJx"
       },
       {
         "name": "Howling Blizzard",
@@ -22166,7 +21900,7 @@
           "manipulate"
         ],
         "source": "spell-inferred",
-        "role": "buff",
+        "role": "setup",
         "combatUse": "auto",
         "confidence": "medium",
         "curated": false,
@@ -22418,11 +22152,11 @@
           "ranger",
           "visual"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You conjure a colorful, fast-moving shape, such as a small bird or other animal that draws your target's eye. They must attempt a Will save. Success The creature is unaffected. Failure The creature is @UUID[Compendium.pf"
       },
       {
@@ -22484,11 +22218,11 @@
           "polymorph",
           "wood"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Taking inspiration from verdant creatures, you transform into a Large plant battle form. When you Cast this Spell, choose a listed battle form. You can substitute a similar specific plant to turn into (such as a pitcher "
       },
       {
@@ -22550,11 +22284,11 @@
           "disease",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "Your touch afflicts the target with goblin pox, an irritating allergenic rash. The target must attempt a Fortitude save. Goblin Pox (disease) Level 1; Creatures that have the goblin trait and goblin dogs are immune Stage"
       },
       {
@@ -22635,29 +22369,12 @@
           "move",
           "water"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "mobility",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "You create a wave of water that you ride, banking around obstacles and surfing to higher ground. You move up to 35 feet, raising yourself up to 5 feet above the ground. (You can avoid many types of difficult terrain in t"
-      },
-      {
-        "name": "Croak Voice",
-        "slug": "croak-voice",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "curse",
-          "manipulate",
-          "morph"
-        ],
-        "source": "spell-inferred",
-        "role": "save-damage",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "You cause the target creature's vocal chords to swell like those of a frog. The target must attempt a Fortitude save. Critical Success The target is unaffected. Success The target's voice becomes hoarse, and speaking bec"
       },
       {
         "name": "Boneshaker",
@@ -22670,39 +22387,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You reach out a hand and seize a creature's skeleton from afar, harming their body and potentially wrenching them by the bones to move them against their will. The number of actions you spend when Casting this Spell dete"
-      },
-      {
-        "name": "Penumbral Shroud",
-        "slug": "penumbral-shroud",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "darkness",
-          "manipulate",
-          "shadow"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You envelop the target in a shroud of shadow. The target perceives light as one step lower than it actually is (bright light becomes dim light, for example), affecting their ability to sense creatures and objects accordi"
-      },
-      {
-        "name": "Control Water",
-        "slug": "control-water",
-        "rank": 5,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "water"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "Area 50 feet long by 50 feet wide By imposing your will upon the water, you can raise or lower the level of water in the chosen area by 10 feet. Creatures that have the water trait and that are in the area when you Cast "
       },
       {
         "name": "Rousing Splash",
@@ -22732,11 +22416,11 @@
           "oracle",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "Your body becomes fluid to better suit your surroundings. Choose whether to become air, water, or mist. The spell gains the air trait if you choose air or mist, and the water trait if you choose water or mist. You become"
       },
       {
@@ -22790,21 +22474,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You channel the primal forces of nature to transform into a Large battle form, specifically that of a powerful and terrifying elephant or similar creature, such as a mammoth, mastodon, or anancus. This spell has the effe"
-      },
-      {
-        "name": "Vanishing Tracks",
-        "slug": "vanishing-tracks",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "You obscure the tracks you leave behind. The DC of checks to Track you gains a +4 status bonus or is equal to your spell DC, whichever results in a higher DC. Heightened (2nd) The duration increases to 8 hours. Heightene"
       },
       {
         "name": "Petrify",
@@ -22945,6 +22614,22 @@
         "desc": "You create an illusory visual image of a stationary object. The entire image must fit within the spell's area. The object appears to animate naturally, but it doesn't make sounds or generate smells. For example, water wo"
       },
       {
+        "name": "Humanoid Form",
+        "slug": "humanoid-form",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform your appearance to that of a Small or Medium humanoid, such as a dwarf, elf, goblin, halfling, human, or orc. You gain the humanoid trait in addition to your other traits while in this form, as well as any "
+      },
+      {
         "name": "Helpful Steps",
         "slug": "helpful-steps",
         "rank": 1,
@@ -23008,6 +22693,24 @@
         "desc": "You make the target easier to open. Knock grants a +4 status bonus to any creature that tries to open the target door, lock, or container with an Athletics or a Thievery check. You can attempt a Thievery check to open th"
       },
       {
+        "name": "Untamed Form",
+        "slug": "untamed-form",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "druid",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You reach within for a different part of yourself, and you set it free, transforming your body into another form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest For"
+      },
+      {
         "name": "Vital Luminance",
         "slug": "vital-luminance",
         "rank": 4,
@@ -23027,6 +22730,22 @@
         "desc": "Drawing life force into yourself, you become a beacon of vitality. You glow with bright light in a 30-foot emanation (and dim light to the next 30 feet), and you gain an internal pool of light called a luminance reservoi"
       },
       {
+        "name": "Sigil",
+        "slug": "sigil",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You harmlessly place your unique magical sigil, which is about 1 square inch in size, on the targeted creature or object. The mark can be visible or invisible, and you can change it from one state to another by using an "
+      },
+      {
         "name": "Lock",
         "slug": "lock",
         "rank": 1,
@@ -23040,6 +22759,163 @@
         "confidence": "medium",
         "curated": true,
         "desc": "The target's latch mechanism clinks shut, held fast by unseen magical wards. When you magically lock a target, you set an Athletics and Thievery DC to open it equal to your spell DC or the base lock DC with a +4 status b"
+      },
+      {
+        "name": "Darkened Forest Form",
+        "slug": "darkened-forest-form",
+        "rank": 1,
+        "traits": [
+          "animist",
+          "focus",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your apparition casts a feral shadow over your form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest Form}. When you transform into a form granted by a spell, you ga"
+      },
+      {
+        "name": "Familiar Form",
+        "slug": "familiar-form",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform into a Tiny animal that commonly serves as a spellcaster's familiar. You gain the effects of the spell pest form, heightened to the level of familiar form you cast. However, you can transform into only a ba"
+      },
+      {
+        "name": "Extract Poison",
+        "slug": "extract-poison",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "low",
+        "curated": true,
+        "desc": "With the lightest touch, you can siphon the poison from an object and save it for your own later use, making an assassin's blade or politician's wine less deadly while you become all the more so. Attempt a counteract che"
+      },
+      {
+        "name": "Empty Pack",
+        "slug": "empty-pack",
+        "rank": 2,
+        "traits": [
+          "illusion",
+          "manipulate",
+          "subtle"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You render every item inside the container you touch @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible}, although the container itself remains visible. The items within are @UUID[Compendium.pf2e.condi"
+      },
+      {
+        "name": "Shape Wood",
+        "slug": "shape-wood",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You shape the wood into a rough shape of your choice. The shaping power is too crude to produce with intricate parts, fine details, moving pieces, or the like. You cannot use this spell to enhance the value of the wooden"
+      },
+      {
+        "name": "Putrefy Food and Drink",
+        "slug": "putrefy-food-and-drink",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You cause otherwise edible food to rot and spoil instantly, and water and other liquids to become brackish and undrinkable. @UUID[Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp]{Holy Water}, @UUID[Compendium.pf2e.eq"
+      },
+      {
+        "name": "Verdant Sprout",
+        "slug": "verdant-sprout",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You imbue a single ordinary, inexpensive plant seed with primal energy and throw it onto a surface, where it gradually sprouts into a Medium plant. After 10 minutes, the plant is sturdy enough to provide standard cover, "
+      },
+      {
+        "name": "Ravenous Portal",
+        "slug": "ravenous-portal",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "summon",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You place a ward upon the door that triggers when a creature attempts to open, unlock, or destroy the door. When that happens, the door transforms into a @UUID[Compendium.pf2e.pathfinder-monster-core-2.Actor.h74BX4Iw78gW"
+      },
+      {
+        "name": "Anticipate Peril",
+        "slug": "anticipate-peril",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You grant the target brief foresight. The target gains a +1 status bonus to its next initiative roll, after which the spell ends. Heightened (+2) The status bonus increases by 1, to a maximum of +4 at 7th rank. @UUID[Com"
+      },
+      {
+        "name": "Inside Ropes",
+        "slug": "inside-ropes",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You pull a large handful of guts from your midsection. Removing these guts doesn't harm you. You can use the guts as 50 feet of rope to help you @UUID[Compendium.pf2e.actionspf2e.Item.pprgrYQ1QnIDGZiy]{Climb}, and they h"
       },
       {
         "name": "Cleanse Air",
@@ -23090,6 +22966,88 @@
         "desc": "You magically sort a group of objects into neat stacks or piles. You can sort the objects in two different ways. The first option is to separate them into different piles depending on an easily observed factor, such as c"
       },
       {
+        "name": "Bottomless Stomach",
+        "slug": "bottomless-stomach",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "extradimensional",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You create a shimmering extradimensional space accessible from the target's mouth. The space can hold objects and equipment, up to a total of 10 Bulk. This extradimensional storage doesn't hamper the target's ability to "
+      },
+      {
+        "name": "Conjured Conveyance",
+        "slug": "conjured-conveyance",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You conjure an intricate vehicle, carved entirely from wood, to serve as a method of conveyance. The vehicle appears in an unoccupied area of your choice within range. The vehicle can be piloted using Arcana, Driving Lor"
+      },
+      {
+        "name": "Catch Your Name",
+        "slug": "catch-your-name",
+        "rank": 6,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Trigger A creature on your plane speaks your private or true name Requirements You know your own true name. You learn a private name (but not the true name) of the creature who spoke your name, as well as their precise l"
+      },
+      {
+        "name": "Adapt Self",
+        "slug": "adapt-self",
+        "rank": 1,
+        "traits": [
+          "cleric",
+          "concentrate",
+          "focus",
+          "manipulate",
+          "morph"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You make subtle changes to your body to adapt to the situation. Choose one of the following options that applies to you. If you are in water, you gain a swim Speed equal to half your Speed. If you are in water, you becom"
+      },
+      {
+        "name": "Excise Lexicon",
+        "slug": "excise-lexicon",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "linguistic",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You reach into a creature's mind and extract its knowledge of a word. Choose a word to excise when you Cast the Spell. The word must be a mundane word, not a proper noun, and not a word of power such as those used as ver"
+      },
+      {
         "name": "Status",
         "slug": "status",
         "rank": 2,
@@ -23104,6 +23062,24 @@
         "confidence": "low",
         "curated": false,
         "desc": "As long as you and the target are on the same plane of existence and both alive, you remain aware of its present state. You know the target's direction from you, distance from you, and any conditions affecting it. Height"
+      },
+      {
+        "name": "Imitate Fauna",
+        "slug": "imitate-fauna",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "focus",
+          "illusion",
+          "manipulate",
+          "ranger"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You use your knowledge of nature to pass the target off as a common animal of the same size, representing a species chosen when the spell is cast. This covers the target's visual appearance, scent, and voice. The target "
       },
       {
         "name": "Telepathy",
@@ -23136,6 +23112,52 @@
         "confidence": "low",
         "curated": false,
         "desc": "You create a thin layer of foamy bubbles that adhere to the target, causing it to float in water and similar liquids. The target doesn't sink, even if it hasn't succeeded at a Swim check this round; an already-sinking ta"
+      },
+      {
+        "name": "Iron Gut",
+        "slug": "iron-gut",
+        "rank": 2,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your mouth, esophagus, and stomach become incredibly elastic and tougher than metal. For the duration of the spell, you can reach down your throat to store or retrieve a single object of light or negligible Bulk in your "
+      },
+      {
+        "name": "Deep Sight",
+        "slug": "deep-sight",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your eyes darken until they become entirely pitch black. You grant yourself the ability to see in the darkness. You gain darkvision. If you already have darkvision, you gain greater darkvision. Heightened (7th) The durat"
+      },
+      {
+        "name": "Mind Reading",
+        "slug": "mind-reading",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "detection",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "With a cursory mental touch, you attempt to read the target's mind. It must attempt a Will save. The target then becomes temporarily immune to your mind reading for 1 hour. Critical Success The target perceives vague sur"
       },
       {
         "name": "Ephemeral Tracking",
@@ -23299,22 +23321,20 @@
         "desc": "Your patron uses its superior command of the elements, empowering them to undermine your foe. When you Cast this Spell, choose air, earth, metal, fire, water, or wood. The target gains weakness 2 to that trait. @UUID[Com"
       },
       {
-        "name": "Angelic Wings",
-        "slug": "angelic-wings",
-        "rank": 3,
+        "name": "Pest Form",
+        "slug": "pest-form",
+        "rank": 1,
         "traits": [
           "concentrate",
-          "focus",
-          "light",
           "manipulate",
-          "sorcerer"
+          "polymorph"
         ],
-        "source": "spell-inferred",
+        "source": "spell-curated",
         "role": "exploration-utility",
         "combatUse": "browse-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Wings of pure light spread out from your back, granting you a fly Speed equal to your Speed. Your wings cast bright light in a 30-foot radius. When this spell's duration would end, if you're still flying, you float to th"
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform into the battle form of a Tiny animal, such as a cat, insect, lizard, or rat. You can decide the specific type of animal (such as a rat or praying mantis), but this has no effect on the form's Size or stati"
       },
       {
         "name": "Draw Moisture",
@@ -23414,6 +23434,37 @@
         "desc": "The target can understand the meaning of a single language it is hearing or reading when you cast the spell. This doesn't let it understand codes, language couched in metaphor, and the like (subject to GM discretion). If"
       },
       {
+        "name": "Mimic Undead",
+        "slug": "mimic-undead",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You take death and wrap it about you like a cloak-your colors wash out and your skin grows cold to the touch. Your heartbeat, breathing, and similar life functions become very difficult to detect. Senses such as lifesens"
+      },
+      {
+        "name": "Phantasmal Minion",
+        "slug": "phantasmal-minion",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "summon"
+        ],
+        "source": "spell-curated",
+        "role": "summon",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You summon a @UUID[Compendium.pf2e.pathfinder-bestiary.Actor.j7NNPfZwD19BwSEZ]{Phantasmal Minion}. The minion is roughly the shape of a humanoid. You can choose to have it be @UUID[Compendium.pf2e.conditionitems.Item.zJx"
+      },
+      {
         "name": "Fold Metal",
         "slug": "fold-metal",
         "rank": 1,
@@ -23444,6 +23495,38 @@
         "confidence": "low",
         "curated": false,
         "desc": "The gemstone you touch glows, spreading bright light with a color of your choice in a 20-foot radius (and dim light for the next 20 feet). The spell ends immediately if the gemstone is broken. @UUID[Compendium.pf2e.spell"
+      },
+      {
+        "name": "Penumbral Shroud",
+        "slug": "penumbral-shroud",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "darkness",
+          "manipulate",
+          "shadow"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You envelop the target in a shroud of shadow. The target perceives light as one step lower than it actually is (bright light becomes dim light, for example), affecting their ability to sense creatures and objects accordi"
+      },
+      {
+        "name": "Vanishing Tracks",
+        "slug": "vanishing-tracks",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You obscure the tracks you leave behind. The DC of checks to Track you gains a +4 status bonus or is equal to your spell DC, whichever results in a higher DC. Heightened (2nd) The duration increases to 8 hours. Heightene"
       }
     ],
     "contextOnly": [
@@ -23593,22 +23676,6 @@
         "desc": "Requirements You're wielding a one-handed weapon in the sword group. You soar and leave the world's squabbles behind before your violent intentions ground you once more. Fly up to your Speed, then make a Strike with your"
       },
       {
-        "name": "Humanoid Form",
-        "slug": "humanoid-form",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "polymorph"
-        ],
-        "source": "spell-curated",
-        "role": "transformation",
-        "combatUse": "context-only",
-        "confidence": "medium",
-        "curated": true,
-        "desc": "You transform your appearance to that of a Small or Medium humanoid, such as a dwarf, elf, goblin, halfling, human, or orc. You gain the humanoid trait in addition to your other traits while in this form, as well as any "
-      },
-      {
         "name": "Reverse Gravity",
         "slug": "reverse-gravity",
         "rank": 7,
@@ -23723,25 +23790,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "The racoon-like visage of a sagacious procyal appears, dispensing helpful advice. The image appears floating next to the target. The image is just a floating magical manifestation and doesn't occupy any space. The procya"
-      },
-      {
-        "name": "Heroic Feat",
-        "slug": "heroic-feat",
-        "rank": 6,
-        "traits": [
-          "concentrate",
-          "cursebound",
-          "focus",
-          "manipulate",
-          "mental",
-          "oracle"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain the ability to perform a specialized combat technique from the vast wealth of martial knowledge your mystery provides. When you Cast this Spell, you use the action granted by one common fighter feat. If you Cast"
       },
       {
         "name": "Compel True Name",
@@ -24067,21 +24115,22 @@
         "desc": "You can ask questions of, receive answers from, and use the Diplomacy skill with animals. The spell doesn't make them more friendly than normal. Cunning animals are likely to be terse and evasive, while less intelligent "
       },
       {
-        "name": "Bee-Man's Summons",
-        "slug": "bee-mans-summons",
+        "name": "Gentle Breeze",
+        "slug": "gentle-breeze",
         "rank": 2,
         "traits": [
-          "auditory",
+          "air",
           "concentrate",
-          "linguistic",
-          "mental"
+          "healing",
+          "manipulate",
+          "vitality"
         ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
+        "source": "spell-curated",
+        "role": "healing",
         "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You recreate the Bee-Man's infamous ability to sense when someone utters their name. During the spell's duration, you mentally sense whenever someone (referred to as a speaker) speaks your full name while within the spel"
+        "confidence": "medium",
+        "curated": true,
+        "desc": "A light, soothing breeze flows through the area, making it easier to rest and recover. Medicine checks attempted to benefit living creatures in the area get a +2 status bonus. Any living creature in the area also gets a "
       },
       {
         "name": "Deep Breath",
@@ -24100,21 +24149,22 @@
         "desc": "You take an incredibly deep breath and can hold it for the spell's duration. You don't lose breath when hit, but you do lose all the air you inhaled if you speak (including to Cast a Spell). This spell doesn't create air"
       },
       {
-        "name": "Extend Boost",
-        "slug": "extend-boost",
-        "rank": 1,
+        "name": "Purging Toxins",
+        "slug": "purging-toxins",
+        "rank": 3,
         "traits": [
           "concentrate",
           "focus",
-          "spellshape",
-          "summoner"
+          "manipulate",
+          "oracle",
+          "poison"
         ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
+        "source": "spell-curated",
+        "role": "healing",
         "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You focus on the intricacies of the magic binding you to your eidolon to extend the duration of your boost eidolon or reinforce eidolon spell. If your next action is to cast @UUID[Compendium.pf2e.spells-srd.Item.HStu2Yhw"
+        "confidence": "high",
+        "curated": true,
+        "desc": "In the right dose, a scourge can become a cure. Deal poison damage equal to the spell's rank to the target, then attempt a counteract check against one disease or poison afflicting the target. The target is then temporar"
       },
       {
         "name": "Subjugate Undead",
@@ -24266,21 +24316,6 @@
         "desc": "Trigger A creature enters a space within 5 feet of you. An arresting breeze sweeps you up in an instant and moves you to safety. You Fly 15 feet directly away from the triggering creature. Heightened (6th) You and one ad"
       },
       {
-        "name": "Store Time",
-        "slug": "store-time",
-        "rank": 1,
-        "traits": [
-          "animist",
-          "focus"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You store time for later use. When you Cast this Spell and the first time you Sustain it each round, you gain a bonus reaction that you can use for any animist or apparition reaction you have. As normal, this reaction is"
-      },
-      {
         "name": "Deceiver's Cloak",
         "slug": "deceivers-cloak",
         "rank": 3,
@@ -24364,23 +24399,6 @@
         "desc": "Trigger You attempt a check to @UUID[Compendium.pf2e.actionspf2e.Item.1OagaWtBpVXExToo]{Recall Knowledge} about a creature, but you haven't rolled yet. You have a preternatural ability to remember details about your foes"
       },
       {
-        "name": "Filter Air",
-        "slug": "filter-air",
-        "rank": 4,
-        "traits": [
-          "air",
-          "concentrate",
-          "manipulate",
-          "subtle"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Trigger You're exposed to a poison or disease that has the inhaled trait, and you're aware of the exposure Requirements You breathe air. You suck in a rough breath of air, and your body automatically filters out the harm"
-      },
-      {
         "name": "Extend Spell",
         "slug": "extend-spell",
         "rank": 3,
@@ -24396,6 +24414,21 @@
         "confidence": "low",
         "curated": false,
         "desc": "You call upon your blood's knowledge of the ancients to extend your magic. If your next action is to Cast a Spell with a duration of 1 minute on a single target, the spell instead lasts 10 minutes. You can extend a spell"
+      },
+      {
+        "name": "Safe Passage",
+        "slug": "safe-passage",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "context-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Area 10-foot-wide, 10-foot-tall, 60-foot-long section of terrain You make passage through the area safe for a brief amount of time. Anyone passing through the area gains the following benefits against harmful effects of "
       },
       {
         "name": "Boots on the Ground",
@@ -24514,23 +24547,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "You launch a magical dart at your hunted prey, which marks them with a nimbus only you can detect. Make a spell attack against the target. On a hit, you deal 2d4 spirit damage and the target is marked by a glowing nimbus"
-      },
-      {
-        "name": "Traveler's Transit",
-        "slug": "travelers-transit",
-        "rank": 4,
-        "traits": [
-          "cleric",
-          "concentrate",
-          "focus",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You add power to your muscles, allowing you to swim or climb walls with ease. When you Cast this Spell, you gain either a climb Speed or a swim Speed. The Speed is equal to your land Speed. Heightened (5th) You can choos"
       },
       {
         "name": "Extend Blood Magic",
@@ -24755,21 +24771,6 @@
         "desc": "Trigger An ally is hit by a Strike, or an ally fails a saving throw against an effect that doesn't affect you. You form a link with an ally, allowing you to take harm in their stead. All the effects of the hit or failed "
       },
       {
-        "name": "Stonesense",
-        "slug": "stonesense",
-        "rank": 4,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain tremorsense as an imprecise sense to a range of 100 feet, but you can only sense vibrations through natural stone (not masonry, adobe, or any other manufactured edifice)."
-      },
-      {
         "name": "Vindicator's Judgment",
         "slug": "vindicators-judgment",
         "rank": 5,
@@ -24798,22 +24799,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "Trigger A creature within range enters an environment where it can't breathe. A bubble of pure air appears around the target's head, allowing it to breathe normally. The effect ends as soon as the target returns to an en"
-      },
-      {
-        "name": "Unfolding Wind Blitz",
-        "slug": "unfolding-wind-blitz",
-        "rank": 7,
-        "traits": [
-          "air",
-          "concentrate",
-          "focus"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You blitz forward so quickly that you soar through the air, and nothing can react to you. Fly up to twice your Speed. This movement doesn't trigger reactions. At any point along the way, you can make Strikes with an unar"
       },
       {
         "name": "Entropic Wheel",
@@ -24912,6 +24897,22 @@
         "confidence": "low",
         "curated": false,
         "desc": "You level the field between yourself and another creature, hampering its movements if it's quicker than you. The target attempts a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compend"
+      },
+      {
+        "name": "Inner Upheaval",
+        "slug": "inner-upheaval",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "focus",
+          "monk"
+        ],
+        "source": "spell-inferred",
+        "role": "combat-utility",
+        "combatUse": "context-only",
+        "confidence": "low",
+        "curated": false,
+        "desc": "You focus your qi into devastating magical attacks. Make an unarmed Strike or @UUID[Compendium.pf2e.classfeatures.Item.NLHHHiAcdnZ5ohc2]{Flurry of Blows} (this doesn't change the limit on using only one flourish per turn"
       },
       {
         "name": "Hypercognition",
@@ -25245,23 +25246,6 @@
         "desc": "You add a flourish to your composition to extend its benefits. If your next action is to cast a cantrip composition with a duration of 1 round, attempt a @Check[performance] check. The DC is usually a standard-difficulty"
       },
       {
-        "name": "Mirror Image",
-        "slug": "mirror-image",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "illusion",
-          "manipulate",
-          "visual"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Three illusory images of you swirl about your space, potentially causing those who attack you to hit one of the images instead of you. Any attack that would hit you has a random chance of hitting one of your images inste"
-      },
-      {
         "name": "Propulsive Breeze",
         "slug": "propulsive-breeze",
         "rank": 2,
@@ -25276,23 +25260,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "Trigger An ally in range Strides or Leaps. You create a current of wind at your ally's back, propelling their movement. When your ally's Stride or @UUID[Compendium.pf2e.actionspf2e.Item.d5I6018Mci2SWokk]{Leap} ends, the "
-      },
-      {
-        "name": "Wind Jump",
-        "slug": "wind-jump",
-        "rank": 5,
-        "traits": [
-          "air",
-          "concentrate",
-          "focus",
-          "monk"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain a fly Speed equal to your Speed. You must end your turn on solid ground, or you fall. Heightened (6th) At the end of your turn, you can attempt a @Check[acrobatics|dc:30] check to find purchase in midair. If you"
       },
       {
         "name": "Know the Enemy",
@@ -25803,6 +25770,39 @@
         "desc": "As long as you have magic, you're never unarmed. You materialize a flaming simulacrum of any common simple or martial weapon into the target's grasp. The target must have a free hand to hold the weapon, or else the weapo"
       },
       {
+        "name": "Croak Voice",
+        "slug": "croak-voice",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "curse",
+          "manipulate",
+          "morph"
+        ],
+        "source": "spell-curated",
+        "role": "control",
+        "combatUse": "context-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You cause the target creature's vocal chords to swell like those of a frog. The target must attempt a Fortitude save. Critical Success The target is unaffected. Success The target's voice becomes hoarse, and speaking bec"
+      },
+      {
+        "name": "Control Water",
+        "slug": "control-water",
+        "rank": 5,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "water"
+        ],
+        "source": "spell-curated",
+        "role": "control",
+        "combatUse": "context-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Area 50 feet long by 50 feet wide By imposing your will upon the water, you can raise or lower the level of water in the chosen area by 10 feet. Creatures that have the water trait and that are in the area when you Cast "
+      },
+      {
         "name": "Exchange Image",
         "slug": "exchange-image",
         "rank": 1,
@@ -26086,25 +26086,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "The racoon-like visage of a sagacious procyal appears, dispensing helpful advice. The image appears floating next to the target. The image is just a floating magical manifestation and doesn't occupy any space. The procya"
-      },
-      {
-        "name": "Heroic Feat",
-        "slug": "heroic-feat",
-        "rank": 6,
-        "traits": [
-          "concentrate",
-          "cursebound",
-          "focus",
-          "manipulate",
-          "mental",
-          "oracle"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain the ability to perform a specialized combat technique from the vast wealth of martial knowledge your mystery provides. When you Cast this Spell, you use the action granted by one common fighter feat. If you Cast"
       },
       {
         "name": "Compel True Name",
@@ -26466,23 +26447,6 @@
         "desc": "You can ask questions of, receive answers from, and use the Diplomacy skill with animals. The spell doesn't make them more friendly than normal. Cunning animals are likely to be terse and evasive, while less intelligent "
       },
       {
-        "name": "Bee-Man's Summons",
-        "slug": "bee-mans-summons",
-        "rank": 2,
-        "traits": [
-          "auditory",
-          "concentrate",
-          "linguistic",
-          "mental"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You recreate the Bee-Man's infamous ability to sense when someone utters their name. During the spell's duration, you mentally sense whenever someone (referred to as a speaker) speaks your full name while within the spel"
-      },
-      {
         "name": "Deep Breath",
         "slug": "deep-breath",
         "rank": 1,
@@ -26499,21 +26463,19 @@
         "desc": "You take an incredibly deep breath and can hold it for the spell's duration. You don't lose breath when hit, but you do lose all the air you inhaled if you speak (including to Cast a Spell). This spell doesn't create air"
       },
       {
-        "name": "Extend Boost",
-        "slug": "extend-boost",
-        "rank": 1,
+        "name": "Extract Poison",
+        "slug": "extract-poison",
+        "rank": 2,
         "traits": [
           "concentrate",
-          "focus",
-          "spellshape",
-          "summoner"
+          "manipulate"
         ],
-        "source": "spell-inferred",
+        "source": "spell-curated",
         "role": "combat-utility",
-        "combatUse": "context-only",
+        "combatUse": "browse-only",
         "confidence": "low",
-        "curated": false,
-        "desc": "You focus on the intricacies of the magic binding you to your eidolon to extend the duration of your boost eidolon or reinforce eidolon spell. If your next action is to cast @UUID[Compendium.pf2e.spells-srd.Item.HStu2Yhw"
+        "curated": true,
+        "desc": "With the lightest touch, you can siphon the poison from an object and save it for your own later use, making an assassin's blade or politician's wine less deadly while you become all the more so. Attempt a counteract che"
       },
       {
         "name": "Subjugate Undead",
@@ -26713,21 +26675,6 @@
         "desc": "Trigger A creature enters a space within 5 feet of you. An arresting breeze sweeps you up in an instant and moves you to safety. You Fly 15 feet directly away from the triggering creature. Heightened (6th) You and one ad"
       },
       {
-        "name": "Store Time",
-        "slug": "store-time",
-        "rank": 1,
-        "traits": [
-          "animist",
-          "focus"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You store time for later use. When you Cast this Spell and the first time you Sustain it each round, you gain a bonus reaction that you can use for any animist or apparition reaction you have. As normal, this reaction is"
-      },
-      {
         "name": "Deceiver's Cloak",
         "slug": "deceivers-cloak",
         "rank": 3,
@@ -26809,23 +26756,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "Trigger You attempt a check to @UUID[Compendium.pf2e.actionspf2e.Item.1OagaWtBpVXExToo]{Recall Knowledge} about a creature, but you haven't rolled yet. You have a preternatural ability to remember details about your foes"
-      },
-      {
-        "name": "Filter Air",
-        "slug": "filter-air",
-        "rank": 4,
-        "traits": [
-          "air",
-          "concentrate",
-          "manipulate",
-          "subtle"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Trigger You're exposed to a poison or disease that has the inhaled trait, and you're aware of the exposure Requirements You breathe air. You suck in a rough breath of air, and your body automatically filters out the harm"
       },
       {
         "name": "Extend Spell",
@@ -27009,23 +26939,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "You launch a magical dart at your hunted prey, which marks them with a nimbus only you can detect. Make a spell attack against the target. On a hit, you deal 2d4 spirit damage and the target is marked by a glowing nimbus"
-      },
-      {
-        "name": "Traveler's Transit",
-        "slug": "travelers-transit",
-        "rank": 4,
-        "traits": [
-          "cleric",
-          "concentrate",
-          "focus",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You add power to your muscles, allowing you to swim or climb walls with ease. When you Cast this Spell, you gain either a climb Speed or a swim Speed. The Speed is equal to your land Speed. Heightened (5th) You can choos"
       },
       {
         "name": "Extend Blood Magic",
@@ -27314,21 +27227,6 @@
         "desc": "Trigger An ally is hit by a Strike, or an ally fails a saving throw against an effect that doesn't affect you. You form a link with an ally, allowing you to take harm in their stead. All the effects of the hit or failed "
       },
       {
-        "name": "Stonesense",
-        "slug": "stonesense",
-        "rank": 4,
-        "traits": [
-          "concentrate",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain tremorsense as an imprecise sense to a range of 100 feet, but you can only sense vibrations through natural stone (not masonry, adobe, or any other manufactured edifice)."
-      },
-      {
         "name": "Vindicator's Judgment",
         "slug": "vindicators-judgment",
         "rank": 5,
@@ -27405,22 +27303,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "You project psychic vibrations onto the target object, imprinting it with a short message or emotional theme of your design. This imprinted sensation is revealed to a creature who casts @UUID[Compendium.pf2e.spells-srd.I"
-      },
-      {
-        "name": "Unfolding Wind Blitz",
-        "slug": "unfolding-wind-blitz",
-        "rank": 7,
-        "traits": [
-          "air",
-          "concentrate",
-          "focus"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You blitz forward so quickly that you soar through the air, and nothing can react to you. Fly up to twice your Speed. This movement doesn't trigger reactions. At any point along the way, you can make Strikes with an unar"
       },
       {
         "name": "Create Water",
@@ -27535,6 +27417,22 @@
         "confidence": "low",
         "curated": false,
         "desc": "You level the field between yourself and another creature, hampering its movements if it's quicker than you. The target attempts a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compend"
+      },
+      {
+        "name": "Inner Upheaval",
+        "slug": "inner-upheaval",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "focus",
+          "monk"
+        ],
+        "source": "spell-inferred",
+        "role": "combat-utility",
+        "combatUse": "context-only",
+        "confidence": "low",
+        "curated": false,
+        "desc": "You focus your qi into devastating magical attacks. Make an unarmed Strike or @UUID[Compendium.pf2e.classfeatures.Item.NLHHHiAcdnZ5ohc2]{Flurry of Blows} (this doesn't change the limit on using only one flourish per turn"
       },
       {
         "name": "Hypercognition",
@@ -27901,23 +27799,6 @@
         "desc": "You add a flourish to your composition to extend its benefits. If your next action is to cast a cantrip composition with a duration of 1 round, attempt a @Check[performance] check. The DC is usually a standard-difficulty"
       },
       {
-        "name": "Mirror Image",
-        "slug": "mirror-image",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "illusion",
-          "manipulate",
-          "visual"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Three illusory images of you swirl about your space, potentially causing those who attack you to hit one of the images instead of you. Any attack that would hit you has a random chance of hitting one of your images inste"
-      },
-      {
         "name": "Propulsive Breeze",
         "slug": "propulsive-breeze",
         "rank": 2,
@@ -27932,41 +27813,6 @@
         "confidence": "low",
         "curated": false,
         "desc": "Trigger An ally in range Strides or Leaps. You create a current of wind at your ally's back, propelling their movement. When your ally's Stride or @UUID[Compendium.pf2e.actionspf2e.Item.d5I6018Mci2SWokk]{Leap} ends, the "
-      },
-      {
-        "name": "Angelic Wings",
-        "slug": "angelic-wings",
-        "rank": 3,
-        "traits": [
-          "concentrate",
-          "focus",
-          "light",
-          "manipulate",
-          "sorcerer"
-        ],
-        "source": "spell-inferred",
-        "role": "exploration-utility",
-        "combatUse": "browse-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Wings of pure light spread out from your back, granting you a fly Speed equal to your Speed. Your wings cast bright light in a 30-foot radius. When this spell's duration would end, if you're still flying, you float to th"
-      },
-      {
-        "name": "Wind Jump",
-        "slug": "wind-jump",
-        "rank": 5,
-        "traits": [
-          "air",
-          "concentrate",
-          "focus",
-          "monk"
-        ],
-        "source": "spell-inferred",
-        "role": "combat-utility",
-        "combatUse": "context-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "You gain a fly Speed equal to your Speed. You must end your turn on solid ground, or you fall. Heightened (6th) At the end of your turn, you can attempt a @Check[acrobatics|dc:30] check to find purchase in midair. If you"
       },
       {
         "name": "Know the Enemy",
@@ -28658,6 +28504,22 @@
         "desc": "You create an illusory visual image of a stationary object. The entire image must fit within the spell's area. The object appears to animate naturally, but it doesn't make sounds or generate smells. For example, water wo"
       },
       {
+        "name": "Humanoid Form",
+        "slug": "humanoid-form",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform your appearance to that of a Small or Medium humanoid, such as a dwarf, elf, goblin, halfling, human, or orc. You gain the humanoid trait in addition to your other traits while in this form, as well as any "
+      },
+      {
         "name": "Helpful Steps",
         "slug": "helpful-steps",
         "rank": 1,
@@ -28721,6 +28583,24 @@
         "desc": "You make the target easier to open. Knock grants a +4 status bonus to any creature that tries to open the target door, lock, or container with an Athletics or a Thievery check. You can attempt a Thievery check to open th"
       },
       {
+        "name": "Untamed Form",
+        "slug": "untamed-form",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "druid",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You reach within for a different part of yourself, and you set it free, transforming your body into another form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest For"
+      },
+      {
         "name": "Vital Luminance",
         "slug": "vital-luminance",
         "rank": 4,
@@ -28740,6 +28620,22 @@
         "desc": "Drawing life force into yourself, you become a beacon of vitality. You glow with bright light in a 30-foot emanation (and dim light to the next 30 feet), and you gain an internal pool of light called a luminance reservoi"
       },
       {
+        "name": "Sigil",
+        "slug": "sigil",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You harmlessly place your unique magical sigil, which is about 1 square inch in size, on the targeted creature or object. The mark can be visible or invisible, and you can change it from one state to another by using an "
+      },
+      {
         "name": "Lock",
         "slug": "lock",
         "rank": 1,
@@ -28753,6 +28649,101 @@
         "confidence": "medium",
         "curated": true,
         "desc": "The target's latch mechanism clinks shut, held fast by unseen magical wards. When you magically lock a target, you set an Athletics and Thievery DC to open it equal to your spell DC or the base lock DC with a +4 status b"
+      },
+      {
+        "name": "Darkened Forest Form",
+        "slug": "darkened-forest-form",
+        "rank": 1,
+        "traits": [
+          "animist",
+          "focus",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your apparition casts a feral shadow over your form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest Form}. When you transform into a form granted by a spell, you ga"
+      },
+      {
+        "name": "Empty Pack",
+        "slug": "empty-pack",
+        "rank": 2,
+        "traits": [
+          "illusion",
+          "manipulate",
+          "subtle"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You render every item inside the container you touch @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible}, although the container itself remains visible. The items within are @UUID[Compendium.pf2e.condi"
+      },
+      {
+        "name": "Shape Wood",
+        "slug": "shape-wood",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You shape the wood into a rough shape of your choice. The shaping power is too crude to produce with intricate parts, fine details, moving pieces, or the like. You cannot use this spell to enhance the value of the wooden"
+      },
+      {
+        "name": "Putrefy Food and Drink",
+        "slug": "putrefy-food-and-drink",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You cause otherwise edible food to rot and spoil instantly, and water and other liquids to become brackish and undrinkable. @UUID[Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp]{Holy Water}, @UUID[Compendium.pf2e.eq"
+      },
+      {
+        "name": "Verdant Sprout",
+        "slug": "verdant-sprout",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You imbue a single ordinary, inexpensive plant seed with primal energy and throw it onto a surface, where it gradually sprouts into a Medium plant. After 10 minutes, the plant is sturdy enough to provide standard cover, "
+      },
+      {
+        "name": "Inside Ropes",
+        "slug": "inside-ropes",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You pull a large handful of guts from your midsection. Removing these guts doesn't harm you. You can use the guts as 50 feet of rope to help you @UUID[Compendium.pf2e.actionspf2e.Item.pprgrYQ1QnIDGZiy]{Climb}, and they h"
       },
       {
         "name": "Cleanse Air",
@@ -28803,6 +28794,23 @@
         "desc": "You magically sort a group of objects into neat stacks or piles. You can sort the objects in two different ways. The first option is to separate them into different piles depending on an easily observed factor, such as c"
       },
       {
+        "name": "Conjured Conveyance",
+        "slug": "conjured-conveyance",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You conjure an intricate vehicle, carved entirely from wood, to serve as a method of conveyance. The vehicle appears in an unoccupied area of your choice within range. The vehicle can be piloted using Arcana, Driving Lor"
+      },
+      {
         "name": "Status",
         "slug": "status",
         "rank": 2,
@@ -28817,6 +28825,24 @@
         "confidence": "low",
         "curated": false,
         "desc": "As long as you and the target are on the same plane of existence and both alive, you remain aware of its present state. You know the target's direction from you, distance from you, and any conditions affecting it. Height"
+      },
+      {
+        "name": "Imitate Fauna",
+        "slug": "imitate-fauna",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "focus",
+          "illusion",
+          "manipulate",
+          "ranger"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You use your knowledge of nature to pass the target off as a common animal of the same size, representing a species chosen when the spell is cast. This covers the target's visual appearance, scent, and voice. The target "
       },
       {
         "name": "Telepathy",
@@ -28849,6 +28875,20 @@
         "confidence": "low",
         "curated": false,
         "desc": "You create a thin layer of foamy bubbles that adhere to the target, causing it to float in water and similar liquids. The target doesn't sink, even if it hasn't succeeded at a Swim check this round; an already-sinking ta"
+      },
+      {
+        "name": "Iron Gut",
+        "slug": "iron-gut",
+        "rank": 2,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your mouth, esophagus, and stomach become incredibly elastic and tougher than metal. For the duration of the spell, you can reach down your throat to store or retrieve a single object of light or negligible Bulk in your "
       },
       {
         "name": "Ephemeral Tracking",
@@ -29012,22 +29052,20 @@
         "desc": "Your patron uses its superior command of the elements, empowering them to undermine your foe. When you Cast this Spell, choose air, earth, metal, fire, water, or wood. The target gains weakness 2 to that trait. @UUID[Com"
       },
       {
-        "name": "Angelic Wings",
-        "slug": "angelic-wings",
-        "rank": 3,
+        "name": "Pest Form",
+        "slug": "pest-form",
+        "rank": 1,
         "traits": [
           "concentrate",
-          "focus",
-          "light",
           "manipulate",
-          "sorcerer"
+          "polymorph"
         ],
-        "source": "spell-inferred",
+        "source": "spell-curated",
         "role": "exploration-utility",
         "combatUse": "browse-only",
-        "confidence": "low",
-        "curated": false,
-        "desc": "Wings of pure light spread out from your back, granting you a fly Speed equal to your Speed. Your wings cast bright light in a 30-foot radius. When this spell's duration would end, if you're still flying, you float to th"
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform into the battle form of a Tiny animal, such as a cat, insect, lizard, or rat. You can decide the specific type of animal (such as a rat or praying mantis), but this has no effect on the form's Size or stati"
       },
       {
         "name": "Draw Moisture",
@@ -29127,6 +29165,21 @@
         "desc": "The target can understand the meaning of a single language it is hearing or reading when you cast the spell. This doesn't let it understand codes, language couched in metaphor, and the like (subject to GM discretion). If"
       },
       {
+        "name": "Mimic Undead",
+        "slug": "mimic-undead",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You take death and wrap it about you like a cloak-your colors wash out and your skin grows cold to the touch. Your heartbeat, breathing, and similar life functions become very difficult to detect. Senses such as lifesens"
+      },
+      {
         "name": "Fold Metal",
         "slug": "fold-metal",
         "rank": 1,
@@ -29157,6 +29210,21 @@
         "confidence": "low",
         "curated": false,
         "desc": "The gemstone you touch glows, spreading bright light with a color of your choice in a 20-foot radius (and dim light for the next 20 feet). The spell ends immediately if the gemstone is broken. @UUID[Compendium.pf2e.spell"
+      },
+      {
+        "name": "Vanishing Tracks",
+        "slug": "vanishing-tracks",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You obscure the tracks you leave behind. The DC of checks to Track you gains a +4 status bonus or is equal to your spell DC, whichever results in a higher DC. Heightened (2nd) The duration increases to 8 hours. Heightene"
       }
     ],
     "curatedOverrides": [
@@ -29350,8 +29418,8 @@
           "polymorph"
         ],
         "source": "spell-curated",
-        "role": "transformation",
-        "combatUse": "context-only",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
         "confidence": "medium",
         "curated": true,
         "desc": "You transform your appearance to that of a Small or Medium humanoid, such as a dwarf, elf, goblin, halfling, human, or orc. You gain the humanoid trait in addition to your other traits while in this form, as well as any "
@@ -29421,6 +29489,22 @@
         "confidence": "high",
         "curated": true,
         "desc": "You plant fear in the target; it must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.TBSHQspnbcqxsmjL]{Frightened 1}. Failure The target is"
+      },
+      {
+        "name": "Dragon Form",
+        "slug": "dragon-form",
+        "rank": 6,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Calling upon powerful magic, you gain a Large dragon battle form. When you Cast this Spell, choose one type of common dragon or another type to which your GM allows access. While in this form, you gain the dragon trait. "
       },
       {
         "name": "Knock",
@@ -29504,6 +29588,39 @@
         "desc": "You fill the minds of your enemies with doubt. Enemies in the area must succeed at a Will save or take a –1 status penalty to attack rolls as long as they are in the area. Once per round on subsequent turns, you can Sust"
       },
       {
+        "name": "Ferrous Form",
+        "slug": "ferrous-form",
+        "rank": 8,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "metal",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Your body transforms entirely into flexible iron. You gain resistance 10 to physical damage, except adamantine. You're immune to death effects, disease, drained, @UUID[Compendium.pf2e.conditionitems.Item.HL2l2VRSaQHu9lUw"
+      },
+      {
+        "name": "Monstrosity Form",
+        "slug": "monstrosity-form",
+        "rank": 8,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You transform into the shape of a legendary monster, assuming a Huge battle form. You must have enough space to expand into or the spell is lost. When you cast this spell, choose phoenix, cave worm, or sea serpent. While"
+      },
+      {
         "name": "Schadenfreude",
         "slug": "schadenfreude",
         "rank": 1,
@@ -29518,6 +29635,24 @@
         "confidence": "medium",
         "curated": true,
         "desc": "Trigger You critically fail a saving throw against a foe's effect. You distract your enemy with their feeling of smug pleasure when you fail catastrophically. They must attempt a Will save. Critical Success The creature "
+      },
+      {
+        "name": "Untamed Form",
+        "slug": "untamed-form",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "druid",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You reach within for a different part of yourself, and you set it free, transforming your body into another form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest For"
       },
       {
         "name": "False Vitality",
@@ -29535,6 +29670,53 @@
         "desc": "You augment your flesh with the energies typically used to manipulate the undead. You gain 10 temporary Hit Points. Heightened (+1) The temporary Hit Points increase by 3. @UUID[Compendium.pf2e.spell-effects.Item.PANUWN5"
       },
       {
+        "name": "Scintillating Safeguard",
+        "slug": "scintillating-safeguard",
+        "rank": 6,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Trigger An effect would deal physical or energy damage to you or a creature in range. A sparkling magical barrier envelops each target, shielding them against the triggering effect. Choose one type of physical or energy "
+      },
+      {
+        "name": "Sigil",
+        "slug": "sigil",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You harmlessly place your unique magical sigil, which is about 1 square inch in size, on the targeted creature or object. The mark can be visible or invisible, and you can change it from one state to another by using an "
+      },
+      {
+        "name": "Malediction",
+        "slug": "malediction",
+        "rank": 1,
+        "traits": [
+          "aura",
+          "concentrate",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You incite distress in the minds of your enemies, making it more difficult for them to defend themselves. Enemies in the area must succeed at a Will save or take a –1 status penalty to AC as long as they're in the area. "
+      },
+      {
         "name": "Lock",
         "slug": "lock",
         "rank": 1,
@@ -29548,6 +29730,721 @@
         "confidence": "medium",
         "curated": true,
         "desc": "The target's latch mechanism clinks shut, held fast by unseen magical wards. When you magically lock a target, you set an Athletics and Thievery DC to open it equal to your spell DC or the base lock DC with a +4 status b"
+      },
+      {
+        "name": "Darkened Forest Form",
+        "slug": "darkened-forest-form",
+        "rank": 1,
+        "traits": [
+          "animist",
+          "focus",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your apparition casts a feral shadow over your form. You can polymorph into any form listed in @UUID[Compendium.pf2e.spells-srd.Item.gfPjmG6Fe6D3MFjl]{Pest Form}. When you transform into a form granted by a spell, you ga"
+      },
+      {
+        "name": "Gentle Breeze",
+        "slug": "gentle-breeze",
+        "rank": 2,
+        "traits": [
+          "air",
+          "concentrate",
+          "healing",
+          "manipulate",
+          "vitality"
+        ],
+        "source": "spell-curated",
+        "role": "healing",
+        "combatUse": "context-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "A light, soothing breeze flows through the area, making it easier to rest and recover. Medicine checks attempted to benefit living creatures in the area get a +2 status bonus. Any living creature in the area also gets a "
+      },
+      {
+        "name": "Crescent Scepter",
+        "slug": "crescent-scepter",
+        "rank": 1,
+        "traits": [
+          "emotion",
+          "fear",
+          "focus",
+          "manipulate",
+          "mental",
+          "visual",
+          "wizard"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You hold up any object, which takes on the appearance of glowing regalia in the eyes of those who look on you, representing the political or religious institute most feared by each creature. If a creature attempts to att"
+      },
+      {
+        "name": "Purging Toxins",
+        "slug": "purging-toxins",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "focus",
+          "manipulate",
+          "oracle",
+          "poison"
+        ],
+        "source": "spell-curated",
+        "role": "healing",
+        "combatUse": "context-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "In the right dose, a scourge can become a cure. Deal poison damage equal to the spell's rank to the target, then attempt a counteract check against one disease or poison afflicting the target. The target is then temporar"
+      },
+      {
+        "name": "Familiar Form",
+        "slug": "familiar-form",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform into a Tiny animal that commonly serves as a spellcaster's familiar. You gain the effects of the spell pest form, heightened to the level of familiar form you cast. However, you can transform into only a ba"
+      },
+      {
+        "name": "Extract Poison",
+        "slug": "extract-poison",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "low",
+        "curated": true,
+        "desc": "With the lightest touch, you can siphon the poison from an object and save it for your own later use, making an assassin's blade or politician's wine less deadly while you become all the more so. Attempt a counteract che"
+      },
+      {
+        "name": "Empty Pack",
+        "slug": "empty-pack",
+        "rank": 2,
+        "traits": [
+          "illusion",
+          "manipulate",
+          "subtle"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You render every item inside the container you touch @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible}, although the container itself remains visible. The items within are @UUID[Compendium.pf2e.condi"
+      },
+      {
+        "name": "Stupefy",
+        "slug": "stupefy",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You dull the target's mind, depending on its Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg]{Stupefied 1} until the start of your ne"
+      },
+      {
+        "name": "Shape Wood",
+        "slug": "shape-wood",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You shape the wood into a rough shape of your choice. The shaping power is too crude to produce with intricate parts, fine details, moving pieces, or the like. You cannot use this spell to enhance the value of the wooden"
+      },
+      {
+        "name": "Putrefy Food and Drink",
+        "slug": "putrefy-food-and-drink",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You cause otherwise edible food to rot and spoil instantly, and water and other liquids to become brackish and undrinkable. @UUID[Compendium.pf2e.equipment-srd.Item.z9T4c1hXwOotsMCp]{Holy Water}, @UUID[Compendium.pf2e.eq"
+      },
+      {
+        "name": "Cloud Dragon's Cloak",
+        "slug": "cloud-dragons-cloak",
+        "rank": 3,
+        "traits": [
+          "air",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Trigger You or an ally in range is targeted by a ranged attack. A cloud of mist enshrouds the target, appearing much like the deflecting clouds created by cloud dragons. The target is treated as @UUID[Compendium.pf2e.con"
+      },
+      {
+        "name": "Protector's Sphere",
+        "slug": "protectors-sphere",
+        "rank": 4,
+        "traits": [
+          "aura",
+          "cleric",
+          "concentrate",
+          "focus",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "A protective aura emanates out from you, safeguarding you and your allies. You gain resistance 3 to all damage. Your allies also gain this resistance while in the area. @UUID[Compendium.pf2e.spell-effects.Item.3bcUiWwc5K"
+      },
+      {
+        "name": "Angel Form",
+        "slug": "angel-form",
+        "rank": 7,
+        "traits": [
+          "concentrate",
+          "holy",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Invoking the celestial realms, you transform into a Medium angel battle form. When you cast this spell, choose balisse, choral, kuribu, or tennin. The battle form is Small if you choose choral or kuribu. While in this fo"
+      },
+      {
+        "name": "Verdant Sprout",
+        "slug": "verdant-sprout",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You imbue a single ordinary, inexpensive plant seed with primal energy and throw it onto a surface, where it gradually sprouts into a Medium plant. After 10 minutes, the plant is sturdy enough to provide standard cover, "
+      },
+      {
+        "name": "Ravenous Portal",
+        "slug": "ravenous-portal",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "summon",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You place a ward upon the door that triggers when a creature attempts to open, unlock, or destroy the door. When that happens, the door transforms into a @UUID[Compendium.pf2e.pathfinder-monster-core-2.Actor.h74BX4Iw78gW"
+      },
+      {
+        "name": "Anticipate Peril",
+        "slug": "anticipate-peril",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You grant the target brief foresight. The target gains a +1 status bonus to its next initiative roll, after which the spell ends. Heightened (+2) The status bonus increases by 1, to a maximum of +4 at 7th rank. @UUID[Com"
+      },
+      {
+        "name": "The Four Hunters",
+        "slug": "the-four-hunters",
+        "rank": 3,
+        "traits": [
+          "auditory",
+          "concentrate",
+          "linguistic",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "This is a story of four evenly matched hunters who sought to capture a falling star. Each hunter was known by the region they came from, and this spell focuses on one of their attributes. When you cast this spell, you mu"
+      },
+      {
+        "name": "Synchronize Steps",
+        "slug": "synchronize-steps",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You link the minds of two targets, enabling them to move in tandem. When one of the targets Steps, the other target can use a reaction to Step. When one of the targets Strides, the other target can use a reaction to Stri"
+      },
+      {
+        "name": "Inside Ropes",
+        "slug": "inside-ropes",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You pull a large handful of guts from your midsection. Removing these guts doesn't harm you. You can use the guts as 50 feet of rope to help you @UUID[Compendium.pf2e.actionspf2e.Item.pprgrYQ1QnIDGZiy]{Climb}, and they h"
+      },
+      {
+        "name": "Bottomless Stomach",
+        "slug": "bottomless-stomach",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "extradimensional",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You create a shimmering extradimensional space accessible from the target's mouth. The space can hold objects and equipment, up to a total of 10 Bulk. This extradimensional storage doesn't hamper the target's ability to "
+      },
+      {
+        "name": "Untwisting Iron Buffer",
+        "slug": "untwisting-iron-buffer",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "focus"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You send currents of protective ki to the surface of your body that protect you from harm, at least until your enemies dissipate them. You gain 15 temporary Hit Points, which last for up to 3 rounds. Heightened (+1) The "
+      },
+      {
+        "name": "Conjured Conveyance",
+        "slug": "conjured-conveyance",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You conjure an intricate vehicle, carved entirely from wood, to serve as a method of conveyance. The vehicle appears in an unoccupied area of your choice within range. The vehicle can be piloted using Arcana, Driving Lor"
+      },
+      {
+        "name": "Aberrant Form",
+        "slug": "aberrant-form",
+        "rank": 5,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Harnessing the power of vile entities, you transform yourself into a Large aberration. You must have enough space to expand into or the spell is lost. When you cast this spell, choose chuul, gogiteth, gug, or otyugh. Whi"
+      },
+      {
+        "name": "Catch Your Name",
+        "slug": "catch-your-name",
+        "rank": 6,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Trigger A creature on your plane speaks your private or true name Requirements You know your own true name. You learn a private name (but not the true name) of the creature who spoke your name, as well as their precise l"
+      },
+      {
+        "name": "With Friends like These",
+        "slug": "with-friends-like-these",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "emotion",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You create a subtle dissonance between creatures, driving them apart. Each target must attempt a Will save. Critical Success The creature is unaffected. Success The creature becomes @UUID[Compendium.pf2e.conditionitems.I"
+      },
+      {
+        "name": "Adapt Self",
+        "slug": "adapt-self",
+        "rank": 1,
+        "traits": [
+          "cleric",
+          "concentrate",
+          "focus",
+          "manipulate",
+          "morph"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You make subtle changes to your body to adapt to the situation. Choose one of the following options that applies to you. If you are in water, you gain a swim Speed equal to half your Speed. If you are in water, you becom"
+      },
+      {
+        "name": "Sure Strike",
+        "slug": "sure-strike",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "fortune"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "The next time you make an attack roll before the end of your turn, roll it twice and use the better result. The attack ignores circumstance penalties to the attack roll and any flat check required due to the target being"
+      },
+      {
+        "name": "Excise Lexicon",
+        "slug": "excise-lexicon",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "linguistic",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You reach into a creature's mind and extract its knowledge of a word. Choose a word to excise when you Cast the Spell. The word must be a mundane word, not a proper noun, and not a word of power such as those used as ver"
+      },
+      {
+        "name": "Faerie Fire",
+        "slug": "faerie-fire",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "light",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "All creatures in the area when you cast the spell are limned in colorful, heatless fire of a color of your choice for the duration. Visible creatures can't be @UUID[Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W]{C"
+      },
+      {
+        "name": "Boost Eidolon",
+        "slug": "boost-eidolon",
+        "rank": 1,
+        "traits": [
+          "cantrip",
+          "concentrate",
+          "summoner"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You focus deeply on the link between you and your eidolon and boost the power of your eidolon's attacks. Your eidolon gains a +2 status bonus to damage rolls with its unarmed attacks. If your eidolon's Strikes deal more "
+      },
+      {
+        "name": "Imitate Fauna",
+        "slug": "imitate-fauna",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "focus",
+          "illusion",
+          "manipulate",
+          "ranger"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You use your knowledge of nature to pass the target off as a common animal of the same size, representing a species chosen when the spell is cast. This covers the target's visual appearance, scent, and voice. The target "
+      },
+      {
+        "name": "Interposing Earth",
+        "slug": "interposing-earth",
+        "rank": 1,
+        "traits": [
+          "earth",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Trigger You are the target of a Strike or would attempt a Reflex save against a damaging area effect. You raise a flimsy barrier of earth to shield you from harm. This barrier is 1 inch thick, 5 feet long, 5 feet high, a"
+      },
+      {
+        "name": "Halcyon Mists",
+        "slug": "halcyon-mists",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "focus",
+          "manipulate",
+          "water"
+        ],
+        "source": "spell-curated",
+        "role": "healing",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "In a moment of dire need, you call upon ancestral power to strengthen and sustain. A soothing mist gathers around the target, granting 1d8 temporary Hit Points and ending one source of persistent acid, bleed, fire, poiso"
+      },
+      {
+        "name": "Safe Passage",
+        "slug": "safe-passage",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "context-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Area 10-foot-wide, 10-foot-tall, 60-foot-long section of terrain You make passage through the area safe for a brief amount of time. Anyone passing through the area gains the following benefits against harmful effects of "
+      },
+      {
+        "name": "Cosmic Form",
+        "slug": "cosmic-form",
+        "rank": 7,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You recreate your form entirely out of cosmic energy, transforming into a Large battle form. You must have enough space to expand into, or the spell is lost. When you cast this spell, choose to take on the powers of the "
+      },
+      {
+        "name": "Iron Gut",
+        "slug": "iron-gut",
+        "rank": 2,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your mouth, esophagus, and stomach become incredibly elastic and tougher than metal. For the duration of the spell, you can reach down your throat to store or retrieve a single object of light or negligible Bulk in your "
+      },
+      {
+        "name": "Manifest Will",
+        "slug": "manifest-will",
+        "rank": 1,
+        "traits": [
+          "aura",
+          "cantrip",
+          "concentrate",
+          "hex",
+          "witch"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You unleash energy from the broken connection to your patron. You are @UUID[Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W]{Concealed} from creatures beyond the edge of the emanation but can't use that concealment "
+      },
+      {
+        "name": "Deep Sight",
+        "slug": "deep-sight",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your eyes darken until they become entirely pitch black. You grant yourself the ability to see in the darkness. You gain darkvision. If you already have darkvision, you gain greater darkvision. Heightened (7th) The durat"
+      },
+      {
+        "name": "Ancestral Defense",
+        "slug": "ancestral-defense",
+        "rank": 3,
+        "traits": [
+          "focus",
+          "fortune",
+          "manipulate",
+          "mental",
+          "oracle"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Trigger You are about to attempt a Will save. Your ancestor protects you against those who would bend your will. You roll the triggering save twice and use the better result."
+      },
+      {
+        "name": "Enfeeble",
+        "slug": "enfeeble",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You sap the target's strength, depending on its Fortitude save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.MIRkyAjyBeXivMa7]{Enfeebled 1} until the start of"
+      },
+      {
+        "name": "Ghoulish Cravings",
+        "slug": "ghoulish-cravings",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "curse",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You touch the target to afflict it with the overwhelming desire to eat raw meat. The target must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems."
+      },
+      {
+        "name": "Protector Tree",
+        "slug": "protector-tree",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "A Medium tree suddenly grows in an unoccupied square within range. The tree has AC 10 and 10 Hit Points. Whenever an ally adjacent to the tree is hit by a Strike, the tree interposes its branches and takes the damage fir"
+      },
+      {
+        "name": "Sparkleskin",
+        "slug": "sparkleskin",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You coat a creature's body in a layer of brilliantly sparkling glitter. The target gains a +2 status bonus on Deception checks to @UUID[Compendium.pf2e.actionspf2e.Item.GkmbTGfg8KcgynOA]{Create a Diversion} and to @UUID["
+      },
+      {
+        "name": "Mind Reading",
+        "slug": "mind-reading",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "detection",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "combat-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "With a cursory mental touch, you attempt to read the target's mind. It must attempt a Will save. The target then becomes temporarily immune to your mind reading for 1 hour. Critical Success The target perceives vague sur"
       },
       {
         "name": "Tailwind",
@@ -29598,6 +30495,22 @@
         "confidence": "medium",
         "curated": true,
         "desc": "You blast an icy ray. Make a spell attack roll. The ray deals 2d4 cold damage. Critical Success The target takes double damage and takes a –10-foot status penalty to its Speeds for 1 round. @UUID[Compendium.pf2e.spell-ef"
+      },
+      {
+        "name": "Pest Form",
+        "slug": "pest-form",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You transform into the battle form of a Tiny animal, such as a cat, insect, lizard, or rat. You can decide the specific type of animal (such as a rat or praying mantis), but this has no effect on the form's Size or stati"
       },
       {
         "name": "Electric Arc",
@@ -29663,6 +30576,188 @@
         "confidence": "medium",
         "curated": true,
         "desc": "A roaring blast of fire detonates at a spot you designate, dealing 6d6 fire damage. Heightened (+1) The damage increases by 2d6."
+      },
+      {
+        "name": "Mimic Undead",
+        "slug": "mimic-undead",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You take death and wrap it about you like a cloak-your colors wash out and your skin grows cold to the touch. Your heartbeat, breathing, and similar life functions become very difficult to detect. Senses such as lifesens"
+      },
+      {
+        "name": "Phantasmal Minion",
+        "slug": "phantasmal-minion",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "summon"
+        ],
+        "source": "spell-curated",
+        "role": "summon",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You summon a @UUID[Compendium.pf2e.pathfinder-bestiary.Actor.j7NNPfZwD19BwSEZ]{Phantasmal Minion}. The minion is roughly the shape of a humanoid. You can choose to have it be @UUID[Compendium.pf2e.conditionitems.Item.zJx"
+      },
+      {
+        "name": "Distracting Decoy",
+        "slug": "distracting-decoy",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "focus",
+          "ranger",
+          "visual"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You conjure a colorful, fast-moving shape, such as a small bird or other animal that draws your target's eye. They must attempt a Will save. Success The creature is unaffected. Failure The creature is @UUID[Compendium.pf"
+      },
+      {
+        "name": "Plant Form",
+        "slug": "plant-form",
+        "rank": 5,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "plant",
+          "polymorph",
+          "wood"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Taking inspiration from verdant creatures, you transform into a Large plant battle form. When you Cast this Spell, choose a listed battle form. You can substitute a similar specific plant to turn into (such as a pitcher "
+      },
+      {
+        "name": "Goblin Pox",
+        "slug": "goblin-pox",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "disease",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Your touch afflicts the target with goblin pox, an irritating allergenic rash. The target must attempt a Fortitude save. Goblin Pox (disease) Level 1; Creatures that have the goblin trait and goblin dogs are immune Stage"
+      },
+      {
+        "name": "Rising Surf",
+        "slug": "rising-surf",
+        "rank": 1,
+        "traits": [
+          "focus",
+          "manipulate",
+          "move",
+          "water"
+        ],
+        "source": "spell-curated",
+        "role": "mobility",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You create a wave of water that you ride, banking around obstacles and surfing to higher ground. You move up to 35 feet, raising yourself up to 5 feet above the ground. (You can avoid many types of difficult terrain in t"
+      },
+      {
+        "name": "Croak Voice",
+        "slug": "croak-voice",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "curse",
+          "manipulate",
+          "morph"
+        ],
+        "source": "spell-curated",
+        "role": "control",
+        "combatUse": "context-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You cause the target creature's vocal chords to swell like those of a frog. The target must attempt a Fortitude save. Critical Success The target is unaffected. Success The target's voice becomes hoarse, and speaking bec"
+      },
+      {
+        "name": "Penumbral Shroud",
+        "slug": "penumbral-shroud",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "darkness",
+          "manipulate",
+          "shadow"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "browse-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You envelop the target in a shroud of shadow. The target perceives light as one step lower than it actually is (bright light becomes dim light, for example), affecting their ability to sense creatures and objects accordi"
+      },
+      {
+        "name": "Control Water",
+        "slug": "control-water",
+        "rank": 5,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "water"
+        ],
+        "source": "spell-curated",
+        "role": "control",
+        "combatUse": "context-only",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "Area 50 feet long by 50 feet wide By imposing your will upon the water, you can raise or lower the level of water in the chosen area by 10 feet. Creatures that have the water trait and that are in the area when you Cast "
+      },
+      {
+        "name": "Tempest Form",
+        "slug": "tempest-form",
+        "rank": 6,
+        "traits": [
+          "concentrate",
+          "focus",
+          "manipulate",
+          "oracle",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Your body becomes fluid to better suit your surroundings. Choose whether to become air, water, or mist. The spell gains the air trait if you choose air or mist, and the water trait if you choose water or mist. You become"
+      },
+      {
+        "name": "Vanishing Tracks",
+        "slug": "vanishing-tracks",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You obscure the tracks you leave behind. The DC of checks to Track you gains a +4 status bonus or is equal to your spell DC, whichever results in a higher DC. Heightened (2nd) The duration increases to 8 hours. Heightene"
       }
     ]
   }

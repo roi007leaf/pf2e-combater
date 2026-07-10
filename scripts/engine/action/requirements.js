@@ -70,7 +70,7 @@ export function requiresTargetForAction(action) {
   if (requiresAreaMarkerForAction(action) && !isTargetCenteredAreaAction(action)) return false;
 
   const slug = actionSlug(action);
-  if (["stand", "retch", "stride", "step", "crawl", "stand-stride"].includes(slug)) return false;
+  if (["stand", "retch", "drop-prone", "stride", "step", "crawl", "stand-stride"].includes(slug)) return false;
 
   const targeting = actionTargeting(action);
   const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;

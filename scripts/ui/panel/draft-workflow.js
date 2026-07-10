@@ -1201,6 +1201,53 @@ function planStepSignature(plan) {
     .join("+");
 }
 
+function normalizedAutoFillReasons(source) {
+  const reasons = [];
+  const push = (value) => {
+    const reason = String(value ?? "").trim();
+    if (!reason || reasons.includes(reason)) return;
+    reasons.push(reason);
+  };
+  for (const reason of Array.isArray(source?.autoFillReasons) ? source.autoFillReasons : []) push(reason);
+  push(source?.autoFillReason);
+  for (const reason of Array.isArray(source?.reasons) ? source.reasons : []) push(reason);
+  push(source?.reason);
+  return reasons;
+}
+
+function autoFillExplanationFields(source) {
+  const reasons = normalizedAutoFillReasons(source);
+  const score = Number(source?.autoFillScore ?? source?.score);
+  return {
+    ...(Number.isFinite(score) ? { autoFillScore: score } : {}),
+    ...(reasons[0] ? { autoFillReason: reasons[0], autoFillReasons: reasons } : {}),
+  };
+}
+
+function explicitAutoFillExplanationFields(source) {
+  const reasons = [];
+  const push = (value) => {
+    const reason = String(value ?? "").trim();
+    if (!reason || reasons.includes(reason)) return;
+    reasons.push(reason);
+  };
+  for (const reason of Array.isArray(source?.autoFillReasons) ? source.autoFillReasons : []) push(reason);
+  push(source?.autoFillReason);
+  const score = Number(source?.autoFillScore);
+  return {
+    ...(Number.isFinite(score) ? { autoFillScore: score } : {}),
+    ...(reasons[0] ? { autoFillReason: reasons[0], autoFillReasons: reasons } : {}),
+  };
+}
+
+function inheritAutoFillExplanation(atom, source) {
+  return {
+    ...atom,
+    ...autoFillExplanationFields(source),
+    ...explicitAutoFillExplanationFields(atom),
+  };
+}
+
 function refreshedPlanForStaleSelection(plan, plans) {
   if (!plan || !Array.isArray(plans) || !plans.length) return null;
   const id = String(plan.id ?? "").trim();
@@ -1309,7 +1356,7 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
   const planAppliesProne = autoFill.steps.some(autoFillAppliesProne);
   const atomicSteps = autoFill.steps
     .filter((step) => !isRedundantAutoFillMove(step))
-    .flatMap((step) => builderAtomicActionsForStep(step))
+    .flatMap((step) => builderAtomicActionsForStep(step).map((atom) => inheritAutoFillExplanation(atom, step)))
     // Filter AFTER expansion: a move-and-strike composite (e.g. "stride-away-strike-dart") expands
     // into a bare Stride, which is illegal while prone. Drop those Stride/Step atoms.
     .filter((step) => !(planAppliesProne && isBasicAutoFillMove(step)));
@@ -1352,6 +1399,7 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
         : {}),
       ...(presetDestination ? { destination: presetDestination } : {}),
       ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
+      ...autoFillExplanationFields(step),
     };
 
     const target = plannedTargetSelection(step);

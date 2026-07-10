@@ -1,4 +1,5 @@
 import { pf2eAreaType, pf2eAttackEffect, pf2eSave, pf2eTrait, t } from "../../i18n.js";
+import { requiresTargetForAction } from "../../engine/action/requirements.js";
 
 const NOTABLE_TRAITS = [
   "incapacitation",
@@ -69,6 +70,18 @@ function durationChip(action) {
   return duration;
 }
 
+function bestTargetChip(action) {
+  if (!requiresTargetForAction(action)) return null;
+  const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target ?? null;
+  if (target?.type === "self") return null;
+  const name = String(target?.name ?? target?.actor?.name ?? "").trim();
+  if (!name) return null;
+  return {
+    label: t("Chip.BestTarget", "Best target: {name}", { name }),
+    tooltip: t("Chip.BestTargetTooltip", "{name} is this action's highest-ranked target.", { name }),
+  };
+}
+
 function notableTraitChips(action) {
   const traits = new Set([
     ...(Array.isArray(action?.traits) ? action.traits : []),
@@ -98,9 +111,20 @@ export function traitChips(action) {
 }
 
 export function actionDetailChips(action) {
-  if (!isSpellAction(action)) return [];
-
   const chips = [];
+  const bestTarget = bestTargetChip(action);
+  if (bestTarget) pushChip(chips, bestTarget.label, bestTarget.tooltip, "best-target");
+  const preflight = action?.nativePreflight;
+  if (preflight?.available && preflight?.label) {
+    pushChip(chips, preflight.label, preflight.tooltip, "preflight");
+  }
+  const preference = action?.preference;
+  if (preference?.scoreDelta) {
+    const delta = Number(preference.scoreDelta);
+    pushChip(chips, `Pref ${delta > 0 ? "+" : ""}${delta}`, preference.tooltip, "preference");
+  }
+  if (!isSpellAction(action)) return chips;
+
   const rank = numeric(action?.castRank ?? action?.rank);
   pushChip(chips, action?.isCantrip ? t("Chip.Cantrip", "Cantrip") : rank !== null ? t("Chip.Rank", "Rank {rank}", { rank }) : "", "", "rank");
   pushChip(chips, action?.spellResource?.label, action?.spellResource?.tooltip, "resource");
