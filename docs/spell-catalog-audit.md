@@ -7,8 +7,8 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Spell items: **1802**
 - Combat-castable spells: **1543**
 - Non-combat cast-time skipped: **259**
-- Auto-fill eligible: **1337**
-- Browse-only: **65**
+- Auto-fill eligible: **1334**
+- Browse-only: **68**
 - Context-only: **140**
 - Never auto-fill: **1**
 - Needs review: **0**
@@ -489,23 +489,20 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Confusion (`confusion`, rank 4) -> `control`, medium confidence
 - Fallen Soldier's Lament (`fallen-soldiers-lament`, rank 4) -> `debuff`, medium confidence
 - Day's Weight (`days-weight`, rank 3) -> `control`, medium confidence
-- Energy Absorption (`energy-absorption`, rank 4) -> `defense`, medium confidence
+- Energy Absorption (`energy-absorption`, rank 4) -> `defense`, high confidence
 - Echo Jump (`echo-jump`, rank 3) -> `area-damage`, high confidence
 - Luring Wail (`luring-wail`, rank 4) -> `control`, medium confidence
-- Sun's Fury (`suns-fury`, rank 3) -> `setup`, medium confidence
-- Horrifying Blood Loss (`horrifying-blood-loss`, rank 2) -> `control`, medium confidence
+- Sun's Fury (`suns-fury`, rank 3) -> `buff`, high confidence
+- Horrifying Blood Loss (`horrifying-blood-loss`, rank 2) -> `debuff`, high confidence
 - Traveler's Transit (`travelers-transit`, rank 4) -> `setup`, medium confidence
-- Carryall (`carryall`, rank 1) -> `stealth-defense`, medium confidence
 - Transmute Rock And Mud (`transmute-rock-and-mud`, rank 5) -> `control`, medium confidence
 - Desiccate (`desiccate`, rank 8) -> `save-damage`, high confidence
 - Shock to the System (`shock-to-the-system`, rank 7) -> `healing`, high confidence
 - Martyr's Intervention (`martyrs-intervention`, rank 3) -> `healing`, high confidence
 - Dimensional Excision (`dimensional-excision`, rank 9) -> `save-damage`, high confidence
-- Spirit Ward (`spirit-ward`, rank 1) -> `buff`, medium confidence
 - Phantasmagoria (`phantasmagoria`, rank 9) -> `save-damage`, high confidence
 - Field of Razors (`field-of-razors`, rank 6) -> `area-damage`, high confidence
-- Dull Ambition (`dull-ambition`, rank 4) -> `control`, medium confidence
-- Sacred Form (`sacred-form`, rank 6) -> `defense`, medium confidence
+- Sacred Form (`sacred-form`, rank 6) -> `transformation`, high confidence
 - Wall of Shrubs (`wall-of-shrubs`, rank 1) -> `control`, high confidence
 - Gouging Claw (`gouging-claw`, rank 1) -> `damage`, high confidence
 - Spiritual Epidemic (`spiritual-epidemic`, rank 8) -> `control`, medium confidence
@@ -1398,6 +1395,9 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
 - Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
 - Song of Marching (`song-of-marching`, rank 3) -> `setup`, high confidence
+- Carryall (`carryall`, rank 1) -> `exploration-utility`, high confidence
+- Spirit Ward (`spirit-ward`, rank 1) -> `defense`, high confidence
+- Dull Ambition (`dull-ambition`, rank 4) -> `debuff`, high confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
@@ -1765,6 +1765,7 @@ _none_
 - Iron Gut (`iron-gut`, rank 2) -> `exploration-utility`, medium confidence
 - Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
 - Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
+- Carryall (`carryall`, rank 1) -> `exploration-utility`, high confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
@@ -1874,6 +1875,13 @@ _none_
 - Song of Marching (`song-of-marching`, rank 3) -> `setup`, high confidence
 - Time Skip (`time-skip`, rank 3) -> `buff`, high confidence
 - Fallen Soldier's Lament (`fallen-soldiers-lament`, rank 4) -> `debuff`, medium confidence
+- Energy Absorption (`energy-absorption`, rank 4) -> `defense`, high confidence
+- Sun's Fury (`suns-fury`, rank 3) -> `buff`, high confidence
+- Horrifying Blood Loss (`horrifying-blood-loss`, rank 2) -> `debuff`, high confidence
+- Carryall (`carryall`, rank 1) -> `exploration-utility`, high confidence
+- Spirit Ward (`spirit-ward`, rank 1) -> `defense`, high confidence
+- Dull Ambition (`dull-ambition`, rank 4) -> `debuff`, high confidence
+- Sacred Form (`sacred-form`, rank 6) -> `transformation`, high confidence
 - Shield (`shield`, rank 1) -> `defense`, high confidence
 - Ray of Frost (`ray-of-frost`, rank 1) -> `damage`, medium confidence
 - Pest Form (`pest-form`, rank 1) -> `exploration-utility`, medium confidence

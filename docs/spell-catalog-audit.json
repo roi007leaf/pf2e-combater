@@ -4,8 +4,8 @@
     "activeCount": 1543,
     "skippedCount": 259,
     "byCombatUse": {
-      "auto": 1337,
-      "browse-only": 65,
+      "auto": 1334,
+      "browse-only": 68,
       "context-only": 140,
       "never-auto-fill": 1,
       "review": 0
@@ -7947,11 +7947,11 @@
           "focus",
           "wizard"
         ],
-        "source": "spell-inferred",
+        "source": "spell-curated",
         "role": "defense",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Trigger An effect would deal acid, cold, electricity, or fire damage to you You're used to mitigating the damage done by bombs, siege engines, and magical artillery. You gain resistance 15 to your choice of acid, cold, e"
       },
       {
@@ -7999,11 +7999,11 @@
           "focus",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "setup",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "The target weapon becomes wreathed in a glowing flame. The weapon deals an additional 1d4 fire and 1 spirit damage on a successful Strike. In addition, the flame causes the weapon to glow as bright as a torch. You can Di"
       },
       {
@@ -8017,11 +8017,11 @@
           "fear",
           "mental"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You curse the target, filling it with terror at the loss of its blood. The target must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.TBSHQ"
       },
       {
@@ -8040,22 +8040,6 @@
         "confidence": "medium",
         "curated": false,
         "desc": "You add power to your muscles, allowing you to swim or climb walls with ease. When you Cast this Spell, you gain either a climb Speed or a swim Speed. The Speed is equal to your land Speed. Heightened (5th) You can choos"
-      },
-      {
-        "name": "Carryall",
-        "slug": "carryall",
-        "rank": 1,
-        "traits": [
-          "concentrate",
-          "force",
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "stealth-defense",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "A small platform of magical force materializes adjacent to you to carry cargo. It is @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible} or has a ghostly appearance, is 2 feet in diameter, and follows "
       },
       {
         "name": "Transmute Rock And Mud",
@@ -8140,20 +8124,6 @@
         "desc": "You manipulate the boundaries between planes like a scalpel, using it to cut away portions of a creature's essence and banishing those portions to other realities and dimensions, afflicting the target deep lacerations or"
       },
       {
-        "name": "Spirit Ward",
-        "slug": "spirit-ward",
-        "rank": 1,
-        "traits": [
-          "manipulate"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You draw on nearby spiritual energy or on echoes of the spirits you've invoked throughout your life to temporarily ward living flesh against dangerous spirits. You grant the target a +1 status bonus to saving throws agai"
-      },
-      {
         "name": "Phantasmagoria",
         "slug": "phantasmagoria",
         "rank": 9,
@@ -8188,24 +8158,6 @@
         "desc": "You grind a chunk of your choice of metal to fine dust between your hands and blow it into the air, where it grows into a tangle of wires covered in razor-sharp prongs. The metal must be of a type you currently have in y"
       },
       {
-        "name": "Dull Ambition",
-        "slug": "dull-ambition",
-        "rank": 4,
-        "traits": [
-          "concentrate",
-          "curse",
-          "manipulate",
-          "mental",
-          "misfortune"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You curse the target to fail in all avenues of its life that require drive and ambition, as it inadvertently undermines its own goals at every turn. The effect is based on the target's Will save. Critical Success The tar"
-      },
-      {
         "name": "Sacred Form",
         "slug": "sacred-form",
         "rank": 6,
@@ -8214,11 +8166,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "defense",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You focus all your divine energy and transform yourself into a battle form, similar to your normal form and of the same size as you, but wielding powerful divine armaments. While in this form, you gain the statistics and"
       },
       {
@@ -23160,6 +23112,54 @@
         "desc": "You maintain a brisk performance that keeps allies on the move. You and your allies in the area can @UUID[Compendium.pf2e.actionspf2e.Item.JuqmIAnkL9hVGai8]{Hustle} for the spell's duration, in addition to your other exp"
       },
       {
+        "name": "Carryall",
+        "slug": "carryall",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "force",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "A small platform of magical force materializes adjacent to you to carry cargo. It is @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible} or has a ghostly appearance, is 2 feet in diameter, and follows "
+      },
+      {
+        "name": "Spirit Ward",
+        "slug": "spirit-ward",
+        "rank": 1,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You draw on nearby spiritual energy or on echoes of the spirits you've invoked throughout your life to temporarily ward living flesh against dangerous spirits. You grant the target a +1 status bonus to saving throws agai"
+      },
+      {
+        "name": "Dull Ambition",
+        "slug": "dull-ambition",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "curse",
+          "manipulate",
+          "mental",
+          "misfortune"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You curse the target to fail in all avenues of its life that require drive and ambition, as it inadvertently undermines its own goals at every turn. The effect is based on the target's Will save. Critical Success The tar"
+      },
+      {
         "name": "Ephemeral Tracking",
         "slug": "ephemeral-tracking",
         "rank": 3,
@@ -28924,6 +28924,22 @@
         "desc": "By pressing your hand to a wall or other solid immobile surface, you cause the crossed-swords symbol of the Firebrands—or a different symbol of your choosing—to appear on the targeted surface. This symbol is immobile. Yo"
       },
       {
+        "name": "Carryall",
+        "slug": "carryall",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "force",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "A small platform of magical force materializes adjacent to you to carry cargo. It is @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible} or has a ghostly appearance, is 2 feet in diameter, and follows "
+      },
+      {
         "name": "Ephemeral Tracking",
         "slug": "ephemeral-tracking",
         "rank": 3,
@@ -30629,6 +30645,120 @@
         "confidence": "medium",
         "curated": true,
         "desc": "You raise an illusion in the space of a fallen foe, crafting it to resemble a ghost of your target before parading it across the battlefield. Whenever you Cast this Spell or Sustain this spell, you move the illusion up t"
+      },
+      {
+        "name": "Energy Absorption",
+        "slug": "energy-absorption",
+        "rank": 4,
+        "traits": [
+          "focus",
+          "wizard"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Trigger An effect would deal acid, cold, electricity, or fire damage to you You're used to mitigating the damage done by bombs, siege engines, and magical artillery. You gain resistance 15 to your choice of acid, cold, e"
+      },
+      {
+        "name": "Sun's Fury",
+        "slug": "suns-fury",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "fire",
+          "focus",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "The target weapon becomes wreathed in a glowing flame. The weapon deals an additional 1d4 fire and 1 spirit damage on a successful Strike. In addition, the flame causes the weapon to glow as bright as a torch. You can Di"
+      },
+      {
+        "name": "Horrifying Blood Loss",
+        "slug": "horrifying-blood-loss",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "curse",
+          "emotion",
+          "fear",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You curse the target, filling it with terror at the loss of its blood. The target must attempt a Will save. Critical Success The target is unaffected. Success The target is @UUID[Compendium.pf2e.conditionitems.Item.TBSHQ"
+      },
+      {
+        "name": "Carryall",
+        "slug": "carryall",
+        "rank": 1,
+        "traits": [
+          "concentrate",
+          "force",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "A small platform of magical force materializes adjacent to you to carry cargo. It is @UUID[Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML]{Invisible} or has a ghostly appearance, is 2 feet in diameter, and follows "
+      },
+      {
+        "name": "Spirit Ward",
+        "slug": "spirit-ward",
+        "rank": 1,
+        "traits": [
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You draw on nearby spiritual energy or on echoes of the spirits you've invoked throughout your life to temporarily ward living flesh against dangerous spirits. You grant the target a +1 status bonus to saving throws agai"
+      },
+      {
+        "name": "Dull Ambition",
+        "slug": "dull-ambition",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "curse",
+          "manipulate",
+          "mental",
+          "misfortune"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You curse the target to fail in all avenues of its life that require drive and ambition, as it inadvertently undermines its own goals at every turn. The effect is based on the target's Will save. Critical Success The tar"
+      },
+      {
+        "name": "Sacred Form",
+        "slug": "sacred-form",
+        "rank": 6,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You focus all your divine energy and transform yourself into a battle form, similar to your normal form and of the same size as you, but wielding powerful divine armaments. While in this form, you gain the statistics and"
       },
       {
         "name": "Shield",

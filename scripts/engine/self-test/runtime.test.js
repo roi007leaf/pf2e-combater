@@ -19158,8 +19158,15 @@ const reviewedSpellExpectations = [
   ["song-of-marching", "setup", "browse-only"],
   ["time-skip", "buff", undefined],
   ["fallen-soldiers-lament", "debuff", undefined],
+  ["energy-absorption", "defense", undefined],
+  ["suns-fury", "buff", undefined],
+  ["horrifying-blood-loss", "debuff", undefined],
+  ["carryall", "exploration-utility", "browse-only"],
+  ["spirit-ward", "defense", "browse-only"],
+  ["dull-ambition", "debuff", "browse-only"],
+  ["sacred-form", "transformation", undefined],
 ];
-assert.equal(REVIEWED_SPELL_TACTICS.length, 95, "reviewed spell table should contain all approved entries");
+assert.equal(REVIEWED_SPELL_TACTICS.length, 102, "reviewed spell table should contain all approved entries");
 assert.equal(new Set(REVIEWED_SPELL_TACTICS.map((spell) => spell.slug)).size, REVIEWED_SPELL_TACTICS.length, "reviewed spell slugs must stay unique");
 assert.equal(reviewedSpellExpectations.length, REVIEWED_SPELL_TACTICS.length, "every reviewed spell needs a role regression expectation");
 for (const [slug, role, combatUse] of reviewedSpellExpectations) {
