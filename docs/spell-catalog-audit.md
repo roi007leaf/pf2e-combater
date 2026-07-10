@@ -7,8 +7,8 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Spell items: **1802**
 - Combat-castable spells: **1543**
 - Non-combat cast-time skipped: **259**
-- Auto-fill eligible: **1340**
-- Browse-only: **62**
+- Auto-fill eligible: **1337**
+- Browse-only: **65**
 - Context-only: **140**
 - Never auto-fill: **1**
 - Needs review: **0**
@@ -471,26 +471,23 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Outcast's Curse (`outcasts-curse`, rank 4) -> `control`, medium confidence
 - Arcane Explosion (`arcane-explosion`, rank 9) -> `healing`, high confidence
 - Tailwind (`tailwind`, rank 1) -> `buff`, high confidence
-- Dinosaur Form (`dinosaur-form`, rank 4) -> `defense`, medium confidence
-- Sand Form (`sand-form`, rank 3) -> `control`, high confidence
+- Dinosaur Form (`dinosaur-form`, rank 4) -> `transformation`, high confidence
+- Sand Form (`sand-form`, rank 3) -> `defense`, high confidence
 - Ranger's Bramble (`rangers-bramble`, rank 3) -> `control`, medium confidence
 - Heroism (`heroism`, rank 3) -> `buff`, medium confidence
 - Wall of Thorns (`wall-of-thorns`, rank 3) -> `damage`, medium confidence
 - Phantasmal Treasure (`phantasmal-treasure`, rank 2) -> `control`, medium confidence
-- Guiding Star (`guiding-star`, rank 2) -> `setup`, medium confidence
 - Annunciation of the Outer Gate (`annunciation-of-the-outer-gate`, rank 3) -> `control`, medium confidence
 - Interstellar Void (`interstellar-void`, rank 3) -> `save-damage`, high confidence
-- Disperse into Air (`disperse-into-air`, rank 4) -> `transformation`, medium confidence
+- Disperse into Air (`disperse-into-air`, rank 4) -> `defense`, high confidence
 - Thunderburst (`thunderburst`, rank 3) -> `area-damage`, high confidence
-- Spy's Mark (`spys-mark`, rank 2) -> `control`, high confidence
 - Overwhelming Memory (`overwhelming-memory`, rank 3) -> `control`, medium confidence
 - Wall of Water (`wall-of-water`, rank 3) -> `control`, high confidence
-- Song of Marching (`song-of-marching`, rank 3) -> `buff`, medium confidence
 - Swarming Wasp Stings (`swarming-wasp-stings`, rank 4) -> `save-damage`, high confidence
 - Aromatic Lure (`aromatic-lure`, rank 4) -> `control`, medium confidence
-- Time Skip (`time-skip`, rank 3) -> `setup`, medium confidence
+- Time Skip (`time-skip`, rank 3) -> `buff`, high confidence
 - Confusion (`confusion`, rank 4) -> `control`, medium confidence
-- Fallen Soldier's Lament (`fallen-soldiers-lament`, rank 4) -> `control`, medium confidence
+- Fallen Soldier's Lament (`fallen-soldiers-lament`, rank 4) -> `debuff`, medium confidence
 - Day's Weight (`days-weight`, rank 3) -> `control`, medium confidence
 - Energy Absorption (`energy-absorption`, rank 4) -> `defense`, medium confidence
 - Echo Jump (`echo-jump`, rank 3) -> `area-damage`, high confidence
@@ -1398,6 +1395,9 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Iron Gut (`iron-gut`, rank 2) -> `exploration-utility`, medium confidence
 - Deep Sight (`deep-sight`, rank 3) -> `buff`, medium confidence
 - Mind Reading (`mind-reading`, rank 3) -> `combat-utility`, medium confidence
+- Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
+- Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
+- Song of Marching (`song-of-marching`, rank 3) -> `setup`, high confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
@@ -1763,6 +1763,8 @@ _none_
 - Telepathy (`telepathy`, rank 4) -> `exploration-utility`, low confidence
 - Buoyant Bubbles (`buoyant-bubbles`, rank 1) -> `exploration-utility`, low confidence
 - Iron Gut (`iron-gut`, rank 2) -> `exploration-utility`, medium confidence
+- Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
+- Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
@@ -1864,6 +1866,14 @@ _none_
 - Sparkleskin (`sparkleskin`, rank 3) -> `defense`, medium confidence
 - Mind Reading (`mind-reading`, rank 3) -> `combat-utility`, medium confidence
 - Tailwind (`tailwind`, rank 1) -> `buff`, high confidence
+- Dinosaur Form (`dinosaur-form`, rank 4) -> `transformation`, high confidence
+- Sand Form (`sand-form`, rank 3) -> `defense`, high confidence
+- Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
+- Disperse into Air (`disperse-into-air`, rank 4) -> `defense`, high confidence
+- Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
+- Song of Marching (`song-of-marching`, rank 3) -> `setup`, high confidence
+- Time Skip (`time-skip`, rank 3) -> `buff`, high confidence
+- Fallen Soldier's Lament (`fallen-soldiers-lament`, rank 4) -> `debuff`, medium confidence
 - Shield (`shield`, rank 1) -> `defense`, high confidence
 - Ray of Frost (`ray-of-frost`, rank 1) -> `damage`, medium confidence
 - Pest Form (`pest-form`, rank 1) -> `exploration-utility`, medium confidence

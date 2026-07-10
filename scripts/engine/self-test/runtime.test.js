@@ -66,6 +66,7 @@ import { buildCandidates } from "../candidates.js";
 import { classifySystemAction } from "../action/classifier.js";
 import { classifySpell } from "../spell/classifier.js";
 import { findCuratedSpell } from "../../catalog/spells/index.js";
+import { REVIEWED_SPELL_TACTICS } from "../../catalog/spells/review-overrides.js";
 import { spellCatalogAuditForItems, spellCatalogAuditMarkdown } from "../../dev/spell-catalog-audit.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../../readers/action/reader.js";
 import {
@@ -19149,7 +19150,18 @@ const reviewedSpellExpectations = [
   ["control-water", "control", "context-only"],
   ["tempest-form", "transformation", undefined],
   ["vanishing-tracks", "exploration-utility", "browse-only"],
+  ["dinosaur-form", "transformation", undefined],
+  ["sand-form", "defense", undefined],
+  ["guiding-star", "exploration-utility", "browse-only"],
+  ["disperse-into-air", "defense", undefined],
+  ["spys-mark", "exploration-utility", "browse-only"],
+  ["song-of-marching", "setup", "browse-only"],
+  ["time-skip", "buff", undefined],
+  ["fallen-soldiers-lament", "debuff", undefined],
 ];
+assert.equal(REVIEWED_SPELL_TACTICS.length, 95, "reviewed spell table should contain all approved entries");
+assert.equal(new Set(REVIEWED_SPELL_TACTICS.map((spell) => spell.slug)).size, REVIEWED_SPELL_TACTICS.length, "reviewed spell slugs must stay unique");
+assert.equal(reviewedSpellExpectations.length, REVIEWED_SPELL_TACTICS.length, "every reviewed spell needs a role regression expectation");
 for (const [slug, role, combatUse] of reviewedSpellExpectations) {
   const reviewedSpell = findCuratedSpell(slug);
   assert.equal(reviewedSpell?.role, role, `${slug} should use reviewed spell role ${role}`);

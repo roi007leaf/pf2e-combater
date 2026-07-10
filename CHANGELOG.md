@@ -48,7 +48,7 @@
 
 ### Changed
 
-- **Curated spell-review overrides now capture 87 reviewed PF2e spell entries.** Reviewed roles and
+- **Curated spell-review overrides now capture 95 reviewed PF2e spell entries.** Reviewed roles and
   combat-use policies distinguish buffs, defenses, debuffs, transformations, summons, healing,
   exploration utility, Browse-only choices, and context-only choices. Rank-specific handling keeps
   low-rank utility forms out of Auto-fill while allowing their later battle-form versions where

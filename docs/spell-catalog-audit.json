@@ -4,8 +4,8 @@
     "activeCount": 1543,
     "skippedCount": 259,
     "byCombatUse": {
-      "auto": 1340,
-      "browse-only": 62,
+      "auto": 1337,
+      "browse-only": 65,
       "context-only": 140,
       "never-auto-fill": 1,
       "review": 0
@@ -7643,11 +7643,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "defense",
+        "source": "spell-curated",
+        "role": "transformation",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You channel the primal forces of nature to transform into a Large animal battle form, specifically that of a powerful and terrifying dinosaur. When you Cast this Spell, choose a listed battle form. You can decide the spe"
       },
       {
@@ -7659,11 +7659,11 @@
           "earth",
           "manipulate"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
         "confidence": "high",
-        "curated": false,
+        "curated": true,
         "desc": "You grant the target's body and gear aspects of sand. The target gains resistance 5 to piercing and slashing damage, has no scent, and can't bleed. In sandy terrain, even when out in the open, the target has enough conce"
       },
       {
@@ -7736,23 +7736,6 @@
         "desc": "A phantasmal image of the most precious thing imaginable to the target appears in a location of your choice within the spell's range. Only the spell's target can see the treasure, though you can see the vague shape of th"
       },
       {
-        "name": "Guiding Star",
-        "slug": "guiding-star",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "detection",
-          "manipulate",
-          "mental"
-        ],
-        "source": "spell-inferred",
-        "role": "setup",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You call on the constellations of the night sky to guide a creature to the location where you Cast the Spell. Each time the target views the stars, it receives a mental nudge toward your chosen location, though it isn't "
-      },
-      {
         "name": "Annunciation of the Outer Gate",
         "slug": "annunciation-of-the-outer-gate",
         "rank": 3,
@@ -7797,11 +7780,11 @@
           "manipulate",
           "polymorph"
         ],
-        "source": "spell-inferred",
-        "role": "transformation",
+        "source": "spell-curated",
+        "role": "defense",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "Trigger You take damage from an enemy or a hazard. After taking the triggering damage, you transform into air. Until the end of the current turn, you can't be attacked or targeted, you don't take up space, you can't act,"
       },
       {
@@ -7822,22 +7805,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "You create a powerful blast of air and a loud peal of thunder, dealing 2d6 bludgeoning damage and 2d6 sonic damage. Each creature in the area must attempt a Fortitude save. Critical Success The creature is unaffected. Su"
-      },
-      {
-        "name": "Spy's Mark",
-        "slug": "spys-mark",
-        "rank": 2,
-        "traits": [
-          "concentrate",
-          "manipulate",
-          "scrying"
-        ],
-        "source": "spell-inferred",
-        "role": "control",
-        "combatUse": "auto",
-        "confidence": "high",
-        "curated": false,
-        "desc": "By pressing your hand to a wall or other solid immobile surface, you cause the crossed-swords symbol of the Firebrands—or a different symbol of your choosing—to appear on the targeted surface. This symbol is immobile. Yo"
       },
       {
         "name": "Overwhelming Memory",
@@ -7871,24 +7838,6 @@
         "confidence": "high",
         "curated": false,
         "desc": "Raising your hand in the air, you call a massive wave onto the battlefield. The wall stays upright in a straight line that is 60 feet long, 10 feet high, and 5 feet thick. Any non-magical fires within the wall of water's"
-      },
-      {
-        "name": "Song of Marching",
-        "slug": "song-of-marching",
-        "rank": 3,
-        "traits": [
-          "bard",
-          "cantrip",
-          "composition",
-          "concentrate",
-          "mental"
-        ],
-        "source": "spell-inferred",
-        "role": "buff",
-        "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
-        "desc": "You maintain a brisk performance that keeps allies on the move. You and your allies in the area can @UUID[Compendium.pf2e.actionspf2e.Item.JuqmIAnkL9hVGai8]{Hustle} for the spell's duration, in addition to your other exp"
       },
       {
         "name": "Swarming Wasp Stings",
@@ -7933,11 +7882,11 @@
           "focus",
           "oracle"
         ],
-        "source": "spell-inferred",
-        "role": "setup",
+        "source": "spell-curated",
+        "role": "buff",
         "combatUse": "auto",
-        "confidence": "medium",
-        "curated": false,
+        "confidence": "high",
+        "curated": true,
         "desc": "You manipulate time around your ally, pushing them forward a few moments in time. The target is @UUID[Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl]{Quickened} on its next turn and can use the action only to Step,"
       },
       {
@@ -7968,11 +7917,11 @@
           "mental",
           "visual"
         ],
-        "source": "spell-inferred",
-        "role": "control",
+        "source": "spell-curated",
+        "role": "debuff",
         "combatUse": "auto",
         "confidence": "medium",
-        "curated": false,
+        "curated": true,
         "desc": "You raise an illusion in the space of a fallen foe, crafting it to resemble a ghost of your target before parading it across the battlefield. Whenever you Cast this Spell or Sustain this spell, you move the illusion up t"
       },
       {
@@ -23160,6 +23109,57 @@
         "desc": "With a cursory mental touch, you attempt to read the target's mind. It must attempt a Will save. The target then becomes temporarily immune to your mind reading for 1 hour. Critical Success The target perceives vague sur"
       },
       {
+        "name": "Guiding Star",
+        "slug": "guiding-star",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "detection",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You call on the constellations of the night sky to guide a creature to the location where you Cast the Spell. Each time the target views the stars, it receives a mental nudge toward your chosen location, though it isn't "
+      },
+      {
+        "name": "Spy's Mark",
+        "slug": "spys-mark",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "scrying"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "By pressing your hand to a wall or other solid immobile surface, you cause the crossed-swords symbol of the Firebrands—or a different symbol of your choosing—to appear on the targeted surface. This symbol is immobile. Yo"
+      },
+      {
+        "name": "Song of Marching",
+        "slug": "song-of-marching",
+        "rank": 3,
+        "traits": [
+          "bard",
+          "cantrip",
+          "composition",
+          "concentrate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You maintain a brisk performance that keeps allies on the move. You and your allies in the area can @UUID[Compendium.pf2e.actionspf2e.Item.JuqmIAnkL9hVGai8]{Hustle} for the spell's duration, in addition to your other exp"
+      },
+      {
         "name": "Ephemeral Tracking",
         "slug": "ephemeral-tracking",
         "rank": 3,
@@ -28891,6 +28891,39 @@
         "desc": "Your mouth, esophagus, and stomach become incredibly elastic and tougher than metal. For the duration of the spell, you can reach down your throat to store or retrieve a single object of light or negligible Bulk in your "
       },
       {
+        "name": "Guiding Star",
+        "slug": "guiding-star",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "detection",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You call on the constellations of the night sky to guide a creature to the location where you Cast the Spell. Each time the target views the stars, it receives a mental nudge toward your chosen location, though it isn't "
+      },
+      {
+        "name": "Spy's Mark",
+        "slug": "spys-mark",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "scrying"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "By pressing your hand to a wall or other solid immobile surface, you cause the crossed-swords symbol of the Firebrands—or a different symbol of your choosing—to appear on the targeted surface. This symbol is immobile. Yo"
+      },
+      {
         "name": "Ephemeral Tracking",
         "slug": "ephemeral-tracking",
         "rank": 3,
@@ -30461,6 +30494,141 @@
         "confidence": "high",
         "curated": true,
         "desc": "The wind at your back pushes you to find new horizons. You gain a +10-foot status bonus to your Speed. @UUID[Compendium.pf2e.spell-effects.Item.PQHP7Oph3BQX1GhF]{Spell Effect: Tailwind} Heightened (2nd) The duration incr"
+      },
+      {
+        "name": "Dinosaur Form",
+        "slug": "dinosaur-form",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "transformation",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You channel the primal forces of nature to transform into a Large animal battle form, specifically that of a powerful and terrifying dinosaur. When you Cast this Spell, choose a listed battle form. You can decide the spe"
+      },
+      {
+        "name": "Sand Form",
+        "slug": "sand-form",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "earth",
+          "manipulate"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You grant the target's body and gear aspects of sand. The target gains resistance 5 to piercing and slashing damage, has no scent, and can't bleed. In sandy terrain, even when out in the open, the target has enough conce"
+      },
+      {
+        "name": "Guiding Star",
+        "slug": "guiding-star",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "detection",
+          "manipulate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You call on the constellations of the night sky to guide a creature to the location where you Cast the Spell. Each time the target views the stars, it receives a mental nudge toward your chosen location, though it isn't "
+      },
+      {
+        "name": "Disperse into Air",
+        "slug": "disperse-into-air",
+        "rank": 4,
+        "traits": [
+          "air",
+          "cleric",
+          "focus",
+          "manipulate",
+          "polymorph"
+        ],
+        "source": "spell-curated",
+        "role": "defense",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "Trigger You take damage from an enemy or a hazard. After taking the triggering damage, you transform into air. Until the end of the current turn, you can't be attacked or targeted, you don't take up space, you can't act,"
+      },
+      {
+        "name": "Spy's Mark",
+        "slug": "spys-mark",
+        "rank": 2,
+        "traits": [
+          "concentrate",
+          "manipulate",
+          "scrying"
+        ],
+        "source": "spell-curated",
+        "role": "exploration-utility",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "By pressing your hand to a wall or other solid immobile surface, you cause the crossed-swords symbol of the Firebrands—or a different symbol of your choosing—to appear on the targeted surface. This symbol is immobile. Yo"
+      },
+      {
+        "name": "Song of Marching",
+        "slug": "song-of-marching",
+        "rank": 3,
+        "traits": [
+          "bard",
+          "cantrip",
+          "composition",
+          "concentrate",
+          "mental"
+        ],
+        "source": "spell-curated",
+        "role": "setup",
+        "combatUse": "browse-only",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You maintain a brisk performance that keeps allies on the move. You and your allies in the area can @UUID[Compendium.pf2e.actionspf2e.Item.JuqmIAnkL9hVGai8]{Hustle} for the spell's duration, in addition to your other exp"
+      },
+      {
+        "name": "Time Skip",
+        "slug": "time-skip",
+        "rank": 3,
+        "traits": [
+          "concentrate",
+          "focus",
+          "oracle"
+        ],
+        "source": "spell-curated",
+        "role": "buff",
+        "combatUse": "auto",
+        "confidence": "high",
+        "curated": true,
+        "desc": "You manipulate time around your ally, pushing them forward a few moments in time. The target is @UUID[Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl]{Quickened} on its next turn and can use the action only to Step,"
+      },
+      {
+        "name": "Fallen Soldier's Lament",
+        "slug": "fallen-soldiers-lament",
+        "rank": 4,
+        "traits": [
+          "concentrate",
+          "illusion",
+          "manipulate",
+          "mental",
+          "visual"
+        ],
+        "source": "spell-curated",
+        "role": "debuff",
+        "combatUse": "auto",
+        "confidence": "medium",
+        "curated": true,
+        "desc": "You raise an illusion in the space of a fallen foe, crafting it to resemble a ghost of your target before parading it across the battlefield. Whenever you Cast this Spell or Sustain this spell, you move the illusion up t"
       },
       {
         "name": "Shield",
