@@ -95,9 +95,11 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
   const falseOptions = falseFactOptions(category.id);
   const categoryFalseInformation = (Array.isArray(entry.falseInformation) ? entry.falseInformation : [])
     .filter((record) => record.category === category.id);
+  const revealedFalseInformation = categoryFalseInformation.filter((record) => record.revealed === true);
+  const canRevealFalseInformation = entry.falseInformationRevealCategory === category.id;
   const revealedItems = values.map((value) => ({ label: String(value), isFalse: false, tooltip: "" }));
   if (!editable) {
-    for (const record of categoryFalseInformation) {
+    for (const record of revealedFalseInformation) {
       const label = String(record.label || record.text || "").trim();
       if (!label) continue;
       let matchingIndex = -1;
@@ -151,11 +153,23 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
         options: falseOptions.map((option) => ({ ...option, selected: option.id === record.factId })),
         hasValue: falseValueKind !== "none",
         isDc: falseValueKind === "dc",
-        sourceLabel: [record.sourceActorName, record.question, `Attempt ${record.attempt}`].filter(Boolean).join(" · "),
+        revealed: record.revealed === true,
+        canReveal: canRevealFalseInformation,
+        revealLabel: record.revealed === true
+          ? t("Intel.HidePreparedFalseInformation", "Hide this misinformation from players")
+          : t("Intel.RevealPreparedFalseInformation", "Reveal this prepared misinformation to players"),
+        sourceLabel: [
+          record.revealed === true ? t("Intel.FalseInformationRevealed", "Revealed to players") : t("Intel.FalseInformationPrepared", "Prepared; hidden from players"),
+          record.sourceActorName,
+          record.question,
+          `Attempt ${record.attempt}`,
+        ].filter(Boolean).join(" · "),
       })),
     falseOptions,
     falseHasValue: falseValueKind !== "none",
     falseIsDc: falseValueKind === "dc",
+    canRevealFalseInformation,
+    falseDefaultRevealed: canRevealFalseInformation,
     falseInformationLabel: t("Intel.FalseInformation", "False information"),
     addFalseInformationLabel: t("Intel.AddFalseInformation", "Add false information to {category}", { category: category.label }),
   };
@@ -351,6 +365,7 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
           factId: select?.value ?? existing.factId ?? "",
           factLabel: select?.selectedOptions?.[0]?.textContent?.trim() ?? existing.factLabel ?? "",
           value: valueInput?.value ?? existing.value ?? null,
+          revealed: recordElement.dataset.intelFalseRevealed === "true",
         };
       }));
       return {
@@ -478,8 +493,26 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     record.dataset.intelFalseRecord = id;
     record.dataset.intelFalseCategory = categoryId;
     record.querySelector("[data-intel-remove-false]")?.addEventListener("click", () => record.remove());
+    record.querySelector("[data-intel-toggle-false]")?.addEventListener("click", (event) => this._toggleFalseInformation(record, event.currentTarget));
     container.append(fragment);
     container.lastElementChild?.querySelector("select")?.focus();
+  }
+
+  _toggleFalseInformation(record, button) {
+    if (!record || !button) return;
+    const revealed = record.dataset.intelFalseRevealed !== "true";
+    record.dataset.intelFalseRevealed = String(revealed);
+    record.classList.toggle("is-revealed", revealed);
+    record.classList.toggle("is-prepared", !revealed);
+    button.classList.toggle("is-revealed", revealed);
+    const icon = button.querySelector("i");
+    icon?.classList.toggle("fa-eye", !revealed);
+    icon?.classList.toggle("fa-eye-slash", revealed);
+    const label = revealed
+      ? t("Intel.HidePreparedFalseInformation", "Hide this misinformation from players")
+      : t("Intel.RevealPreparedFalseInformation", "Reveal this prepared misinformation to players");
+    button.dataset.tooltip = label;
+    button.setAttribute("aria-label", label);
   }
 
   _onRender(context, options) {
@@ -500,6 +533,9 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     for (const button of this.element.querySelectorAll("[data-intel-remove-false]")) {
       button.addEventListener("click", () => button.closest("[data-intel-false-record]")?.remove());
+    }
+    for (const button of this.element.querySelectorAll("[data-intel-toggle-false]")) {
+      button.addEventListener("click", () => this._toggleFalseInformation(button.closest("[data-intel-false-record]"), button));
     }
     this._syncIntelEditorState();
     for (const input of this.element.querySelectorAll("[data-intel-fact] input[type='checkbox']")) {

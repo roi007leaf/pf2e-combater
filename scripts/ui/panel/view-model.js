@@ -6,7 +6,7 @@ import {
   requiresDestinationForAction,
   requiresTargetForAction,
 } from "../../engine/action/requirements.js";
-import { executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
+import { executionAction, executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
@@ -601,15 +601,16 @@ function isSpeedBasedMovementStep(action) {
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
+  const requirementAction = executionAction(step, action ?? step);
   const plannedCost = step?.actionCost ?? step?.cost ?? action?.actionCost ?? action?.cost;
   const displaySource = action
     ? { ...action, actionCost: plannedCost, cost: plannedCost }
     : step;
   const display = decorateStep(displaySource, index, index);
-  const requiresDestination = requiresDestinationForAction(action ?? step);
-  const requiresTarget = requiresTargetForAction(action ?? step);
-  const requiresArea = requiresAreaMarkerForAction(action ?? step);
-  const canChooseArea = requiresArea && !isSelfCenteredAreaAction(action ?? step) && !isTargetCenteredAreaAction(action ?? step);
+  const requiresDestination = requiresDestinationForAction(requirementAction);
+  const requiresTarget = requiresTargetForAction(requirementAction);
+  const requiresArea = requiresAreaMarkerForAction(requirementAction);
+  const requiresManualArea = requiresArea && !isSelfCenteredAreaAction(requirementAction) && !isTargetCenteredAreaAction(requirementAction);
   const stepTraitChips = traitChips(action ?? step);
   const status = executionStatus(step);
   const isExecutionDone = status === "done";
@@ -637,6 +638,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const warning = isExecutionDone ? "" : (readiness.warning || rawWarning || advisoryWarning);
   const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
+  const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
+  const canChooseDestination = requiresDestination && canRunStep && !isExecutionDone;
+  const canChooseArea = requiresManualArea && canRunStep && !isExecutionDone;
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
   const canDuplicateStep = readonly !== true && !step?.groupId && !minionPlanAsChildren;
   const canRemoveDraftStep = readonly !== true && !minionPlanAsChildren;
@@ -681,6 +685,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     requiresDestination,
     requiresTarget,
     requiresArea,
+    canChooseTarget,
+    canChooseDestination,
     canChooseArea,
     areaLabel: stepAreaLabel,
     hasAreaMarker: Boolean(step?.areaMarker),

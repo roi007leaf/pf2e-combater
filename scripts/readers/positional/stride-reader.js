@@ -13,9 +13,9 @@ import {
   movementBlockingCondition,
   movementRange,
 } from "../action/reader-helpers.js";
-import { strikeMeleeReach } from "./tactic-helpers.js";
+import { isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
 
-function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2) {
+function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2, canStep = false) {
   const reach = strikeMeleeReach(strike);
   const speed = movementRange(profile);
   const oneStride = speed + reach;
@@ -23,6 +23,11 @@ function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2
   for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
     const distance = target?.distance ?? Infinity;
     if (readyStrikeCanReach(readyStrikes, target)) continue;
+    if (canStep && distance <= reach + 5) {
+      const attackCenter = bestReachableAttackCenter(context, target, 5, reach);
+      if (attackCenter) return { target, strides: 1, movement: "step", attackCenter };
+      if (canMoveIntoReach(context, target, 5, reach)) return { target, strides: 1, movement: "step" };
+    }
     if (maxStrides >= 1 && distance <= oneStride) {
       const attackCenter = bestReachableAttackCenter(context, target, speed, reach);
       if (attackCenter) return { target, strides: 1, attackCenter };
@@ -40,14 +45,22 @@ function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2
 export function readStrideStrikeActivities(context, readyStrikes) {
   const profile = contextProfile(context);
   const standFirst = canStandBeforeMovement(profile);
-  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" })) return [];
+  const stepAllowed = !standFirst && !movementBlockingCondition(profile, { slug: "step" });
+  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" }) && !stepAllowed) return [];
 
   const seenTargets = new Set();
   return readyStrikes.flatMap((strike) => {
     const reach = strikeMeleeReach(strike);
-    const plan = strideStrikePlan(context, profile, strike, readyStrikes, standFirst ? 1 : 2);
+    const plan = strideStrikePlan(
+      context,
+      profile,
+      strike,
+      readyStrikes,
+      standFirst ? 1 : 2,
+      stepAllowed && !isRangedStrike(strike),
+    );
     if (!plan) return [];
-    const { target, strides, attackCenter } = plan;
+    const { target, strides, movement = "stride", attackCenter } = plan;
     const actionCost = strides + 1 + (standFirst ? 1 : 0);
     if (actionCost > 3) return [];
 
@@ -56,11 +69,11 @@ export function readStrideStrikeActivities(context, readyStrikes) {
     seenTargets.add(key);
 
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
-    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
+    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${movement === "step" ? t("Action.StepArrow", "Step -> ") : t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
     return [{
-      id: `${standFirst ? "stand-" : ""}stride-strike-${strike.id ?? slug}`,
+      id: `${standFirst ? "stand-" : ""}${movement}-strike-${strike.id ?? slug}`,
       name: `${movePrefix}${strike.name}`,
-      slug: `${standFirst ? "stand-" : ""}stride-strike-${slug}`,
+      slug: `${standFirst ? "stand-" : ""}${movement}-strike-${slug}`,
       actionCost,
       actionType: "action",
       source: "system-inferred",
@@ -72,10 +85,11 @@ export function readStrideStrikeActivities(context, readyStrikes) {
       preferredTarget: target,
       role: "mobility-attack",
       activityProfile: {
-        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill("stride"), "strike"],
+        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill(movement), "strike"],
         includesStrike: true,
         removesCondition: standFirst ? "prone" : null,
         strideCount: strides,
+        ...(movement === "step" ? { fixedDistance: 5, safeMovement: true } : {}),
         strikeReach: reach,
         attackCenter,
       },
@@ -96,11 +110,16 @@ export function readStrideStrikeActivities(context, readyStrikes) {
   });
 }
 
-function strideMultiattackPlan(context, profile, reach, maxStrides) {
+function strideMultiattackPlan(context, profile, reach, maxStrides, canStep = false) {
   const speed = movementRange(profile);
   for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
     const distance = target?.distance ?? Infinity;
     if (distance <= reach) continue;
+    if (canStep && distance <= reach + 5) {
+      const attackCenter = bestReachableAttackCenter(context, target, 5, reach);
+      if (attackCenter) return { target, strides: 1, movement: "step", attackCenter };
+      if (canMoveIntoReach(context, target, 5, reach)) return { target, strides: 1, movement: "step" };
+    }
     if (maxStrides >= 1 && distance <= speed + reach) {
       const attackCenter = bestReachableAttackCenter(context, target, speed, reach);
       if (attackCenter) return { target, strides: 1, attackCenter };
@@ -118,7 +137,8 @@ function strideMultiattackPlan(context, profile, reach, maxStrides) {
 export function readStrideMultiattackActivities(context, generatedActivities) {
   const profile = contextProfile(context);
   const standFirst = canStandBeforeMovement(profile);
-  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" })) return [];
+  const canStep = !standFirst && !movementBlockingCondition(profile, { slug: "step" });
+  if (!standFirst && movementBlockingCondition(profile, { slug: "stride" }) && !canStep) return [];
 
   const multiattacks = generatedActivities.filter((action) =>
     action.available !== false
@@ -127,28 +147,29 @@ export function readStrideMultiattackActivities(context, generatedActivities) {
   if (!multiattacks.length) return [];
 
   const reach = meleeReach(profile);
-  const plan = strideMultiattackPlan(context, profile, reach, standFirst ? 1 : 2);
+  const plan = strideMultiattackPlan(context, profile, reach, standFirst ? 1 : 2, canStep);
   if (!plan) return [];
-  const { target, strides, attackCenter } = plan;
+  const { target, strides, movement = "stride", attackCenter } = plan;
 
   return multiattacks.flatMap((action) => {
     const actionCost = strides + action.actionCost + (standFirst ? 1 : 0);
     if (actionCost > 3) return [];
 
-    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
+    const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${movement === "step" ? t("Action.StepArrow", "Step -> ") : t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
     return [{
       ...action,
-      id: `${standFirst ? "stand-" : ""}stride-${action.id ?? action.slug}`,
+      id: `${standFirst ? "stand-" : ""}${movement}-${action.id ?? action.slug}`,
       name: `${movePrefix}${action.name}`,
-      slug: `${standFirst ? "stand-" : ""}stride-${action.slug}`,
+      slug: `${standFirst ? "stand-" : ""}${movement}-${action.slug}`,
       actionCost,
       source: "system-inferred",
       preferredTarget: target,
       role: "mobility-attack",
       activityProfile: {
         ...action.activityProfile,
-        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill("stride"), ...action.activityProfile.includes],
+        includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill(movement), ...action.activityProfile.includes],
         strideCount: strides,
+        ...(movement === "step" ? { fixedDistance: 5, safeMovement: true } : {}),
         strikeReach: reach,
         attackCenter,
         removesCondition: standFirst ? "prone" : null,

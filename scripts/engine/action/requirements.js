@@ -75,6 +75,10 @@ export function requiresTargetForAction(action) {
   const targeting = actionTargeting(action);
   const selfOnly = targeting?.self === true && targeting?.enemy !== true && targeting?.ally !== true;
   if (selfOnly) return false;
+  const targetSlug = String(action?.slug ?? action?.action?.slug ?? action?.actionKey ?? action?.key ?? action?.executable ?? "").toLowerCase();
+  const name = String(action?.name ?? action?.action?.name ?? "").trim().toLowerCase();
+  if (targetSlug === "recall-knowledge" || name === "recall knowledge") return true;
+  if (action?.requiresTarget === true) return true;
 
   // Move-and-strike activities auto-plot movement to a target, so they do not prompt for manual
   // target selection. Plain strikes still require a target.

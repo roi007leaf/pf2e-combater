@@ -113,10 +113,11 @@
                             <div class="combater-intel-false-list" data-intel-false-list>
                               {{#each falseInformation}}
                                 <div
-                                  class="combater-intel-false-record {{#if ../falseHasValue}}has-value{{/if}}"
+                                  class="combater-intel-false-record {{#if ../falseHasValue}}has-value{{/if}} {{#if canReveal}}can-reveal{{/if}} {{#if revealed}}is-revealed{{else}}is-prepared{{/if}}"
                                   data-intel-false-record-entry="{{entryIndex}}"
                                   data-intel-false-record="{{id}}"
                                   data-intel-false-category="{{category}}"
+                                  data-intel-false-revealed="{{revealed}}"
                                   {{#if sourceLabel}}data-tooltip="{{sourceLabel}}"{{/if}}
                                 >
                                   {{#if legacy}}
@@ -133,6 +134,11 @@
                                       </label>
                                     {{/if}}
                                   {{/if}}
+                                  {{#if canReveal}}
+                                    <button type="button" class="combater-intel-toggle-false {{#if revealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="{{revealLabel}}" data-tooltip="{{revealLabel}}">
+                                      <i class="fa-solid {{#if revealed}}fa-eye-slash{{else}}fa-eye{{/if}}"></i>
+                                    </button>
+                                  {{/if}}
                                   <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
                                     <i class="fa-solid fa-trash"></i>
                                   </button>
@@ -140,7 +146,7 @@
                               {{/each}}
                             </div>
                             <template data-intel-false-template>
-                              <div class="combater-intel-false-record {{#if falseHasValue}}has-value{{/if}}" data-intel-false-record>
+                              <div class="combater-intel-false-record {{#if falseHasValue}}has-value{{/if}} {{#if canRevealFalseInformation}}can-reveal{{/if}} {{#if falseDefaultRevealed}}is-revealed{{else}}is-prepared{{/if}}" data-intel-false-record data-intel-false-revealed="{{falseDefaultRevealed}}">
                                 <select data-intel-false-fact>
                                   <option value="">Choose false {{label}} fact</option>
                                   {{#each falseOptions}}<option value="{{id}}">{{label}}</option>{{/each}}
@@ -150,6 +156,11 @@
                                     <span>{{#if falseIsDc}}DC{{else}}Value{{/if}}</span>
                                     <input type="text" inputmode="numeric" pattern="[0-9]*" data-intel-false-value aria-label="{{#if falseIsDc}}DC{{else}}Value{{/if}}">
                                   </label>
+                                {{/if}}
+                                {{#if canRevealFalseInformation}}
+                                  <button type="button" class="combater-intel-toggle-false {{#if falseDefaultRevealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="Toggle misinformation visibility" data-tooltip="Toggle misinformation visibility">
+                                    <i class="fa-solid {{#if falseDefaultRevealed}}fa-eye-slash{{else}}fa-eye{{/if}}"></i>
+                                  </button>
                                 {{/if}}
                                 <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
                                   <i class="fa-solid fa-trash"></i>

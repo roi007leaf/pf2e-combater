@@ -397,6 +397,13 @@ assert.ok(
   "GM player-perspective Intel should identify false facts without exposing markers to players",
 );
 assert.ok(
+  intelWindowTemplateSource.includes("data-intel-toggle-false")
+    && intelWindowSource.includes("falseInformationRevealCategory")
+    && intelWindowSource.includes('dataset.intelFalseRevealed === "true"')
+    && intelLedgerSource.includes("record.revealed === true"),
+  "prepared false Intel should become player-visible only through critical-failure activation",
+);
+assert.ok(
   combatContextSource.includes("readIntelFalseInformation")
     && combatContextSource.includes("intelFalseInformation,"),
   "player-safe battlefield summaries should carry false Intel so players receive it as ordinary revealed facts",
@@ -3230,7 +3237,7 @@ assert.ok(
 // nothing to manually place -- the "Place template" button itself should never render for either,
 // unlike a burst/cone/line, which genuinely needs a picked point.
 assert.ok(
-  /const canChooseArea = requiresArea[\s\S]*?!isSelfCenteredAreaAction\(action \?\? step\)[\s\S]*?!isTargetCenteredAreaAction\(action \?\? step\)/.test(panelViewModelSource),
+  /const requiresManualArea = requiresArea[\s\S]*?!isSelfCenteredAreaAction\(requirementAction\)[\s\S]*?!isTargetCenteredAreaAction\(requirementAction\)[\s\S]*const canChooseArea = requiresManualArea/.test(panelViewModelSource),
   "decorateDraftStep should gate the manual area-placement button separately from requiresArea, excluding both self- and target-centered areas",
 );
 assert.equal(panelTemplateSource.includes("{{#if requiresArea}}"), false, "the template should gate the placement button on canChooseArea, not the raw requiresArea flag");

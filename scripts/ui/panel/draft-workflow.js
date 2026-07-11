@@ -7,7 +7,7 @@ import {
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
 } from "../../engine/action/builder.js";
-import { requiresDestinationForAction } from "../../engine/action/requirements.js";
+import { requiresDestinationForAction, requiresTargetForAction } from "../../engine/action/requirements.js";
 import { currentTargetSelection, executeDraftStep, plannedTargetSelection, setTokenTargets } from "../../engine/action/executor.js";
 import { revertDraftStep } from "../../engine/action/revert.js";
 import { executionPatch } from "../../engine/execution/results.js";
@@ -923,6 +923,7 @@ export async function addPanelAction(panel, actionKey) {
           name: atom?.name ?? atom?.action?.name,
           actionCost: atom?.actionCost ?? atom?.cost,
           requiresDestination: requiresDestinationForAction(atom),
+          requiresTarget: requiresTargetForAction(atom),
           ...(atom?.groupId
             ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
             : atom?.activityProfile?.requiresDistinctTargets
@@ -965,6 +966,7 @@ export async function addPanelUncountedAction(panel, actionKey) {
           name: atom?.name ?? atom?.action?.name,
           actionCost: atom?.actionCost ?? atom?.cost,
           requiresDestination: requiresDestinationForAction(atom),
+          requiresTarget: requiresTargetForAction(atom),
           ...(atom?.groupId
             ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
             : atom?.activityProfile?.requiresDistinctTargets
@@ -999,6 +1001,7 @@ export async function addPanelSustainSpell(panel, spellId) {
         actionKey: action.key,
         actionCost: action.actionCost ?? action.cost ?? 1,
         requiresDestination: requiresDestinationForAction(action),
+        requiresTarget: requiresTargetForAction(action),
         sustainedSpell: sustainedSpellDraftFields(spell),
       },
     ],
@@ -1384,6 +1387,7 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
       name: step?.name ?? step?.action?.name,
       actionCost: step?.actionCost ?? step?.cost,
       requiresDestination: requiresDestinationForAction(step),
+      requiresTarget: requiresTargetForAction(step),
       // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is
       // computed from the original, un-atomized action) -- reused here as the group id so the
       // panel can visually nest them under one header instead of showing N identical-looking rows.

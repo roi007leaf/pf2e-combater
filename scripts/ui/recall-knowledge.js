@@ -176,8 +176,13 @@ export async function openRecallKnowledgeIntelWindow(target, {
   const view = {
     ...baseView,
     entries: (baseView.entries ?? []).map((entry) => {
-      const falseInformation = falseInformationContext ? [
-        ...(entry.falseInformation ?? []),
+      const existingFalseInformation = entry.falseInformation ?? [];
+      const revealCategory = falseInformationContext?.category ?? null;
+      const hasPreparedMatchingFact = Boolean(revealCategory && existingFalseInformation.some(
+        (record) => record.category === revealCategory && record.revealed === false,
+      ));
+      const falseInformation = falseInformationContext && !hasPreparedMatchingFact ? [
+        ...existingFalseInformation,
         {
           id: globalThis.foundry?.utils?.randomID?.() ?? `false-${Date.now()}`,
           text: "",
@@ -187,15 +192,17 @@ export async function openRecallKnowledgeIntelWindow(target, {
           question: falseInformationContext.question ?? "",
           attempt: falseInformationContext.attempt ?? 1,
           createdAt: new Date().toISOString(),
+          revealed: true,
         },
-      ] : (entry.falseInformation ?? []);
+      ] : existingFalseInformation;
       const identityId = entry.availableFacts?.identity?.[0]?.id;
-      if (!identityId || !preselectIdentity) return { ...entry, falseInformation };
+      const falseInformationRevealCategory = falseInformationContext?.category ?? null;
+      if (!identityId || !preselectIdentity) return { ...entry, falseInformation, falseInformationRevealCategory };
       const current = entry.values?.identity;
       const identity = current === true || (Array.isArray(current) && current.length)
         ? current
         : [identityId];
-      return { ...entry, falseInformation, values: { ...entry.values, identity } };
+      return { ...entry, falseInformation, falseInformationRevealCategory, values: { ...entry.values, identity } };
     }),
   };
   if (!view.visible || !view.entries?.length) return false;

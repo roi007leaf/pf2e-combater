@@ -7,11 +7,14 @@
 - **Critical Recall Knowledge failures can now deliver structured false information through the NPC
   Intel editor.** Every Intel category has a GM-only false-information section using PF2e creature
   traits, damage and condition types, named saves, Perception, and numeric DC/amount fields. False
-  records can be edited or deleted, retain their source actor/question/attempt metadata, and remain
-  separate from learned facts so Auto-fill, Best target, and planner scoring never treat them as
-  real knowledge. GM views mark misinformation with warning styling; players receive it as ordinary
-  revealed Intel with no false marker. Numeric misinformation follows the selected reveal style:
-  Exact mode shows its entered DC or amount, while Bands only converts it to Low, Mid, or High.
+  records can be prepared before play, edited or deleted, and retain their source actor/question/
+  attempt metadata. Prepared records remain GM-only until a Critical Failure opens the matching
+  category, where the GM chooses which misinformation to reveal; saving ordinary Intel never exposes
+  dormant false facts. Revealed misinformation appears with warning styling to GMs but as ordinary
+  truth to players, with no false marker. False records remain separate from learned facts so
+  Auto-fill, Best target, and planner scoring never treat them as real knowledge. Numeric
+  misinformation follows the selected reveal style: Exact mode shows its entered DC or amount,
+  while Bands only converts it to Low, Mid, or High.
 
 ### Changed
 
@@ -45,6 +48,13 @@
   lines, while specific Stride-and-Strike explanations replace equivalent generic movement text.
 - **Shift-click Best target works for nested spell recommendations such as Force Barrage.** Nested
   target metadata is now resolved instead of producing a false “No Best target” warning.
+- **Sure Strike is now ordered before movement and the attack it improves.** This preserves its
+  next-attack benefit and avoids suggesting a concentrate action only after entering melee reach.
+- **Reload is included only when the same weapon is fired later in the plan.** An unused bow or
+  firearm can no longer consume an action in an unrelated unarmed or spell routine.
+- **Five-foot approaches to melee Strikes and Flurry-style activities now use Step instead of
+  Stride** when Step is legal, avoiding unnecessary movement-triggered reactions. Explicit
+  abilities that require Stride and movement longer than 5 feet remain unchanged.
 
 ## [1.1.5]
 

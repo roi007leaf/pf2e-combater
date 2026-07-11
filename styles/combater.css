@@ -1345,6 +1345,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 .combater-intel-shell.is-editable .combater-intel-grid {
@@ -1354,6 +1355,7 @@
 .combater-intel-entry {
   display: grid;
   gap: 10px;
+  align-content: start;
   min-width: 0;
   border: 1px solid var(--combater-line);
   border-radius: 8px;
@@ -2503,6 +2505,10 @@
   grid-template-columns: minmax(0, 1fr) 20px;
 }
 
+.pf2e-combater .combater-intel-false-record.can-reveal {
+  grid-template-columns: minmax(0, 1fr) 20px 20px;
+}
+
 .pf2e-combater .combater-intel-false-record > :not(button) {
   min-width: 0;
 }
@@ -2575,6 +2581,24 @@
   color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 60%, var(--combater-muted));
 }
 
+.pf2e-combater .combater-intel-toggle-false {
+  display: inline-grid;
+  grid-column: -3 / -2;
+  grid-row: 1;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--combater-muted);
+}
+
+.pf2e-combater .combater-intel-toggle-false.is-revealed {
+  color: var(--color-pf-text-critical-failure, #c9515d);
+}
+
 .pf2e-combater .combater-intel-add-false {
   margin-left: auto;
   width: 22px;
@@ -2592,6 +2616,15 @@
   border-radius: 5px;
   padding: 2px 3px;
   background: rgb(18 20 24 / 56%);
+}
+
+.pf2e-combater .combater-intel-false-record.is-prepared {
+  border-left-color: #7f8895;
+  background: rgb(18 20 24 / 38%);
+}
+
+.pf2e-combater .combater-intel-false-record.is-revealed {
+  border-left-color: var(--color-pf-text-critical-failure, #c9515d);
 }
 
 .pf2e-combater-rk-adjudication .rk-calculated-outcomes p {

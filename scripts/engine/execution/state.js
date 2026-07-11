@@ -12,6 +12,7 @@ export function executionAction(step, action) {
     }
   }
   if (step?.requiresDestination === true) merged.requiresDestination = true;
+  if (step?.requiresTarget === true) merged.requiresTarget = true;
   return merged;
 }
 

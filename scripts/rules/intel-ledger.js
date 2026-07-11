@@ -193,6 +193,7 @@ export function normalizeIntelFalseInformation(value) {
       question: String(entry?.question ?? ""),
       attempt: Math.max(1, Number(entry?.attempt) || 1),
       createdAt: String(entry?.createdAt ?? ""),
+      revealed: entry?.revealed !== false,
     }];
   });
 }
@@ -608,6 +609,7 @@ export function intelLedgerView(context) {
         [
           ...(revealed[id] ?? []),
           ...falseInformation
+            .filter((record) => record.revealed === true)
             .filter((record) => record.category === id)
             .map((record) => falseInformationDisplayLabel(record, enemy, labelRevealMode)),
         ],
@@ -625,7 +627,7 @@ export function intelLedgerView(context) {
       revealed: playerRevealed,
       revealedFacts,
       ...(viewerIsGM ? { falseInformation } : {}),
-      hasRevealed: revealedCount(revealed) > 0 || falseInformation.length > 0,
+      hasRevealed: revealedCount(revealed) > 0 || falseInformation.some((record) => record.revealed === true),
     };
   }).filter((entry) => entry.actor || entry.hasRevealed);
   const learnedCount = entries.reduce((count, entry) => count

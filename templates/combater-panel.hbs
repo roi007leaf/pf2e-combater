@@ -53,26 +53,20 @@
             </button>
             <span class="combater-step-tools">
               {{#unless isExecutionDone}}
-                {{#if requiresTarget}}
-                  {{#unless readonly}}
+                {{#if canChooseTarget}}
                   <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}" aria-label="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}">
                     <i class="fa-solid fa-crosshairs"></i>
                   </button>
-                  {{/unless}}
                 {{/if}}
-                {{#if requiresDestination}}
-                  {{#unless readonly}}
+                {{#if canChooseDestination}}
                   <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetDestination"}}">
                     <i class="fa-solid fa-location-crosshairs"></i>
                   </button>
-                  {{/unless}}
                 {{/if}}
                 {{#if canChooseArea}}
-                  {{#unless readonly}}
                   <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}">
                     <i class="fa-solid fa-draw-polygon"></i>
                   </button>
-                  {{/unless}}
                 {{/if}}
                 {{#if canCycleMap}}
                   <button type="button" class="combater-chip-tool combater-map-cycle {{#if mapPinned}}is-pinned{{/if}}" data-cycle-map="{{instanceId}}" data-tooltip="{{mapToolTip}}" aria-label="{{mapToolTip}}">

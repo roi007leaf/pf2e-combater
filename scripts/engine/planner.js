@@ -243,6 +243,31 @@ function hasStrikeFollowUp(steps) {
   return steps.some((step) => isStrikeAction(step) || step.activityProfile?.includesStrike === true);
 }
 
+function weaponIdentityValues(action) {
+  return [
+    action?.activityProfile?.weaponId,
+    action?.activityProfile?.weaponName,
+    action?.weapon?.id,
+    action?.weapon?.name,
+    action?.backingStrike?.item?.id,
+    action?.backingStrike?.item?.name,
+    action?.item?.type === "weapon" ? action.item.id : null,
+    action?.item?.type === "weapon" ? action.item.name : null,
+  ].map(normalizeSlug).filter(Boolean);
+}
+
+function planReloadsAreUseful(steps) {
+  return steps.every((step) => {
+    if (step?.activityProfile?.reload !== true && !String(step?.slug ?? "").startsWith("reload-")) return true;
+    const reloadWeapons = new Set(weaponIdentityValues(step));
+    return steps.some((candidate) => {
+      if (candidate === step || (!isStrikeAction(candidate) && candidate?.activityProfile?.includesStrike !== true)) return false;
+      const attackWeapons = weaponIdentityValues(candidate);
+      return reloadWeapons.size === 0 || attackWeapons.some((weapon) => reloadWeapons.has(weapon));
+    });
+  });
+}
+
 function truthyPenalty(value) {
   if (value === true) return true;
   const number = Number(value);
@@ -290,6 +315,8 @@ function setupPriority(step, allSteps) {
   if (requiresPreviousAction(step)) return 1;
 
   if (includesStand(step)) return -2;
+
+  if (step?.activityProfile?.preMovementSetup === true && hasStrikeFollowUp(allSteps)) return -1.5;
 
   if (
     BASIC_MOVE_SLUGS.has(step?.slug)
@@ -448,7 +475,7 @@ export function buildTurnPlans(context, candidates) {
   function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions, targetPlans = plans, cap = MAX_PLANS, candidatePool = sortedCandidates) {
     if (targetPlans.length >= cap) return;
 
-    if (steps.length) {
+    if (steps.length && planReloadsAreUseful(steps)) {
       const key = steps.map(actionKey).join("|");
       if (!seenPlans.has(key)) {
         seenPlans.add(key);

@@ -5,6 +5,7 @@ import { fighterContext, fixtureCandidates } from "../fixtures.js";
 import { actionBudget } from "../action/budget.js";
 import { bestTurnPlan, buildTurnPlans } from "../planner.js";
 import { hasPlanConflict } from "../planner/conflicts.js";
+import { readStrideMultiattackActivities, readStrideStrikeActivities } from "../../readers/positional/stride-reader.js";
 import { swapDraftSteps } from "../draft-reorder.js";
 import { swapFavorites } from "../favorite-reorder.js";
 import { movementBudgetForStep, movementDestinationForStep, movementFootprintForToken, movementHorizontalBudgetForStep, movementOriginForContext, movementPlacementForCenter, movementPlanForDestination, movementPlanForWaypoints, movementRouteForStep, movementRouteSegmentCost, movementWaypointsForStep, reachableMovementCenters, waypointPathCost } from "../movement-route.js";
@@ -360,6 +361,21 @@ assert.deepEqual(
 );
 
 assert.equal(requiresTargetForAction(executionTargetAction), true);
+assert.equal(
+  requiresTargetForAction({ name: "Recall Knowledge", slug: "recall-knowledge", requiresTarget: true, executable: "recall-knowledge" }),
+  true,
+  "explicitly target-required actions should expose target selection and require a target before execution",
+);
+assert.equal(
+  requiresTargetForAction({ name: "Recall Knowledge", slug: "recall-knowledge", executable: "recall-knowledge" }),
+  true,
+  "re-resolved Recall Knowledge draft rows should retain target selection even when catalog-only flags are absent",
+);
+assert.equal(
+  requiresTargetForAction({ name: "Recall Knowledge", actionKey: "recall-knowledge" }),
+  true,
+  "stored Recall Knowledge draft rows should infer target selection from actionKey when no live action resolved",
+);
 assert.equal(requiresTargetForAction({ name: "Stand", slug: "stand", targetingProfile: { self: true } }), false);
 // stand-stride (Stand, then Stride toward the nearest enemy beyond reach) carries
 // targetingProfile.enemy purely to pick a direction to move -- it must not prompt for a target.
@@ -784,6 +800,15 @@ try {
             },
           },
         ],
+        [
+          "seek",
+          {
+            use: async (options) => {
+              pf2eActionCalls.push({ ...options, action: "seek" });
+              return { ok: true };
+            },
+          },
+        ],
       ]),
     },
   };
@@ -910,6 +935,15 @@ try {
   });
   assert.equal(diversionTrickResult.status, "done");
   assert.equal(pf2eActionCalls.at(-1).variant, "trick", "an explicit valid action.variant should be honoured");
+
+  const seekResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "seek-step" },
+    action: { name: "Seek", slug: "seek", executable: "open-item", item: { name: "Seek" } },
+    event: { type: "click" },
+  });
+  assert.equal(seekResult.status, "done");
+  assert.equal(pf2eActionCalls.at(-1).action, "seek", "Seek must roll through PF2e's native action API instead of posting its item card");
 
   // Open-item actions that parsed an @Damage formula auto-roll typed damage to chat.
   const damageActionResult = await executeDraftStep({
@@ -3090,6 +3124,68 @@ assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const staleRecallKnowledgeDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [],
+  plans: [],
+  draft: { steps: [{ instanceId: "rk-draft-1", actionKey: "recall-knowledge", name: "Recall Knowledge", actionCost: 1 }] },
+  favorites: new Set(),
+}), "one");
+assert.equal(
+  staleRecallKnowledgeDraftModel.draft.steps[0].requiresTarget,
+  true,
+  "Recall Knowledge draft rows should keep the select-target control even when the action cannot be re-resolved",
+);
+const previousGameForReadonlyDraft = globalThis.game;
+globalThis.game = { user: { isGM: true } };
+const readonlySharedRecallKnowledgeDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [{ id: "recall-knowledge", key: "recall-knowledge", slug: "recall-knowledge", name: "Recall Knowledge", actionCost: 1, executable: "recall-knowledge" }],
+  plans: [],
+  draft: {
+    readonly: true,
+    shared: true,
+    steps: [{ instanceId: "rk-readonly-1", actionKey: "recall-knowledge", name: "Recall Knowledge", actionCost: 1 }],
+  },
+  favorites: new Set(),
+}), "one");
+globalThis.game = previousGameForReadonlyDraft;
+assert.equal(
+  readonlySharedRecallKnowledgeDraftModel.draft.steps[0].canChooseTarget,
+  true,
+  "readonly executable player-plan rows should still expose target selection for required execution choices",
+);
+assert.equal(
+  readonlySharedRecallKnowledgeDraftModel.draft.steps[0].canDuplicateStep,
+  false,
+  "readonly executable player-plan rows should still hide edit-only controls",
+);
+const resolvedActionMissingTargetDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [{ id: "rk-resolved", key: "rk-resolved", slug: "rk-resolved", name: "Recall Knowledge", actionCost: 1, executable: "recall-knowledge" }],
+  plans: [],
+  draft: {
+    steps: [{
+      instanceId: "rk-resolved-1",
+      actionKey: "rk-resolved",
+      name: "Recall Knowledge",
+      actionCost: 1,
+      requiresTarget: true,
+    }],
+  },
+  favorites: new Set(),
+}), "one");
+assert.equal(
+  resolvedActionMissingTargetDraftModel.draft.steps[0].canChooseTarget,
+  true,
+  "stored target requirement should survive when the resolved action object lacks target metadata",
+);
+assert.equal(
+  resolvedActionMissingTargetDraftModel.draft.steps[0].warning,
+  "Choose target at execution.",
+  "stored target requirement should still drive execution readiness warnings",
+);
 
 const explainablePlan = decoratePlan({
   id: "why-plan",
@@ -6522,6 +6618,109 @@ assert.deepEqual(
   feintStrikePlan.steps.map((step) => step.slug),
   ["demoralize", "feint", "strike"],
 );
+
+const sureStrikeSequencePlans = buildTurnPlans(fighterContext, [{
+  id: "sure-strike",
+  name: "Sure Strike",
+  slug: "sure-strike",
+  role: "buff",
+  actionCost: 1,
+  source: "spell-curated",
+  score: 95,
+  confidence: "high",
+  activityProfile: { attackBuff: true, preMovementSetup: true },
+  setupFor: ["strike", "attack", "damage"],
+}, {
+  id: "stride",
+  name: "Stride",
+  slug: "stride",
+  role: "mobility",
+  actionCost: 1,
+  source: "generic",
+  score: 70,
+  confidence: "high",
+}, {
+  id: "flurry-of-blows",
+  name: "Flurry of Blows",
+  slug: "flurry-of-blows",
+  role: "multiattack",
+  actionCost: 1,
+  source: "system-inferred",
+  score: 100,
+  confidence: "high",
+  activityProfile: { includesStrike: true, multiStrike: true },
+}]);
+const sureStrikeSequence = sureStrikeSequencePlans.find((plan) => plan.steps.length === 3);
+assert.deepEqual(
+  sureStrikeSequence.steps.map((step) => step.slug),
+  ["sure-strike", "stride", "flurry-of-blows"],
+  "Sure Strike should precede movement and the attack it improves",
+);
+
+const unrelatedReloadPlans = buildTurnPlans(fighterContext, [{
+  id: "reload-gakgung",
+  name: "Reload Gakgung",
+  slug: "reload-gakgung",
+  role: "setup",
+  actionCost: 1,
+  source: "system-inferred",
+  score: 200,
+  confidence: "high",
+  item: { id: "gakgung", name: "Gakgung", type: "weapon" },
+  activityProfile: { reload: true, weaponName: "Gakgung" },
+  setupFor: ["strike", "damage"],
+}, {
+  id: "flurry-fists",
+  name: "Flurry of Blows",
+  slug: "flurry-of-blows",
+  role: "multiattack",
+  actionCost: 1,
+  source: "system-inferred",
+  score: 100,
+  confidence: "high",
+  item: { id: "flurry", name: "Flurry of Blows", type: "action" },
+  activityProfile: { includesStrike: true, multiStrike: true },
+}]);
+assert.equal(
+  unrelatedReloadPlans.some((plan) => plan.steps.some((step) => step.slug === "reload-gakgung")),
+  false,
+  "Reload should not enter a plan unless that same weapon is fired",
+);
+
+const fiveFootFlurryApproach = readStrideMultiattackActivities({
+  actor: { profile: { speed: 25, reach: 5 } },
+  profile: { speed: 25, reach: 5 },
+  token: {},
+  targets: [{ id: "target-10", name: "Target", distance: 10, disposition: -1 }],
+  enemies: [],
+}, [{
+  id: "flurry",
+  name: "Flurry of Blows",
+  slug: "flurry-of-blows",
+  actionCost: 1,
+  available: true,
+  activityProfile: { requiresBackingStrike: true, includes: ["strike", "strike"] },
+  targetingProfile: { enemy: true },
+}]);
+assert.equal(fiveFootFlurryApproach[0]?.activityProfile?.includes?.[0], "step", "a 5-foot Flurry approach should use Step instead of Stride");
+assert.equal(builderAtomicActionsForStep(fiveFootFlurryApproach[0])[0]?.slug, "step");
+const fiveFootMeleeApproach = readStrideStrikeActivities({
+  actor: { profile: { speed: 25, reach: 5 } },
+  profile: { speed: 25, reach: 5 },
+  token: {},
+  targets: [{ id: "target-10", name: "Target", distance: 10, disposition: -1 }],
+  enemies: [],
+}, [{
+  id: "fist",
+  name: "Fist",
+  slug: "fist",
+  actionCost: 1,
+  item: { id: "fist", name: "Fist", type: "weapon", system: { category: "unarmed" } },
+  activityProfile: { melee: true, strikeReach: 5 },
+  targetingProfile: { enemy: true },
+}]);
+assert.equal(fiveFootMeleeApproach[0]?.activityProfile?.includes?.[0], "step", "a 5-foot melee Strike approach should use Step instead of Stride");
+assert.equal(builderAtomicActionsForStep(fiveFootMeleeApproach[0])[0]?.slug, "step");
 
 // Auto-fill pairs Quickened Casting with a discount-eligible spell: sequenced first, spell at 1
 // fewer action. A divine (or otherwise ineligible) spell never gets a synthetic discounted sibling.

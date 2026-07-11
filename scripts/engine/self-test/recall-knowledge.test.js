@@ -581,6 +581,8 @@ try {
   assert.equal(remoteTargetFlags.intelFalseInformation[0].category, "weaknesses");
   assert.equal(remoteTargetFlags.intelFalseInformation[0].sourceActorName, "Remote Hero");
   assert.equal(remoteTargetFlags.intelFalseInformation[0].label, "Fire 10");
+  assert.equal(remoteTargetFlags.intelFalseInformation[0].revealed, true, "critical-failure misinformation should be revealed when saved");
+  const revealedFalseInformation = remoteTargetFlags.intelFalseInformation;
   const playerIntelView = intelLedgerView({
     isGM: false,
     intelTargets: [{ actor: remoteTarget, name: remoteTarget.name }],
@@ -600,7 +602,35 @@ try {
   });
   assert.equal(Object.hasOwn(actualPlayerIntelView.entries[0], "falseInformation"), false, "actual players must not receive false Intel markers");
   assert.match(actualPlayerIntelView.entries[0].revealed.weaknesses[0], /^Fire: (Low|Mid|High)$/, "player false numeric Intel should respect Bands only mode");
+  remoteTargetFlags.intelFalseInformation = normalizeIntelFalseInformation([{
+    category: "weaknesses",
+    factId: "cold",
+    factLabel: "Cold",
+    value: 8,
+    revealed: false,
+  }]);
+  const preparedPlayerIntelView = intelLedgerView({
+    isGM: false,
+    intelTargets: [{ actor: remoteTarget, name: remoteTarget.name }],
+  });
+  assert.deepEqual(preparedPlayerIntelView.entries[0].revealed.weaknesses, [], "prepared misinformation must remain hidden from players");
   globalThis.game.user.isGM = true;
+  await openRecallKnowledgeIntelWindow(remoteTarget, {
+    preselectIdentity: false,
+    falseInformationContext: {
+      actorUuid: remoteActor.uuid,
+      actorName: "Remote Hero",
+      category: "weaknesses",
+      question: "weaknesses",
+      attempt: 3,
+    },
+    openWindow: async (view) => {
+      assert.equal(view.entries[0].falseInformation.length, 1, "critical failure should reuse prepared misinformation instead of adding a blank row");
+      assert.equal(view.entries[0].falseInformation[0].revealed, false);
+      assert.equal(view.entries[0].falseInformationRevealCategory, "weaknesses");
+    },
+  });
+  remoteTargetFlags.intelFalseInformation = revealedFalseInformation;
   assert.deepEqual(
     normalizeIntelFalseInformation([
       { category: "traits", factId: "dragon", factLabel: "Dragon" },
