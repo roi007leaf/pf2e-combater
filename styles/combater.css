@@ -36,7 +36,11 @@
   flex-direction: column;
   max-height: calc(100vh - 120px);
   min-height: 0;
-  overflow: hidden;
+  /* ApplicationV2 windows using height:auto do not always give this flex column a
+     definite block size. Keep the plan's inner scrollbar when they do, but let
+     the viewport-capped window content scroll as the reliable fallback. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .pf2e-combater .combater-shell {
@@ -96,6 +100,10 @@
   border-radius: 8px;
   background: var(--combater-bg);
   box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+}
+
+.pf2e-combater.combater-browser .window-content {
+  overflow: hidden;
 }
 
 .pf2e-combater.combater-browser .combater-browser-header {
@@ -1574,7 +1582,7 @@
   padding: 6px;
 }
 
-.combater-intel-category input {
+.combater-intel-category input[type="checkbox"] {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -1700,6 +1708,15 @@
   font-size: 11px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.combater-intel-revealed-section li.is-false-information {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border-color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 65%, transparent);
+  background: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 16%, transparent);
+  color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 55%, white);
 }
 
 .combater-tactic-actions,
@@ -2445,6 +2462,136 @@
   border-radius: 4px;
   padding: 7px 9px;
   background: rgb(255 255 255 / 6%);
+}
+
+.pf2e-combater .combater-intel-false-section {
+  display: grid;
+  gap: 5px;
+  margin-top: 3px;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  padding-top: 6px;
+}
+
+.pf2e-combater .combater-intel-false-section-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 35%, var(--combater-muted));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pf2e-combater .combater-intel-false-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pf2e-combater .combater-intel-false-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  flex: 1 1 150px;
+  gap: 4px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pf2e-combater .combater-intel-false-record.has-value {
+  grid-template-columns: minmax(0, 1fr) 20px;
+}
+
+.pf2e-combater .combater-intel-false-record > :not(button) {
+  min-width: 0;
+}
+
+.pf2e-combater .combater-intel-false-record select {
+  color-scheme: dark;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 24px;
+  border: 0;
+  padding: 1px 22px 1px 5px;
+  background-color: transparent;
+  color: var(--combater-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pf2e-combater .combater-intel-false-record select option {
+  background: #181b20;
+  color: #f0eee8;
+}
+
+.pf2e-combater .combater-intel-false-record select option:checked {
+  background: #334a3d;
+  color: #fff;
+}
+
+.pf2e-combater .combater-intel-false-value {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: auto 58px;
+  justify-content: start;
+  align-items: center;
+  gap: 5px;
+  color: var(--combater-muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pf2e-combater .combater-intel-false-value [data-intel-false-value] {
+  display: block;
+  box-sizing: border-box;
+  width: 58px;
+  min-width: 58px;
+  max-width: 58px;
+  height: 24px;
+  border: 1px solid var(--combater-line);
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: var(--combater-surface);
+  color: var(--combater-ink);
+  font-size: 11px;
+  text-transform: none;
+}
+
+.pf2e-combater .combater-intel-remove-false {
+  display: inline-grid;
+  grid-column: -2 / -1;
+  grid-row: 1;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 60%, var(--combater-muted));
+}
+
+.pf2e-combater .combater-intel-add-false {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-color: rgb(255 255 255 / 14%);
+  background: rgb(255 255 255 / 3%);
+  color: color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 42%, var(--combater-muted));
+}
+
+.pf2e-combater .combater-intel-false-record {
+  border: 1px solid rgb(255 255 255 / 11%);
+  border-left: 2px solid color-mix(in srgb, var(--color-pf-text-critical-failure, #c9515d) 48%, transparent);
+  border-radius: 5px;
+  padding: 2px 3px;
+  background: rgb(18 20 24 / 56%);
 }
 
 .pf2e-combater-rk-adjudication .rk-calculated-outcomes p {

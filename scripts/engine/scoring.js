@@ -24,6 +24,7 @@ import { blockedCandidateResult } from "./scoring/gates.js";
 import {
   bestTargetForAction,
   distinctTargetsFor,
+  targetRankingReasons,
 } from "./scoring/targets.js";
 import {
   baseScore,
@@ -43,7 +44,7 @@ import { SETTINGS, settingOrDefault } from "../settings.js";
 // DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
 // 11 succeeds on a roll of 11 or higher — exactly half of a d20's outcomes.
 const HIDDEN_TARGET_FLAT_CHECK_DISCOUNT = 0.5;
-const PLAYER_INTEL_CATEGORIES = ["saves", "perception", "weaknesses", "resistances", "immunities"];
+const PLAYER_INTEL_CATEGORIES = ["traits", "saves", "perception", "weaknesses", "resistances", "immunities"];
 
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
@@ -75,6 +76,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     ? GENERIC_ACTIONS.find((generic) => generic.slug === "grapple") ?? null
     : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
+  const bestTargetReasons = targetRankingReasons(context, action, role, target);
   const skillDcSlug = actionSkillDcSlug(action);
   const skillCheck = canUseTargetSave(context, target, skillDcSlug) ? skillCheckScore(profile, target, action) : null;
   const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
@@ -182,6 +184,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     preference,
     nativePreflight,
     suggestedTarget,
+    bestTargetReasons,
     reason: reasons[0] ?? defaultReason(action),
     reasons,
     activityProfile: {

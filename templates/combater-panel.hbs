@@ -44,7 +44,7 @@
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
                   {{#if hasTraitChips}}
                     {{#each traitChips}}
-                      <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                      <span class="combater-detail-chip {{class}}"{{#if tooltipHtml}} data-tooltip-html="{{tooltipHtml}}"{{else}} data-tooltip="{{tooltip}}"{{/if}}>{{label}}</span>
                     {{/each}}
                   {{/if}}
                 </span>
@@ -226,7 +226,7 @@
                   {{#if hasTraitChips}}
                   <span class="combater-step-details">
                     {{#each traitChips}}
-                      <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                      <span class="combater-detail-chip {{class}}"{{#if tooltipHtml}} data-tooltip-html="{{tooltipHtml}}"{{else}} data-tooltip="{{tooltip}}"{{/if}}>{{label}}</span>
                     {{/each}}
                   </span>
                   {{/if}}

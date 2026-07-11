@@ -71,7 +71,7 @@
                   {{#each categoryColumns}}
                     <div class="combater-intel-category-column">
                       {{#each this}}
-                        <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category>
+                        <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category="{{id}}">
                           <header class="combater-intel-category-head">
                             <button
                               type="button"
@@ -97,6 +97,66 @@
                               </label>
                             {{/each}}
                           </div>
+                          <section class="combater-intel-false-section">
+                            <header class="combater-intel-false-section-head">
+                              <span><i class="fa-solid fa-triangle-exclamation"></i> {{falseInformationLabel}}</span>
+                              <button
+                                type="button"
+                                class="combater-intel-add-false"
+                                data-intel-add-false
+                                data-tooltip="{{addFalseInformationLabel}}"
+                                aria-label="{{addFalseInformationLabel}}"
+                              >
+                                <i class="fa-solid fa-plus"></i>
+                              </button>
+                            </header>
+                            <div class="combater-intel-false-list" data-intel-false-list>
+                              {{#each falseInformation}}
+                                <div
+                                  class="combater-intel-false-record {{#if ../falseHasValue}}has-value{{/if}}"
+                                  data-intel-false-record-entry="{{entryIndex}}"
+                                  data-intel-false-record="{{id}}"
+                                  data-intel-false-category="{{category}}"
+                                  {{#if sourceLabel}}data-tooltip="{{sourceLabel}}"{{/if}}
+                                >
+                                  {{#if legacy}}
+                                    <span>{{text}}</span>
+                                  {{else}}
+                                    <select data-intel-false-fact>
+                                      <option value="">Choose false {{../label}} fact</option>
+                                      {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+                                    </select>
+                                    {{#if ../falseHasValue}}
+                                      <label class="combater-intel-false-value">
+                                        <span>{{#if ../falseIsDc}}DC{{else}}Value{{/if}}</span>
+                                        <input type="text" inputmode="numeric" pattern="[0-9]*" value="{{value}}" data-intel-false-value aria-label="{{#if ../falseIsDc}}DC{{else}}Value{{/if}}">
+                                      </label>
+                                    {{/if}}
+                                  {{/if}}
+                                  <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
+                                    <i class="fa-solid fa-trash"></i>
+                                  </button>
+                                </div>
+                              {{/each}}
+                            </div>
+                            <template data-intel-false-template>
+                              <div class="combater-intel-false-record {{#if falseHasValue}}has-value{{/if}}" data-intel-false-record>
+                                <select data-intel-false-fact>
+                                  <option value="">Choose false {{label}} fact</option>
+                                  {{#each falseOptions}}<option value="{{id}}">{{label}}</option>{{/each}}
+                                </select>
+                                {{#if falseHasValue}}
+                                  <label class="combater-intel-false-value">
+                                    <span>{{#if falseIsDc}}DC{{else}}Value{{/if}}</span>
+                                    <input type="text" inputmode="numeric" pattern="[0-9]*" data-intel-false-value aria-label="{{#if falseIsDc}}DC{{else}}Value{{/if}}">
+                                  </label>
+                                {{/if}}
+                                <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
+                                  <i class="fa-solid fa-trash"></i>
+                                </button>
+                              </div>
+                            </template>
+                          </section>
                         </section>
                       {{/each}}
                     </div>
@@ -111,7 +171,12 @@
                       <section class="combater-intel-revealed-section">
                         <h4>{{label}}</h4>
                         <ul>
-                          {{#each values}}<li>{{this}}</li>{{/each}}
+                          {{#each revealedItems}}
+                            <li class="{{#if isFalse}}is-false-information{{/if}}" {{#if tooltip}}data-tooltip="{{tooltip}}"{{/if}}>
+                              {{#if isFalse}}<i class="fa-solid fa-triangle-exclamation"></i>{{/if}}
+                              <span>{{label}}</span>
+                            </li>
+                          {{/each}}
                         </ul>
                       </section>
                     {{/if}}

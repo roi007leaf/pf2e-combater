@@ -42,6 +42,9 @@
         "Hint": "Hide the panel and toolbar toggle from players entirely. The GM keeps full access."
       }
     },
+    "Preflight": {
+      "TooltipTitle": "PF2e check preview"
+    },
     "Panel": {
       "PlannedSequenceAria": "Planned action sequence",
       "Done": "Done",
@@ -161,6 +164,8 @@
       "TargetsSelf": "Targets self",
       "BestTarget": "Best target: {name}",
       "BestTargetTooltip": "{name} is this action's highest-ranked target.",
+      "BestTargetTooltipWithReasons": "{base} Why: {reasons}",
+      "BestTargetWhy": "Why:",
       "Sustain": "Sustain"
     },
     "Warning": {
@@ -543,6 +548,14 @@
       "TargetImmune": "{target} is immune to {types}.",
       "TargetResists": "{target} resists {types} {amount}.",
       "TargetWeakness": "{target} has {types} weakness {amount}.",
+      "TargetMeleeThreat": "{target} is an immediate melee threat, increasing tactical priority.",
+      "TargetKnownSaveRank": "Known {defense} contributed to this ranking.",
+      "TargetBestKnownSuccessChance": "Best known success chance: {chance}% against {defense}.",
+      "TargetBestKnownSuccessEstimate": "Best known success estimate: {chance}% against {defense}.",
+      "TargetKnownTraitMatch": "Known {traits} traits match this action.",
+      "TargetNoKnownIntelAdvantageGM": "Selected from valid targets; no known defense or trait changes this ranking.",
+      "TargetNoRevealedIntelAdvantage": "Selected from valid targets; no revealed Recall Knowledge fact changes this ranking.",
+      "CurrentHuntedPreyOnlyTarget": "Current hunted prey is already designated; no other valid prey target.",
       "ResistanceAbsorbsMostExpected": "Resistance absorbs most expected damage.",
       "RequiresTrained": "Requires trained {skill}.",
       "UntrainedSkill": "Untrained in {skill}; reliability reduced.",
@@ -838,6 +851,7 @@
       "ThaumaturgeDamageWantsExploitVulnerability": "Thaumaturge damage wants Exploit Vulnerability first.",
       "TargetIsAlreadyHuntedPrey": "Target is already hunted prey.",
       "HuntPreyShouldComeBefore": "Hunt Prey should come before Ranger attacks.",
+      "RetargetHuntPreyLowerPriority": "Living hunted prey remains; retarget only when changing focus is worth the action.",
       "HuntedPreyMakesRangerAttacks": "Hunted prey makes Ranger attacks better.",
       "ThisTargetIsNotThe2": "This target is not the hunted prey.",
       "RangerAttacksWantHuntPrey": "Ranger attacks want Hunt Prey first.",

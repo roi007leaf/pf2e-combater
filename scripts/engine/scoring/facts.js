@@ -290,6 +290,7 @@ export function damageAdjustment(context, action, target) {
   const weakness = entryValue(weaknessEntry);
   const immune = hasImmunity(immunities, types);
   const reasons = [];
+  const positiveReasons = [];
   let scoreDelta = 0;
 
   if (immune) {
@@ -306,18 +307,22 @@ export function damageAdjustment(context, action, target) {
   }
   if (weakness > 0) {
     scoreDelta += Math.min(45, weakness * 4);
-    reasons.push(t("ScoreReason.TargetWeakness", "{target} has {types} weakness {amount}.", {
+    const reason = t("ScoreReason.TargetWeakness", "{target} has {types} weakness {amount}.", {
       target: target.name,
       types: types.join("/"),
       amount: defenseAmountReason(weaknessEntry, weakness),
-    }));
+    });
+    reasons.push(reason);
+    positiveReasons.push(reason);
   }
   if (Number.isFinite(average) && average > 0 && resistance > average * 0.75) {
     scoreDelta -= 18;
     reasons.push(t("ScoreReason.ResistanceAbsorbsMostExpected", "Resistance absorbs most expected damage."));
   }
 
-  return scoreDelta || reasons.length ? { scoreDelta, reasons, immune, resistance, weakness } : null;
+  return scoreDelta || reasons.length
+    ? { scoreDelta, reasons, positiveReasons, immune, resistance, weakness }
+    : null;
 }
 
 function numberOrNull(value) {

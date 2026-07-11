@@ -1,7 +1,7 @@
 import { hasDemoralizeImmunity } from "../../rules/demoralize-immunity.js";
 import { battlefieldPressure } from "../../rules/battlefield-analysis.js";
-import { aggroTargetValue } from "../../rules/aggro.js";
-import { targetHasMarkState } from "../../rules/combat-state.js";
+import { aggroProfile, aggroTargetValue } from "../../rules/aggro.js";
+import { readCombatState, targetHasMarkState, targetHasTokenMark, targetIsDefeated } from "../../rules/combat-state.js";
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { actorItems, entityKey } from "../../foundry-data.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
@@ -19,11 +19,14 @@ import {
   maxRange,
   requiresTargetableEnemy,
   targetDc,
+  targetDcLabel,
   targetHasMatchingDefense,
   targetTraitSlugs,
 } from "./facts.js";
 import { canAttackTarget, contextEnemies, firstContextTarget } from "../target-pool.js";
 import { profileReach } from "./tactic-helpers.js";
+import { actionSkillDcSlug, skillCheckScore } from "./skills.js";
+import { t } from "../../i18n.js";
 
 const KINETICIST_ELEMENT_SLUGS = new Set(["air", "earth", "fire", "metal", "water", "wood"]);
 const ELEMENT_DAMAGE_FALLBACKS = {
@@ -95,6 +98,10 @@ function kineticistElementProfiles(context, action) {
   return Array.from(profiles.values());
 }
 
+function targetDefenseSlug(action) {
+  return action?.saveProfile?.stat ?? actionSkillDcSlug(action);
+}
+
 function offensiveTargetValue(context, action, role, target) {
   if (!target) return -Infinity;
   if ((action?.targetingProfile?.maxRange || action?.range?.max || action?.range?.increment) && !inRange(action, target)) {
@@ -107,8 +114,9 @@ function offensiveTargetValue(context, action, role, target) {
   if (role === "grab" || action?.targetingProfile?.reach) {
     if (!inRange(action, target)) value -= 20;
   }
-  if (action?.saveProfile?.stat && canUseTargetSave(context, target, action.saveProfile.stat)) {
-    const dc = targetDc(target, action.saveProfile.stat);
+  const defenseSlug = targetDefenseSlug(action);
+  if (defenseSlug && canUseTargetSave(context, target, defenseSlug)) {
+    const dc = targetDc(target, defenseSlug);
     if (Number.isFinite(dc)) value += 30 - dc;
   }
 
@@ -123,6 +131,102 @@ function offensiveTargetValue(context, action, role, target) {
   value += aggroTargetValue(context, action, role, target);
   value += (1 - hpPercent(target)) * 4;
   return value;
+}
+
+function compareRankedTargets(context, action, role, left, right) {
+  const defenseSlug = targetDefenseSlug(action);
+  if (action?.skill && defenseSlug) {
+    const leftDc = canUseTargetSave(context, left, defenseSlug) ? targetDc(left, defenseSlug) : null;
+    const rightDc = canUseTargetSave(context, right, defenseSlug) ? targetDc(right, defenseSlug) : null;
+    if (Number.isFinite(leftDc) && Number.isFinite(rightDc) && leftDc !== rightDc) return leftDc - rightDc;
+  }
+  return offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left);
+}
+
+export function targetRankingReasons(context, action, role, target) {
+  if (!target) return [];
+
+  const reasons = [];
+  const pressure = battlefieldPressure(context);
+  let hasOutcomeReason = false;
+
+  const defenseSlug = targetDefenseSlug(action);
+  if (defenseSlug && canUseTargetSave(context, target, defenseSlug)) {
+    const dc = targetDc(target, defenseSlug);
+    if (Number.isFinite(dc)) {
+      const check = action?.skill ? skillCheckScore(context?.profile ?? context?.actor?.profile ?? {}, target, action) : null;
+      const approximate = defenseSlug === "perception"
+        ? Boolean(target?.intelPerceptionBand)
+        : Boolean(target?.intelSaveBands?.[defenseSlug]);
+      if (Number.isFinite(check?.chance)) {
+        reasons.push(t(
+          approximate ? "ScoreReason.TargetBestKnownSuccessEstimate" : "ScoreReason.TargetBestKnownSuccessChance",
+          approximate
+            ? "Best known success estimate: {chance}% against {defense}."
+            : "Best known success chance: {chance}% against {defense}.",
+          { chance: Math.round(check.chance * 100), defense: targetDcLabel(target, defenseSlug, dc) },
+        ));
+      } else {
+        reasons.push(t(
+          "ScoreReason.TargetKnownSaveRank",
+          "Known {defense} contributed to this ranking.",
+          { defense: targetDcLabel(target, defenseSlug, dc) },
+        ));
+      }
+      hasOutcomeReason = true;
+    }
+  }
+
+  const adjustment = damageAdjustment(context, action, target);
+  if (adjustment?.positiveReasons?.length) reasons.push(...adjustment.positiveReasons);
+
+  if (!hasOutcomeReason && pressure.meleeThreatKeys.has(entityKey(target))) {
+    reasons.push(t(
+      "ScoreReason.TargetMeleeThreat",
+      "{target} is an immediate melee threat, increasing tactical priority.",
+      { target: target.name },
+    ));
+  }
+
+  const aggro = aggroProfile(context, target);
+  if (!hasOutcomeReason && aggro?.score > 0 && aggro.reasons.length) {
+    aggro.reasons.forEach((reason, index) => {
+      if (aggro.roles[index] === "immediate-threat" && pressure.meleeThreatKeys.has(entityKey(target))) return;
+      reasons.push(reason);
+    });
+  }
+
+  const requiredTraits = [
+    ...(Array.isArray(action?.targetingProfile?.requiresAnyTrait)
+      ? action.targetingProfile.requiresAnyTrait
+      : []),
+    ...(Array.isArray(action?.targetingProfile?.requiresAllTraits)
+      ? action.targetingProfile.requiresAllTraits
+      : []),
+  ].map(slugText).filter(Boolean);
+  if (requiredTraits.length) {
+    const knownTraits = targetTraitSlugs(context, target);
+    const matches = requiredTraits.filter((trait) => knownTraits.has(trait));
+    if (matches.length) {
+      reasons.push(t(
+        "ScoreReason.TargetKnownTraitMatch",
+        "Known {traits} traits match this action.",
+        { traits: matches.join(", ") },
+      ));
+    }
+  }
+
+  const uniqueReasons = [...new Set(reasons)];
+  if (uniqueReasons.length) return uniqueReasons;
+  return [context?.isGM === true
+    ? t(
+      "ScoreReason.TargetNoKnownIntelAdvantageGM",
+      "Selected from valid targets; no known defense or trait changes this ranking.",
+    )
+    : t(
+      "ScoreReason.TargetNoRevealedIntelAdvantage",
+      "Selected from valid targets; no revealed Recall Knowledge fact changes this ranking.",
+    )];
 }
 
 function targetMatchesTraitRequirements(context, action, target) {
@@ -152,6 +256,13 @@ function canAffectTarget(context, action, target) {
   if (isExtractElementAction(action) && !canExtractElementFromTarget(context, action, target)) return false;
   if (isExploitVulnerabilityAction(action) && hasExploitVulnerabilityMark(target)) return false;
   const mark = action?.activityProfile?.targetMark;
+  if (mark && targetIsDefeated(target)) return false;
+  if (mark === "hunted-prey") {
+    const state = context?.profile?.combatState
+      ?? context?.actor?.profile?.combatState
+      ?? readCombatState(contextActorDocument(context));
+    if (targetHasTokenMark(target, state?.huntedPreyTokenUuids)) return false;
+  }
   if (mark && targetHasMarkState(target, mark)) return false;
   return true;
 }
@@ -194,17 +305,17 @@ export function bestTargetForAction(context, action, role) {
     const reachable = enemyValues.filter((enemy) => inRange(action, enemy));
     if (reachable.length) {
       return reachable.toSorted((left, right) =>
-        offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
+        compareRankedTargets(context, action, role, left, right),
       )[0];
     }
     return canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
   }
 
-  if (isOffensiveRole(role)) {
+  if (isOffensiveRole(role) || targetDefenseSlug(action)) {
     const reachable = enemyValues.filter((enemy) => targetInSelectionRange(context, action, enemy));
     if (reachable.length) {
       return reachable.toSorted((left, right) =>
-        offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left),
+        compareRankedTargets(context, action, role, left, right),
       )[0];
     }
     return targetInSelectionRange(context, action, target) && canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
@@ -226,7 +337,7 @@ export function distinctTargetsFor(context, action, role) {
   const count = Number.isFinite(action.activityProfile?.distinctStrikeCount) ? action.activityProfile.distinctStrikeCount : 2;
   const reachable = attackableEnemies(context)
     .filter((enemy) => targetInSelectionRange(context, action, enemy))
-    .toSorted((left, right) => offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left));
+    .toSorted((left, right) => compareRankedTargets(context, action, role, left, right));
 
   if (!reachable.length) return [];
 

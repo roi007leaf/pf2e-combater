@@ -17,6 +17,7 @@ import { swapDraftSteps } from "../../engine/draft-reorder.js";
 import { reorderActionFavorite, toggleActionFavorite } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
 import {
+  hasSharedDraftPlan,
   readDraftPlan,
   readSharedDraftPlan,
   sharedDraftPlanKey,
@@ -56,18 +57,18 @@ import {
 } from "./view-model.js";
 import { t } from "../../i18n.js";
 
-// Reads/writes route to the shared draft when the GM is executing a player plan, otherwise to the
-// local per-user draft.
+// Reads/writes route to the shared draft when the GM is editing or executing a player plan;
+// otherwise they use the local per-user draft.
 export function readPanelActiveDraftPlan(panel) {
-  return panel._gmExecuteMode === true
-    ? readSharedDraftPlan(panel._context)
-    : readDraftPlan(panel._context);
+  if (panel._gmExecuteMode !== true) return readDraftPlan(panel._context);
+  const sharedDraft = readSharedDraftPlan(panel._context);
+  return hasSharedDraftPlan(sharedDraft) ? sharedDraft : (panel._sharedDraftSeed ?? sharedDraft);
 }
 
 export async function persistPanelActiveDraftStep(panel, step, listKey) {
   const targetList = listKey ?? draftListForInstance(panel._readActiveDraftPlan(), step.instanceId);
   if (panel._gmExecuteMode === true) {
-    const draft = readSharedDraftPlan(panel._context);
+    const draft = panel._readActiveDraftPlan();
     const list = [...(draft[targetList] ?? [])];
     const index = list.findIndex((entry) => entry.instanceId === step.instanceId);
     if (index >= 0) list[index] = step;
@@ -90,8 +91,9 @@ export async function writePanelActiveDraftPlan(panel, draft) {
 
 // Preserve the player's ownership fields; only the steps / execution state changes.
 export async function writePanelActiveSharedDraft(panel, draft) {
-  writeSharedDraftPlan(panel._context, draft);
-  await writeSharedDraftPlanActorFlag(panel._context, draft);
+  const sharedDraft = writeSharedDraftPlan(panel._context, draft);
+  panel._sharedDraftSeed = sharedDraft;
+  await writeSharedDraftPlanActorFlag(panel._context, sharedDraft);
 }
 
 function minionPlanDraftFields(action) {

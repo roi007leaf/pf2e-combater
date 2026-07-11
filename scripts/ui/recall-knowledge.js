@@ -3,8 +3,10 @@ import { collectionValues } from "../foundry-data.js";
 import { t } from "../i18n.js";
 import {
   INTEL_LEDGER_FLAG,
+  INTEL_FALSE_INFORMATION_FLAG,
   INTEL_REVEAL_MODE_FLAG,
   intelLedgerView,
+  normalizeIntelFalseInformation,
 } from "../rules/intel-ledger.js";
 import {
   RECALL_KNOWLEDGE_QUESTIONS,
@@ -89,6 +91,7 @@ async function saveRecallKnowledgeIntel(decision) {
       if (typeof entry.actor?.setFlag !== "function") throw new Error("Actor flags unavailable");
       await entry.actor.setFlag(MODULE_ID, INTEL_LEDGER_FLAG, entry.value);
       await entry.actor.setFlag(MODULE_ID, INTEL_REVEAL_MODE_FLAG, entry.revealMode);
+      await entry.actor.setFlag(MODULE_ID, INTEL_FALSE_INFORMATION_FLAG, normalizeIntelFalseInformation(entry.falseInformation));
     }
     globalThis.ui?.notifications?.info?.(t("Intel.Saved", "Intel ledger updated."));
     globalThis.ui?.combat?.render?.(true);
@@ -160,7 +163,11 @@ export async function resetRecallKnowledgeAttemptsForTarget(target, { actors = n
   }
 }
 
-export async function openRecallKnowledgeIntelWindow(target, { openWindow = null } = {}) {
+export async function openRecallKnowledgeIntelWindow(target, {
+  openWindow = null,
+  preselectIdentity = true,
+  falseInformationContext = null,
+} = {}) {
   if (globalThis.game?.user?.isGM !== true || !target) return false;
   const baseView = intelLedgerView({
     isGM: true,
@@ -169,13 +176,26 @@ export async function openRecallKnowledgeIntelWindow(target, { openWindow = null
   const view = {
     ...baseView,
     entries: (baseView.entries ?? []).map((entry) => {
+      const falseInformation = falseInformationContext ? [
+        ...(entry.falseInformation ?? []),
+        {
+          id: globalThis.foundry?.utils?.randomID?.() ?? `false-${Date.now()}`,
+          text: "",
+          sourceActorUuid: falseInformationContext.actorUuid ?? "",
+          sourceActorName: falseInformationContext.actorName ?? "",
+          category: falseInformationContext.category ?? "traits",
+          question: falseInformationContext.question ?? "",
+          attempt: falseInformationContext.attempt ?? 1,
+          createdAt: new Date().toISOString(),
+        },
+      ] : (entry.falseInformation ?? []);
       const identityId = entry.availableFacts?.identity?.[0]?.id;
-      if (!identityId) return entry;
+      if (!identityId || !preselectIdentity) return { ...entry, falseInformation };
       const current = entry.values?.identity;
       const identity = current === true || (Array.isArray(current) && current.length)
         ? current
         : [identityId];
-      return { ...entry, values: { ...entry.values, identity } };
+      return { ...entry, falseInformation, values: { ...entry.values, identity } };
     }),
   };
   if (!view.visible || !view.entries?.length) return false;
@@ -436,7 +456,9 @@ function actorHasDubiousKnowledge(actor) {
   return feats.some((item) => String(item?.slug ?? item?.system?.slug ?? "").toLowerCase() === "dubious-knowledge");
 }
 
-export async function adjudicateRecallKnowledgeRequest(payload = {}, { openIntel = openRecallKnowledgeIntelWindow } = {}) {
+export async function adjudicateRecallKnowledgeRequest(payload = {}, {
+  openIntel = openRecallKnowledgeIntelWindow,
+} = {}) {
   if (globalThis.game?.user?.isGM !== true) return null;
   const actor = await documentFromUuid(payload.actorUuid);
   const target = await documentFromUuid(payload.targetActorUuid);
@@ -463,11 +485,17 @@ export async function adjudicateRecallKnowledgeRequest(payload = {}, { openIntel
     return { completed: true, revealed: 0, dubiousKnowledge };
   }
   if (outcome === "criticalfailure") {
-    globalThis.ui?.notifications?.warn?.(t(
-      "RecallKnowledge.CriticalFailureGM",
-      "Recall Knowledge critically failed. Give false information manually or no information; planner Intel remains unchanged.",
-    ));
-    return { completed: true, revealed: 0, falseInformation: true };
+    await openIntel(target, {
+      preselectIdentity: false,
+      falseInformationContext: {
+        actorUuid: actor.uuid,
+        actorName: actor.name ?? payload.actorName,
+        category: recallKnowledgeQuestion(payload.question)?.categories?.[0] ?? "traits",
+        question: payload.question,
+        attempt: payload.attempt,
+      },
+    });
+    return { completed: true, revealed: 0 };
   }
 
   await openIntel(target);
@@ -521,6 +549,7 @@ export async function resolveRecallKnowledgeRequest(payload = {}) {
     ...payload,
     outcome,
     attempt: matrix.attempt,
+    requesterId,
   });
   if (!adjudication?.completed) {
     return { completed: false, reason: adjudication?.reason ?? "GM did not finish Recall Knowledge adjudication." };
@@ -530,6 +559,5 @@ export async function resolveRecallKnowledgeRequest(payload = {}) {
     completed: true,
     revealed: adjudication.revealed ?? 0,
     dubiousKnowledge: adjudication.dubiousKnowledge === true,
-    falseInformation: adjudication.falseInformation === true,
   };
 }

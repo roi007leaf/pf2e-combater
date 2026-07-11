@@ -31,9 +31,17 @@ export function currentTargetSelection() {
 }
 
 export function plannedTargetSelection(action) {
-  const target = action?.suggestedTarget ?? action?.preferredTarget ?? action?.target ?? null;
+  const nestedAction = action?.action ?? null;
+  const target = action?.suggestedTarget
+    ?? action?.preferredTarget
+    ?? action?.target
+    ?? nestedAction?.suggestedTarget
+    ?? nestedAction?.preferredTarget
+    ?? nestedAction?.target
+    ?? null;
   const ids = Array.from(new Set([
     action?.targetingProfile?.preferredTargetId,
+    nestedAction?.targetingProfile?.preferredTargetId,
     target?.id,
     target?.uuid,
     target?.token?.id,

@@ -66,7 +66,7 @@ import { buildCandidates } from "../candidates.js";
 import { classifySystemAction } from "../action/classifier.js";
 import { classifySpell } from "../spell/classifier.js";
 import { findCuratedSpell } from "../../catalog/spells/index.js";
-import { REVIEWED_SPELL_TACTICS } from "../../catalog/spells/review-overrides.js";
+import { REVIEWED_SPELL_FEEDBACK_BATCH, REVIEWED_SPELL_TACTICS } from "../../catalog/spells/review-overrides.js";
 import { spellCatalogAuditForItems, spellCatalogAuditMarkdown } from "../../dev/spell-catalog-audit.js";
 import { actorStrikeOptions, backingStrikeFilterByPreset, bestReadyStrike, heldMeleeBackingStrikes, readActionCost, readActionSources } from "../../readers/action/reader.js";
 import {
@@ -103,6 +103,7 @@ import {
 } from "../../state/draft-plans.js";
 import * as draftPlanState from "../../state/draft-plans.js";
 import { coveredClassSlugs } from "../../rules/class-tactics.js";
+import { readCombatState } from "../../rules/combat-state.js";
 import { KNOWN_SUBCLASS_SLUGS } from "../../rules/class-tactics-data/index.js";
 import { displayStepEntries } from "../../ui/display-steps.js";
 import { decorateBuilder, decoratePlan } from "../../ui/panel/view-model.js";
@@ -121,7 +122,7 @@ import { autoFillCyclePlans, bestAutoFillPlan, nextAutoFillPlan, previousAutoFil
 import { clearActionPreview, showActionPreview } from "../../ui/action/preview.js";
 import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } from "../../ui/panel/draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
-import { panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
+import { gmPlayerPlanAccess, panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
 import { choosePanelTarget } from "../../ui/panel/picker-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
@@ -816,6 +817,26 @@ try {
   assert.deepEqual(bestTargetStep.targetTokenIds, ["best-target-token"], "Shift-target should use scored Best target, not current Foundry target");
   assert.equal(bestTargetStep.targetLabel, "Target: Best Goblin");
   assert.equal(bestTargetStep.targetSelection, "recommended");
+  let nestedBestTargetStep = {
+    instanceId: "nested-best-target-step",
+    suggestedTarget: null,
+    action: {
+      name: "Force Barrage",
+      suggestedTarget: { type: "enemy", id: "alex-token", name: "Alex" },
+    },
+  };
+  const nestedBestTargetPanel = {
+    ...bestTargetPanel,
+    _findDraftStep: () => nestedBestTargetStep,
+    _findActiveStep: () => nestedBestTargetStep,
+    _persistActiveDraftStep: async (step) => { nestedBestTargetStep = step; },
+  };
+  await choosePanelTarget(nestedBestTargetPanel, "nested-best-target-step", { useBestTarget: true });
+  assert.deepEqual(
+    nestedBestTargetStep.targetTokenIds,
+    ["alex-token"],
+    "Shift-target should fall back to nested action Best target when stale step metadata is null",
+  );
   assert.deepEqual(
     executionReadinessForStep({ instanceId: "current-target-step" }, executionTargetAction).choices,
     ["target"],
@@ -2812,6 +2833,53 @@ try {
     "GM should clear stale local player plan when the actor flag mirrors an empty player draft",
   );
 
+  const offlinePlayer = { id: "offline-player", name: "Offline Player", isGM: false, active: false };
+  const activePlayer = { id: "active-player", name: "Active Player", isGM: false, active: true };
+  globalThis.game = {
+    user: { id: "gm-user", name: "GM", isGM: true, active: true },
+    users: [offlinePlayer, activePlayer],
+  };
+  assert.deepEqual(
+    gmPlayerPlanAccess({ type: "character", ownership: { "offline-player": 3 } }),
+    { viewing: true, editable: true, ownerId: "offline-player", ownerName: "Offline Player" },
+    "GM should be able to edit a player character plan while its owner is offline",
+  );
+  assert.deepEqual(
+    gmPlayerPlanAccess({ type: "character", ownership: { "active-player": 3 } }),
+    { viewing: true, editable: false, ownerId: "active-player", ownerName: "Active Player" },
+    "GM should keep a connected player's plan read-only to avoid concurrent edits",
+  );
+  assert.equal(
+    gmPlayerPlanAccess({ type: "character", ownership: { "offline-player": 3, "active-player": 3 } }).editable,
+    false,
+    "one connected co-owner should keep a shared plan read-only",
+  );
+
+  const { readPanelActiveDraftPlan, writePanelActiveSharedDraft } = await import("../../ui/panel/draft-workflow.js");
+  localStore.set(STORAGE_KEYS.sharedDraftPlans, "{}");
+  actorSharedDrafts = {};
+  const offlinePanel = {
+    _context: actorFlagContext,
+    _gmExecuteMode: true,
+    _sharedDraftSeed: {
+      steps: [],
+      uncounted: [],
+      shared: true,
+      userId: "offline-player",
+      userName: "Offline Player",
+    },
+  };
+  const seededOfflineDraft = readPanelActiveDraftPlan(offlinePanel);
+  assert.equal(seededOfflineDraft.userId, "offline-player", "a new offline plan should retain its player owner before first save");
+  await writePanelActiveSharedDraft(offlinePanel, {
+    ...seededOfflineDraft,
+    steps: [{ instanceId: "offline-step", actionKey: "stride", actionCost: 1 }],
+  });
+  assert.equal(readSharedDraftPlan(actorFlagContext).userId, "offline-player", "GM edits must not relabel an offline plan as GM-owned");
+  assert.equal(actorSharedDrafts[sharedDraftPlanKey(actorFlagContext)].userId, "offline-player", "offline plan ownership should persist in the actor flag");
+  assert.equal(actorSharedDrafts[sharedDraftPlanKey(actorFlagContext)].steps[0].actionKey, "stride", "offline plan edits should persist in the actor flag");
+  globalThis.game = { user: { id: "user-1" } };
+
   assert.equal(
     isSharedDraftPlanEcho({ _id: "actor-1", flags: { "pf2e-combater": { sharedDraftPlans: { "combat-1|combatant-1": {} } } } }),
     true,
@@ -3042,6 +3110,99 @@ assert.deepEqual(explainablePlan.steps[0].why.reasons, [
   "Average damage about 12.",
   "Aggressive tactic favors damage.",
 ]);
+const scoredBrowseTarget = { ...fighterContext.targets[0], distance: 5, name: "Silva" };
+const scoredBrowseContext = {
+  ...fighterContext,
+  targets: [scoredBrowseTarget],
+  battlefield: { targets: [scoredBrowseTarget], enemies: [scoredBrowseTarget], allies: [] },
+};
+const scoredBrowseCandidates = buildCandidates(scoredBrowseContext).candidates;
+const scoredBrowseGrapple = scoredBrowseCandidates.find((action) => action.slug === "grapple");
+assert.ok(scoredBrowseGrapple, "fixture should expose scored Grapple in Browse");
+const scoredBrowseGrappleModel = decorateBuilder(buildActionBuilderModel({
+  context: scoredBrowseContext,
+  candidates: [scoredBrowseGrapple],
+  draft: { steps: [] },
+  favorites: new Set(),
+}), "one");
+const scoredBrowseGrappleCard = scoredBrowseGrappleModel.tabsList
+  .find((tab) => tab.id === "one")?.sections
+  .flatMap((section) => section.actions)
+  .find((action) => action.slug === "grapple");
+assert.match(
+  scoredBrowseGrappleCard?.detailChips?.find((chip) => chip.class === "is-best-target")?.tooltipHtml ?? "",
+  /<strong>Why:<\/strong><ul><li>/u,
+  "scored Grapple Browse chip should bullet why its target ranks highest",
+);
+const hardGrappleTarget = { ...scoredBrowseTarget, id: "hard-grapple", name: "Rootfall", saves: { fortitude: 24 } };
+const favorableGrappleTarget = { ...scoredBrowseTarget, id: "easy-grapple", name: "Silva", saves: { fortitude: 18 } };
+const rankedGrapple = scoreCandidate({
+  ...scoredBrowseContext,
+  isGM: true,
+  targets: [hardGrappleTarget, favorableGrappleTarget],
+  battlefield: { targets: [hardGrappleTarget, favorableGrappleTarget], enemies: [hardGrappleTarget, favorableGrappleTarget], allies: [] },
+}, GENERIC_ACTIONS.find((action) => action.slug === "grapple"));
+assert.equal(rankedGrapple.suggestedTarget?.name, "Silva", "Grapple Best target should favor lower Fortitude DC");
+assert.ok(
+  rankedGrapple.bestTargetReasons.some((reason) => reason.includes("success chance") && reason.includes("Fortitude DC 18")),
+  "Grapple Best target reason should name known target Fortitude DC",
+);
+assert.match(
+  actionDetailChips(rankedGrapple).find((chip) => chip.class === "is-best-target")?.tooltipHtml ?? "",
+  /<li>Best known success chance: \d+% against Fortitude DC 18/u,
+  "rendered Grapple Best target tooltip should expose its defense-based ranking reason",
+);
+const hardDiversionTarget = {
+  ...scoredBrowseTarget,
+  id: "hard-diversion",
+  name: "Rootfall",
+  actor: actorWithIntelLedger({ perception: true }),
+  perceptionDC: 22,
+};
+const easyDiversionTarget = {
+  ...scoredBrowseTarget,
+  id: "easy-diversion",
+  name: "Alex",
+  actor: actorWithIntelLedger({ perception: true }),
+  perceptionDC: 18,
+};
+const rankedDiversion = scoreCandidate({
+  ...scoredBrowseContext,
+  isGM: false,
+  profile: {
+    ...scoredBrowseContext.profile,
+    skills: { ...scoredBrowseContext.profile.skills, deception: { mod: 8, rank: 2 } },
+  },
+  targets: [hardDiversionTarget, easyDiversionTarget],
+  battlefield: { targets: [hardDiversionTarget, easyDiversionTarget], enemies: [hardDiversionTarget, easyDiversionTarget], allies: [] },
+}, GENERIC_ACTIONS.find((action) => action.slug === "create-a-diversion"));
+assert.equal(rankedDiversion.suggestedTarget?.name, "Alex");
+assert.ok(rankedDiversion.bestTargetReasons.some((reason) =>
+  /Best known success chance: \d+% against Perception DC 18\./u.test(reason)));
+assert.equal(
+  rankedDiversion.bestTargetReasons.some((reason) => reason.includes("immediate threat")),
+  false,
+  "known success odds should explain Create a Diversion target before threat priority",
+);
+const deduplicatedWhyPlan = decoratePlan({
+  id: "deduplicated-why-plan",
+  steps: [{
+    id: "deduplicated-why-step",
+    slug: "demoralize",
+    name: "Demoralize",
+    actionCost: 1,
+    reasons: [
+      "Intimidation +5 vs Will DC 18.",
+      "PF2e check preview: Intimidation +5 vs Will DC 18.",
+      "Moves into reach and attacks Rootfall.",
+      "Stride into reach and Strike Rootfall.",
+    ],
+  }],
+});
+assert.deepEqual(deduplicatedWhyPlan.steps[0].why.reasons, [
+  "PF2e check preview: Intimidation +5 vs Will DC 18.",
+  "Stride into reach and Strike Rootfall.",
+], "Why list should collapse equivalent preflight and move-then-Strike explanations");
 
 const explainableDraftModel = decorateBuilder(buildActionBuilderModel({
   context: { combat: { id: "combat-why", round: 1 }, combatant: { id: "c-why" }, actor: { uuid: "Actor.why" } },
@@ -16466,13 +16627,18 @@ assert.ok(rangerStrikeWithoutPrey.reasons.includes("Ranger attacks want Hunt Pre
 const huntedPreyTarget = {
   ...fighterContext.targets[0],
   distance: 30,
-  effects: [{ slug: "hunted-prey", name: "Hunted Prey" }],
+  token: { ...fighterContext.targets[0].token, uuid: "Scene.test.Token.hunted-prey" },
 };
+const nativeHuntPreyState = readCombatState({
+  itemTypes: { effect: [{ slug: "effect-hunt-prey", name: "Effect: Hunt Prey" }] },
+  synthetics: { tokenMarks: new Map([["Scene.test.Token.hunted-prey", ["hunt-prey"]]]) },
+});
+assert.deepEqual(nativeHuntPreyState.huntedPreyTokenUuids, ["Scene.test.Token.hunted-prey"]);
 const huntedRangerContext = {
   ...rangerClassTacticContext,
   profile: {
     ...rangerClassTacticContext.profile,
-    combatState: { huntedPreyActive: true },
+    combatState: nativeHuntPreyState,
   },
   targets: [huntedPreyTarget],
   battlefield: { targets: [huntedPreyTarget], enemies: [huntedPreyTarget], allies: [] },
@@ -16502,7 +16668,7 @@ const huntedRangerStrike = scoreCandidate(huntedRangerContext, {
 });
 assert.ok(huntedRangerStrike.score > duplicateHuntPrey.score);
 assert.equal(duplicateHuntPrey.score, -999);
-assert.equal(duplicateHuntPrey.reason, "Target already has Hunted Prey.");
+assert.equal(duplicateHuntPrey.reason, "Current hunted prey is already designated; no other valid prey target.");
 assert.ok(huntedRangerStrike.reasons.includes("Hunted prey makes Ranger attacks better."));
 
 const secondPreyTarget = {
@@ -16528,6 +16694,35 @@ const retargetHuntPrey = scoreCandidate({
   traits: ["ranger"],
 });
 assert.equal(retargetHuntPrey.suggestedTarget?.name, "Second Prey");
+assert.notEqual(retargetHuntPrey.score, -999);
+assert.ok(retargetHuntPrey.reasons.includes("Living hunted prey remains; retarget only when changing focus is worth the action."));
+assert.ok(retargetHuntPrey.score < rangerHuntPrey.score, "retargeting living prey should rank below first Hunt Prey setup");
+assert.ok(huntedRangerStrike.score > retargetHuntPrey.score, "attacking current living prey should outrank switching Hunt Prey");
+
+const deadHuntedPreyTarget = {
+  ...huntedPreyTarget,
+  hpPercent: 0,
+  conditions: { slugs: ["dead"], values: { dead: 1 } },
+};
+const huntPreyAfterDeath = scoreCandidate({
+  ...huntedRangerContext,
+  targets: [secondPreyTarget],
+  battlefield: { targets: [secondPreyTarget], enemies: [deadHuntedPreyTarget, secondPreyTarget], allies: [] },
+}, {
+  id: "hunt-prey-after-death",
+  name: "Hunt Prey",
+  slug: "hunt-prey",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], targetMark: "hunted-prey" },
+  targetingProfile: { enemy: true },
+  setupFor: ["strike", "damage"],
+  traits: ["ranger"],
+});
+assert.equal(huntPreyAfterDeath.suggestedTarget?.name, "Second Prey");
+assert.notEqual(huntPreyAfterDeath.score, -999);
+assert.ok(huntPreyAfterDeath.reasons.includes("Hunt Prey should come before Ranger attacks."));
 
 const wrongPreyContext = {
   ...rangerClassTacticContext,
@@ -18518,6 +18713,7 @@ const gmFireSpellScore = scoreCandidate({
 }, fireSaveSpell);
 assert.equal(gmFireSpellScore.suggestedTarget.name, "Fire Weak");
 assert.ok(gmFireSpellScore.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(gmFireSpellScore.bestTargetReasons.some((reason) => reason.includes("weakness 5")));
 
 const unknownFireResistantTarget = { ...fireResistantTarget, actor: actorWithIntelLedger() };
 const unknownFireWeakTarget = { ...fireWeakTarget, actor: actorWithIntelLedger() };
@@ -18528,6 +18724,8 @@ const playerFireSpellScore = scoreCandidate({
 }, fireSaveSpell);
 assert.equal(playerFireSpellScore.suggestedTarget.name, "Fire Resistant");
 assert.ok(!playerFireSpellScore.reasons.some((reason) => /weakness|resists|immune|spell DC/i.test(reason)));
+assert.ok(!playerFireSpellScore.bestTargetReasons.some((reason) => /weakness|resists|immune|Reflex DC/i.test(reason)));
+assert.ok(playerFireSpellScore.bestTargetReasons.some((reason) => reason.includes("no revealed Recall Knowledge fact")));
 
 const playerRevealedWeakFireSpellScore = scoreCandidate({
   ...fighterContext,
@@ -18539,6 +18737,22 @@ const playerRevealedWeakFireSpellScore = scoreCandidate({
 }, fireSaveSpell);
 assert.equal(playerRevealedWeakFireSpellScore.suggestedTarget.name, "Fire Weak");
 assert.ok(playerRevealedWeakFireSpellScore.reasons.some((reason) => reason.includes("weakness 5")));
+assert.ok(playerRevealedWeakFireSpellScore.bestTargetReasons.some((reason) => reason.includes("weakness 5")));
+const playerRevealedWeakBuilderModel = decorateBuilder(buildActionBuilderModel({
+  context: { ...fighterContext, isGM: false },
+  candidates: [playerRevealedWeakFireSpellScore],
+  draft: { steps: [] },
+  favorites: new Set(),
+}), "two");
+const playerRevealedWeakBrowseCard = playerRevealedWeakBuilderModel.tabsList
+  .find((tab) => tab.id === "two")?.sections
+  .flatMap((section) => section.actions)
+  .find((action) => action.id === playerRevealedWeakFireSpellScore.id);
+assert.ok(
+  playerRevealedWeakBrowseCard?.detailChips
+    ?.find((chip) => chip.class === "is-best-target")?.tooltip.includes("weakness 5"),
+  "player Browse card should retain Best target reasons from revealed Recall Knowledge",
+);
 assert.ok(!playerRevealedWeakFireSpellScore.reasons.some((reason) => /spell DC|Reflex DC/i.test(reason)), "revealing weaknesses must not also reveal save math");
 
 const playerRevealedSaveFireSpellScore = scoreCandidate({
@@ -18573,6 +18787,8 @@ const playerBandSaveFireSpellScore = scoreCandidate({
 }, fireSaveSpell);
 assert.ok(playerBandSaveFireSpellScore.reasons.some((reason) => /Reflex: Mid|spell DC 20/i.test(reason)));
 assert.ok(!playerBandSaveFireSpellScore.reasons.some((reason) => /Reflex DC \d/i.test(reason)), "banded save scoring should not reveal the exact save DC");
+assert.ok(playerBandSaveFireSpellScore.bestTargetReasons.some((reason) => reason.includes("Reflex: Mid")));
+assert.ok(!playerBandSaveFireSpellScore.bestTargetReasons.some((reason) => /Reflex DC \d/i.test(reason)), "Best target reasons must preserve banded save secrecy");
 
 const gmFireStrikeScore = scoreCandidate({
   ...fighterContext,
@@ -19165,15 +19381,184 @@ const reviewedSpellExpectations = [
   ["spirit-ward", "defense", "browse-only"],
   ["dull-ambition", "debuff", "browse-only"],
   ["sacred-form", "transformation", undefined],
+  ["bracing-tendrils", "buff", undefined],
+  ["ashen-wind", "debuff", undefined],
+  ["transcribe-moment", "exploration-utility", "browse-only"],
+  ["aerial-form", "transformation", undefined],
+  ["manifestation-of-spirits", "debuff", undefined],
+  ["far-flung-fetch", "mobility", "context-only"],
+  ["unexpected-transposition", "defense", undefined],
+  ["lotus-walk", "mobility", "context-only"],
+  ["genies-veil", "defense", undefined],
+  ["ibexs-harvest", "defense", undefined],
+  ["sudden-shift", "mobility", undefined],
+  ["mental-map", "exploration-utility", "browse-only"],
+  ["domoras-defense", "defense", undefined],
+  ["swarm-form", "transformation", undefined],
+  ["information-overload", "debuff", undefined],
+  ["ectoplasmic-expulsion", "healing", undefined],
+  ["pernicious-poltergeist", "save-damage", undefined],
+  ["veil-of-confidence", "healing", undefined],
+  ["blinding-beauty", "debuff", undefined],
+  ["penumbral-disguise", "exploration-utility", "browse-only"],
+  ["nudge-the-odds", "exploration-utility", "browse-only"],
+  ["detect-poison", "exploration-utility", "browse-only"],
+  ["fey-form", "transformation", undefined],
+  ["guided-introspection", "healing", undefined],
+  ["sending", "exploration-utility", "browse-only"],
+  ["forbidding-ward", "defense", undefined],
+  ["waterproof", "buff", "browse-only"],
+  ["internal-insurrection", "debuff", undefined],
+  ["coiling-dance", "buff", undefined],
+  ["clownish-curse", "debuff", "browse-only"],
+  ["cloak-of-shadow", "defense", undefined],
+  ["retributive-pain", "save-damage", undefined],
+  ["stabilize", "healing", "context-only"],
+  ["avenging-wildwood", "summon", undefined],
+  ["cloak-of-colors", "defense", undefined],
+  ["primal-chorus", "setup", "browse-only"],
+  ["share-vision", "buff", "browse-only"],
+  ["pyrotechnics", "debuff", undefined],
+  ["erase-trail", "exploration-utility", "browse-only"],
+  ["infiltrators-tunnel", "mobility", undefined],
+  ["glamorize", "exploration-utility", "browse-only"],
+  ["temporal-distortion", "debuff", undefined],
+  ["discern-secrets", "buff", "browse-only"],
+  ["wood-walk", "mobility", "context-only"],
+  ["warping-pull", "healing", undefined],
+  ["the-queens-rainbow", "debuff", undefined],
+  ["vapor-form", "transformation", undefined],
+  ["unblinking-flame-revelation", "combat-utility", "context-only"],
+  ["moths-supper", "healing", "browse-only"],
+  ["creative-splash", "debuff", undefined],
+  ["silvers-refrain", "buff", "context-only"],
+  ["steel-fortifications", "summon", undefined],
+  ["hippocampus-retreat", "mobility", "context-only"],
+  ["harm", "save-damage", undefined],
+  ["animal-form", "transformation", undefined],
+  ["enlarge", "buff", undefined],
+  ["final-sacrifice", "area-damage", "context-only"],
+  ["gift-of-the-anemos", "defense", undefined],
+  ["ancestral-form", "transformation", undefined],
+  ["chameleon-coat", "buff", "context-only"],
+  ["summoners-visage", "exploration-utility", "browse-only"],
+  ["fear-the-sun", "debuff", undefined],
+  ["detect-metal", "exploration-utility", "browse-only"],
+  ["abyssal-plague", "debuff", undefined],
+  ["radiant-field", "debuff", undefined],
+  ["umbral-mindtheft", "damage", "context-only"],
+  ["falsify-heat", "stealth-defense", "browse-only"],
+  ["discern-lies", "exploration-utility", "browse-only"],
+  ["thief-of-fortune", "buff", "context-only"],
+  ["tree-of-seasons", "save-damage", undefined],
+  ["magics-vessel", "defense", undefined],
+  ["magic-hide", "defense", undefined],
+  ["phantasmal-killer", "save-damage", undefined],
+  ["hunters-vision", "debuff", "context-only"],
+  ["summon-ancient-fleshforged", "save-damage", undefined],
+  ["spell-immunity", "defense", "context-only"],
+  ["shadow-siphon", "defense", undefined],
+  ["fortify-summoning", "buff", undefined],
+  ["connective-current", "buff", undefined],
+  ["victory-cry", "control", undefined],
+  ["feast-of-ashes", "debuff", undefined],
+  ["warp-step", "mobility", undefined],
+  ["cauterize-wounds", "healing", "context-only"],
+  ["tame", "exploration-utility", "browse-only"],
+  ["shillelagh", "buff", undefined],
+  ["path-of-least-resistance", "stealth-defense", "browse-only"],
+  ["threatening-mimicry", "debuff", undefined],
+  ["cascade-countermeasure", "defense", undefined],
+  ["overselling-flourish", "debuff", undefined],
+  ["sacred-beasts", "save-damage", undefined],
+  ["gray-shadow", "summon", "context-only"],
+  ["trade-items", "control", undefined],
+  ["protectors-sacrifice", "healing", undefined],
+  ["agitate", "control", undefined],
+  ["belittling-boast", "debuff", undefined],
+  ["string-of-fate", "defense", undefined],
+  ["time-jump", "mobility", undefined],
+  ["impart-empathy", "exploration-utility", "browse-only"],
+  ["spectral-advance", "mobility", undefined],
+  ["scroungers-glee", "debuff", undefined],
+  ["aura-of-the-unremarkable", "exploration-utility", "browse-only"],
+  ["bottle-the-storm", "healing", undefined],
+  ["bloodspray-curse", "save-damage", undefined],
+  ["blindness", "debuff", undefined],
+  ["spellmasters-ward", "defense", undefined],
+  ["bestial-curse", "debuff", undefined],
+  ["read-fate", "exploration-utility", "browse-only"],
+  ["bullhorn", "exploration-utility", "browse-only"],
+  ["fashionista", "exploration-utility", "browse-only"],
+  ["weapon-surge", "buff", undefined],
+  ["counter-performance", "defense", undefined],
+  ["distortion-lens", "control", "browse-only"],
+  ["take-root", "defense", undefined],
 ];
-assert.equal(REVIEWED_SPELL_TACTICS.length, 102, "reviewed spell table should contain all approved entries");
+assert.equal(
+  REVIEWED_SPELL_TACTICS.length,
+  215 + Object.keys(REVIEWED_SPELL_FEEDBACK_BATCH).length,
+  "reviewed spell table should contain all approved entries",
+);
 assert.equal(new Set(REVIEWED_SPELL_TACTICS.map((spell) => spell.slug)).size, REVIEWED_SPELL_TACTICS.length, "reviewed spell slugs must stay unique");
-assert.equal(reviewedSpellExpectations.length, REVIEWED_SPELL_TACTICS.length, "every reviewed spell needs a role regression expectation");
+assert.equal(
+  reviewedSpellExpectations.length + Object.keys(REVIEWED_SPELL_FEEDBACK_BATCH).length,
+  REVIEWED_SPELL_TACTICS.length,
+  "every reviewed spell needs a role regression expectation",
+);
 for (const [slug, role, combatUse] of reviewedSpellExpectations) {
   const reviewedSpell = findCuratedSpell(slug);
   assert.equal(reviewedSpell?.role, role, `${slug} should use reviewed spell role ${role}`);
   if (combatUse !== undefined) assert.equal(reviewedSpell?.combatUse, combatUse, `${slug} should use reviewed combatUse ${combatUse}`);
 }
+for (const [slug, [role, combatUse]] of Object.entries(REVIEWED_SPELL_FEEDBACK_BATCH)) {
+  const reviewedSpell = findCuratedSpell(slug);
+  assert.equal(reviewedSpell?.role, role, `${slug} should use feedback-reviewed spell role ${role}`);
+  if (combatUse) assert.equal(reviewedSpell?.combatUse, combatUse, `${slug} should use feedback-reviewed combatUse ${combatUse}`);
+}
+const reviewedStabilize = findCuratedSpell("stabilize");
+assert.deepEqual(reviewedStabilize?.activityProfile?.contextAutoFill?.alliesAnyCondition, ["dying"]);
+assert.equal(
+  buildTurnPlans({ ...fighterContext, allies: [{ conditions: { slugs: ["dying"] } }] }, [reviewedStabilize]).length > 0,
+  true,
+  "Stabilize should become Auto-fill eligible when an ally is dying",
+);
+const reviewedGrayShadow = findCuratedSpell("gray-shadow");
+assert.deepEqual(
+  reviewedGrayShadow?.activityProfile?.contextAutoFill?.alliesAnyCondition,
+  ["dying"],
+  "Gray Shadow should only become Auto-fill eligible when its dying-creature requirement is present",
+);
+const reviewedHarm = findCuratedSpell("harm");
+assert.deepEqual(reviewedHarm?.tacticalVariants?.map((variant) => variant.role), ["save-damage", "healing"]);
+const harmSpellContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        spell: [{
+          id: "prepared-harm",
+          name: "Harm",
+          slug: "harm",
+          system: {
+            slug: "harm",
+            time: { value: "1 to 3" },
+            traits: { value: ["healing", "void"] },
+            level: { value: 1 },
+            defense: { save: { statistic: "fortitude", basic: true } },
+            damage: { "0": { formula: "1d8", type: "void" } },
+            location: { value: "divine-entry", uses: { value: 1, max: 1 } },
+          },
+        }],
+        spellcastingEntry: [{ id: "divine-entry", system: { prepared: { value: "items" } } }],
+      },
+    },
+  },
+};
+const harmActions = readSpellActions(harmSpellContext);
+assert.deepEqual([...new Set(harmActions.map((action) => action.role))], ["save-damage", "healing"]);
+assert.ok(harmActions.some((action) => action.name.includes("Damage") && action.targetingProfile.enemy === true));
+assert.ok(harmActions.some((action) => action.name.includes("Heal Undead") && action.combatUse === "context-only"));
+assert.equal(new Set(harmActions.map((action) => action.id)).size, harmActions.length, "Harm tactical modes need unique action ids");
 const rankReviewedSpells = readSpellActions({
   actor: {
     document: {

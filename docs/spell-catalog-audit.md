@@ -7,9 +7,9 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Spell items: **1802**
 - Combat-castable spells: **1543**
 - Non-combat cast-time skipped: **259**
-- Auto-fill eligible: **1334**
-- Browse-only: **68**
-- Context-only: **140**
+- Auto-fill eligible: **1245**
+- Browse-only: **127**
+- Context-only: **170**
 - Never auto-fill: **1**
 - Needs review: **0**
 
@@ -523,23 +523,21 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Veil of Dreams (`veil-of-dreams`, rank 1) -> `control`, medium confidence
 - Competitive Edge (`competitive-edge`, rank 4) -> `buff`, medium confidence
 - Blazing Blade (`blazing-blade`, rank 2) -> `damage`, high confidence
-- Bracing Tendrils (`bracing-tendrils`, rank 3) -> `control`, high confidence
+- Bracing Tendrils (`bracing-tendrils`, rank 3) -> `buff`, medium confidence
 - Blinding Fury (`blinding-fury`, rank 6) -> `control`, medium confidence
 - Vision of Weakness (`vision-of-weakness`, rank 2) -> `buff`, medium confidence
 - Divine Plagues (`divine-plagues`, rank 1) -> `control`, medium confidence
-- Ashen Wind (`ashen-wind`, rank 1) -> `control`, medium confidence
+- Ashen Wind (`ashen-wind`, rank 1) -> `debuff`, medium confidence
 - Invisibility Cloak (`invisibility-cloak`, rank 4) -> `stealth-defense`, medium confidence
-- Transcribe Moment (`transcribe-moment`, rank 4) -> `stealth-defense`, medium confidence
 - Elemental Annihilation Wave (`elemental-annihilation-wave`, rank 3) -> `area-damage`, high confidence
-- Aerial Form (`aerial-form`, rank 4) -> `defense`, medium confidence
-- Manifestation of Spirits (`manifestation-of-spirits`, rank 2) -> `control`, medium confidence
-- Far-Flung Fetch (`far-flung-fetch`, rank 2) -> `mobility`, medium confidence
+- Aerial Form (`aerial-form`, rank 4) -> `transformation`, high confidence
+- Manifestation of Spirits (`manifestation-of-spirits`, rank 2) -> `debuff`, medium confidence
 - Mask of Terror (`mask-of-terror`, rank 7) -> `control`, medium confidence
 - Volcanic Eruption (`volcanic-eruption`, rank 7) -> `area-damage`, high confidence
 - Synesthesia (`synesthesia`, rank 5) -> `control`, medium confidence
 - Ancient Dust (`ancient-dust`, rank 1) -> `area-damage`, high confidence
 - Spell Turning (`spell-turning`, rank 7) -> `combat-utility`, medium confidence
-- Unexpected Transposition (`unexpected-transposition`, rank 6) -> `control`, medium confidence
+- Unexpected Transposition (`unexpected-transposition`, rank 6) -> `defense`, medium confidence
 - Incendiary Ashes (`incendiary-ashes`, rank 3) -> `area-damage`, high confidence
 - Blazing Fissure (`blazing-fissure`, rank 5) -> `area-damage`, high confidence
 - Cast into Time (`cast-into-time`, rank 6) -> `area-damage`, high confidence
@@ -548,53 +546,46 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Waking Dream (`waking-dream`, rank 4) -> `control`, medium confidence
 - Dominate (`dominate`, rank 6) -> `control`, medium confidence
 - Safeguard Secret (`safeguard-secret`, rank 4) -> `setup`, medium confidence
-- Lotus Walk (`lotus-walk`, rank 3) -> `combat-utility`, medium confidence
 - Touch of Death (`touch-of-death`, rank 8) -> `control`, medium confidence
-- Genie's Veil (`genies-veil`, rank 1) -> `control`, high confidence
+- Genie's Veil (`genies-veil`, rank 1) -> `defense`, high confidence
 - Zero Gravity (`zero-gravity`, rank 6) -> `control`, high confidence
-- Ibex's Harvest (`ibexs-harvest`, rank 3) -> `area-damage`, high confidence
-- Sudden Shift (`sudden-shift`, rank 1) -> `control`, high confidence
-- Mental Map (`mental-map`, rank 2) -> `control`, medium confidence
+- Ibex's Harvest (`ibexs-harvest`, rank 3) -> `defense`, medium confidence
+- Sudden Shift (`sudden-shift`, rank 1) -> `mobility`, high confidence
 - House of Imaginary Walls (`house-of-imaginary-walls`, rank 5) -> `control`, high confidence
 - Spirit Blast (`spirit-blast`, rank 6) -> `save-damage`, high confidence
-- Domora's Defense (`domoras-defense`, rank 5) -> `control`, high confidence
+- Domora's Defense (`domoras-defense`, rank 5) -> `defense`, high confidence
 - Heart's Desire (`hearts-desire`, rank 3) -> `control`, medium confidence
 - Unraveling Blast (`unraveling-blast`, rank 1) -> `save-damage`, high confidence
 - Over the Coals (`over-the-coals`, rank 5) -> `control`, medium confidence
-- Swarm Form (`swarm-form`, rank 4) -> `control`, medium confidence
-- Information Overload (`information-overload`, rank 1) -> `control`, medium confidence
-- Ectoplasmic Expulsion (`ectoplasmic-expulsion`, rank 5) -> `control`, medium confidence
+- Swarm Form (`swarm-form`, rank 4) -> `transformation`, high confidence
+- Information Overload (`information-overload`, rank 1) -> `debuff`, medium confidence
+- Ectoplasmic Expulsion (`ectoplasmic-expulsion`, rank 5) -> `healing`, medium confidence
 - Devour Life (`devour-life`, rank 8) -> `healing`, high confidence
 - Shrink (`shrink`, rank 2) -> `transformation`, medium confidence
 - Ranage's Circle (`ranages-circle`, rank 4) -> `control`, medium confidence
 - Prismatic Sphere (`prismatic-sphere`, rank 9) -> `control`, high confidence
 - Rime Slick (`rime-slick`, rank 2) -> `area-damage`, high confidence
 - Earth's Bile (`earths-bile`, rank 1) -> `area-damage`, high confidence
-- Pernicious Poltergeist (`pernicious-poltergeist`, rank 4) -> `control`, medium confidence
+- Pernicious Poltergeist (`pernicious-poltergeist`, rank 4) -> `save-damage`, high confidence
 - Phantom Prison (`phantom-prison`, rank 3) -> `control`, medium confidence
 - Dreamer's Call (`dreamers-call`, rank 4) -> `control`, medium confidence
 - Shroud of Flame (`shroud-of-flame`, rank 3) -> `area-damage`, high confidence
-- Veil of Confidence (`veil-of-confidence`, rank 1) -> `control`, medium confidence
-- Blinding Beauty (`blinding-beauty`, rank 3) -> `control`, medium confidence
+- Veil of Confidence (`veil-of-confidence`, rank 1) -> `healing`, medium confidence
+- Blinding Beauty (`blinding-beauty`, rank 3) -> `debuff`, high confidence
 - Leng Sting (`leng-sting`, rank 7) -> `save-damage`, high confidence
-- Penumbral Disguise (`penumbral-disguise`, rank 2) -> `control`, high confidence
-- Nudge the Odds (`nudge-the-odds`, rank 1) -> `stealth-defense`, medium confidence
 - Elemental Blast (`elemental-blast`, rank 5) -> `save-damage`, high confidence
 - Updraft (`updraft`, rank 1) -> `save-damage`, high confidence
-- Detect Poison (`detect-poison`, rank 1) -> `combat-utility`, medium confidence
-- Fey Form (`fey-form`, rank 4) -> `defense`, medium confidence
-- Guided Introspection (`guided-introspection`, rank 1) -> `control`, medium confidence
+- Fey Form (`fey-form`, rank 4) -> `transformation`, high confidence
+- Guided Introspection (`guided-introspection`, rank 1) -> `healing`, medium confidence
 - Wall of Ice (`wall-of-ice`, rank 5) -> `damage`, medium confidence
 - Frost Pillar (`frost-pillar`, rank 6) -> `control`, medium confidence
 - Phantom Pain (`phantom-pain`, rank 1) -> `save-damage`, high confidence
-- Sending (`sending`, rank 5) -> `setup`, medium confidence
-- Forbidding Ward (`forbidding-ward`, rank 1) -> `buff`, medium confidence
+- Forbidding Ward (`forbidding-ward`, rank 1) -> `defense`, high confidence
 - Call the Ten (`call-the-ten`, rank 4) -> `save-damage`, high confidence
 - Soothing Mist (`soothing-mist`, rank 2) -> `healing`, high confidence
 - Vibrant Pattern (`vibrant-pattern`, rank 6) -> `control`, medium confidence
-- Waterproof (`waterproof`, rank 2) -> `buff`, medium confidence
-- Internal Insurrection (`internal-insurrection`, rank 4) -> `control`, medium confidence
-- Coiling Dance (`coiling-dance`, rank 2) -> `control`, medium confidence
+- Internal Insurrection (`internal-insurrection`, rank 4) -> `debuff`, medium confidence
+- Coiling Dance (`coiling-dance`, rank 2) -> `buff`, medium confidence
 - Fateful Condemnation (`fateful-condemnation`, rank 6) -> `save-damage`, high confidence
 - Pummeling Rubble (`pummeling-rubble`, rank 1) -> `area-damage`, high confidence
 - Feral Shades (`feral-shades`, rank 2) -> `area-damage`, high confidence
@@ -602,37 +593,33 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Call The Blood (`call-the-blood`, rank 4) -> `save-damage`, high confidence
 - Draconic Barrage (`draconic-barrage`, rank 1) -> `save-damage`, high confidence
 - Bone Spray (`bone-spray`, rank 2) -> `area-damage`, high confidence
-- Clownish Curse (`clownish-curse`, rank 4) -> `control`, medium confidence
 - Nymph's Grace (`nymphs-grace`, rank 1) -> `control`, medium confidence
 - Shifting Form (`shifting-form`, rank 4) -> `setup`, medium confidence
-- Cloak of Shadow (`cloak-of-shadow`, rank 1) -> `control`, high confidence
+- Cloak of Shadow (`cloak-of-shadow`, rank 1) -> `defense`, high confidence
 - Infectious Comedy (`infectious-comedy`, rank 5) -> `control`, medium confidence
-- Retributive Pain (`retributive-pain`, rank 4) -> `control`, medium confidence
+- Retributive Pain (`retributive-pain`, rank 4) -> `save-damage`, high confidence
 - Cleanse Affliction (`cleanse-affliction`, rank 2) -> `healing`, high confidence
 - Keen Smell (`keen-smell`, rank 1) -> `stealth-defense`, medium confidence
 - Glutton's Jaws (`gluttons-jaws`, rank 1) -> `damage`, high confidence
 - Moonburst (`moonburst`, rank 7) -> `area-damage`, high confidence
 - Wild Winds Stance (`wild-winds-stance`, rank 4) -> `stealth-defense`, medium confidence
-- Stabilize (`stabilize`, rank 1) -> `healing`, high confidence
 - Bralani Referendum (`bralani-referendum`, rank 2) -> `area-damage`, high confidence
 - Moonbeam (`moonbeam`, rank 1) -> `damage`, high confidence
 - Sign of Conviction (`sign-of-conviction`, rank 3) -> `damage`, medium confidence
 - Shepherd of Souls (`shepherd-of-souls`, rank 5) -> `healing`, high confidence
 - Crashing Wave (`crashing-wave`, rank 3) -> `area-damage`, high confidence
 - Divinity Leech (`divinity-leech`, rank 9) -> `healing`, high confidence
-- Avenging Wildwood (`avenging-wildwood`, rank 2) -> `buff`, medium confidence
+- Avenging Wildwood (`avenging-wildwood`, rank 2) -> `summon`, medium confidence
 - Lament (`lament`, rank 1) -> `save-damage`, high confidence
-- Cloak of Colors (`cloak-of-colors`, rank 5) -> `control`, medium confidence
+- Cloak of Colors (`cloak-of-colors`, rank 5) -> `defense`, high confidence
 - Chain Lightning (`chain-lightning`, rank 6) -> `save-damage`, high confidence
 - Blink Charge (`blink-charge`, rank 5) -> `mobility`, medium confidence
 - Runic Weapon (`runic-weapon`, rank 1) -> `buff`, medium confidence
 - Repelling Pulse (`repelling-pulse`, rank 5) -> `area-damage`, high confidence
-- Primal Chorus (`primal-chorus`, rank 3) -> `control`, medium confidence
-- Share Vision (`share-vision`, rank 1) -> `control`, medium confidence
 - Weaponize Secret (`weaponize-secret`, rank 4) -> `control`, medium confidence
 - Concordant Choir (`concordant-choir`, rank 1) -> `save-damage`, high confidence
 - Unseasonable Squall (`unseasonable-squall`, rank 3) -> `control`, medium confidence
-- Pyrotechnics (`pyrotechnics`, rank 3) -> `control`, medium confidence
+- Pyrotechnics (`pyrotechnics`, rank 3) -> `debuff`, medium confidence
 - Shield (`shield`, rank 1) -> `defense`, high confidence
 - Reinforce Eidolon (`reinforce-eidolon`, rank 1) -> `defense`, medium confidence
 - Blood Vendetta (`blood-vendetta`, rank 2) -> `save-damage`, high confidence
@@ -641,42 +628,35 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Pocket Library (`pocket-library`, rank 1) -> `buff`, medium confidence
 - Mantis's Grasp (`mantiss-grasp`, rank 4) -> `save-damage`, high confidence
 - Hypnopompic Terrors (`hypnopompic-terrors`, rank 8) -> `save-damage`, high confidence
-- Erase Trail (`erase-trail`, rank 2) -> `buff`, medium confidence
 - Magnetic Acceleration (`magnetic-acceleration`, rank 3) -> `damage`, high confidence
 - Gate (`gate`, rank 10) -> `mobility`, medium confidence
 - Hallucination (`hallucination`, rank 5) -> `control`, medium confidence
-- Infiltrator's Tunnel (`infiltrators-tunnel`, rank 4) -> `control`, medium confidence
+- Infiltrator's Tunnel (`infiltrators-tunnel`, rank 4) -> `mobility`, medium confidence
 - Buzzing Servants (`buzzing-servants`, rank 2) -> `summon`, medium confidence
 - Athletic Rush (`athletic-rush`, rank 1) -> `setup`, medium confidence
-- Glamorize (`glamorize`, rank 1) -> `buff`, medium confidence
 - Dizzying Colors (`dizzying-colors`, rank 1) -> `control`, medium confidence
 - Let Not the Fallen Rest (`let-not-the-fallen-rest`, rank 5) -> `healing`, high confidence
 - Stonesense (`stonesense`, rank 4) -> `setup`, medium confidence
-- Temporal Distortion (`temporal-distortion`, rank 1) -> `control`, medium confidence
+- Temporal Distortion (`temporal-distortion`, rank 1) -> `debuff`, medium confidence
 - Mantle of the Melting Heart (`mantle-of-the-melting-heart`, rank 5) -> `buff`, medium confidence
 - Charitable Urge (`charitable-urge`, rank 2) -> `control`, medium confidence
 - Burglar's Blind (`burglars-blind`, rank 3) -> `stealth-defense`, medium confidence
 - Pied Piping (`pied-piping`, rank 10) -> `control`, medium confidence
-- Discern Secrets (`discern-secrets`, rank 1) -> `buff`, medium confidence
-- Wood Walk (`wood-walk`, rank 4) -> `setup`, medium confidence
-- Warping Pull (`warping-pull`, rank 2) -> `control`, high confidence
-- The Queen's Rainbow (`the-queens-rainbow`, rank 2) -> `control`, medium confidence
+- Warping Pull (`warping-pull`, rank 2) -> `healing`, medium confidence
+- The Queen's Rainbow (`the-queens-rainbow`, rank 2) -> `debuff`, medium confidence
 - Bone Flense (`bone-flense`, rank 3) -> `buff`, medium confidence
 - Mycological Malady (`mycological-malady`, rank 3) -> `control`, medium confidence
-- Vapor Form (`vapor-form`, rank 4) -> `buff`, medium confidence
+- Vapor Form (`vapor-form`, rank 4) -> `transformation`, high confidence
 - Infectious Enthusiasm (`infectious-enthusiasm`, rank 1) -> `buff`, medium confidence
-- Unblinking Flame Revelation (`unblinking-flame-revelation`, rank 3) -> `setup`, medium confidence
 - Ravening Maw (`ravening-maw`, rank 5) -> `healing`, high confidence
 - Confront Selves (`confront-selves`, rank 4) -> `save-damage`, high confidence
-- Impart Empathy (`impart-empathy`, rank 2) -> `control`, medium confidence
-- Spectral Advance (`spectral-advance`, rank 5) -> `control`, high confidence
-- Scrounger's Glee (`scroungers-glee`, rank 1) -> `control`, medium confidence
+- Spectral Advance (`spectral-advance`, rank 5) -> `mobility`, high confidence
+- Scrounger's Glee (`scroungers-glee`, rank 1) -> `debuff`, medium confidence
 - Shadow Raid (`shadow-raid`, rank 7) -> `area-damage`, high confidence
-- Aura of the Unremarkable (`aura-of-the-unremarkable`, rank 6) -> `control`, medium confidence
 - Bridge of Vines (`bridge-of-vines`, rank 4) -> `control`, medium confidence
-- Bottle the Storm (`bottle-the-storm`, rank 4) -> `buff`, medium confidence
+- Bottle the Storm (`bottle-the-storm`, rank 4) -> `healing`, high confidence
 - Shroud of the Mantis (`shroud-of-the-mantis`, rank 4) -> `stealth-defense`, medium confidence
-- Bloodspray Curse (`bloodspray-curse`, rank 4) -> `control`, medium confidence
+- Bloodspray Curse (`bloodspray-curse`, rank 4) -> `save-damage`, high confidence
 - Live Wire (`live-wire`, rank 1) -> `damage`, high confidence
 - Diabolic Edict (`diabolic-edict`, rank 1) -> `buff`, medium confidence
 - Whispers of a Dead Goddess (`whispers-of-a-dead-goddess`, rank 5) -> `control`, medium confidence
@@ -684,52 +664,44 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Dancing Blade (`dancing-blade`, rank 5) -> `damage`, medium confidence
 - Translocate (`translocate`, rank 4) -> `mobility`, medium confidence
 - Debilitating Dichotomy (`debilitating-dichotomy`, rank 4) -> `save-damage`, high confidence
-- Blindness (`blindness`, rank 3) -> `control`, medium confidence
-- Spellmaster's Ward (`spellmasters-ward`, rank 5) -> `buff`, medium confidence
+- Blindness (`blindness`, rank 3) -> `debuff`, high confidence
+- Spellmaster's Ward (`spellmasters-ward`, rank 5) -> `defense`, high confidence
 - Sticky Fire (`sticky-fire`, rank 2) -> `damage`, high confidence
-- Bestial Curse (`bestial-curse`, rank 4) -> `control`, medium confidence
-- Read Fate (`read-fate`, rank 1) -> `setup`, medium confidence
+- Bestial Curse (`bestial-curse`, rank 4) -> `debuff`, high confidence
 - Entrancing Eyes (`entrancing-eyes`, rank 7) -> `control`, medium confidence
-- Bullhorn (`bullhorn`, rank 1) -> `setup`, medium confidence
-- Fashionista (`fashionista`, rank 1) -> `buff`, medium confidence
-- Weapon Surge (`weapon-surge`, rank 1) -> `setup`, medium confidence
+- Weapon Surge (`weapon-surge`, rank 1) -> `buff`, high confidence
 - Snowball (`snowball`, rank 1) -> `damage`, high confidence
-- Counter Performance (`counter-performance`, rank 1) -> `buff`, medium confidence
-- Distortion Lens (`distortion-lens`, rank 1) -> `control`, high confidence
+- Counter Performance (`counter-performance`, rank 1) -> `defense`, high confidence
 - Mislead (`mislead`, rank 6) -> `stealth-defense`, medium confidence
 - Spiritual Armament (`spiritual-armament`, rank 2) -> `damage`, high confidence
 - Summon Kaiju (`summon-kaiju`, rank 10) -> `control`, medium confidence
-- Take Root (`take-root`, rank 1) -> `buff`, medium confidence
+- Take Root (`take-root`, rank 1) -> `defense`, high confidence
 - Flense (`flense`, rank 1) -> `damage`, high confidence
-- Phantom Crowd (`phantom-crowd`, rank 2) -> `control`, high confidence
 - Whirling Flames (`whirling-flames`, rank 3) -> `area-damage`, high confidence
-- Elemental Sheath (`elemental-sheath`, rank 4) -> `buff`, medium confidence
+- Elemental Sheath (`elemental-sheath`, rank 4) -> `defense`, high confidence
 - Grasping Earth (`grasping-earth`, rank 4) -> `area-damage`, high confidence
 - Animated Assault (`animated-assault`, rank 2) -> `area-damage`, high confidence
 - Slow (`slow`, rank 3) -> `control`, medium confidence
-- Breath of Drought (`breath-of-drought`, rank 2) -> `control`, medium confidence
+- Breath of Drought (`breath-of-drought`, rank 2) -> `debuff`, high confidence
 - Grease (`grease`, rank 1) -> `control`, medium confidence
 - Unfolding Wind Blitz (`unfolding-wind-blitz`, rank 7) -> `setup`, medium confidence
 - Fated Healing (`fated-healing`, rank 1) -> `healing`, high confidence
-- Slough Skin (`slough-skin`, rank 2) -> `setup`, medium confidence
+- Slough Skin (`slough-skin`, rank 2) -> `defense`, high confidence
 - Embodiment of Battle (`embodiment-of-battle`, rank 1) -> `setup`, medium confidence
-- Thicket of Knives (`thicket-of-knives`, rank 1) -> `setup`, medium confidence
 - Stumbling Curse (`stumbling-curse`, rank 1) -> `control`, medium confidence
-- Advanced Scurvy (`advanced-scurvy`, rank 2) -> `control`, medium confidence
+- Advanced Scurvy (`advanced-scurvy`, rank 2) -> `debuff`, high confidence
 - Sudden Blight (`sudden-blight`, rank 2) -> `area-damage`, high confidence
 - Utter Destruction (`utter-destruction`, rank 6) -> `area-damage`, high confidence
-- Insect Form (`insect-form`, rank 3) -> `control`, medium confidence
+- Insect Form (`insect-form`, rank 3) -> `transformation`, high confidence
 - Spellsurge (`spellsurge`, rank 6) -> `control`, medium confidence
 - Earth and Sky (`earth-and-sky`, rank 6) -> `control`, medium confidence
-- Web of Eyes (`web-of-eyes`, rank 3) -> `control`, high confidence
 - Fiery Body (`fiery-body`, rank 7) -> `buff`, medium confidence
-- Bless (`bless`, rank 1) -> `setup`, medium confidence
-- Dread Secret (`dread-secret`, rank 6) -> `control`, medium confidence
-- Summon Stampede (`summon-stampede`, rank 7) -> `control`, medium confidence
+- Bless (`bless`, rank 1) -> `buff`, high confidence
+- Dread Secret (`dread-secret`, rank 6) -> `save-damage`, high confidence
+- Summon Stampede (`summon-stampede`, rank 7) -> `save-damage`, high confidence
 - Invisibility (`invisibility`, rank 2) -> `stealth-defense`, medium confidence
 - Storm Lord (`storm-lord`, rank 9) -> `area-damage`, high confidence
-- Planar Seal (`planar-seal`, rank 7) -> `control`, high confidence
-- Scramble Body (`scramble-body`, rank 1) -> `control`, medium confidence
+- Scramble Body (`scramble-body`, rank 1) -> `debuff`, high confidence
 - Clouded Focus (`clouded-focus`, rank 1) -> `control`, medium confidence
 - Unfolding Wind Crash (`unfolding-wind-crash`, rank 9) -> `save-damage`, high confidence
 - Establish Ward (`establish-ward`, rank 5) -> `area-damage`, high confidence
@@ -737,88 +709,81 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Spiritual Torrent (`spiritual-torrent`, rank 5) -> `area-damage`, high confidence
 - Hydraulic Torrent (`hydraulic-torrent`, rank 4) -> `area-damage`, high confidence
 - Shock and Awe (`shock-and-awe`, rank 5) -> `control`, medium confidence
-- Brand the Impenitent (`brand-the-impenitent`, rank 2) -> `control`, medium confidence
-- Qi Form (`qi-form`, rank 9) -> `setup`, medium confidence
-- Soothing Words (`soothing-words`, rank 1) -> `buff`, medium confidence
-- Speak with Stones (`speak-with-stones`, rank 5) -> `control`, high confidence
+- Brand the Impenitent (`brand-the-impenitent`, rank 2) -> `debuff`, high confidence
+- Qi Form (`qi-form`, rank 9) -> `buff`, high confidence
+- Soothing Words (`soothing-words`, rank 1) -> `healing`, high confidence
 - Serrate (`serrate`, rank 1) -> `buff`, medium confidence
-- Pact Broker (`pact-broker`, rank 1) -> `save-damage`, high confidence
-- Inscrutable Mask (`inscrutable-mask`, rank 3) -> `control`, high confidence
-- Oaken Resilience (`oaken-resilience`, rank 2) -> `buff`, medium confidence
-- Temporary Glyph (`temporary-glyph`, rank 5) -> `control`, high confidence
-- Flashy Disappearance (`flashy-disappearance`, rank 1) -> `stealth-defense`, medium confidence
-- Undermine Reality (`undermine-reality`, rank 8) -> `control`, medium confidence
-- Power Word Blind (`power-word-blind`, rank 7) -> `control`, medium confidence
+- Pact Broker (`pact-broker`, rank 1) -> `setup`, high confidence
+- Inscrutable Mask (`inscrutable-mask`, rank 3) -> `buff`, high confidence
+- Oaken Resilience (`oaken-resilience`, rank 2) -> `defense`, high confidence
+- Temporary Glyph (`temporary-glyph`, rank 5) -> `setup`, high confidence
+- Flashy Disappearance (`flashy-disappearance`, rank 1) -> `defense`, high confidence
+- Undermine Reality (`undermine-reality`, rank 8) -> `debuff`, high confidence
+- Power Word Blind (`power-word-blind`, rank 7) -> `debuff`, high confidence
 - Entreat Spirit (`entreat-spirit`, rank 1) -> `setup`, medium confidence
-- Zenith Star (`zenith-star`, rank 1) -> `control`, medium confidence
-- Fire Shield (`fire-shield`, rank 4) -> `damage`, medium confidence
+- Zenith Star (`zenith-star`, rank 1) -> `debuff`, high confidence
+- Fire Shield (`fire-shield`, rank 4) -> `defense`, high confidence
 - Nature's Reprisal (`natures-reprisal`, rank 6) -> `area-damage`, high confidence
-- Unbreaking Wave Barrier (`unbreaking-wave-barrier`, rank 7) -> `control`, medium confidence
+- Unbreaking Wave Barrier (`unbreaking-wave-barrier`, rank 7) -> `defense`, high confidence
 - Moon Frenzy (`moon-frenzy`, rank 5) -> `buff`, medium confidence
 - Blastback (`blastback`, rank 3) -> `area-damage`, high confidence
-- Death Ward (`death-ward`, rank 5) -> `buff`, medium confidence
+- Death Ward (`death-ward`, rank 5) -> `defense`, high confidence
 - Summon Oliphaunt of Jandelay (`summon-oliphaunt-of-jandelay`, rank 10) -> `control`, high confidence
 - Tesseract Tunnel (`tesseract-tunnel`, rank 5) -> `mobility`, medium confidence
 - Combustion (`combustion`, rank 3) -> `save-damage`, high confidence
 - Ancestral Winds (`ancestral-winds`, rank 5) -> `area-damage`, high confidence
-- Shambling Horror (`shambling-horror`, rank 6) -> `setup`, medium confidence
 - Execute (`execute`, rank 7) -> `save-damage`, high confidence
-- Symphony of the Unfettered Heart (`symphony-of-the-unfettered-heart`, rank 5) -> `setup`, medium confidence
+- Symphony of the Unfettered Heart (`symphony-of-the-unfettered-heart`, rank 5) -> `healing`, high confidence
 - Flames of Ego (`flames-of-ego`, rank 5) -> `control`, medium confidence
 - Coral Scourge (`coral-scourge`, rank 3) -> `control`, medium confidence
-- Wall of Virtue (`wall-of-virtue`, rank 3) -> `damage`, medium confidence
-- Shields of the Spirit (`shields-of-the-spirit`, rank 1) -> `damage`, medium confidence
+- Wall of Virtue (`wall-of-virtue`, rank 3) -> `control`, high confidence
+- Inner Upheaval (`inner-upheaval`, rank 1) -> `buff`, high confidence
+- Shields of the Spirit (`shields-of-the-spirit`, rank 1) -> `defense`, high confidence
 - Wall of Flesh (`wall-of-flesh`, rank 5) -> `control`, medium confidence
 - Linnorm Sting (`linnorm-sting`, rank 9) -> `save-damage`, high confidence
 - Awaken Entropy (`awaken-entropy`, rank 6) -> `area-damage`, high confidence
-- Unbreaking Wave Vapor (`unbreaking-wave-vapor`, rank 5) -> `control`, high confidence
+- Unbreaking Wave Vapor (`unbreaking-wave-vapor`, rank 5) -> `defense`, high confidence
 - Acid Storm (`acid-storm`, rank 5) -> `area-damage`, high confidence
 - Nature Incarnate (`nature-incarnate`, rank 10) -> `control`, medium confidence
 - Summon Monitor (`summon-monitor`, rank 5) -> `summon`, medium confidence
-- Take its Course (`take-its-course`, rank 4) -> `control`, medium confidence
 - Appearance of Wealth (`appearance-of-wealth`, rank 1) -> `control`, medium confidence
 - Trickster's Twin (`tricksters-twin`, rank 4) -> `control`, medium confidence
-- Glimpse the Truth (`glimpse-the-truth`, rank 4) -> `combat-utility`, medium confidence
 - Heal Animal (`heal-animal`, rank 1) -> `healing`, high confidence
 - Weapon of Judgment (`weapon-of-judgment`, rank 9) -> `damage`, medium confidence
 - Signal Skyrocket (`signal-skyrocket`, rank 1) -> `area-damage`, high confidence
 - Explosive Barrage (`explosive-barrage`, rank 6) -> `area-damage`, high confidence
-- Blazing Bolt (`blazing-bolt`, rank 2) -> `weapon-strike`, high confidence
+- Blazing Bolt (`blazing-bolt`, rank 2) -> `damage`, high confidence
 - Glacial Heart (`glacial-heart`, rank 5) -> `save-damage`, high confidence
-- Vector Screen (`vector-screen`, rank 3) -> `buff`, medium confidence
 - Tomorrow's Dawn (`tomorrows-dawn`, rank 4) -> `control`, medium confidence
 - Sunburst (`sunburst`, rank 7) -> `area-damage`, high confidence
 - Enhance Senses (`enhance-senses`, rank 4) -> `buff`, medium confidence
 - Invisibility Curtain (`invisibility-curtain`, rank 4) -> `control`, high confidence
-- Mystic Armor (`mystic-armor`, rank 1) -> `defense`, medium confidence
 - Fleet Step (`fleet-step`, rank 1) -> `setup`, medium confidence
 - Needle of Vengeance (`needle-of-vengeance`, rank 1) -> `save-damage`, high confidence
-- Word of Truth (`word-of-truth`, rank 1) -> `buff`, medium confidence
-- Unblinking Flame Ignition (`unblinking-flame-ignition`, rank 9) -> `control`, high confidence
+- Unblinking Flame Ignition (`unblinking-flame-ignition`, rank 9) -> `buff`, high confidence
 - Command (`command`, rank 1) -> `control`, medium confidence
-- Strength of Mind (`strength-of-mind`, rank 3) -> `control`, medium confidence
-- Daemon Form (`daemon-form`, rank 6) -> `control`, medium confidence
+- Strength of Mind (`strength-of-mind`, rank 3) -> `buff`, high confidence
+- Daemon Form (`daemon-form`, rank 6) -> `transformation`, high confidence
 - Expeditious Excavation (`expeditious-excavation`, rank 2) -> `control`, medium confidence
-- Horrific Visage (`horrific-visage`, rank 3) -> `control`, medium confidence
-- Ring of Truth (`ring-of-truth`, rank 3) -> `control`, medium confidence
-- Unfettered Movement (`unfettered-movement`, rank 4) -> `control`, medium confidence
+- Horrific Visage (`horrific-visage`, rank 3) -> `debuff`, high confidence
+- Unfettered Movement (`unfettered-movement`, rank 4) -> `healing`, high confidence
 - Sliding Blocks (`sliding-blocks`, rank 4) -> `summon`, medium confidence
 - Teeth to Terror (`teeth-to-terror`, rank 2) -> `save-damage`, high confidence
 - Unbreaking Wave Containment (`unbreaking-wave-containment`, rank 9) -> `save-damage`, high confidence
 - Purple Worm Sting (`purple-worm-sting`, rank 6) -> `save-damage`, high confidence
 - Calm (`calm`, rank 2) -> `control`, medium confidence
 - Haunting Hymn (`haunting-hymn`, rank 1) -> `area-damage`, high confidence
-- Flourishing Flora (`flourishing-flora`, rank 1) -> `control`, medium confidence
+- Flourishing Flora (`flourishing-flora`, rank 1) -> `area-damage`, high confidence
 - Magic Warrior Aspect (`magic-warrior-aspect`, rank 2) -> `transformation`, medium confidence
 - Stifling Stillness (`stifling-stillness`, rank 4) -> `area-damage`, high confidence
-- Anchoring Air (`anchoring-air`, rank 4) -> `control`, medium confidence
-- Rallying Anthem (`rallying-anthem`, rank 2) -> `buff`, medium confidence
+- Anchoring Air (`anchoring-air`, rank 4) -> `defense`, high confidence
+- Rallying Anthem (`rallying-anthem`, rank 2) -> `defense`, high confidence
 - Organsight (`organsight`, rank 3) -> `buff`, medium confidence
 - Final Fate of the Locust Host (`final-fate-of-the-locust-host`, rank 7) -> `damage`, medium confidence
 - Mantis Form (`mantis-form`, rank 4) -> `setup`, medium confidence
 - Hand of the Apprentice (`hand-of-the-apprentice`, rank 1) -> `weapon-strike`, high confidence
-- Unfettered Pack (`unfettered-pack`, rank 7) -> `control`, high confidence
-- Cinder Swarm (`cinder-swarm`, rank 4) -> `control`, medium confidence
+- Unfettered Pack (`unfettered-pack`, rank 7) -> `mobility`, high confidence
+- Cinder Swarm (`cinder-swarm`, rank 4) -> `area-damage`, high confidence
 - Blast of the Bellows (`blast-of-the-bellows`, rank 2) -> `control`, high confidence
 - Redistribute Potential (`redistribute-potential`, rank 5) -> `area-damage`, high confidence
 - Summon Axiom (`summon-axiom`, rank 5) -> `summon`, medium confidence
@@ -831,137 +796,122 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Triple Time (`triple-time`, rank 2) -> `buff`, medium confidence
 - Vomit Swarm (`vomit-swarm`, rank 2) -> `area-damage`, high confidence
 - Localized Quake (`localized-quake`, rank 4) -> `save-damage`, high confidence
-- Friendly Push (`friendly-push`, rank 1) -> `control`, high confidence
-- Shroud of Night (`shroud-of-night`, rank 1) -> `control`, medium confidence
+- Friendly Push (`friendly-push`, rank 1) -> `mobility`, high confidence
+- Shroud of Night (`shroud-of-night`, rank 1) -> `debuff`, high confidence
 - Pack Breaker (`pack-breaker`, rank 5) -> `control`, medium confidence
-- Share Burden (`share-burden`, rank 1) -> `setup`, medium confidence
-- Glimpse Weakness (`glimpse-weakness`, rank 1) -> `buff`, medium confidence
-- Agile Feet (`agile-feet`, rank 1) -> `setup`, medium confidence
+- Glimpse Weakness (`glimpse-weakness`, rank 1) -> `damage`, high confidence
+- Agile Feet (`agile-feet`, rank 1) -> `mobility`, high confidence
 - Stasis (`stasis`, rank 4) -> `control`, medium confidence
 - Grasping Vine (`grasping-vine`, rank 1) -> `control`, medium confidence
 - Wish Market (`wish-market`, rank 1) -> `setup`, medium confidence
 - Dutiful Challenge (`dutiful-challenge`, rank 4) -> `control`, medium confidence
 - Sea Surge (`sea-surge`, rank 2) -> `save-damage`, high confidence
-- Glass Shield (`glass-shield`, rank 1) -> `save-damage`, high confidence
-- Avatar (`avatar`, rank 10) -> `defense`, medium confidence
+- Glass Shield (`glass-shield`, rank 1) -> `defense`, high confidence
+- Avatar (`avatar`, rank 10) -> `transformation`, high confidence
 - Frog Tongue (`frog-tongue`, rank 2) -> `save-damage`, high confidence
-- Proliferating Eyes (`proliferating-eyes`, rank 9) -> `stealth-defense`, medium confidence
 - Drain Life (`drain-life`, rank 3) -> `save-damage`, high confidence
 - Chthonian Wrath (`chthonian-wrath`, rank 5) -> `area-damage`, high confidence
-- Trickster's Mirrors (`tricksters-mirrors`, rank 1) -> `save-damage`, high confidence
+- Trickster's Mirrors (`tricksters-mirrors`, rank 1) -> `defense`, high confidence
 - Roaring Applause (`roaring-applause`, rank 3) -> `control`, medium confidence
-- Voice on the Breeze (`voice-on-the-breeze`, rank 2) -> `control`, high confidence
 - Ancestral Touch (`ancestral-touch`, rank 1) -> `save-damage`, high confidence
 - Prismatic Spray (`prismatic-spray`, rank 7) -> `control`, medium confidence
 - Share Life (`share-life`, rank 2) -> `buff`, medium confidence
 - Grisly Growths (`grisly-growths`, rank 5) -> `save-damage`, high confidence
-- Daydreamer's Curse (`daydreamers-curse`, rank 4) -> `control`, medium confidence
+- Daydreamer's Curse (`daydreamers-curse`, rank 4) -> `debuff`, high confidence
 - Gale Blast (`gale-blast`, rank 1) -> `area-damage`, high confidence
-- Snare Hopping (`snare-hopping`, rank 1) -> `mobility`, medium confidence
-- Blood Ward (`blood-ward`, rank 1) -> `buff`, medium confidence
+- Blood Ward (`blood-ward`, rank 1) -> `defense`, high confidence
 - Beheading Buzz Saw (`beheading-buzz-saw`, rank 7) -> `area-damage`, high confidence
-- Demon Form (`demon-form`, rank 6) -> `control`, medium confidence
-- Death Knell (`death-knell`, rank 2) -> `control`, medium confidence
+- Demon Form (`demon-form`, rank 6) -> `transformation`, high confidence
 - Cursed Metamorphosis (`cursed-metamorphosis`, rank 6) -> `control`, medium confidence
 - Barbed Spear (`barbed-spear`, rank 1) -> `damage`, high confidence
-- Devil Form (`devil-form`, rank 6) -> `defense`, medium confidence
+- Devil Form (`devil-form`, rank 6) -> `transformation`, high confidence
 - Scholarly Recollection (`scholarly-recollection`, rank 1) -> `buff`, medium confidence
-- Unusual Anatomy (`unusual-anatomy`, rank 5) -> `damage`, medium confidence
+- Unusual Anatomy (`unusual-anatomy`, rank 5) -> `buff`, high confidence
 - Shockwave (`shockwave`, rank 1) -> `area-damage`, high confidence
 - Glass Sand (`glass-sand`, rank 3) -> `area-damage`, high confidence
-- Thermal Stasis (`thermal-stasis`, rank 1) -> `buff`, medium confidence
+- Thermal Stasis (`thermal-stasis`, rank 1) -> `defense`, high confidence
 - One with Plants (`one-with-plants`, rank 2) -> `setup`, medium confidence
-- Travel by Turtle (`travel-by-turtle`, rank 3) -> `summon`, medium confidence
-- Call to Arms (`call-to-arms`, rank 1) -> `buff`, medium confidence
+- Call to Arms (`call-to-arms`, rank 1) -> `setup`, high confidence
 - Voracious Gestalt (`voracious-gestalt`, rank 9) -> `area-damage`, high confidence
 - Ancestral Memories (`ancestral-memories`, rank 1) -> `buff`, medium confidence
-- Reaper's Lantern (`reapers-lantern`, rank 2) -> `control`, medium confidence
-- Elemental Gift (`elemental-gift`, rank 4) -> `control`, medium confidence
-- Pressure Zone (`pressure-zone`, rank 5) -> `control`, medium confidence
+- Reaper's Lantern (`reapers-lantern`, rank 2) -> `buff`, high confidence
+- Elemental Gift (`elemental-gift`, rank 4) -> `buff`, high confidence
+- Pressure Zone (`pressure-zone`, rank 5) -> `buff`, high confidence
 - Summon Giant (`summon-giant`, rank 5) -> `summon`, medium confidence
 - Movanic Glimmer (`movanic-glimmer`, rank 4) -> `buff`, medium confidence
 - Dragon Turret (`dragon-turret`, rank 10) -> `area-damage`, high confidence
-- Overflowing Sorrow (`overflowing-sorrow`, rank 4) -> `control`, medium confidence
 - Turbulent Tide (`turbulent-tide`, rank 1) -> `control`, medium confidence
-- Enduring Might (`enduring-might`, rank 4) -> `defense`, medium confidence
+- Enduring Might (`enduring-might`, rank 4) -> `healing`, high confidence
 - Pillar of Water (`pillar-of-water`, rank 3) -> `control`, high confidence
-- Wall Of Mirrors (`wall-of-mirrors`, rank 4) -> `damage`, medium confidence
+- Wall Of Mirrors (`wall-of-mirrors`, rank 4) -> `control`, high confidence
 - Inner Radiance Torrent (`inner-radiance-torrent`, rank 2) -> `area-damage`, high confidence
-- Spout (`spout`, rank 1) -> `area-damage`, high confidence
-- Pack Attack (`pack-attack`, rank 2) -> `setup`, medium confidence
-- Artistic Flourish (`artistic-flourish`, rank 4) -> `buff`, medium confidence
-- Enervation (`enervation`, rank 4) -> `control`, medium confidence
+- Spout (`spout`, rank 1) -> `save-damage`, high confidence
+- Pack Attack (`pack-attack`, rank 2) -> `buff`, high confidence
+- Artistic Flourish (`artistic-flourish`, rank 4) -> `setup`, high confidence
+- Enervation (`enervation`, rank 4) -> `area-damage`, high confidence
 - Brine Dragon Bile (`brine-dragon-bile`, rank 2) -> `damage`, high confidence
 - Conjured Clockwork (`conjured-clockwork`, rank 4) -> `area-damage`, high confidence
 - River Carving Mountains (`river-carving-mountains`, rank 1) -> `setup`, medium confidence
-- Weaken Earth (`weaken-earth`, rank 1) -> `control`, medium confidence
-- Evil Eye (`evil-eye`, rank 1) -> `control`, medium confidence
+- Evil Eye (`evil-eye`, rank 1) -> `debuff`, high confidence
 - Acid Arrow (`acid-arrow`, rank 2) -> `damage`, high confidence
 - Dehydrate (`dehydrate`, rank 1) -> `area-damage`, high confidence
 - Life Boost (`life-boost`, rank 1) -> `healing`, high confidence
 - Boil Blood (`boil-blood`, rank 8) -> `save-damage`, high confidence
-- Elemental Counter (`elemental-counter`, rank 1) -> `buff`, medium confidence
-- Levitate (`levitate`, rank 3) -> `control`, high confidence
+- Elemental Counter (`elemental-counter`, rank 1) -> `defense`, high confidence
+- Levitate (`levitate`, rank 3) -> `mobility`, high confidence
 - Lure Dream (`lure-dream`, rank 6) -> `summon`, medium confidence
 - Pest Swarm (`pest-swarm`, rank 4) -> `control`, medium confidence
 - Rapid Adaptation (`rapid-adaptation`, rank 2) -> `setup`, medium confidence
 - Animus Mine (`animus-mine`, rank 2) -> `save-damage`, high confidence
 - Warped Terrain (`warped-terrain`, rank 1) -> `control`, high confidence
-- Deafness (`deafness`, rank 2) -> `control`, medium confidence
 - Vampiric Exsanguination (`vampiric-exsanguination`, rank 6) -> `area-damage`, high confidence
 - Earthworks (`earthworks`, rank 1) -> `control`, high confidence
-- Elemental Breath (`elemental-breath`, rank 5) -> `control`, medium confidence
+- Elemental Breath (`elemental-breath`, rank 5) -> `area-damage`, high confidence
 - Overwhelming Presence (`overwhelming-presence`, rank 9) -> `control`, medium confidence
-- Conductive Weapon (`conductive-weapon`, rank 1) -> `defense`, medium confidence
-- Love's Sacrifice (`loves-sacrifice`, rank 7) -> `control`, medium confidence
+- Conductive Weapon (`conductive-weapon`, rank 1) -> `buff`, high confidence
+- Love's Sacrifice (`loves-sacrifice`, rank 7) -> `defense`, high confidence
 - Unblinking Flame Aura (`unblinking-flame-aura`, rank 5) -> `healing`, high confidence
 - Chromatic Wall (`chromatic-wall`, rank 5) -> `control`, medium confidence
 - Airburst (`airburst`, rank 1) -> `control`, medium confidence
 - Glimmer of Charm (`glimmer-of-charm`, rank 5) -> `control`, medium confidence
-- Frenzied Revelry (`frenzied-revelry`, rank 1) -> `setup`, medium confidence
+- Frenzied Revelry (`frenzied-revelry`, rank 1) -> `defense`, high confidence
 - Ravenous Darkness (`ravenous-darkness`, rank 6) -> `area-damage`, high confidence
 - Charged Javelin (`charged-javelin`, rank 1) -> `damage`, high confidence
 - Vitrifying Blast (`vitrifying-blast`, rank 6) -> `area-damage`, high confidence
 - Personal Blizzard (`personal-blizzard`, rank 3) -> `save-damage`, high confidence
-- Gust of Wind (`gust-of-wind`, rank 1) -> `area-damage`, high confidence
+- Gust of Wind (`gust-of-wind`, rank 1) -> `control`, high confidence
 - Rose's Thorns (`roses-thorns`, rank 6) -> `area-damage`, high confidence
-- Acid Splash (`acid-splash`, rank 1) -> `damage`, high confidence
+- Acid Splash (`acid-splash`, rank 1) -> `area-damage`, high confidence
 - Force Barrage (`force-barrage`, rank 1) -> `damage`, medium confidence
-- Protection (`protection`, rank 1) -> `buff`, medium confidence
+- Protection (`protection`, rank 1) -> `defense`, high confidence
 - Inexhaustible Cynicism (`inexhaustible-cynicism`, rank 7) -> `save-damage`, high confidence
 - Earthbind (`earthbind`, rank 3) -> `control`, medium confidence
-- Stormwind Flight (`stormwind-flight`, rank 4) -> `setup`, medium confidence
+- Stormwind Flight (`stormwind-flight`, rank 4) -> `mobility`, high confidence
 - Hymn of Healing (`hymn-of-healing`, rank 1) -> `healing`, high confidence
 - Ray of Frost (`ray-of-frost`, rank 1) -> `damage`, medium confidence
-- Etheric Shards (`etheric-shards`, rank 5) -> `area-damage`, high confidence
-- Seal Fate (`seal-fate`, rank 4) -> `control`, medium confidence
-- Momentary Recovery (`momentary-recovery`, rank 7) -> `control`, medium confidence
-- Detect Magic (`detect-magic`, rank 1) -> `stealth-defense`, medium confidence
-- All is One, One is All (`all-is-one-one-is-all`, rank 8) -> `setup`, medium confidence
-- Censure Falsehoods (`censure-falsehoods`, rank 3) -> `control`, medium confidence
-- Unimpeded Stride (`unimpeded-stride`, rank 1) -> `setup`, medium confidence
+- Etheric Shards (`etheric-shards`, rank 5) -> `control`, high confidence
+- Seal Fate (`seal-fate`, rank 4) -> `debuff`, high confidence
+- Momentary Recovery (`momentary-recovery`, rank 7) -> `mobility`, high confidence
+- All is One, One is All (`all-is-one-one-is-all`, rank 8) -> `buff`, high confidence
+- Unimpeded Stride (`unimpeded-stride`, rank 1) -> `mobility`, high confidence
 - Tireless Worker (`tireless-worker`, rank 4) -> `healing`, high confidence
 - Crown of Prophets (`crown-of-prophets`, rank 1) -> `save-damage`, high confidence
-- Arcane Countermeasure (`arcane-countermeasure`, rank 5) -> `buff`, medium confidence
-- Sudden Recollection (`sudden-recollection`, rank 3) -> `control`, medium confidence
+- Arcane Countermeasure (`arcane-countermeasure`, rank 5) -> `defense`, high confidence
 - Vicious Jealousy (`vicious-jealousy`, rank 2) -> `control`, medium confidence
 - Coral Eruption (`coral-eruption`, rank 4) -> `area-damage`, high confidence
 - Divine Wrath (`divine-wrath`, rank 4) -> `area-damage`, high confidence
-- Unfetter Eidolon (`unfetter-eidolon`, rank 1) -> `setup`, medium confidence
 - Slime Spit (`slime-spit`, rank 1) -> `save-damage`, high confidence
 - Rainbow's End (`rainbows-end`, rank 1) -> `area-damage`, high confidence
 - Invoke Spirits (`invoke-spirits`, rank 5) -> `area-damage`, high confidence
-- Divine Vessel (`divine-vessel`, rank 7) -> `defense`, medium confidence
+- Divine Vessel (`divine-vessel`, rank 7) -> `transformation`, high confidence
 - Tempest Surge (`tempest-surge`, rank 1) -> `save-damage`, high confidence
 - Blistering Invective (`blistering-invective`, rank 2) -> `save-damage`, high confidence
 - Unspeakable Shadow (`unspeakable-shadow`, rank 9) -> `control`, medium confidence
 - Summon Fey (`summon-fey`, rank 1) -> `summon`, medium confidence
 - Shadow Army (`shadow-army`, rank 10) -> `area-damage`, high confidence
-- Chrysopoetic Curse (`chrysopoetic-curse`, rank 7) -> `control`, medium confidence
+- Chrysopoetic Curse (`chrysopoetic-curse`, rank 7) -> `debuff`, high confidence
 - Summon Entity (`summon-entity`, rank 5) -> `summon`, medium confidence
-- Illusory Disguise (`illusory-disguise`, rank 1) -> `buff`, medium confidence
 - Call Fluxwraith (`call-fluxwraith`, rank 9) -> `control`, medium confidence
-- Favorable Review (`favorable-review`, rank 4) -> `control`, medium confidence
 - Geyser (`geyser`, rank 5) -> `area-damage`, high confidence
 - Tentacular Limbs (`tentacular-limbs`, rank 1) -> `buff`, medium confidence
 - Unsettling Knowledge (`unsettling-knowledge`, rank 4) -> `control`, medium confidence
@@ -969,16 +919,14 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Percussive Impact (`percussive-impact`, rank 3) -> `damage`, high confidence
 - Prismatic Wall (`prismatic-wall`, rank 8) -> `control`, medium confidence
 - Door to Beyond (`door-to-beyond`, rank 4) -> `area-damage`, high confidence
-- Swamp of Sloth (`swamp-of-sloth`, rank 3) -> `save-damage`, high confidence
+- Swamp of Sloth (`swamp-of-sloth`, rank 3) -> `control`, high confidence
 - Needle Darts (`needle-darts`, rank 1) -> `damage`, high confidence
 - Disjunction (`disjunction`, rank 9) -> `combat-utility`, medium confidence
-- Deathless March (`deathless-march`, rank 4) -> `control`, medium confidence
-- Embrace the Pit (`embrace-the-pit`, rank 3) -> `defense`, medium confidence
+- Embrace the Pit (`embrace-the-pit`, rank 3) -> `defense`, high confidence
 - Lose the Path (`lose-the-path`, rank 1) -> `control`, medium confidence
 - Conquering Soldiers (`conquering-soldiers`, rank 10) -> `control`, medium confidence
 - Wall of Wind (`wall-of-wind`, rank 3) -> `control`, medium confidence
-- Divine Armageddon (`divine-armageddon`, rank 8) -> `control`, medium confidence
-- Pulse of Civilization (`pulse-of-civilization`, rank 4) -> `setup`, medium confidence
+- Divine Armageddon (`divine-armageddon`, rank 8) -> `area-damage`, high confidence
 - Guidance (`guidance`, rank 1) -> `buff`, medium confidence
 - Mantle of the Magma Heart (`mantle-of-the-magma-heart`, rank 5) -> `control`, medium confidence
 - Mirror Image (`mirror-image`, rank 2) -> `setup`, medium confidence
@@ -986,11 +934,10 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Touch of the Void (`touch-of-the-void`, rank 1) -> `healing`, high confidence
 - Captivating Adoration (`captivating-adoration`, rank 4) -> `control`, medium confidence
 - Show the Path (`show-the-path`, rank 4) -> `buff`, medium confidence
-- Spiritual Guardian (`spiritual-guardian`, rank 5) -> `damage`, medium confidence
+- Spiritual Guardian (`spiritual-guardian`, rank 5) -> `buff`, high confidence
 - Garden of the Green Man's Growth (`garden-of-the-green-mans-growth`, rank 10) -> `control`, medium confidence
-- Disruptive Transfer (`disruptive-transfer`, rank 3) -> `control`, medium confidence
+- Disruptive Transfer (`disruptive-transfer`, rank 3) -> `mobility`, high confidence
 - Summon Plant or Fungus (`summon-plant-or-fungus`, rank 1) -> `summon`, medium confidence
-- Dismantle (`dismantle`, rank 2) -> `stealth-defense`, medium confidence
 - Capital Dividend (`capital-dividend`, rank 4) -> `healing`, high confidence
 - Hydraulic Push (`hydraulic-push`, rank 1) -> `damage`, high confidence
 - Blessed Boundary (`blessed-boundary`, rank 6) -> `area-damage`, high confidence
@@ -999,24 +946,22 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Falling Stars (`falling-stars`, rank 9) -> `save-damage`, high confidence
 - Ki Cutting Sight (`ki-cutting-sight`, rank 3) -> `buff`, medium confidence
 - Draw Ire (`draw-ire`, rank 1) -> `save-damage`, high confidence
-- Umbral Graft (`umbral-graft`, rank 4) -> `stealth-defense`, medium confidence
 - See the Unseen (`see-the-unseen`, rank 2) -> `control`, high confidence
-- Sting of the Sea (`sting-of-the-sea`, rank 1) -> `control`, medium confidence
+- Sting of the Sea (`sting-of-the-sea`, rank 1) -> `debuff`, high confidence
 - Suspended Retribution (`suspended-retribution`, rank 6) -> `save-damage`, high confidence
 - Brain Drain (`brain-drain`, rank 1) -> `save-damage`, high confidence
 - Grim Tendrils (`grim-tendrils`, rank 1) -> `area-damage`, high confidence
-- Forced Quiet (`forced-quiet`, rank 1) -> `control`, medium confidence
 - Hollow Heart (`hollow-heart`, rank 1) -> `control`, medium confidence
-- Whirling Scarves (`whirling-scarves`, rank 3) -> `control`, high confidence
+- Whirling Scarves (`whirling-scarves`, rank 3) -> `defense`, high confidence
 - Electric Arc (`electric-arc`, rank 1) -> `damage`, high confidence
 - Murderous Vine (`murderous-vine`, rank 4) -> `damage`, high confidence
 - Fortissimo Composition (`fortissimo-composition`, rank 4) -> `buff`, medium confidence
 - Ice Storm (`ice-storm`, rank 4) -> `area-damage`, high confidence
 - Summon Deific Herald (`summon-deific-herald`, rank 8) -> `buff`, medium confidence
 - Warrior's Regret (`warriors-regret`, rank 2) -> `save-damage`, high confidence
-- Personal Rain Cloud (`personal-rain-cloud`, rank 1) -> `control`, medium confidence
+- Personal Rain Cloud (`personal-rain-cloud`, rank 1) -> `defense`, high confidence
 - Temporal Ward (`temporal-ward`, rank 6) -> `control`, medium confidence
-- Illusory Shroud (`illusory-shroud`, rank 2) -> `control`, high confidence
+- Illusory Shroud (`illusory-shroud`, rank 2) -> `defense`, high confidence
 - Elemental Zone (`elemental-zone`, rank 2) -> `buff`, medium confidence
 - Wall of Stone (`wall-of-stone`, rank 5) -> `control`, high confidence
 - Angelic Wings (`angelic-wings`, rank 3) -> `setup`, medium confidence
@@ -1028,85 +973,71 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Vitality Lash (`vitality-lash`, rank 1) -> `save-damage`, high confidence
 - Summon Dragon (`summon-dragon`, rank 5) -> `summon`, medium confidence
 - Vacuum (`vacuum`, rank 7) -> `control`, medium confidence
-- Planar Tether (`planar-tether`, rank 4) -> `control`, medium confidence
 - Eidolon's Wrath (`eidolons-wrath`, rank 3) -> `area-damage`, high confidence
 - Fire Seeds (`fire-seeds`, rank 6) -> `save-damage`, high confidence
 - Gasping Marsh (`gasping-marsh`, rank 3) -> `area-damage`, high confidence
-- Jealous Hex (`jealous-hex`, rank 1) -> `control`, medium confidence
+- Jealous Hex (`jealous-hex`, rank 1) -> `debuff`, high confidence
 - Primal Summons (`primal-summons`, rank 6) -> `buff`, medium confidence
 - Summon Warden of the Wild (`summon-warden-of-the-wild`, rank 8) -> `control`, medium confidence
-- Omnidirectional Scan (`omnidirectional-scan`, rank 3) -> `control`, high confidence
-- Quicken Time (`quicken-time`, rank 5) -> `control`, high confidence
+- Omnidirectional Scan (`omnidirectional-scan`, rank 3) -> `buff`, high confidence
+- Quicken Time (`quicken-time`, rank 5) -> `buff`, high confidence
 - Phoenix Ward (`phoenix-ward`, rank 4) -> `healing`, high confidence
 - Summon Construct (`summon-construct`, rank 1) -> `summon`, medium confidence
-- Shift Blame (`shift-blame`, rank 3) -> `control`, medium confidence
 - Lifelink Surge (`lifelink-surge`, rank 2) -> `healing`, high confidence
-- Veil of Spirits (`veil-of-spirits`, rank 2) -> `control`, medium confidence
 - Summon Celestial (`summon-celestial`, rank 5) -> `summon`, medium confidence
-- Evolution Surge (`evolution-surge`, rank 1) -> `setup`, medium confidence
 - Split the Tongue (`split-the-tongue`, rank 1) -> `save-damage`, high confidence
-- Protective Wards (`protective-wards`, rank 1) -> `buff`, medium confidence
+- Protective Wards (`protective-wards`, rank 1) -> `defense`, high confidence
 - Rejuvenating Flames (`rejuvenating-flames`, rank 1) -> `healing`, high confidence
 - Swampcall (`swampcall`, rank 1) -> `control`, medium confidence
-- Read the Air (`read-the-air`, rank 1) -> `buff`, medium confidence
 - Restore Ground (`restore-ground`, rank 7) -> `control`, high confidence
 - Summon Elemental (`summon-elemental`, rank 2) -> `summon`, medium confidence
 - Forbidden Thought (`forbidden-thought`, rank 1) -> `save-damage`, high confidence
 - Binding Muzzle (`binding-muzzle`, rank 2) -> `control`, medium confidence
-- Reclined Apport (`reclined-apport`, rank 1) -> `mobility`, medium confidence
-- Glowing Trail (`glowing-trail`, rank 1) -> `stealth-defense`, medium confidence
 - Cycle of Retribution (`cycle-of-retribution`, rank 1) -> `save-damage`, high confidence
-- Blanket of Stars (`blanket-of-stars`, rank 6) -> `control`, medium confidence
+- Blanket of Stars (`blanket-of-stars`, rank 6) -> `defense`, high confidence
 - Power Word Kill (`power-word-kill`, rank 9) -> `damage`, medium confidence
 - Strange Geometry (`strange-geometry`, rank 5) -> `control`, medium confidence
-- Healing Plaster (`healing-plaster`, rank 1) -> `buff`, medium confidence
 - Void Warp (`void-warp`, rank 1) -> `save-damage`, high confidence
 - Bramble Bush (`bramble-bush`, rank 1) -> `area-damage`, high confidence
-- Fey Disappearance (`fey-disappearance`, rank 3) -> `control`, high confidence
-- Overstuff (`overstuff`, rank 1) -> `control`, medium confidence
-- Loose Time's Arrow (`loose-times-arrow`, rank 2) -> `control`, high confidence
-- Thundering Dominance (`thundering-dominance`, rank 2) -> `setup`, medium confidence
-- Cutting Eye (`cutting-eye`, rank 1) -> `control`, medium confidence
-- Pave Ground (`pave-ground`, rank 2) -> `control`, high confidence
+- Fey Disappearance (`fey-disappearance`, rank 3) -> `defense`, high confidence
+- Overstuff (`overstuff`, rank 1) -> `debuff`, high confidence
+- Loose Time's Arrow (`loose-times-arrow`, rank 2) -> `mobility`, high confidence
+- Thundering Dominance (`thundering-dominance`, rank 2) -> `area-damage`, high confidence
+- Cutting Eye (`cutting-eye`, rank 1) -> `defense`, high confidence
 - Euphoric Renewal (`euphoric-renewal`, rank 4) -> `healing`, high confidence
 - Infectious Melody (`infectious-melody`, rank 4) -> `control`, medium confidence
 - Mercurial Stride (`mercurial-stride`, rank 4) -> `save-damage`, high confidence
-- Embrace Nothingness (`embrace-nothingness`, rank 9) -> `stealth-defense`, medium confidence
-- Isolation (`isolation`, rank 4) -> `control`, medium confidence
+- Embrace Nothingness (`embrace-nothingness`, rank 9) -> `buff`, high confidence
+- Isolation (`isolation`, rank 4) -> `defense`, high confidence
 - Spray of Stars (`spray-of-stars`, rank 1) -> `area-damage`, high confidence
-- Musical Accompaniment (`musical-accompaniment`, rank 1) -> `buff`, medium confidence
-- Circle of Protection (`circle-of-protection`, rank 3) -> `buff`, medium confidence
+- Circle of Protection (`circle-of-protection`, rank 3) -> `defense`, high confidence
 - Telekinetic Maneuver (`telekinetic-maneuver`, rank 2) -> `control`, high confidence
 - Caster's Imposition (`casters-imposition`, rank 3) -> `control`, medium confidence
 - Moonlight Ray (`moonlight-ray`, rank 3) -> `damage`, high confidence
-- For Love, For Lightning (`for-love-for-lightning`, rank 6) -> `save-damage`, high confidence
 - Pushing Gust (`pushing-gust`, rank 1) -> `control`, medium confidence
-- Prophet's Luck (`prophets-luck`, rank 4) -> `buff`, medium confidence
+- Prophet's Luck (`prophets-luck`, rank 4) -> `defense`, high confidence
 - Draw the Lightning (`draw-the-lightning`, rank 4) -> `save-damage`, high confidence
 - Summon Anarch (`summon-anarch`, rank 5) -> `summon`, medium confidence
 - Shadow's Web (`shadows-web`, rank 7) -> `area-damage`, high confidence
-- Fantastic Facade (`fantastic-facade`, rank 9) -> `control`, high confidence
-- Banishing Touch (`banishing-touch`, rank 2) -> `damage`, high confidence
+- Banishing Touch (`banishing-touch`, rank 2) -> `control`, high confidence
 - Frozen Fog (`frozen-fog`, rank 6) -> `area-damage`, high confidence
 - Ray of Corruption (`ray-of-corruption`, rank 7) -> `save-damage`, high confidence
-- Curse of Death (`curse-of-death`, rank 5) -> `control`, medium confidence
+- Curse of Death (`curse-of-death`, rank 5) -> `damage`, high confidence
 - Valiant Anthem (`valiant-anthem`, rank 2) -> `buff`, medium confidence
 - Astral Rain (`astral-rain`, rank 3) -> `area-damage`, high confidence
-- Shooting Star (`shooting-star`, rank 1) -> `control`, high confidence
-- Invisible Item (`invisible-item`, rank 1) -> `stealth-defense`, medium confidence
-- Radiant Globe (`radiant-globe`, rank 3) -> `control`, medium confidence
-- Vibrant Thorns (`vibrant-thorns`, rank 1) -> `transformation`, medium confidence
+- Shooting Star (`shooting-star`, rank 1) -> `damage`, high confidence
+- Radiant Globe (`radiant-globe`, rank 3) -> `defense`, high confidence
+- Vibrant Thorns (`vibrant-thorns`, rank 1) -> `defense`, high confidence
 - Agonizing Despair (`agonizing-despair`, rank 3) -> `save-damage`, high confidence
 - Remember the Lost (`remember-the-lost`, rank 4) -> `area-damage`, high confidence
-- Divine Aura (`divine-aura`, rank 8) -> `control`, medium confidence
+- Divine Aura (`divine-aura`, rank 8) -> `buff`, high confidence
 - Sleep (`sleep`, rank 1) -> `control`, medium confidence
 - Haste (`haste`, rank 3) -> `buff`, medium confidence
 - Missed Cue (`missed-cue`, rank 6) -> `save-damage`, high confidence
-- Diviner's Sight (`diviners-sight`, rank 1) -> `combat-utility`, medium confidence
+- Diviner's Sight (`diviners-sight`, rank 1) -> `buff`, high confidence
 - Impaling Briars (`impaling-briars`, rank 8) -> `area-damage`, high confidence
 - Fire Ray (`fire-ray`, rank 1) -> `damage`, high confidence
 - Defended by Spirits (`defended-by-spirits`, rank 1) -> `damage`, medium confidence
-- Painted Scout (`painted-scout`, rank 3) -> `control`, medium confidence
 - Runic Impression (`runic-impression`, rank 4) -> `setup`, medium confidence
 - Elysian Whimsy (`elysian-whimsy`, rank 1) -> `control`, medium confidence
 - Aqueous Orb (`aqueous-orb`, rank 3) -> `control`, medium confidence
@@ -1117,28 +1048,25 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Darkened Eyes (`darkened-eyes`, rank 4) -> `control`, medium confidence
 - Qi Blast (`qi-blast`, rank 3) -> `area-damage`, high confidence
 - Imp Sting (`imp-sting`, rank 2) -> `save-damage`, high confidence
-- Light of Revelation (`light-of-revelation`, rank 2) -> `stealth-defense`, medium confidence
-- Flame Dancer (`flame-dancer`, rank 5) -> `control`, medium confidence
+- Flame Dancer (`flame-dancer`, rank 5) -> `buff`, high confidence
 - Befuddle (`befuddle`, rank 1) -> `control`, medium confidence
-- Nymph's Token (`nymphs-token`, rank 1) -> `buff`, medium confidence
-- Girzanje's March (`girzanjes-march`, rank 4) -> `buff`, medium confidence
+- Nymph's Token (`nymphs-token`, rank 1) -> `defense`, high confidence
+- Girzanje's March (`girzanjes-march`, rank 4) -> `defense`, high confidence
 - Sun Blade (`sun-blade`, rank 2) -> `damage`, high confidence
-- Spirit Veil (`spirit-veil`, rank 3) -> `control`, high confidence
+- Spirit Veil (`spirit-veil`, rank 3) -> `defense`, high confidence
 - Hurtling Stone (`hurtling-stone`, rank 1) -> `damage`, high confidence
-- Armor of Bones (`armor-of-bones`, rank 3) -> `defense`, medium confidence
+- Armor of Bones (`armor-of-bones`, rank 3) -> `defense`, high confidence
 - Augmented Body (`augmented-body`, rank 1) -> `defense`, medium confidence
-- Repel Metal (`repel-metal`, rank 4) -> `buff`, medium confidence
-- Darkvision (`darkvision`, rank 2) -> `control`, high confidence
+- Repel Metal (`repel-metal`, rank 4) -> `defense`, high confidence
+- Darkvision (`darkvision`, rank 2) -> `buff`, high confidence
 - Blade Barrier (`blade-barrier`, rank 6) -> `save-damage`, high confidence
 - Solid Fog (`solid-fog`, rank 4) -> `control`, high confidence
-- Primal Herd (`primal-herd`, rank 10) -> `defense`, medium confidence
-- Qi Rush (`qi-rush`, rank 1) -> `stealth-defense`, medium confidence
-- Metamorphosis (`metamorphosis`, rank 9) -> `defense`, medium confidence
-- Illuminate (`illuminate`, rank 1) -> `control`, medium confidence
+- Primal Herd (`primal-herd`, rank 10) -> `transformation`, high confidence
+- Qi Rush (`qi-rush`, rank 1) -> `mobility`, high confidence
+- Metamorphosis (`metamorphosis`, rank 9) -> `transformation`, high confidence
 - Weird (`weird`, rank 9) -> `save-damage`, high confidence
-- Lock Item (`lock-item`, rank 2) -> `control`, medium confidence
 - Suffocate (`suffocate`, rank 6) -> `save-damage`, high confidence
-- Time Jump (`time-jump`, rank 3) -> `mobility`, medium confidence
+- Time Jump (`time-jump`, rank 3) -> `mobility`, high confidence
 - Containment (`containment`, rank 4) -> `control`, medium confidence
 - Harmonize Self (`harmonize-self`, rank 2) -> `healing`, high confidence
 - Orb of Twisting Fate (`orb-of-twisting-fate`, rank 7) -> `control`, medium confidence
@@ -1146,26 +1074,25 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Thoughtful Gift (`thoughtful-gift`, rank 1) -> `mobility`, medium confidence
 - Painful Vibrations (`painful-vibrations`, rank 4) -> `save-damage`, high confidence
 - Aberrant Whispers (`aberrant-whispers`, rank 3) -> `control`, medium confidence
-- String of Fate (`string-of-fate`, rank 1) -> `setup`, medium confidence
+- String of Fate (`string-of-fate`, rank 1) -> `defense`, medium confidence
 - Canticle of Everlasting Grief (`canticle-of-everlasting-grief`, rank 8) -> `save-damage`, high confidence
 - Apex Companion (`apex-companion`, rank 10) -> `defense`, medium confidence
 - Pillars of Sand (`pillars-of-sand`, rank 5) -> `control`, medium confidence
 - Foresight (`foresight`, rank 9) -> `control`, medium confidence
 - Divine Lance (`divine-lance`, rank 1) -> `damage`, high confidence
 - Suggestion (`suggestion`, rank 4) -> `control`, medium confidence
-- Belittling Boast (`belittling-boast`, rank 5) -> `control`, medium confidence
+- Belittling Boast (`belittling-boast`, rank 5) -> `debuff`, high confidence
 - Shocking Grasp (`shocking-grasp`, rank 1) -> `damage`, high confidence
 - Storm of Vengeance (`storm-of-vengeance`, rank 9) -> `control`, medium confidence
 - Disintegrate (`disintegrate`, rank 6) -> `save-damage`, high confidence
 - Thunderous Strike (`thunderous-strike`, rank 1) -> `area-damage`, high confidence
-- Agitate (`agitate`, rank 1) -> `save-damage`, high confidence
+- Agitate (`agitate`, rank 1) -> `control`, high confidence
 - Forceful Hand (`forceful-hand`, rank 5) -> `control`, medium confidence
 - Phase Familiar (`phase-familiar`, rank 1) -> `defense`, medium confidence
-- Protector's Sacrifice (`protectors-sacrifice`, rank 1) -> `buff`, medium confidence
-- Trade Items (`trade-items`, rank 3) -> `mobility`, medium confidence
-- Gray Shadow (`gray-shadow`, rank 6) -> `buff`, medium confidence
+- Protector's Sacrifice (`protectors-sacrifice`, rank 1) -> `healing`, high confidence
+- Trade Items (`trade-items`, rank 3) -> `control`, medium confidence
 - Animate Rope (`animate-rope`, rank 1) -> `control`, high confidence
-- Sacred Beasts (`sacred-beasts`, rank 1) -> `control`, medium confidence
+- Sacred Beasts (`sacred-beasts`, rank 1) -> `save-damage`, high confidence
 - Eject Soul (`eject-soul`, rank 1) -> `control`, medium confidence
 - Déjà Vu (`deja-vu`, rank 1) -> `control`, medium confidence
 - Impending Doom (`impending-doom`, rank 3) -> `save-damage`, high confidence
@@ -1173,68 +1100,59 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Healer's Blessing (`healers-blessing`, rank 1) -> `healing`, high confidence
 - Shall not Falter, Shall not Rout (`shall-not-falter-shall-not-rout`, rank 5) -> `healing`, high confidence
 - Acidic Burst (`acidic-burst`, rank 1) -> `area-damage`, high confidence
-- Overselling Flourish (`overselling-flourish`, rank 1) -> `control`, medium confidence
+- Overselling Flourish (`overselling-flourish`, rank 1) -> `debuff`, medium confidence
 - Accelerated Decomposition (`accelerated-decomposition`, rank 6) -> `save-damage`, high confidence
 - Terrain Transposition (`terrain-transposition`, rank 5) -> `mobility`, medium confidence
-- Cascade Countermeasure (`cascade-countermeasure`, rank 3) -> `defense`, medium confidence
+- Cascade Countermeasure (`cascade-countermeasure`, rank 3) -> `defense`, high confidence
 - Grasp of the Deep (`grasp-of-the-deep`, rank 4) -> `save-damage`, high confidence
-- Threatening Mimicry (`threatening-mimicry`, rank 3) -> `control`, medium confidence
-- Path of Least Resistance (`path-of-least-resistance`, rank 4) -> `stealth-defense`, medium confidence
-- Shillelagh (`shillelagh`, rank 1) -> `setup`, medium confidence
+- Threatening Mimicry (`threatening-mimicry`, rank 3) -> `debuff`, medium confidence
+- Shillelagh (`shillelagh`, rank 1) -> `buff`, high confidence
 - Foresee the Path (`foresee-the-path`, rank 5) -> `buff`, medium confidence
-- Tame (`tame`, rank 1) -> `control`, medium confidence
 - Gritty Wheeze (`gritty-wheeze`, rank 1) -> `area-damage`, high confidence
-- Cauterize Wounds (`cauterize-wounds`, rank 2) -> `healing`, high confidence
 - Darklight (`darklight`, rank 7) -> `area-damage`, high confidence
 - Kinetic Ram (`kinetic-ram`, rank 1) -> `control`, medium confidence
 - Chilling Darkness (`chilling-darkness`, rank 3) -> `damage`, high confidence
 - Imaginary Weapon (`imaginary-weapon`, rank 1) -> `damage`, high confidence
-- Warp Step (`warp-step`, rank 1) -> `setup`, medium confidence
+- Warp Step (`warp-step`, rank 1) -> `mobility`, high confidence
 - Divine Decree (`divine-decree`, rank 7) -> `area-damage`, high confidence
 - Lashing Rope (`lashing-rope`, rank 3) -> `damage`, high confidence
 - Drop Dead (`drop-dead`, rank 5) -> `stealth-defense`, medium confidence
-- Feast of Ashes (`feast-of-ashes`, rank 2) -> `save-damage`, high confidence
+- Feast of Ashes (`feast-of-ashes`, rank 2) -> `debuff`, high confidence
 - Shared Nightmare (`shared-nightmare`, rank 4) -> `control`, medium confidence
 - Dancing Fountain (`dancing-fountain`, rank 7) -> `area-damage`, high confidence
 - Fireball (`fireball`, rank 3) -> `area-damage`, medium confidence
 - Soothe (`soothe`, rank 1) -> `healing`, high confidence
 - Discomfiting Whispers (`discomfiting-whispers`, rank 1) -> `area-damage`, high confidence
-- Victory Cry (`victory-cry`, rank 1) -> `buff`, medium confidence
-- Connective Current (`connective-current`, rank 1) -> `control`, high confidence
+- Victory Cry (`victory-cry`, rank 1) -> `control`, medium confidence
+- Connective Current (`connective-current`, rank 1) -> `buff`, medium confidence
 - Spiritual Renewal (`spiritual-renewal`, rank 4) -> `healing`, high confidence
 - Mad Monkeys (`mad-monkeys`, rank 3) -> `control`, medium confidence
 - Vibrant Vibrato (`vibrant-vibrato`, rank 7) -> `area-damage`, high confidence
 - Sea of Thought (`sea-of-thought`, rank 3) -> `control`, medium confidence
-- Fortify Summoning (`fortify-summoning`, rank 1) -> `setup`, medium confidence
-- Shadow Siphon (`shadow-siphon`, rank 5) -> `combat-utility`, medium confidence
+- Fortify Summoning (`fortify-summoning`, rank 1) -> `buff`, high confidence
+- Shadow Siphon (`shadow-siphon`, rank 5) -> `defense`, high confidence
 - Cleansing Flames (`cleansing-flames`, rank 5) -> `healing`, high confidence
-- Spell Immunity (`spell-immunity`, rank 4) -> `buff`, medium confidence
-- Summon Ancient Fleshforged (`summon-ancient-fleshforged`, rank 9) -> `control`, medium confidence
+- Summon Ancient Fleshforged (`summon-ancient-fleshforged`, rank 9) -> `save-damage`, high confidence
 - Caustic Blast (`caustic-blast`, rank 1) -> `area-damage`, high confidence
-- Hunter's Vision (`hunters-vision`, rank 5) -> `control`, high confidence
 - Laughing Fit (`laughing-fit`, rank 2) -> `control`, medium confidence
-- Phantasmal Killer (`phantasmal-killer`, rank 4) -> `control`, medium confidence
+- Phantasmal Killer (`phantasmal-killer`, rank 4) -> `save-damage`, high confidence
 - Magic Warrior Transformation (`magic-warrior-transformation`, rank 2) -> `setup`, medium confidence
 - Telekinetic Haul (`telekinetic-haul`, rank 5) -> `control`, high confidence
 - Unfolding Wind Rush (`unfolding-wind-rush`, rank 3) -> `setup`, medium confidence
 - Bounty of the Sky (`bounty-of-the-sky`, rank 6) -> `healing`, high confidence
-- Magic Hide (`magic-hide`, rank 1) -> `setup`, medium confidence
-- Magic's Vessel (`magics-vessel`, rank 1) -> `buff`, medium confidence
-- Tree of Seasons (`tree-of-seasons`, rank 6) -> `control`, medium confidence
+- Magic Hide (`magic-hide`, rank 1) -> `defense`, medium confidence
+- Magic's Vessel (`magics-vessel`, rank 1) -> `defense`, medium confidence
+- Tree of Seasons (`tree-of-seasons`, rank 6) -> `save-damage`, high confidence
 - Confusing Colors (`confusing-colors`, rank 8) -> `control`, medium confidence
 - Hero's Defiance (`heros-defiance`, rank 10) -> `healing`, high confidence
-- Thief of Fortune (`thief-of-fortune`, rank 3) -> `combat-utility`, medium confidence
 - Clinging Shadows Stance (`clinging-shadows-stance`, rank 4) -> `setup`, medium confidence
-- Discern Lies (`discern-lies`, rank 4) -> `setup`, medium confidence
 - Admonishing Ray (`admonishing-ray`, rank 1) -> `damage`, high confidence
 - Tangle Vine (`tangle-vine`, rank 1) -> `control`, medium confidence
 - Telekinetic Bombardment (`telekinetic-bombardment`, rank 7) -> `area-damage`, high confidence
-- Falsify Heat (`falsify-heat`, rank 2) -> `stealth-defense`, medium confidence
 - Poltergeist's Fury (`poltergeists-fury`, rank 6) -> `area-damage`, high confidence
-- Umbral Mindtheft (`umbral-mindtheft`, rank 2) -> `damage`, medium confidence
 - Truesight (`truesight`, rank 6) -> `combat-utility`, medium confidence
 - Precious Gleam (`precious-gleam`, rank 1) -> `buff`, medium confidence
-- Radiant Field (`radiant-field`, rank 2) -> `control`, medium confidence
+- Radiant Field (`radiant-field`, rank 2) -> `debuff`, medium confidence
 - Heat Metal (`heat-metal`, rank 2) -> `save-damage`, high confidence
 - Powerful Inhalation (`powerful-inhalation`, rank 3) -> `area-damage`, high confidence
 - Exploding Earth (`exploding-earth`, rank 2) -> `save-damage`, high confidence
@@ -1243,16 +1161,14 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Frigid Flurry (`frigid-flurry`, rank 7) -> `area-damage`, high confidence
 - Animal Feature (`animal-feature`, rank 2) -> `setup`, medium confidence
 - Bursting Bloom (`bursting-bloom`, rank 4) -> `save-damage`, high confidence
-- Detect Metal (`detect-metal`, rank 1) -> `stealth-defense`, medium confidence
-- Abyssal Plague (`abyssal-plague`, rank 5) -> `control`, medium confidence
+- Abyssal Plague (`abyssal-plague`, rank 5) -> `debuff`, high confidence
 - Charm (`charm`, rank 1) -> `control`, medium confidence
 - King's Castle (`kings-castle`, rank 5) -> `mobility`, medium confidence
 - Element Embodied (`element-embodied`, rank 10) -> `healing`, high confidence
 - Cornucopia (`cornucopia`, rank 1) -> `healing`, high confidence
 - Nature's Bounty (`natures-bounty`, rank 4) -> `healing`, high confidence
 - Celestial Accord (`celestial-accord`, rank 1) -> `control`, medium confidence
-- Summoner's Visage (`summoners-visage`, rank 2) -> `setup`, medium confidence
-- Fear the Sun (`fear-the-sun`, rank 2) -> `control`, medium confidence
+- Fear the Sun (`fear-the-sun`, rank 2) -> `debuff`, medium confidence
 - Elemental Tempest (`elemental-tempest`, rank 4) -> `area-damage`, high confidence
 - One with Stone (`one-with-stone`, rank 3) -> `setup`, medium confidence
 - Malicious Shadow (`malicious-shadow`, rank 3) -> `damage`, high confidence
@@ -1264,38 +1180,33 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - All-Encompassing Hunger (`all-encompassing-hunger`, rank 1) -> `save-damage`, high confidence
 - Cataclysm (`cataclysm`, rank 10) -> `area-damage`, high confidence
 - Snake Fangs (`snake-fangs`, rank 4) -> `control`, medium confidence
-- Steel Fortifications (`steel-fortifications`, rank 2) -> `control`, medium confidence
-- Hippocampus Retreat (`hippocampus-retreat`, rank 1) -> `damage`, high confidence
+- Steel Fortifications (`steel-fortifications`, rank 2) -> `summon`, medium confidence
 - Medusa's Wrath (`medusas-wrath`, rank 8) -> `control`, medium confidence
 - Devouring Dark Form (`devouring-dark-form`, rank 1) -> `transformation`, medium confidence
 - Possession (`possession`, rank 7) -> `control`, medium confidence
 - Soulshelter Vessel (`soulshelter-vessel`, rank 5) -> `healing`, high confidence
 - Beseech Arcanotheign (`beseech-arcanotheign`, rank 9) -> `control`, medium confidence
-- Harm (`harm`, rank 1) -> `healing`, high confidence
+- Harm (`harm`, rank 1) -> `save-damage`, high confidence
 - Siege Weapon's Blessing (`siege-weapons-blessing`, rank 6) -> `buff`, medium confidence
 - Disappearance (`disappearance`, rank 8) -> `stealth-defense`, medium confidence
 - Elemental Sense (`elemental-sense`, rank 4) -> `control`, high confidence
 - Spirit of the Beast (`spirit-of-the-beast`, rank 2) -> `setup`, medium confidence
 - Punishing Winds (`punishing-winds`, rank 8) -> `control`, high confidence
 - Diamond Dust (`diamond-dust`, rank 4) -> `area-damage`, high confidence
-- Animal Form (`animal-form`, rank 2) -> `defense`, medium confidence
+- Animal Form (`animal-form`, rank 2) -> `transformation`, high confidence
 - Hologram Cage (`hologram-cage`, rank 5) -> `control`, high confidence
 - Noise Blast (`noise-blast`, rank 2) -> `area-damage`, high confidence
-- Enlarge (`enlarge`, rank 2) -> `control`, medium confidence
-- Final Sacrifice (`final-sacrifice`, rank 2) -> `area-damage`, high confidence
-- Gift of the Anemos (`gift-of-the-anemos`, rank 1) -> `control`, medium confidence
+- Enlarge (`enlarge`, rank 2) -> `buff`, high confidence
+- Gift of the Anemos (`gift-of-the-anemos`, rank 1) -> `defense`, medium confidence
 - You're Mine (`youre-mine`, rank 5) -> `control`, medium confidence
 - Field of Life (`field-of-life`, rank 6) -> `healing`, high confidence
 - Earthquake (`earthquake`, rank 8) -> `area-damage`, high confidence
 - Deity's Strike (`deitys-strike`, rank 7) -> `save-damage`, high confidence
 - Mushroom Patch (`mushroom-patch`, rank 1) -> `control`, medium confidence
-- Ancestral Form (`ancestral-form`, rank 6) -> `stealth-defense`, medium confidence
+- Ancestral Form (`ancestral-form`, rank 6) -> `transformation`, high confidence
 - Slither (`slither`, rank 5) -> `area-damage`, high confidence
 - Buffeting Winds (`buffeting-winds`, rank 1) -> `area-damage`, high confidence
-- Silver's Refrain (`silvers-refrain`, rank 1) -> `control`, high confidence
-- Chameleon Coat (`chameleon-coat`, rank 5) -> `buff`, medium confidence
-- Creative Splash (`creative-splash`, rank 1) -> `control`, medium confidence
-- Moth's Supper (`moths-supper`, rank 3) -> `healing`, high confidence
+- Creative Splash (`creative-splash`, rank 1) -> `debuff`, medium confidence
 - Indolent Haze (`indolent-haze`, rank 7) -> `area-damage`, high confidence
 - Savor the Sting (`savor-the-sting`, rank 1) -> `save-damage`, high confidence
 - Pyrefowl Rebuke (`pyrefowl-rebuke`, rank 2) -> `save-damage`, high confidence
@@ -1345,7 +1256,7 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Tempest Form (`tempest-form`, rank 6) -> `transformation`, high confidence
 - Delay Affliction (`delay-affliction`, rank 3) -> `healing`, high confidence
 - Dimensional Steps (`dimensional-steps`, rank 4) -> `mobility`, medium confidence
-- Elephant Form (`elephant-form`, rank 4) -> `control`, medium confidence
+- Elephant Form (`elephant-form`, rank 4) -> `transformation`, high confidence
 - Petrify (`petrify`, rank 6) -> `control`, medium confidence
 - Dazzling Flash (`dazzling-flash`, rank 1) -> `control`, medium confidence
 - Life Siphon (`life-siphon`, rank 4) -> `healing`, high confidence
@@ -1398,23 +1309,82 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Carryall (`carryall`, rank 1) -> `exploration-utility`, high confidence
 - Spirit Ward (`spirit-ward`, rank 1) -> `defense`, high confidence
 - Dull Ambition (`dull-ambition`, rank 4) -> `debuff`, high confidence
+- Transcribe Moment (`transcribe-moment`, rank 4) -> `exploration-utility`, high confidence
+- Mental Map (`mental-map`, rank 2) -> `exploration-utility`, high confidence
+- Penumbral Disguise (`penumbral-disguise`, rank 2) -> `exploration-utility`, high confidence
+- Nudge the Odds (`nudge-the-odds`, rank 1) -> `exploration-utility`, medium confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
+- Detect Poison (`detect-poison`, rank 1) -> `exploration-utility`, high confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
+- Sending (`sending`, rank 5) -> `exploration-utility`, high confidence
+- Waterproof (`waterproof`, rank 2) -> `buff`, medium confidence
+- Clownish Curse (`clownish-curse`, rank 4) -> `debuff`, medium confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
 - Truespeech (`truespeech`, rank 5) -> `exploration-utility`, low confidence
+- Primal Chorus (`primal-chorus`, rank 3) -> `setup`, high confidence
+- Share Vision (`share-vision`, rank 1) -> `buff`, medium confidence
+- Erase Trail (`erase-trail`, rank 2) -> `exploration-utility`, high confidence
+- Glamorize (`glamorize`, rank 1) -> `exploration-utility`, high confidence
+- Discern Secrets (`discern-secrets`, rank 1) -> `buff`, medium confidence
+- Impart Empathy (`impart-empathy`, rank 2) -> `exploration-utility`, high confidence
+- Aura of the Unremarkable (`aura-of-the-unremarkable`, rank 6) -> `exploration-utility`, high confidence
+- Read Fate (`read-fate`, rank 1) -> `exploration-utility`, high confidence
+- Bullhorn (`bullhorn`, rank 1) -> `exploration-utility`, high confidence
+- Fashionista (`fashionista`, rank 1) -> `exploration-utility`, high confidence
 - Light (`light`, rank 1) -> `exploration-utility`, low confidence
 - Frost's Touch (`frosts-touch`, rank 1) -> `exploration-utility`, low confidence
 - Imprint Message (`imprint-message`, rank 1) -> `exploration-utility`, low confidence
+- Distortion Lens (`distortion-lens`, rank 1) -> `control`, high confidence
+- Phantom Crowd (`phantom-crowd`, rank 2) -> `control`, high confidence
 - Create Water (`create-water`, rank 1) -> `exploration-utility`, low confidence
+- Thicket of Knives (`thicket-of-knives`, rank 1) -> `buff`, high confidence
+- Web of Eyes (`web-of-eyes`, rank 3) -> `buff`, high confidence
+- Planar Seal (`planar-seal`, rank 7) -> `control`, high confidence
+- Speak with Stones (`speak-with-stones`, rank 5) -> `exploration-utility`, high confidence
+- Shambling Horror (`shambling-horror`, rank 6) -> `setup`, high confidence
+- Glimpse the Truth (`glimpse-the-truth`, rank 4) -> `combat-utility`, high confidence
+- Vector Screen (`vector-screen`, rank 3) -> `defense`, high confidence
+- Word of Truth (`word-of-truth`, rank 1) -> `exploration-utility`, high confidence
+- Ring of Truth (`ring-of-truth`, rank 3) -> `exploration-utility`, high confidence
+- Proliferating Eyes (`proliferating-eyes`, rank 9) -> `setup`, high confidence
+- Voice on the Breeze (`voice-on-the-breeze`, rank 2) -> `exploration-utility`, high confidence
 - Embed Message (`embed-message`, rank 2) -> `exploration-utility`, low confidence
 - Elemental Betrayal (`elemental-betrayal`, rank 1) -> `exploration-utility`, low confidence
 - Pest Form (`pest-form`, rank 1) -> `exploration-utility`, medium confidence
+- Detect Magic (`detect-magic`, rank 1) -> `exploration-utility`, high confidence
+- Sudden Recollection (`sudden-recollection`, rank 3) -> `exploration-utility`, high confidence
+- Unfetter Eidolon (`unfetter-eidolon`, rank 1) -> `exploration-utility`, high confidence
+- Illusory Disguise (`illusory-disguise`, rank 1) -> `exploration-utility`, high confidence
+- Favorable Review (`favorable-review`, rank 4) -> `exploration-utility`, high confidence
+- Pulse of Civilization (`pulse-of-civilization`, rank 4) -> `exploration-utility`, high confidence
+- Dismantle (`dismantle`, rank 2) -> `debuff`, high confidence
+- Umbral Graft (`umbral-graft`, rank 4) -> `stealth-defense`, high confidence
+- Forced Quiet (`forced-quiet`, rank 1) -> `exploration-utility`, high confidence
+- Shift Blame (`shift-blame`, rank 3) -> `control`, high confidence
+- Evolution Surge (`evolution-surge`, rank 1) -> `buff`, high confidence
 - Draw Moisture (`draw-moisture`, rank 1) -> `exploration-utility`, low confidence
+- Read the Air (`read-the-air`, rank 1) -> `exploration-utility`, high confidence
+- Reclined Apport (`reclined-apport`, rank 1) -> `mobility`, high confidence
+- Glowing Trail (`glowing-trail`, rank 1) -> `exploration-utility`, high confidence
+- Healing Plaster (`healing-plaster`, rank 1) -> `exploration-utility`, high confidence
 - Wordsmith (`wordsmith`, rank 4) -> `exploration-utility`, low confidence
+- Musical Accompaniment (`musical-accompaniment`, rank 1) -> `buff`, high confidence
+- Fantastic Facade (`fantastic-facade`, rank 9) -> `exploration-utility`, high confidence
+- Invisible Item (`invisible-item`, rank 1) -> `stealth-defense`, high confidence
+- Painted Scout (`painted-scout`, rank 3) -> `exploration-utility`, high confidence
+- Light of Revelation (`light-of-revelation`, rank 2) -> `stealth-defense`, high confidence
 - Telekinetic Hand (`telekinetic-hand`, rank 1) -> `exploration-utility`, high confidence
+- Illuminate (`illuminate`, rank 1) -> `combat-utility`, high confidence
 - Cleanse Cuisine (`cleanse-cuisine`, rank 1) -> `exploration-utility`, low confidence
+- Path of Least Resistance (`path-of-least-resistance`, rank 4) -> `stealth-defense`, medium confidence
+- Tame (`tame`, rank 1) -> `exploration-utility`, high confidence
 - Know the Way (`know-the-way`, rank 1) -> `exploration-utility`, low confidence
+- Discern Lies (`discern-lies`, rank 4) -> `exploration-utility`, high confidence
+- Falsify Heat (`falsify-heat`, rank 2) -> `stealth-defense`, medium confidence
+- Detect Metal (`detect-metal`, rank 1) -> `exploration-utility`, high confidence
 - Translate (`translate`, rank 2) -> `exploration-utility`, low confidence
+- Summoner's Visage (`summoners-visage`, rank 2) -> `exploration-utility`, high confidence
+- Moth's Supper (`moths-supper`, rank 3) -> `healing`, medium confidence
 - Mimic Undead (`mimic-undead`, rank 2) -> `exploration-utility`, medium confidence
 - Phantasmal Minion (`phantasmal-minion`, rank 1) -> `summon`, medium confidence
 - Fold Metal (`fold-metal`, rank 1) -> `exploration-utility`, low confidence
@@ -1489,6 +1459,8 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Vindicator's Mark (`vindicators-mark`, rank 1) -> `combat-utility`, low confidence
 - Extend Blood Magic (`extend-blood-magic`, rank 3) -> `combat-utility`, low confidence
 - Primal Phenomenon (`primal-phenomenon`, rank 10) -> `combat-utility`, low confidence
+- Far-Flung Fetch (`far-flung-fetch`, rank 2) -> `mobility`, medium confidence
+- Lotus Walk (`lotus-walk`, rank 3) -> `mobility`, medium confidence
 - Mark of Blood (`mark-of-blood`, rank 2) -> `combat-utility`, low confidence
 - Stone to Flesh (`stone-to-flesh`, rank 6) -> `combat-utility`, low confidence
 - Jump (`jump`, rank 1) -> `combat-utility`, low confidence
@@ -1496,11 +1468,14 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Perceive the Threads of Fate (`perceive-the-threads-of-fate`, rank 3) -> `combat-utility`, low confidence
 - Weapon Trance (`weapon-trance`, rank 1) -> `combat-utility`, low confidence
 - Object Memory (`object-memory`, rank 1) -> `combat-utility`, low confidence
+- Stabilize (`stabilize`, rank 1) -> `healing`, high confidence
 - Soft Landing (`soft-landing`, rank 4) -> `combat-utility`, low confidence
 - Gentle Landing (`gentle-landing`, rank 1) -> `combat-utility`, low confidence
 - Friendfetch (`friendfetch`, rank 1) -> `combat-utility`, low confidence
 - Indestructibility (`indestructibility`, rank 10) -> `combat-utility`, low confidence
 - Champion's Sacrifice (`champions-sacrifice`, rank 6) -> `combat-utility`, low confidence
+- Wood Walk (`wood-walk`, rank 4) -> `mobility`, medium confidence
+- Unblinking Flame Revelation (`unblinking-flame-revelation`, rank 3) -> `combat-utility`, medium confidence
 - Vindicator's Judgment (`vindicators-judgment`, rank 5) -> `combat-utility`, low confidence
 - Air Bubble (`air-bubble`, rank 1) -> `combat-utility`, low confidence
 - Entropic Wheel (`entropic-wheel`, rank 3) -> `combat-utility`, low confidence
@@ -1509,52 +1484,77 @@ Generated from 1802 local PF2e system spells (spells-srd=1802).
 - Miracle (`miracle`, rank 10) -> `combat-utility`, low confidence
 - Sonata Span (`sonata-span`, rank 2) -> `combat-utility`, low confidence
 - Equal Footing (`equal-footing`, rank 1) -> `combat-utility`, low confidence
-- Inner Upheaval (`inner-upheaval`, rank 1) -> `combat-utility`, low confidence
 - Hypercognition (`hypercognition`, rank 3) -> `combat-utility`, low confidence
+- Take its Course (`take-its-course`, rank 4) -> `save-damage`, high confidence
 - Speaking Sky (`speaking-sky`, rank 6) -> `combat-utility`, low confidence
+- Mystic Armor (`mystic-armor`, rank 1) -> `defense`, high confidence
 - Arms of Nature (`arms-of-nature`, rank 1) -> `combat-utility`, low confidence
 - Wooden Double (`wooden-double`, rank 3) -> `combat-utility`, low confidence
 - Patron's Puppet (`patrons-puppet`, rank 1) -> `combat-utility`, low confidence
 - Ghost Sound (`ghost-sound`, rank 1) -> `combat-utility`, low confidence
 - Air Walk (`air-walk`, rank 4) -> `combat-utility`, low confidence
 - Perfected Mind (`perfected-mind`, rank 1) -> `combat-utility`, low confidence
+- Share Burden (`share-burden`, rank 1) -> `healing`, high confidence
 - Oathkeeper's Insignia (`oathkeepers-insignia`, rank 1) -> `combat-utility`, low confidence
 - Blood Duplicate (`blood-duplicate`, rank 2) -> `combat-utility`, low confidence
+- Snare Hopping (`snare-hopping`, rank 1) -> `mobility`, high confidence
+- Death Knell (`death-knell`, rank 2) -> `debuff`, high confidence
+- Travel by Turtle (`travel-by-turtle`, rank 3) -> `summon`, high confidence
+- Overflowing Sorrow (`overflowing-sorrow`, rank 4) -> `defense`, high confidence
+- Weaken Earth (`weaken-earth`, rank 1) -> `debuff`, high confidence
 - Uplifting Overture (`uplifting-overture`, rank 1) -> `combat-utility`, low confidence
 - Illusory Creature (`illusory-creature`, rank 2) -> `combat-utility`, low confidence
 - Inevitable Destination (`inevitable-destination`, rank 4) -> `combat-utility`, low confidence
+- Deafness (`deafness`, rank 2) -> `debuff`, high confidence
 - Silence (`silence`, rank 2) -> `combat-utility`, low confidence
 - Envenom Companion (`envenom-companion`, rank 3) -> `combat-utility`, low confidence
 - Reflected Beauty (`reflected-beauty`, rank 4) -> `combat-utility`, low confidence
+- Censure Falsehoods (`censure-falsehoods`, rank 3) -> `control`, high confidence
 - Sheltering Wings (`sheltering-wings`, rank 3) -> `combat-utility`, low confidence
 - Alter Reality (`alter-reality`, rank 10) -> `combat-utility`, low confidence
 - Redact (`redact`, rank 1) -> `combat-utility`, low confidence
+- Deathless March (`deathless-march`, rank 4) -> `buff`, high confidence
 - Lingering Composition (`lingering-composition`, rank 1) -> `combat-utility`, low confidence
 - Propulsive Breeze (`propulsive-breeze`, rank 2) -> `combat-utility`, low confidence
+- Planar Tether (`planar-tether`, rank 4) -> `control`, high confidence
 - Know the Enemy (`know-the-enemy`, rank 4) -> `combat-utility`, low confidence
+- Veil of Spirits (`veil-of-spirits`, rank 2) -> `debuff`, high confidence
 - Wash Your Luck (`wash-your-luck`, rank 1) -> `combat-utility`, low confidence
 - Fatal Aria (`fatal-aria`, rank 10) -> `combat-utility`, low confidence
+- Pave Ground (`pave-ground`, rank 2) -> `mobility`, high confidence
+- For Love, For Lightning (`for-love-for-lightning`, rank 6) -> `save-damage`, high confidence
 - Fungal Hyphae (`fungal-hyphae`, rank 2) -> `combat-utility`, low confidence
 - Recall Legacy (`recall-legacy`, rank 7) -> `combat-utility`, low confidence
 - Perseis's Precautions (`perseiss-precautions`, rank 3) -> `combat-utility`, low confidence
 - Restorative Moment (`restorative-moment`, rank 5) -> `combat-utility`, low confidence
 - Befitting Attire (`befitting-attire`, rank 2) -> `combat-utility`, low confidence
 - Seashell of Stolen Sound (`seashell-of-stolen-sound`, rank 1) -> `combat-utility`, low confidence
+- Lock Item (`lock-item`, rank 2) -> `control`, high confidence
 - Speak with Plants (`speak-with-plants`, rank 3) -> `combat-utility`, low confidence
 - Malignant Sustenance (`malignant-sustenance`, rank 4) -> `combat-utility`, low confidence
+- Gray Shadow (`gray-shadow`, rank 6) -> `summon`, high confidence
 - Ghostly Carrier (`ghostly-carrier`, rank 2) -> `combat-utility`, low confidence
 - Traveling Workshop (`traveling-workshop`, rank 1) -> `combat-utility`, low confidence
+- Cauterize Wounds (`cauterize-wounds`, rank 2) -> `healing`, high confidence
 - Interdisciplinary Incantation (`interdisciplinary-incantation`, rank 4) -> `combat-utility`, low confidence
 - Implement of Destruction (`implement-of-destruction`, rank 4) -> `combat-utility`, low confidence
 - Replicate (`replicate`, rank 4) -> `combat-utility`, low confidence
 - Unity (`unity`, rank 4) -> `combat-utility`, low confidence
+- Spell Immunity (`spell-immunity`, rank 4) -> `defense`, medium confidence
+- Hunter's Vision (`hunters-vision`, rank 5) -> `debuff`, medium confidence
 - Forgotten Lines (`forgotten-lines`, rank 4) -> `combat-utility`, low confidence
+- Thief of Fortune (`thief-of-fortune`, rank 3) -> `buff`, medium confidence
 - Tremor Signs (`tremor-signs`, rank 1) -> `combat-utility`, low confidence
+- Umbral Mindtheft (`umbral-mindtheft`, rank 2) -> `damage`, medium confidence
 - Charming Touch (`charming-touch`, rank 1) -> `combat-utility`, low confidence
 - Message (`message`, rank 1) -> `combat-utility`, low confidence
 - Ghostly Transcription (`ghostly-transcription`, rank 4) -> `combat-utility`, low confidence
 - Echoing Weapon (`echoing-weapon`, rank 1) -> `combat-utility`, low confidence
+- Hippocampus Retreat (`hippocampus-retreat`, rank 1) -> `mobility`, medium confidence
+- Final Sacrifice (`final-sacrifice`, rank 2) -> `area-damage`, high confidence
 - Crusade (`crusade`, rank 9) -> `combat-utility`, low confidence
+- Silver's Refrain (`silvers-refrain`, rank 1) -> `buff`, medium confidence
+- Chameleon Coat (`chameleon-coat`, rank 5) -> `buff`, medium confidence
 - Peaceful Rest (`peaceful-rest`, rank 2) -> `combat-utility`, low confidence
 - Instant Parade (`instant-parade`, rank 3) -> `combat-utility`, low confidence
 - Ventriloquism (`ventriloquism`, rank 1) -> `combat-utility`, low confidence
@@ -1670,7 +1670,6 @@ _none_
 - Miracle (`miracle`, rank 10) -> `combat-utility`, low confidence
 - Sonata Span (`sonata-span`, rank 2) -> `combat-utility`, low confidence
 - Equal Footing (`equal-footing`, rank 1) -> `combat-utility`, low confidence
-- Inner Upheaval (`inner-upheaval`, rank 1) -> `combat-utility`, low confidence
 - Hypercognition (`hypercognition`, rank 3) -> `combat-utility`, low confidence
 - Speaking Sky (`speaking-sky`, rank 6) -> `combat-utility`, low confidence
 - Arms of Nature (`arms-of-nature`, rank 1) -> `combat-utility`, low confidence
@@ -1766,23 +1765,56 @@ _none_
 - Guiding Star (`guiding-star`, rank 2) -> `exploration-utility`, high confidence
 - Spy's Mark (`spys-mark`, rank 2) -> `exploration-utility`, high confidence
 - Carryall (`carryall`, rank 1) -> `exploration-utility`, high confidence
+- Transcribe Moment (`transcribe-moment`, rank 4) -> `exploration-utility`, high confidence
+- Mental Map (`mental-map`, rank 2) -> `exploration-utility`, high confidence
+- Penumbral Disguise (`penumbral-disguise`, rank 2) -> `exploration-utility`, high confidence
+- Nudge the Odds (`nudge-the-odds`, rank 1) -> `exploration-utility`, medium confidence
 - Ephemeral Tracking (`ephemeral-tracking`, rank 3) -> `exploration-utility`, low confidence
+- Detect Poison (`detect-poison`, rank 1) -> `exploration-utility`, high confidence
 - Prestidigitation (`prestidigitation`, rank 1) -> `exploration-utility`, low confidence
+- Sending (`sending`, rank 5) -> `exploration-utility`, high confidence
 - Water Walk (`water-walk`, rank 2) -> `exploration-utility`, low confidence
 - Truespeech (`truespeech`, rank 5) -> `exploration-utility`, low confidence
+- Erase Trail (`erase-trail`, rank 2) -> `exploration-utility`, high confidence
+- Glamorize (`glamorize`, rank 1) -> `exploration-utility`, high confidence
+- Impart Empathy (`impart-empathy`, rank 2) -> `exploration-utility`, high confidence
+- Aura of the Unremarkable (`aura-of-the-unremarkable`, rank 6) -> `exploration-utility`, high confidence
+- Read Fate (`read-fate`, rank 1) -> `exploration-utility`, high confidence
+- Bullhorn (`bullhorn`, rank 1) -> `exploration-utility`, high confidence
+- Fashionista (`fashionista`, rank 1) -> `exploration-utility`, high confidence
 - Light (`light`, rank 1) -> `exploration-utility`, low confidence
 - Frost's Touch (`frosts-touch`, rank 1) -> `exploration-utility`, low confidence
 - Imprint Message (`imprint-message`, rank 1) -> `exploration-utility`, low confidence
 - Create Water (`create-water`, rank 1) -> `exploration-utility`, low confidence
+- Speak with Stones (`speak-with-stones`, rank 5) -> `exploration-utility`, high confidence
+- Word of Truth (`word-of-truth`, rank 1) -> `exploration-utility`, high confidence
+- Ring of Truth (`ring-of-truth`, rank 3) -> `exploration-utility`, high confidence
+- Voice on the Breeze (`voice-on-the-breeze`, rank 2) -> `exploration-utility`, high confidence
 - Embed Message (`embed-message`, rank 2) -> `exploration-utility`, low confidence
 - Elemental Betrayal (`elemental-betrayal`, rank 1) -> `exploration-utility`, low confidence
 - Pest Form (`pest-form`, rank 1) -> `exploration-utility`, medium confidence
+- Detect Magic (`detect-magic`, rank 1) -> `exploration-utility`, high confidence
+- Sudden Recollection (`sudden-recollection`, rank 3) -> `exploration-utility`, high confidence
+- Unfetter Eidolon (`unfetter-eidolon`, rank 1) -> `exploration-utility`, high confidence
+- Illusory Disguise (`illusory-disguise`, rank 1) -> `exploration-utility`, high confidence
+- Favorable Review (`favorable-review`, rank 4) -> `exploration-utility`, high confidence
+- Pulse of Civilization (`pulse-of-civilization`, rank 4) -> `exploration-utility`, high confidence
+- Forced Quiet (`forced-quiet`, rank 1) -> `exploration-utility`, high confidence
 - Draw Moisture (`draw-moisture`, rank 1) -> `exploration-utility`, low confidence
+- Read the Air (`read-the-air`, rank 1) -> `exploration-utility`, high confidence
+- Glowing Trail (`glowing-trail`, rank 1) -> `exploration-utility`, high confidence
+- Healing Plaster (`healing-plaster`, rank 1) -> `exploration-utility`, high confidence
 - Wordsmith (`wordsmith`, rank 4) -> `exploration-utility`, low confidence
+- Fantastic Facade (`fantastic-facade`, rank 9) -> `exploration-utility`, high confidence
+- Painted Scout (`painted-scout`, rank 3) -> `exploration-utility`, high confidence
 - Telekinetic Hand (`telekinetic-hand`, rank 1) -> `exploration-utility`, high confidence
 - Cleanse Cuisine (`cleanse-cuisine`, rank 1) -> `exploration-utility`, low confidence
+- Tame (`tame`, rank 1) -> `exploration-utility`, high confidence
 - Know the Way (`know-the-way`, rank 1) -> `exploration-utility`, low confidence
+- Discern Lies (`discern-lies`, rank 4) -> `exploration-utility`, high confidence
+- Detect Metal (`detect-metal`, rank 1) -> `exploration-utility`, high confidence
 - Translate (`translate`, rank 2) -> `exploration-utility`, low confidence
+- Summoner's Visage (`summoners-visage`, rank 2) -> `exploration-utility`, high confidence
 - Mimic Undead (`mimic-undead`, rank 2) -> `exploration-utility`, medium confidence
 - Fold Metal (`fold-metal`, rank 1) -> `exploration-utility`, low confidence
 - Everlight (`everlight`, rank 2) -> `exploration-utility`, low confidence
@@ -1882,13 +1914,296 @@ _none_
 - Spirit Ward (`spirit-ward`, rank 1) -> `defense`, high confidence
 - Dull Ambition (`dull-ambition`, rank 4) -> `debuff`, high confidence
 - Sacred Form (`sacred-form`, rank 6) -> `transformation`, high confidence
+- Bracing Tendrils (`bracing-tendrils`, rank 3) -> `buff`, medium confidence
+- Ashen Wind (`ashen-wind`, rank 1) -> `debuff`, medium confidence
+- Transcribe Moment (`transcribe-moment`, rank 4) -> `exploration-utility`, high confidence
+- Aerial Form (`aerial-form`, rank 4) -> `transformation`, high confidence
+- Manifestation of Spirits (`manifestation-of-spirits`, rank 2) -> `debuff`, medium confidence
+- Far-Flung Fetch (`far-flung-fetch`, rank 2) -> `mobility`, medium confidence
+- Unexpected Transposition (`unexpected-transposition`, rank 6) -> `defense`, medium confidence
+- Lotus Walk (`lotus-walk`, rank 3) -> `mobility`, medium confidence
+- Genie's Veil (`genies-veil`, rank 1) -> `defense`, high confidence
+- Ibex's Harvest (`ibexs-harvest`, rank 3) -> `defense`, medium confidence
+- Sudden Shift (`sudden-shift`, rank 1) -> `mobility`, high confidence
+- Mental Map (`mental-map`, rank 2) -> `exploration-utility`, high confidence
+- Domora's Defense (`domoras-defense`, rank 5) -> `defense`, high confidence
+- Swarm Form (`swarm-form`, rank 4) -> `transformation`, high confidence
+- Information Overload (`information-overload`, rank 1) -> `debuff`, medium confidence
+- Ectoplasmic Expulsion (`ectoplasmic-expulsion`, rank 5) -> `healing`, medium confidence
+- Pernicious Poltergeist (`pernicious-poltergeist`, rank 4) -> `save-damage`, high confidence
+- Veil of Confidence (`veil-of-confidence`, rank 1) -> `healing`, medium confidence
+- Blinding Beauty (`blinding-beauty`, rank 3) -> `debuff`, high confidence
+- Penumbral Disguise (`penumbral-disguise`, rank 2) -> `exploration-utility`, high confidence
+- Nudge the Odds (`nudge-the-odds`, rank 1) -> `exploration-utility`, medium confidence
+- Detect Poison (`detect-poison`, rank 1) -> `exploration-utility`, high confidence
+- Fey Form (`fey-form`, rank 4) -> `transformation`, high confidence
+- Guided Introspection (`guided-introspection`, rank 1) -> `healing`, medium confidence
+- Sending (`sending`, rank 5) -> `exploration-utility`, high confidence
+- Forbidding Ward (`forbidding-ward`, rank 1) -> `defense`, high confidence
+- Waterproof (`waterproof`, rank 2) -> `buff`, medium confidence
+- Internal Insurrection (`internal-insurrection`, rank 4) -> `debuff`, medium confidence
+- Coiling Dance (`coiling-dance`, rank 2) -> `buff`, medium confidence
+- Clownish Curse (`clownish-curse`, rank 4) -> `debuff`, medium confidence
+- Cloak of Shadow (`cloak-of-shadow`, rank 1) -> `defense`, high confidence
+- Retributive Pain (`retributive-pain`, rank 4) -> `save-damage`, high confidence
+- Stabilize (`stabilize`, rank 1) -> `healing`, high confidence
+- Avenging Wildwood (`avenging-wildwood`, rank 2) -> `summon`, medium confidence
+- Cloak of Colors (`cloak-of-colors`, rank 5) -> `defense`, high confidence
+- Primal Chorus (`primal-chorus`, rank 3) -> `setup`, high confidence
+- Share Vision (`share-vision`, rank 1) -> `buff`, medium confidence
+- Pyrotechnics (`pyrotechnics`, rank 3) -> `debuff`, medium confidence
 - Shield (`shield`, rank 1) -> `defense`, high confidence
+- Erase Trail (`erase-trail`, rank 2) -> `exploration-utility`, high confidence
+- Infiltrator's Tunnel (`infiltrators-tunnel`, rank 4) -> `mobility`, medium confidence
+- Glamorize (`glamorize`, rank 1) -> `exploration-utility`, high confidence
+- Temporal Distortion (`temporal-distortion`, rank 1) -> `debuff`, medium confidence
+- Discern Secrets (`discern-secrets`, rank 1) -> `buff`, medium confidence
+- Wood Walk (`wood-walk`, rank 4) -> `mobility`, medium confidence
+- Warping Pull (`warping-pull`, rank 2) -> `healing`, medium confidence
+- The Queen's Rainbow (`the-queens-rainbow`, rank 2) -> `debuff`, medium confidence
+- Vapor Form (`vapor-form`, rank 4) -> `transformation`, high confidence
+- Unblinking Flame Revelation (`unblinking-flame-revelation`, rank 3) -> `combat-utility`, medium confidence
+- Impart Empathy (`impart-empathy`, rank 2) -> `exploration-utility`, high confidence
+- Spectral Advance (`spectral-advance`, rank 5) -> `mobility`, high confidence
+- Scrounger's Glee (`scroungers-glee`, rank 1) -> `debuff`, medium confidence
+- Aura of the Unremarkable (`aura-of-the-unremarkable`, rank 6) -> `exploration-utility`, high confidence
+- Bottle the Storm (`bottle-the-storm`, rank 4) -> `healing`, high confidence
+- Bloodspray Curse (`bloodspray-curse`, rank 4) -> `save-damage`, high confidence
+- Blindness (`blindness`, rank 3) -> `debuff`, high confidence
+- Spellmaster's Ward (`spellmasters-ward`, rank 5) -> `defense`, high confidence
+- Bestial Curse (`bestial-curse`, rank 4) -> `debuff`, high confidence
+- Read Fate (`read-fate`, rank 1) -> `exploration-utility`, high confidence
+- Bullhorn (`bullhorn`, rank 1) -> `exploration-utility`, high confidence
+- Fashionista (`fashionista`, rank 1) -> `exploration-utility`, high confidence
+- Weapon Surge (`weapon-surge`, rank 1) -> `buff`, high confidence
+- Counter Performance (`counter-performance`, rank 1) -> `defense`, high confidence
+- Distortion Lens (`distortion-lens`, rank 1) -> `control`, high confidence
+- Take Root (`take-root`, rank 1) -> `defense`, high confidence
+- Phantom Crowd (`phantom-crowd`, rank 2) -> `control`, high confidence
+- Elemental Sheath (`elemental-sheath`, rank 4) -> `defense`, high confidence
+- Breath of Drought (`breath-of-drought`, rank 2) -> `debuff`, high confidence
+- Slough Skin (`slough-skin`, rank 2) -> `defense`, high confidence
+- Thicket of Knives (`thicket-of-knives`, rank 1) -> `buff`, high confidence
+- Advanced Scurvy (`advanced-scurvy`, rank 2) -> `debuff`, high confidence
+- Insect Form (`insect-form`, rank 3) -> `transformation`, high confidence
+- Web of Eyes (`web-of-eyes`, rank 3) -> `buff`, high confidence
+- Bless (`bless`, rank 1) -> `buff`, high confidence
+- Dread Secret (`dread-secret`, rank 6) -> `save-damage`, high confidence
+- Summon Stampede (`summon-stampede`, rank 7) -> `save-damage`, high confidence
+- Planar Seal (`planar-seal`, rank 7) -> `control`, high confidence
+- Scramble Body (`scramble-body`, rank 1) -> `debuff`, high confidence
+- Brand the Impenitent (`brand-the-impenitent`, rank 2) -> `debuff`, high confidence
+- Qi Form (`qi-form`, rank 9) -> `buff`, high confidence
+- Soothing Words (`soothing-words`, rank 1) -> `healing`, high confidence
+- Speak with Stones (`speak-with-stones`, rank 5) -> `exploration-utility`, high confidence
+- Pact Broker (`pact-broker`, rank 1) -> `setup`, high confidence
+- Inscrutable Mask (`inscrutable-mask`, rank 3) -> `buff`, high confidence
+- Oaken Resilience (`oaken-resilience`, rank 2) -> `defense`, high confidence
+- Temporary Glyph (`temporary-glyph`, rank 5) -> `setup`, high confidence
+- Flashy Disappearance (`flashy-disappearance`, rank 1) -> `defense`, high confidence
+- Undermine Reality (`undermine-reality`, rank 8) -> `debuff`, high confidence
+- Power Word Blind (`power-word-blind`, rank 7) -> `debuff`, high confidence
+- Zenith Star (`zenith-star`, rank 1) -> `debuff`, high confidence
+- Fire Shield (`fire-shield`, rank 4) -> `defense`, high confidence
+- Unbreaking Wave Barrier (`unbreaking-wave-barrier`, rank 7) -> `defense`, high confidence
+- Death Ward (`death-ward`, rank 5) -> `defense`, high confidence
+- Shambling Horror (`shambling-horror`, rank 6) -> `setup`, high confidence
+- Symphony of the Unfettered Heart (`symphony-of-the-unfettered-heart`, rank 5) -> `healing`, high confidence
+- Wall of Virtue (`wall-of-virtue`, rank 3) -> `control`, high confidence
+- Inner Upheaval (`inner-upheaval`, rank 1) -> `buff`, high confidence
+- Shields of the Spirit (`shields-of-the-spirit`, rank 1) -> `defense`, high confidence
+- Unbreaking Wave Vapor (`unbreaking-wave-vapor`, rank 5) -> `defense`, high confidence
+- Take its Course (`take-its-course`, rank 4) -> `save-damage`, high confidence
+- Glimpse the Truth (`glimpse-the-truth`, rank 4) -> `combat-utility`, high confidence
+- Blazing Bolt (`blazing-bolt`, rank 2) -> `damage`, high confidence
+- Vector Screen (`vector-screen`, rank 3) -> `defense`, high confidence
+- Mystic Armor (`mystic-armor`, rank 1) -> `defense`, high confidence
+- Word of Truth (`word-of-truth`, rank 1) -> `exploration-utility`, high confidence
+- Unblinking Flame Ignition (`unblinking-flame-ignition`, rank 9) -> `buff`, high confidence
+- Strength of Mind (`strength-of-mind`, rank 3) -> `buff`, high confidence
+- Daemon Form (`daemon-form`, rank 6) -> `transformation`, high confidence
+- Horrific Visage (`horrific-visage`, rank 3) -> `debuff`, high confidence
+- Ring of Truth (`ring-of-truth`, rank 3) -> `exploration-utility`, high confidence
+- Unfettered Movement (`unfettered-movement`, rank 4) -> `healing`, high confidence
+- Flourishing Flora (`flourishing-flora`, rank 1) -> `area-damage`, high confidence
+- Anchoring Air (`anchoring-air`, rank 4) -> `defense`, high confidence
+- Rallying Anthem (`rallying-anthem`, rank 2) -> `defense`, high confidence
+- Unfettered Pack (`unfettered-pack`, rank 7) -> `mobility`, high confidence
+- Cinder Swarm (`cinder-swarm`, rank 4) -> `area-damage`, high confidence
+- Friendly Push (`friendly-push`, rank 1) -> `mobility`, high confidence
+- Shroud of Night (`shroud-of-night`, rank 1) -> `debuff`, high confidence
+- Share Burden (`share-burden`, rank 1) -> `healing`, high confidence
+- Glimpse Weakness (`glimpse-weakness`, rank 1) -> `damage`, high confidence
+- Agile Feet (`agile-feet`, rank 1) -> `mobility`, high confidence
+- Glass Shield (`glass-shield`, rank 1) -> `defense`, high confidence
+- Avatar (`avatar`, rank 10) -> `transformation`, high confidence
+- Proliferating Eyes (`proliferating-eyes`, rank 9) -> `setup`, high confidence
+- Trickster's Mirrors (`tricksters-mirrors`, rank 1) -> `defense`, high confidence
+- Voice on the Breeze (`voice-on-the-breeze`, rank 2) -> `exploration-utility`, high confidence
+- Daydreamer's Curse (`daydreamers-curse`, rank 4) -> `debuff`, high confidence
+- Snare Hopping (`snare-hopping`, rank 1) -> `mobility`, high confidence
+- Blood Ward (`blood-ward`, rank 1) -> `defense`, high confidence
+- Demon Form (`demon-form`, rank 6) -> `transformation`, high confidence
+- Death Knell (`death-knell`, rank 2) -> `debuff`, high confidence
+- Devil Form (`devil-form`, rank 6) -> `transformation`, high confidence
+- Unusual Anatomy (`unusual-anatomy`, rank 5) -> `buff`, high confidence
+- Thermal Stasis (`thermal-stasis`, rank 1) -> `defense`, high confidence
+- Travel by Turtle (`travel-by-turtle`, rank 3) -> `summon`, high confidence
+- Call to Arms (`call-to-arms`, rank 1) -> `setup`, high confidence
+- Reaper's Lantern (`reapers-lantern`, rank 2) -> `buff`, high confidence
+- Elemental Gift (`elemental-gift`, rank 4) -> `buff`, high confidence
+- Pressure Zone (`pressure-zone`, rank 5) -> `buff`, high confidence
+- Overflowing Sorrow (`overflowing-sorrow`, rank 4) -> `defense`, high confidence
+- Enduring Might (`enduring-might`, rank 4) -> `healing`, high confidence
+- Wall Of Mirrors (`wall-of-mirrors`, rank 4) -> `control`, high confidence
+- Spout (`spout`, rank 1) -> `save-damage`, high confidence
+- Pack Attack (`pack-attack`, rank 2) -> `buff`, high confidence
+- Artistic Flourish (`artistic-flourish`, rank 4) -> `setup`, high confidence
+- Enervation (`enervation`, rank 4) -> `area-damage`, high confidence
+- Weaken Earth (`weaken-earth`, rank 1) -> `debuff`, high confidence
+- Evil Eye (`evil-eye`, rank 1) -> `debuff`, high confidence
+- Elemental Counter (`elemental-counter`, rank 1) -> `defense`, high confidence
+- Levitate (`levitate`, rank 3) -> `mobility`, high confidence
+- Deafness (`deafness`, rank 2) -> `debuff`, high confidence
+- Elemental Breath (`elemental-breath`, rank 5) -> `area-damage`, high confidence
+- Conductive Weapon (`conductive-weapon`, rank 1) -> `buff`, high confidence
+- Love's Sacrifice (`loves-sacrifice`, rank 7) -> `defense`, high confidence
+- Frenzied Revelry (`frenzied-revelry`, rank 1) -> `defense`, high confidence
+- Gust of Wind (`gust-of-wind`, rank 1) -> `control`, high confidence
+- Acid Splash (`acid-splash`, rank 1) -> `area-damage`, high confidence
+- Protection (`protection`, rank 1) -> `defense`, high confidence
+- Stormwind Flight (`stormwind-flight`, rank 4) -> `mobility`, high confidence
 - Ray of Frost (`ray-of-frost`, rank 1) -> `damage`, medium confidence
+- Etheric Shards (`etheric-shards`, rank 5) -> `control`, high confidence
+- Seal Fate (`seal-fate`, rank 4) -> `debuff`, high confidence
 - Pest Form (`pest-form`, rank 1) -> `exploration-utility`, medium confidence
+- Momentary Recovery (`momentary-recovery`, rank 7) -> `mobility`, high confidence
+- Detect Magic (`detect-magic`, rank 1) -> `exploration-utility`, high confidence
+- All is One, One is All (`all-is-one-one-is-all`, rank 8) -> `buff`, high confidence
+- Censure Falsehoods (`censure-falsehoods`, rank 3) -> `control`, high confidence
+- Unimpeded Stride (`unimpeded-stride`, rank 1) -> `mobility`, high confidence
+- Arcane Countermeasure (`arcane-countermeasure`, rank 5) -> `defense`, high confidence
+- Sudden Recollection (`sudden-recollection`, rank 3) -> `exploration-utility`, high confidence
+- Unfetter Eidolon (`unfetter-eidolon`, rank 1) -> `exploration-utility`, high confidence
+- Divine Vessel (`divine-vessel`, rank 7) -> `transformation`, high confidence
+- Chrysopoetic Curse (`chrysopoetic-curse`, rank 7) -> `debuff`, high confidence
+- Illusory Disguise (`illusory-disguise`, rank 1) -> `exploration-utility`, high confidence
+- Favorable Review (`favorable-review`, rank 4) -> `exploration-utility`, high confidence
+- Swamp of Sloth (`swamp-of-sloth`, rank 3) -> `control`, high confidence
+- Deathless March (`deathless-march`, rank 4) -> `buff`, high confidence
+- Embrace the Pit (`embrace-the-pit`, rank 3) -> `defense`, high confidence
+- Divine Armageddon (`divine-armageddon`, rank 8) -> `area-damage`, high confidence
+- Pulse of Civilization (`pulse-of-civilization`, rank 4) -> `exploration-utility`, high confidence
+- Spiritual Guardian (`spiritual-guardian`, rank 5) -> `buff`, high confidence
+- Disruptive Transfer (`disruptive-transfer`, rank 3) -> `mobility`, high confidence
+- Dismantle (`dismantle`, rank 2) -> `debuff`, high confidence
+- Umbral Graft (`umbral-graft`, rank 4) -> `stealth-defense`, high confidence
+- Sting of the Sea (`sting-of-the-sea`, rank 1) -> `debuff`, high confidence
+- Forced Quiet (`forced-quiet`, rank 1) -> `exploration-utility`, high confidence
+- Whirling Scarves (`whirling-scarves`, rank 3) -> `defense`, high confidence
 - Electric Arc (`electric-arc`, rank 1) -> `damage`, high confidence
+- Personal Rain Cloud (`personal-rain-cloud`, rank 1) -> `defense`, high confidence
+- Illusory Shroud (`illusory-shroud`, rank 2) -> `defense`, high confidence
+- Planar Tether (`planar-tether`, rank 4) -> `control`, high confidence
+- Jealous Hex (`jealous-hex`, rank 1) -> `debuff`, high confidence
+- Omnidirectional Scan (`omnidirectional-scan`, rank 3) -> `buff`, high confidence
+- Quicken Time (`quicken-time`, rank 5) -> `buff`, high confidence
+- Shift Blame (`shift-blame`, rank 3) -> `control`, high confidence
+- Veil of Spirits (`veil-of-spirits`, rank 2) -> `debuff`, high confidence
+- Evolution Surge (`evolution-surge`, rank 1) -> `buff`, high confidence
+- Protective Wards (`protective-wards`, rank 1) -> `defense`, high confidence
+- Read the Air (`read-the-air`, rank 1) -> `exploration-utility`, high confidence
+- Reclined Apport (`reclined-apport`, rank 1) -> `mobility`, high confidence
+- Glowing Trail (`glowing-trail`, rank 1) -> `exploration-utility`, high confidence
+- Blanket of Stars (`blanket-of-stars`, rank 6) -> `defense`, high confidence
+- Healing Plaster (`healing-plaster`, rank 1) -> `exploration-utility`, high confidence
+- Fey Disappearance (`fey-disappearance`, rank 3) -> `defense`, high confidence
+- Overstuff (`overstuff`, rank 1) -> `debuff`, high confidence
+- Loose Time's Arrow (`loose-times-arrow`, rank 2) -> `mobility`, high confidence
+- Thundering Dominance (`thundering-dominance`, rank 2) -> `area-damage`, high confidence
+- Cutting Eye (`cutting-eye`, rank 1) -> `defense`, high confidence
+- Pave Ground (`pave-ground`, rank 2) -> `mobility`, high confidence
+- Embrace Nothingness (`embrace-nothingness`, rank 9) -> `buff`, high confidence
+- Isolation (`isolation`, rank 4) -> `defense`, high confidence
+- Musical Accompaniment (`musical-accompaniment`, rank 1) -> `buff`, high confidence
+- Circle of Protection (`circle-of-protection`, rank 3) -> `defense`, high confidence
+- For Love, For Lightning (`for-love-for-lightning`, rank 6) -> `save-damage`, high confidence
+- Prophet's Luck (`prophets-luck`, rank 4) -> `defense`, high confidence
+- Fantastic Facade (`fantastic-facade`, rank 9) -> `exploration-utility`, high confidence
+- Banishing Touch (`banishing-touch`, rank 2) -> `control`, high confidence
+- Curse of Death (`curse-of-death`, rank 5) -> `damage`, high confidence
+- Shooting Star (`shooting-star`, rank 1) -> `damage`, high confidence
+- Invisible Item (`invisible-item`, rank 1) -> `stealth-defense`, high confidence
+- Radiant Globe (`radiant-globe`, rank 3) -> `defense`, high confidence
+- Vibrant Thorns (`vibrant-thorns`, rank 1) -> `defense`, high confidence
+- Divine Aura (`divine-aura`, rank 8) -> `buff`, high confidence
+- Diviner's Sight (`diviners-sight`, rank 1) -> `buff`, high confidence
+- Painted Scout (`painted-scout`, rank 3) -> `exploration-utility`, high confidence
+- Light of Revelation (`light-of-revelation`, rank 2) -> `stealth-defense`, high confidence
+- Flame Dancer (`flame-dancer`, rank 5) -> `buff`, high confidence
+- Nymph's Token (`nymphs-token`, rank 1) -> `defense`, high confidence
+- Girzanje's March (`girzanjes-march`, rank 4) -> `defense`, high confidence
+- Spirit Veil (`spirit-veil`, rank 3) -> `defense`, high confidence
+- Armor of Bones (`armor-of-bones`, rank 3) -> `defense`, high confidence
+- Repel Metal (`repel-metal`, rank 4) -> `defense`, high confidence
+- Darkvision (`darkvision`, rank 2) -> `buff`, high confidence
+- Primal Herd (`primal-herd`, rank 10) -> `transformation`, high confidence
+- Qi Rush (`qi-rush`, rank 1) -> `mobility`, high confidence
+- Metamorphosis (`metamorphosis`, rank 9) -> `transformation`, high confidence
 - Telekinetic Hand (`telekinetic-hand`, rank 1) -> `exploration-utility`, high confidence
+- Illuminate (`illuminate`, rank 1) -> `combat-utility`, high confidence
+- Lock Item (`lock-item`, rank 2) -> `control`, high confidence
+- Time Jump (`time-jump`, rank 3) -> `mobility`, high confidence
+- String of Fate (`string-of-fate`, rank 1) -> `defense`, medium confidence
+- Belittling Boast (`belittling-boast`, rank 5) -> `debuff`, high confidence
+- Agitate (`agitate`, rank 1) -> `control`, high confidence
+- Protector's Sacrifice (`protectors-sacrifice`, rank 1) -> `healing`, high confidence
+- Trade Items (`trade-items`, rank 3) -> `control`, medium confidence
+- Gray Shadow (`gray-shadow`, rank 6) -> `summon`, high confidence
+- Sacred Beasts (`sacred-beasts`, rank 1) -> `save-damage`, high confidence
 - Heal (`heal`, rank 1) -> `healing`, high confidence
+- Overselling Flourish (`overselling-flourish`, rank 1) -> `debuff`, medium confidence
+- Cascade Countermeasure (`cascade-countermeasure`, rank 3) -> `defense`, high confidence
+- Threatening Mimicry (`threatening-mimicry`, rank 3) -> `debuff`, medium confidence
+- Path of Least Resistance (`path-of-least-resistance`, rank 4) -> `stealth-defense`, medium confidence
+- Shillelagh (`shillelagh`, rank 1) -> `buff`, high confidence
+- Tame (`tame`, rank 1) -> `exploration-utility`, high confidence
+- Cauterize Wounds (`cauterize-wounds`, rank 2) -> `healing`, high confidence
+- Warp Step (`warp-step`, rank 1) -> `mobility`, high confidence
+- Feast of Ashes (`feast-of-ashes`, rank 2) -> `debuff`, high confidence
 - Fireball (`fireball`, rank 3) -> `area-damage`, medium confidence
+- Victory Cry (`victory-cry`, rank 1) -> `control`, medium confidence
+- Connective Current (`connective-current`, rank 1) -> `buff`, medium confidence
+- Fortify Summoning (`fortify-summoning`, rank 1) -> `buff`, high confidence
+- Shadow Siphon (`shadow-siphon`, rank 5) -> `defense`, high confidence
+- Spell Immunity (`spell-immunity`, rank 4) -> `defense`, medium confidence
+- Summon Ancient Fleshforged (`summon-ancient-fleshforged`, rank 9) -> `save-damage`, high confidence
+- Hunter's Vision (`hunters-vision`, rank 5) -> `debuff`, medium confidence
+- Phantasmal Killer (`phantasmal-killer`, rank 4) -> `save-damage`, high confidence
+- Magic Hide (`magic-hide`, rank 1) -> `defense`, medium confidence
+- Magic's Vessel (`magics-vessel`, rank 1) -> `defense`, medium confidence
+- Tree of Seasons (`tree-of-seasons`, rank 6) -> `save-damage`, high confidence
+- Thief of Fortune (`thief-of-fortune`, rank 3) -> `buff`, medium confidence
+- Discern Lies (`discern-lies`, rank 4) -> `exploration-utility`, high confidence
+- Falsify Heat (`falsify-heat`, rank 2) -> `stealth-defense`, medium confidence
+- Umbral Mindtheft (`umbral-mindtheft`, rank 2) -> `damage`, medium confidence
+- Radiant Field (`radiant-field`, rank 2) -> `debuff`, medium confidence
+- Detect Metal (`detect-metal`, rank 1) -> `exploration-utility`, high confidence
+- Abyssal Plague (`abyssal-plague`, rank 5) -> `debuff`, high confidence
+- Summoner's Visage (`summoners-visage`, rank 2) -> `exploration-utility`, high confidence
+- Fear the Sun (`fear-the-sun`, rank 2) -> `debuff`, medium confidence
+- Steel Fortifications (`steel-fortifications`, rank 2) -> `summon`, medium confidence
+- Hippocampus Retreat (`hippocampus-retreat`, rank 1) -> `mobility`, medium confidence
+- Harm (`harm`, rank 1) -> `save-damage`, high confidence
+- Animal Form (`animal-form`, rank 2) -> `transformation`, high confidence
+- Enlarge (`enlarge`, rank 2) -> `buff`, high confidence
+- Final Sacrifice (`final-sacrifice`, rank 2) -> `area-damage`, high confidence
+- Gift of the Anemos (`gift-of-the-anemos`, rank 1) -> `defense`, medium confidence
+- Ancestral Form (`ancestral-form`, rank 6) -> `transformation`, high confidence
+- Silver's Refrain (`silvers-refrain`, rank 1) -> `buff`, medium confidence
+- Chameleon Coat (`chameleon-coat`, rank 5) -> `buff`, medium confidence
+- Creative Splash (`creative-splash`, rank 1) -> `debuff`, medium confidence
+- Moth's Supper (`moths-supper`, rank 3) -> `healing`, medium confidence
 - Mimic Undead (`mimic-undead`, rank 2) -> `exploration-utility`, medium confidence
 - Phantasmal Minion (`phantasmal-minion`, rank 1) -> `summon`, medium confidence
 - Distracting Decoy (`distracting-decoy`, rank 1) -> `debuff`, medium confidence
@@ -1899,5 +2214,6 @@ _none_
 - Penumbral Shroud (`penumbral-shroud`, rank 1) -> `buff`, medium confidence
 - Control Water (`control-water`, rank 5) -> `control`, medium confidence
 - Tempest Form (`tempest-form`, rank 6) -> `transformation`, high confidence
+- Elephant Form (`elephant-form`, rank 4) -> `transformation`, high confidence
 - Vanishing Tracks (`vanishing-tracks`, rank 1) -> `exploration-utility`, high confidence
 

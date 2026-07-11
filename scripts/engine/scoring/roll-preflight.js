@@ -213,11 +213,21 @@ function resultData({
   const breakdownText = breakdown
     ? t("Preflight.ModifierBreakdown", "Modifier breakdown: {breakdown}.", { breakdown })
     : "";
+  const approximateText = approximate
+    ? t("Preflight.ApproximateIntel", "Target DC uses revealed approximate Intel.")
+    : "";
+  const informationalText = t("Preflight.InformationalOnly", "Informational only; does not change Auto-fill ranking.");
+  const tooltipLines = [
+    `${resolution}.`,
+    breakdownText,
+    approximateText,
+    informationalText,
+  ].filter(Boolean);
   const tooltip = [
     reason,
     breakdownText,
-    approximate ? t("Preflight.ApproximateIntel", "Target DC uses revealed approximate Intel.") : "",
-    t("Preflight.InformationalOnly", "Informational only; does not change Auto-fill ranking."),
+    approximateText,
+    informationalText,
   ].filter(Boolean).join(" ");
 
   return {
@@ -239,6 +249,7 @@ function resultData({
     label,
     reason,
     tooltip,
+    tooltipLines,
     actionSlug: actionSlug(action),
   };
 }

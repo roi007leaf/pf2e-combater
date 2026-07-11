@@ -161,6 +161,10 @@ const recommendationSafetySource = readFileSync(new URL("../recommendation-safet
 const scoringTacticsSource = readFileSync(new URL("../scoring/tactics.js", import.meta.url), "utf8");
 const scoringActivityTacticsSource = readFileSync(new URL("../scoring/activity-tactics.js", import.meta.url), "utf8");
 const scoringRoleTacticsSource = readFileSync(new URL("../scoring/role-tactics.js", import.meta.url), "utf8");
+assert.ok(
+  scoringRoleTacticsSource.includes('aggro.roles.join(" -> ")'),
+  "Aggro priority should render as ordered arrows instead of an unordered comma list",
+);
 const scoringTacticHelpersSource = readFileSync(new URL("../scoring/tactic-helpers.js", import.meta.url), "utf8");
 const scoringAreaSource = readFileSync(new URL("../scoring/area.js", import.meta.url), "utf8");
 const scoringFactsSource = readFileSync(new URL("../scoring/facts.js", import.meta.url), "utf8");
@@ -351,6 +355,52 @@ assert.ok(intelWindowSource.includes("_toggleCategory")
   && intelWindowTemplateSource.includes("{{markIcon}}")
   && panelStyleSource.includes(".combater-intel-category-mark:hover"),
   "GM Recall Knowledge category marker should toggle every fact and show partial state");
+assert.ok(
+  intelWindowTemplateSource.includes("data-intel-false-fact")
+    && intelWindowTemplateSource.includes("data-intel-false-value")
+    && intelWindowTemplateSource.includes("data-intel-remove-false")
+    && intelWindowSource.includes("CONFIG?.PF2E?.[mapName]"),
+  "GM false Intel should use structured PF2e choices, numeric values, and an explicit delete control",
+);
+assert.ok(
+  /\.combater-intel-false-record\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 20px;/.test(panelStyleSource)
+    && /\.combater-intel-false-list\s*\{[\s\S]*?flex-wrap:\s*wrap;/.test(panelStyleSource)
+    && /\.combater-intel-false-record\s*\{[\s\S]*?box-sizing:\s*border-box;[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/.test(panelStyleSource)
+    && /\.combater-intel-false-record\.has-value\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 20px;/.test(panelStyleSource)
+    && /\.combater-intel-false-value\s*\{[\s\S]*?grid-column:\s*1 \/ -1;[\s\S]*?grid-row:\s*2;/.test(panelStyleSource)
+    && intelWindowTemplateSource.includes('type="text" inputmode="numeric" pattern="[0-9]*"')
+    && /\.combater-intel-false-value \[data-intel-false-value\]\s*\{[\s\S]*?display:\s*block;[\s\S]*?width:\s*58px;[\s\S]*?max-width:\s*58px;/.test(panelStyleSource)
+    && intelWindowTemplateSource.includes("{{#if ../falseHasValue}}")
+    && intelWindowTemplateSource.includes("combater-intel-false-value"),
+  "false Intel controls should render as compact wrapping chips instead of full-width form cards",
+);
+assert.ok(
+  /combater-intel-false-section-head[\s\S]*?data-intel-add-false[\s\S]*?<\/header>/.test(intelWindowTemplateSource)
+    && /\.combater-intel-false-section\s*\{[\s\S]*?border-top:/.test(panelStyleSource)
+    && intelWindowTemplateSource.includes("combater-intel-false-list"),
+  "each Intel category should separate false facts under one labeled subsection with its own add control",
+);
+assert.ok(
+  /\.combater-intel-false-record select\s*\{[\s\S]*?color-scheme:\s*dark;/.test(panelStyleSource)
+    && /\.combater-intel-false-record select option\s*\{[\s\S]*?background:\s*#181b20;[\s\S]*?color:\s*#f0eee8;/.test(panelStyleSource),
+  "false Intel PF2e selectors should keep native option popups dark and readable",
+);
+assert.ok(
+  panelStyleSource.includes('.combater-intel-category input[type="checkbox"]')
+    && !panelStyleSource.includes(".combater-intel-category input {"),
+  "Intel checkbox hiding must not disable false-information text fields",
+);
+assert.ok(
+  intelWindowTemplateSource.includes("is-false-information")
+    && /\.combater-intel-revealed-section li\.is-false-information\s*\{/.test(panelStyleSource)
+    && intelLedgerSource.includes("viewerIsGM ? { falseInformation }"),
+  "GM player-perspective Intel should identify false facts without exposing markers to players",
+);
+assert.ok(
+  combatContextSource.includes("readIntelFalseInformation")
+    && combatContextSource.includes("intelFalseInformation,"),
+  "player-safe battlefield summaries should carry false Intel so players receive it as ordinary revealed facts",
+);
 assert.ok(intelLedgerSource.includes("intelTargets") && intelLedgerSource.includes("actorDefense"),
   "intel ledger view should support combat-tracker actor rows without a full Combater panel context");
 assert.ok(intelLedgerSource.includes("isNpcIntelTarget") && panelViewModelSource.includes("isNpcIntelTarget")
@@ -359,7 +409,8 @@ assert.ok(intelLedgerSource.includes("isNpcIntelTarget") && panelViewModelSource
 assert.ok(scoringSource.includes("playerIntelCategories") && recommendationSafetySource.includes("PLAYER_INTEL_REASON_PATTERNS"),
   "player-visible learned intel reasons should be allowed only for known Recall Knowledge categories");
 assert.ok(intelLedgerSource.includes("canUseIntelFact") && scoringFactsSource.includes("canUseTargetSave")
-  && scoringTargetsSource.includes("canUseTargetSave(context, target, action.saveProfile.stat)")
+  && scoringTargetsSource.includes("canUseTargetSave(context, target, defenseSlug)")
+  && scoringTargetsSource.includes("actionSkillDcSlug(action)")
   && scoringSource.includes("actionSkillDcSlug"),
   "player scoring should use revealed save intel for DC math without enabling unrelated hidden defenses");
 assert.ok(intelLedgerSource.includes('id: "perception"') && intelLedgerSource.includes("function perceptionFacts")
@@ -759,6 +810,22 @@ assert.deepEqual(
   }],
   "action detail chips should name the scored best combatant target",
 );
+const bestTargetReasonChip = actionDetailChips({
+    name: "Frostbite",
+    source: "spell-inferred",
+    suggestedTarget: { type: "enemy", id: "isqulug", name: "Isqulug" },
+    bestTargetReasons: ["Isqulug has cold weakness 10."],
+  })[0];
+assert.equal(bestTargetReasonChip?.tooltip, "Isqulug is this action's highest-ranked target. Why: Isqulug has cold weakness 10.");
+assert.equal(
+  bestTargetReasonChip?.tooltipHtml,
+  "<p>Isqulug is this action&#39;s highest-ranked target.</p><strong>Why:</strong><ul><li>Isqulug has cold weakness 10.</li></ul>",
+  "Best target tooltip should use native rich-tooltip list markup",
+);
+assert.ok(
+  (panelTemplateSource.match(/data-tooltip-html="\{\{tooltipHtml\}\}"/gu) ?? []).length === 3,
+  "Best target rich tooltip should reach plan and Browse chips",
+);
 const dropProneWithStaleTarget = {
   name: "Drop Prone",
   slug: "drop-prone",
@@ -1137,8 +1204,12 @@ assert.ok(
   "selected action metadata should wrap instead of overlapping",
 );
 assert.ok(
-  /\.pf2e-combater\.combater-panel \.window-content\s*\{[\s\S]*?overflow:\s*hidden;/.test(panelStyleSource),
-  "main panel window content should be viewport-capped so the plan list can scroll inside it",
+  /\.pf2e-combater\.combater-panel \.window-content\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/.test(panelStyleSource),
+  "main panel window content should retain a viewport-capped scroll fallback when intrinsic flex sizing cannot shrink the plan",
+);
+assert.ok(
+  /\.pf2e-combater\.combater-browser \.window-content\s*\{[\s\S]*?overflow:\s*hidden;/.test(panelStyleSource),
+  "detached Browse windows should keep their pinned-header inner-list scroll owner",
 );
 assert.ok(
   /\.pf2e-combater\.combater-panel \.combater-shell\s*\{[\s\S]*?max-height:\s*inherit;/.test(panelStyleSource),
@@ -3090,7 +3161,7 @@ assert.equal(
   "empty player shared drafts should still count as live updates so GM views clear stale plans",
 );
 assert.ok(
-  /const useSharedDraft = sharedDraftKnown[\s\S]*shouldDisplaySharedDraft\(draft, sharedDraft\)/.test(panelContextWorkflowSource),
+  /const useSharedDraft = gmEditingOfflinePlayerPlan[\s\S]*shouldDisplaySharedDraft\(draft, sharedDraft\)/.test(panelContextWorkflowSource),
   "shared-draft display decision should allow loaded shared drafts to be replaced by newer player payloads",
 );
 assert.ok(panelContextWorkflowSource.includes("hasSharedDraftPlan(sharedDraft)"), "GM panel should treat empty player drafts as known shared plans");
@@ -3098,26 +3169,22 @@ assert.ok(
   panelContextWorkflowSource.includes("isPlayerControlledActor"),
   "panel should detect player-controlled actors before allowing GM draft edits",
 );
-// Regression: an absent player's owned character used to lock the GM out of Auto-fill/execute
-// forever, because ownership is a static document flag with no regard for whether that owner is
-// actually connected. The GM should get full plan/execute rights once every owning player is
-// offline — the same rights they already have for any NPC they run.
+// Regression: an absent player's owned character used to leave the GM with an empty, read-only
+// player-plan mirror. Offline ownership must remain detectable so the GM edits the actor-backed
+// shared plan; any connected co-owner keeps it read-only to prevent competing writes.
 assert.ok(
-  /user\s*&&\s*user\.isGM\s*!==\s*true\s*&&\s*user\.active\s*===\s*true/.test(panelContextWorkflowSource),
-  "player-owner detection should require the owning user to be currently connected (user.active), not just hold a static ownership flag",
+  panelContextWorkflowSource.includes("owners.every((candidate) => candidate?.active !== true)"),
+  "GM player-plan editing should require every owning player to be offline",
 );
-// Regression (edge case): sharedDraftKnown gets stamped for the rest of the encounter the moment a
-// player ever shares any draft (even an empty one), so a stale shared draft from earlier in the
-// session must not re-lock an absent player's actor read-only. The mirror/lock branch has to require
-// gmViewingPlayerPlan directly, not just useSharedDraft, so it falls through to the GM's own editable
-// local draft once the player disconnects.
+// The offline-GM edit path intentionally stays on the shared draft, including before the first
+// step exists, so actor-flag persistence and player ownership metadata remain intact.
 assert.ok(
   /const activeDraft = \(gmViewingPlayerPlan && useSharedDraft\)/.test(panelContextWorkflowSource),
-  "shared-draft readonly mirroring must require the player to be actively online, not just a known shared draft",
+  "GM player-plan access should use the shared draft path",
 );
 assert.ok(
-  /panel\._builder\.readonly = .*gmViewingPlayerPlan/.test(panelContextWorkflowSource),
-  "GM PC view should mark builder readonly",
+  /panel\._builder\.readonly = .*gmViewingPlayerPlan && !gmEditingOfflinePlayerPlan/.test(panelContextWorkflowSource),
+  "GM PC view should be editable only while the owning players are offline",
 );
 assert.ok(
   panelTemplateSource.includes("{{#unless builder.readonly}}"),

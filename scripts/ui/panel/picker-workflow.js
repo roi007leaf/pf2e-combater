@@ -169,7 +169,7 @@ export async function choosePanelTarget(panel, instanceId, { useBestTarget = fal
   cancelPanelPickers(panel);
   const current = panel._findActiveStep(instanceId) ?? step;
   const selection = useBestTarget
-    ? plannedTargetSelection({ ...(current?.action ?? {}), ...current })
+    ? plannedTargetSelection(current)
     : currentTargetSelection();
   if (!selection.targetTokenIds.length) {
     globalThis.ui?.notifications?.warn?.(useBestTarget

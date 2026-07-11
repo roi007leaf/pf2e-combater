@@ -167,6 +167,50 @@ function activeStances(actor) {
     .filter(Boolean);
 }
 
+function tokenMarkUuids(actor, patterns) {
+  const marks = actor?.synthetics?.tokenMarks;
+  const entries = marks instanceof Map
+    ? Array.from(marks.entries())
+    : marks && typeof marks === "object"
+      ? Object.entries(marks)
+      : [];
+  return entries
+    .filter(([, slugs]) => values(slugs).some((slug) => entryMatchesPatterns(slug, patterns)))
+    .map(([uuid]) => String(uuid ?? "").trim())
+    .filter(Boolean);
+}
+
+function targetTokenIdentityValues(target) {
+  const token = target?.token ?? null;
+  const document = token?.document ?? token;
+  return [
+    target?.tokenUuid,
+    token?.uuid,
+    document?.uuid,
+    target?.uuid,
+  ].filter(Boolean).map(String);
+}
+
+export function targetHasTokenMark(target, tokenUuids = []) {
+  const marked = new Set((Array.isArray(tokenUuids) ? tokenUuids : [tokenUuids]).filter(Boolean).map(String));
+  return marked.size > 0 && targetTokenIdentityValues(target).some((uuid) => marked.has(uuid));
+}
+
+export function targetIsDefeated(target) {
+  const directHp = target?.hpPercent ?? target?.hp?.percent;
+  if (directHp !== null && directHp !== undefined && Number.isFinite(Number(directHp)) && Number(directHp) <= 0) {
+    return true;
+  }
+  return conditionEntries(target).some((entry) => ["dead", "destroyed"].includes(normalize(entry?.slug ?? entry)));
+}
+
+export function livingMarkedTarget(context, tokenUuids = [], mark = "") {
+  const enemies = context?.enemies ?? context?.battlefield?.enemies ?? context?.targets ?? context?.battlefield?.targets ?? [];
+  return enemies.find((target) =>
+    !targetIsDefeated(target)
+    && (targetHasTokenMark(target, tokenUuids) || (mark && targetHasMarkState(target, mark)))) ?? null;
+}
+
 export function readCombatState(actor) {
   if (!actor) return {};
 
@@ -206,7 +250,9 @@ export function readCombatState(actor) {
     "mortal-weakness",
   ]);
 
-  const huntedPreyActive = hasEntry(actor, ["hunt-prey", "hunted-prey"])
+  const huntedPreyTokenUuids = tokenMarkUuids(actor, ["hunt-prey", "hunted-prey"]);
+  const huntedPreyActive = huntedPreyTokenUuids.length > 0
+    || hasEntry(actor, ["hunt-prey", "hunted-prey"])
     || hasFlagPath(actor, ["flags", "pf2e", "ranger", "huntPrey"], undefined);
 
   return {
@@ -224,6 +270,7 @@ export function readCombatState(actor) {
     eidolonManifested: hasEntry(actor, ["manifest-eidolon", "eidolon-manifested", "eidolon"]),
     exploitVulnerabilityActive,
     huntedPreyActive,
+    huntedPreyTokenUuids,
     lingeringCompositionActive: hasEntry(actor, ["lingering-composition"]),
     kineticistAuraActive,
     channelElementsActive: kineticistAuraActive,

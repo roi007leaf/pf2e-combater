@@ -93,7 +93,7 @@ export function scoreCuratedRoleTactics(context, action, {
 
   const aggro = target ? aggroProfile(context, target) : null;
   if (aggro?.gmOnly && aggro.roles.length && aggro.score > 0) {
-    nextReasons.push(t("ScoreReason.AggroPriority", "Aggro priority: {roles}.", { roles: aggro.roles.join(", ") }));
+    nextReasons.push(t("ScoreReason.AggroPriority", "Aggro priority: {roles}.", { roles: aggro.roles.join(" -> ") }));
   }
 
   if (isCurated(action) && role === "debuff" && target) {

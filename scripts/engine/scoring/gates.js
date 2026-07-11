@@ -1,5 +1,5 @@
 import { hasDemoralizeImmunity } from "../../rules/demoralize-immunity.js";
-import { readCombatState, targetHasMarkState } from "../../rules/combat-state.js";
+import { livingMarkedTarget, readCombatState, targetHasMarkState } from "../../rules/combat-state.js";
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { t } from "../../i18n.js";
 import { slugify as slugText } from "../action/text.js";
@@ -42,6 +42,10 @@ function isChannelElementsAction(action) {
   ].map(slugText).includes("channel-elements");
 }
 
+function isHuntPreyAction(action) {
+  return [action?.slug, action?.tacticSlug, action?.name].map(slugText).includes("hunt-prey");
+}
+
 function kineticAuraActive(context, profile) {
   const states = [
     profile?.combatState,
@@ -72,6 +76,18 @@ export function blockedCandidateResult(context, action, { role, target, profile,
 
   if (isExploitVulnerabilityAction(action) && !target && attackableEnemies(context).some(hasExploitVulnerabilityMark)) {
     return blockedAction(action, t("ScoreReason.TargetIsAlreadyExploited", "Target is already exploited."));
+  }
+
+  if (isHuntPreyAction(action)) {
+    const state = profile?.combatState ?? readCombatState(contextActorDocument(context));
+    const markedUuids = Array.isArray(state?.huntedPreyTokenUuids) ? state.huntedPreyTokenUuids : [];
+    const livingPrey = livingMarkedTarget(context, markedUuids, "hunted-prey");
+    if (!target && (livingPrey || (state?.huntedPreyActive === true && markedUuids.length === 0))) {
+      return blockedAction(action, t(
+        "ScoreReason.CurrentHuntedPreyOnlyTarget",
+        "Current hunted prey is already designated; no other valid prey target.",
+      ));
+    }
   }
 
   const targetMark = action.activityProfile?.targetMark;

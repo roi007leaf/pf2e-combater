@@ -84,9 +84,34 @@ function finiteScoreLabel(...sources) {
   return "";
 }
 
+function whyReasonKey(reason) {
+  const normalized = String(reason ?? "")
+    .trim()
+    .replace(/[.!?]+$/u, "")
+    .toLowerCase();
+  const check = normalized.replace(/^pf2e check preview:\s*/u, "");
+  const moveStrike = check.match(/^(?:moves?|stride(?: twice)?) into reach and (?:attacks?|strike)\s+(.+)$/u);
+  return moveStrike ? `move-strike:${moveStrike[1]}` : check;
+}
+
+function whyReasonSpecificity(reason) {
+  const value = String(reason ?? "").trim();
+  if (/^PF2e check preview:/u.test(value)) return 2;
+  if (/^Stride(?: twice)? into reach and Strike\b/u.test(value)) return 2;
+  return 1;
+}
+
 function pushReason(result, reason) {
   const value = String(reason ?? "").trim();
-  if (!value || result.includes(value)) return;
+  if (!value) return;
+  const key = whyReasonKey(value);
+  const duplicateIndex = result.findIndex((existing) => whyReasonKey(existing) === key);
+  if (duplicateIndex >= 0) {
+    if (whyReasonSpecificity(value) > whyReasonSpecificity(result[duplicateIndex])) {
+      result[duplicateIndex] = value;
+    }
+    return;
+  }
   result.push(value);
 }
 

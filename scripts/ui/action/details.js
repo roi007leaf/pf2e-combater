@@ -12,6 +12,16 @@ const NOTABLE_TRAITS = [
   "death",
 ];
 
+function escapeHtml(value) {
+  if (globalThis.foundry?.utils?.escapeHTML) return globalThis.foundry.utils.escapeHTML(String(value ?? ""));
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function numeric(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -76,9 +86,24 @@ function bestTargetChip(action) {
   if (target?.type === "self") return null;
   const name = String(target?.name ?? target?.actor?.name ?? "").trim();
   if (!name) return null;
+  const baseTooltip = t("Chip.BestTargetTooltip", "{name} is this action's highest-ranked target.", { name });
+  const reasons = [...new Set(
+    (Array.isArray(action?.bestTargetReasons) ? action.bestTargetReasons : [])
+      .map((reason) => String(reason ?? "").trim())
+      .filter(Boolean),
+  )];
+  const whyLabel = t("Chip.BestTargetWhy", "Why:");
   return {
     label: t("Chip.BestTarget", "Best target: {name}", { name }),
-    tooltip: t("Chip.BestTargetTooltip", "{name} is this action's highest-ranked target.", { name }),
+    tooltip: reasons.length
+      ? t("Chip.BestTargetTooltipWithReasons", "{base} Why: {reasons}", {
+        base: baseTooltip,
+        reasons: reasons.join(" "),
+      })
+      : baseTooltip,
+    tooltipHtml: reasons.length
+      ? `<p>${escapeHtml(baseTooltip)}</p><strong>${escapeHtml(whyLabel)}</strong><ul>${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>`
+      : "",
   };
 }
 
@@ -113,10 +138,20 @@ export function traitChips(action) {
 export function actionDetailChips(action) {
   const chips = [];
   const bestTarget = bestTargetChip(action);
-  if (bestTarget) pushChip(chips, bestTarget.label, bestTarget.tooltip, "best-target");
+  if (bestTarget) chips.push({ ...bestTarget, class: "is-best-target" });
   const preflight = action?.nativePreflight;
   if (preflight?.available && preflight?.label) {
-    pushChip(chips, preflight.label, preflight.tooltip, "preflight");
+    const tooltipLines = (Array.isArray(preflight.tooltipLines) ? preflight.tooltipLines : [])
+      .map((line) => String(line ?? "").trim())
+      .filter(Boolean);
+    chips.push({
+      label: String(preflight.label),
+      tooltip: String(preflight.tooltip || preflight.label),
+      tooltipHtml: tooltipLines.length
+        ? `<strong>${escapeHtml(t("Preflight.TooltipTitle", "PF2e check preview"))}</strong><ul>${tooltipLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+        : "",
+      class: "is-preflight",
+    });
   }
   const preference = action?.preference;
   if (preference?.scoreDelta) {

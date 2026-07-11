@@ -20,7 +20,7 @@
             {{#if hasDetailChips}}
               <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
                 {{#each detailChips}}
-                  <span class="combater-detail-chip {{class}}" data-tooltip="{{tooltip}}">{{label}}</span>
+                  <span class="combater-detail-chip {{class}}"{{#if tooltipHtml}} data-tooltip-html="{{tooltipHtml}}"{{else}} data-tooltip="{{tooltip}}"{{/if}}>{{label}}</span>
                 {{/each}}
               </div>
             {{/if}}

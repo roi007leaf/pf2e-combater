@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.1.6]
+
+### Added
+
+- **Critical Recall Knowledge failures can now deliver structured false information through the NPC
+  Intel editor.** Every Intel category has a GM-only false-information section using PF2e creature
+  traits, damage and condition types, named saves, Perception, and numeric DC/amount fields. False
+  records can be edited or deleted, retain their source actor/question/attempt metadata, and remain
+  separate from learned facts so Auto-fill, Best target, and planner scoring never treat them as
+  real knowledge. GM views mark misinformation with warning styling; players receive it as ordinary
+  revealed Intel with no false marker. Numeric misinformation follows the selected reveal style:
+  Exact mode shows its entered DC or amount, while Bands only converts it to Low, Mid, or High.
+
+### Changed
+
+- **Best target tooltips now explain why that combatant ranked first.** They use compact bullet
+  lists and cite applicable revealed weaknesses, saves, traits, success chances, immediate threats,
+  and finisher priorities. Player explanations use only revealed Recall Knowledge; when no revealed
+  fact affects ranking, the tooltip says so instead of implying hidden Intel was used.
+- **Native Roll-Context Preflight tooltips now use compact bullet lists**, clearly separating the
+  resolved check, modifier breakdown, approximate-Intel warning, and informational-only notice.
+- **Aggro priority explanations now show ordered roles as an arrow chain** (`healer -> caster ->
+  main-attacker`) instead of an ambiguous comma-separated list.
+- **The curated PF2e spell review now covers 386 entries.** Expanded overrides distinguish combat
+  roles, rank-specific variants, Browse-only utility, context-gated remedies, movement, protection,
+  healing, save damage, transformations, summons, and other complex tactical cases more accurately.
+
+### Fixed
+
+- **Combater plan windows are scrollable again when an expanded plan exceeds the viewport.** Short
+  plans still size naturally; long and composite plans keep every action and rating control reachable.
+- **GMs can create and edit a disconnected player's shared combat plan.** The plan remains attributed
+  to that player and persists for their return, while connected-player plans stay read-only to avoid
+  competing edits.
+- **Best target ranking now compares PF2e skill actions against the correct known defense.** Grapple,
+  Reposition, and Shove use Fortitude; Trip and Tumble Through use Reflex; Feint and Create a
+  Diversion use Perception. Target-dependent setup actions are ranked instead of taking the first
+  valid enemy.
+- **Hunt Prey now respects PF2e's native Token Mark state and retargeting rules.** Already-hunted prey
+  is never offered redundantly, retargeting is strongly deprioritized while living prey remains, and
+  normal priority returns after that prey dies or is destroyed.
+- **Why explanations remove semantic duplicates.** Native preflight replaces repeated skill-vs-DC
+  lines, while specific Stride-and-Strike explanations replace equivalent generic movement text.
+- **Shift-click Best target works for nested spell recommendations such as Force Barrage.** Nested
+  target metadata is now resolved instead of producing a false “No Best target” warning.
+
 ## [1.1.5]
 
 ### Added

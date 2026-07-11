@@ -12,6 +12,7 @@ import {
   intelDefenseFactId,
   intelIdentityTrait,
   intelTraitFactId,
+  readIntelFalseInformation,
   readIntelLedger,
   readIntelRevealMode,
 } from "../rules/intel-ledger.js";
@@ -19,7 +20,12 @@ import {
 const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
 
-function actorSummary(actor, { includeDocument = true, intelLedger = null, intelRevealMode = null } = {}) {
+function actorSummary(actor, {
+  includeDocument = true,
+  intelLedger = null,
+  intelRevealMode = null,
+  intelFalseInformation = null,
+} = {}) {
   if (!actor) return null;
   const summary = {
     id: actor.id,
@@ -30,6 +36,7 @@ function actorSummary(actor, { includeDocument = true, intelLedger = null, intel
     documentName: actor.documentName ?? "Actor",
     ...(intelLedger ? { intelLedger } : {}),
     ...(intelRevealMode ? { intelRevealMode } : {}),
+    ...(Array.isArray(intelFalseInformation) ? { intelFalseInformation } : {}),
   };
   if (includeDocument) summary.document = actor;
   return summary;
@@ -372,6 +379,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
   const actor = tokenActor(token);
   const intelLedger = readIntelLedger(actor);
   const intelRevealMode = readIntelRevealMode(actor);
+  const intelFalseInformation = readIntelFalseInformation(actor);
   const intelTarget = intelTargetForActor(actor, intelLedger, intelRevealMode);
   const conditions = readConditions(actor);
   const effects = readEffects(actor, { includeHidden: canSeeDefenses });
@@ -380,11 +388,17 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     id: token?.id ?? token?.document?.id,
     name: tokenDisplayName(token, actor, combatant),
     disposition: tokenDisposition(token),
-    actor: actorSummary(actor, { includeDocument: canSeeDefenses, intelLedger, intelRevealMode }),
+    actor: actorSummary(actor, {
+      includeDocument: canSeeDefenses,
+      intelLedger,
+      intelRevealMode,
+      intelFalseInformation,
+    }),
     token: tokenSummary(token, { combatant }),
     distance: measureDistance(originToken, token),
     intelLedger,
     intelRevealMode,
+    intelFalseInformation,
     traits: canSeeDefenses
       ? actorTraitSlugs(actor)
       : actorTraitSlugs(actor).filter((trait) =>

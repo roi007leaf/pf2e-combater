@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import {
   INTEL_REVEAL_MODES,
   NONE_FACT_ID,
+  normalizeIntelFalseInformation,
   normalizeIntelLedger,
   normalizeIntelRevealMode,
 } from "../rules/intel-ledger.js";
@@ -36,6 +37,40 @@ function factPreviewLabel(values) {
   return `${values.slice(0, 2).join(", ")} ${t("Intel.MoreFacts", "+{count} more", { count: values.length - 2 })}`;
 }
 
+const FALSE_FACT_FALLBACKS = {
+  identity: ["aberration", "animal", "beast", "celestial", "construct", "dragon", "elemental", "fey", "fiend", "humanoid", "ooze", "plant", "spirit", "undead"],
+  traits: ["aberration", "animal", "beast", "celestial", "construct", "dragon", "elemental", "fey", "fiend", "humanoid", "ooze", "plant", "spirit", "undead"],
+  weaknesses: ["acid", "cold", "electricity", "fire", "force", "mental", "poison", "sonic", "spirit", "vitality", "void"],
+  resistances: ["acid", "cold", "electricity", "fire", "force", "mental", "poison", "sonic", "spirit", "vitality", "void"],
+  immunities: ["acid", "bleed", "cold", "death-effects", "disease", "electricity", "fire", "mental", "paralyzed", "poison", "precision", "unconscious"],
+};
+
+function localizedConfigOptions(mapNames, fallback = []) {
+  const values = new Map();
+  for (const mapName of mapNames) {
+    for (const [id, rawLabel] of Object.entries(globalThis.CONFIG?.PF2E?.[mapName] ?? {})) {
+      const localized = globalThis.game?.i18n?.localize?.(rawLabel) ?? rawLabel;
+      values.set(String(id), String(localized || rawLabel || id));
+    }
+  }
+  for (const id of fallback) {
+    if (!values.has(id)) values.set(id, id.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
+  }
+  return [...values].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function falseFactOptions(categoryId) {
+  if (categoryId === "saves") return ["fortitude", "reflex", "will"].map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) }));
+  if (categoryId === "perception") return [{ id: "perception", label: t("Intel.Perception", "Perception") }];
+  if (categoryId === "identity" || categoryId === "traits") {
+    return localizedConfigOptions(["creatureTraits"], FALSE_FACT_FALLBACKS[categoryId]);
+  }
+  if (categoryId === "immunities") {
+    return localizedConfigOptions(["damageTypes", "conditionTypes"], FALSE_FACT_FALLBACKS.immunities);
+  }
+  return localizedConfigOptions(["damageTypes"], FALSE_FACT_FALLBACKS[categoryId]);
+}
+
 function categoryFacts(entry, category, { editable = false } = {}) {
   const facts = editable
     ? entry.availableFacts?.[category.id] ?? entry.revealedFacts?.[category.id] ?? []
@@ -57,12 +92,40 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
   const selectedIds = selectedFactIds(entry.values?.[category.id], facts);
   const selectedCount = selectedIds.length;
   const totalCount = facts.length;
+  const falseOptions = falseFactOptions(category.id);
+  const categoryFalseInformation = (Array.isArray(entry.falseInformation) ? entry.falseInformation : [])
+    .filter((record) => record.category === category.id);
+  const revealedItems = values.map((value) => ({ label: String(value), isFalse: false, tooltip: "" }));
+  if (!editable) {
+    for (const record of categoryFalseInformation) {
+      const label = String(record.label || record.text || "").trim();
+      if (!label) continue;
+      let matchingIndex = -1;
+      for (let itemIndex = revealedItems.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        if (!revealedItems[itemIndex].isFalse && revealedItems[itemIndex].label === label) {
+          matchingIndex = itemIndex;
+          break;
+        }
+      }
+      const falseItem = {
+        label,
+        isFalse: true,
+        tooltip: t("Intel.FalseInformationGmTooltip", "False information; players see this as normal revealed Intel."),
+      };
+      if (matchingIndex >= 0) revealedItems[matchingIndex] = falseItem;
+      else revealedItems.push(falseItem);
+    }
+  }
+  const falseValueKind = ["saves", "perception"].includes(category.id)
+    ? "dc"
+    : (["weaknesses", "resistances"].includes(category.id) ? "amount" : "none");
   return {
     ...category,
     checked: selectedCount > 0,
     inputName: inputName(index, category.id),
     values,
-    hasValues: values.length > 0,
+    hasValues: editable ? values.length > 0 : revealedItems.length > 0,
+    revealedItems,
     facts: facts.map((fact) => ({
       ...fact,
       inputName: inputName(index, category.id),
@@ -77,6 +140,24 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
       : factCountLabel(values.length),
     emptyLabel: t("Intel.NoSystemValues", "No system values found"),
     revealAllLabel: t("Intel.ToggleCategoryAll", "Select or clear all {category} facts", { category: category.label }),
+    falseInformation: categoryFalseInformation
+      .map((record, recordIndex) => ({
+        ...record,
+        id: String(record.id ?? `false-${recordIndex}`),
+        text: String(record.text ?? ""),
+        inputName: `intel.${index}.falseInformation.${String(record.id ?? `false-${recordIndex}`)}`,
+        entryIndex: index,
+        legacy: !record.factId && Boolean(record.text),
+        options: falseOptions.map((option) => ({ ...option, selected: option.id === record.factId })),
+        hasValue: falseValueKind !== "none",
+        isDc: falseValueKind === "dc",
+        sourceLabel: [record.sourceActorName, record.question, `Attempt ${record.attempt}`].filter(Boolean).join(" · "),
+      })),
+    falseOptions,
+    falseHasValue: falseValueKind !== "none",
+    falseIsDc: falseValueKind === "dc",
+    falseInformationLabel: t("Intel.FalseInformation", "False information"),
+    addFalseInformationLabel: t("Intel.AddFalseInformation", "Add false information to {category}", { category: category.label }),
   };
 }
 
@@ -255,19 +336,38 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _readForm() {
     const form = this.element.querySelector("[data-intel-form]");
-    return (this._view.entries ?? []).map((entry, index) => ({
-      actor: entry.actor,
-      revealMode: normalizeIntelRevealMode(Array.from(form?.elements ?? [])
-        .find((element) => element?.name === revealModeInputName(index) && element.checked === true)?.value),
-      value: normalizeIntelLedger(Object.fromEntries(
-        (this._view.categories ?? []).map((category) => [
-          category.id,
-          Array.from(form?.elements ?? [])
-            .filter((element) => element?.name === inputName(index, category.id) && element.checked === true)
-            .map((element) => element.value),
-        ]),
-      )),
-    }));
+    return (this._view.entries ?? []).map((entry, index) => {
+      const falseInformation = normalizeIntelFalseInformation(Array.from(
+        this.element.querySelectorAll(`[data-intel-false-record-entry="${index}"]`),
+      ).map((recordElement) => {
+        const id = recordElement.dataset.intelFalseRecord;
+        const existing = entry.falseInformation?.find((record) => String(record.id) === id) ?? {};
+        const select = recordElement.querySelector("[data-intel-false-fact]");
+        const valueInput = recordElement.querySelector("[data-intel-false-value]");
+        return {
+          ...existing,
+          id,
+          category: recordElement.dataset.intelFalseCategory,
+          factId: select?.value ?? existing.factId ?? "",
+          factLabel: select?.selectedOptions?.[0]?.textContent?.trim() ?? existing.factLabel ?? "",
+          value: valueInput?.value ?? existing.value ?? null,
+        };
+      }));
+      return {
+        actor: entry.actor,
+        falseInformation,
+        revealMode: normalizeIntelRevealMode(Array.from(form?.elements ?? [])
+          .find((element) => element?.name === revealModeInputName(index) && element.checked === true)?.value),
+        value: normalizeIntelLedger(Object.fromEntries(
+          (this._view.categories ?? []).map((category) => [
+            category.id,
+            Array.from(form?.elements ?? [])
+              .filter((element) => element?.name === inputName(index, category.id) && element.checked === true)
+              .map((element) => element.value),
+          ]),
+        )),
+      };
+    });
   }
 
   async _save(button) {
@@ -364,6 +464,24 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     this._syncEntryState(category.closest("[data-intel-entry]"));
   }
 
+  _addFalseInformation(category) {
+    const container = category?.querySelector("[data-intel-false-list]");
+    const template = category?.querySelector("template[data-intel-false-template]");
+    const entry = category?.closest("[data-intel-entry]");
+    if (!container || !entry || !template) return;
+    const entryIndex = Number(entry.dataset.intelEntryIndex);
+    const categoryId = category.dataset.intelCategory;
+    const id = globalThis.foundry?.utils?.randomID?.() ?? `false-${Date.now()}`;
+    const fragment = template.content.cloneNode(true);
+    const record = fragment.querySelector("[data-intel-false-record]");
+    record.dataset.intelFalseRecordEntry = String(entryIndex);
+    record.dataset.intelFalseRecord = id;
+    record.dataset.intelFalseCategory = categoryId;
+    record.querySelector("[data-intel-remove-false]")?.addEventListener("click", () => record.remove());
+    container.append(fragment);
+    container.lastElementChild?.querySelector("select")?.focus();
+  }
+
   _onRender(context, options) {
     super._onRender(context, options);
     this.element.querySelector("[data-intel-close]")?.addEventListener("click", () => this.close());
@@ -376,6 +494,12 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     for (const button of this.element.querySelectorAll("[data-intel-reveal-category]")) {
       button.addEventListener("click", () => this._toggleCategory(button.closest("[data-intel-category]")));
+    }
+    for (const button of this.element.querySelectorAll("[data-intel-add-false]")) {
+      button.addEventListener("click", () => this._addFalseInformation(button.closest("[data-intel-category]")));
+    }
+    for (const button of this.element.querySelectorAll("[data-intel-remove-false]")) {
+      button.addEventListener("click", () => button.closest("[data-intel-false-record]")?.remove());
     }
     this._syncIntelEditorState();
     for (const input of this.element.querySelectorAll("[data-intel-fact] input[type='checkbox']")) {

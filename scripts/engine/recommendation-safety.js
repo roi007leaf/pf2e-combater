@@ -4,7 +4,8 @@ const PLAYER_META_REASON_PATTERNS = [
   /\bimmun(?:e|ity|ities)\b/i,
   /\bspell\s*dc\b/i,
   /\b(?:fortitude|reflex|will|perception)\s+dc\s+\d+/i,
-  /\bperception:\s*(?:low|mid|high)\b/i,
+  /\b(?:fortitude|reflex|will|perception):\s*(?:low|mid|high)\b/i,
+  /\bknown\s+.+\s+traits?\s+match/i,
   /\bdc\s+\d+\s+vs\b/i,
   /\bac\s+\d+/i,
   /\barmor class\s+\d+/i,
@@ -14,8 +15,9 @@ const PLAYER_INTEL_REASON_PATTERNS = {
   weaknesses: /\bweakness(?:es)?\b/i,
   resistances: /\bresists?\b|\bresistance\b/i,
   immunities: /\bimmun(?:e|ity|ities)\b/i,
-  saves: /\bspell\s*dc\b|\b(?:fortitude|reflex|will)\s+dc\s+\d+|\bdc\s+\d+\s+vs\b/i,
+  saves: /\bspell\s*dc\b|\b(?:fortitude|reflex|will)(?:\s+dc\s+\d+|:\s*(?:low|mid|high))|\bdc\s+\d+\s+vs\b/i,
   perception: /\bperception\s+dc\s+\d+|\bperception:\s*(?:low|mid|high)\b/i,
+  traits: /\bknown\s+.+\s+traits?\s+match/i,
 };
 
 function reasonText(reason) {
@@ -61,9 +63,15 @@ export function sanitizeScoredRecommendation(action, {
     fallbackReason,
     playerIntelCategories,
   });
+  const bestTargetReasons = sanitizeRecommendationReasons(action?.bestTargetReasons ?? [], {
+    isGM,
+    fallbackReason: "",
+    playerIntelCategories,
+  }).filter(Boolean);
   return {
     ...action,
     reasons,
     reason: reasons[0] ?? fallbackReason,
+    bestTargetReasons,
   };
 }

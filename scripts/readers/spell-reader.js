@@ -92,7 +92,7 @@ export function readSpellActions(context) {
         spellResource: readSpellResource(actor, item, entry, castRank),
         location: systemValue(item.system?.location),
         time: systemValue(effectiveItem.system?.time) ?? "2",
-      }));
+      })).flatMap(expandSpellTacticalActions);
     });
   });
 }
@@ -228,7 +228,7 @@ export function readConsumableSpellActions(context) {
       location: null,
       time: systemValue(embeddedSpell.system?.time) ?? "2",
       consumableItem: item,
-    }));
+    })).flatMap(expandSpellTacticalActions);
   });
 }
 
@@ -281,6 +281,29 @@ function mergeObjects(...objects) {
 
 function mergeArrays(...values) {
   return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : []).filter(Boolean))];
+}
+
+function expandSpellTacticalActions(action) {
+  const variants = Array.isArray(action?.tacticalVariants) ? action.tacticalVariants : [];
+  if (!variants.length) return [action];
+  const base = { ...action };
+  delete base.tacticalVariants;
+  return variants.map((variant, index) => {
+    const { key, nameSuffix, ...fields } = variant ?? {};
+    const variantKey = slugify(key ?? fields.role ?? `mode-${index + 1}`);
+    return {
+      ...base,
+      ...fields,
+      id: `${base.id}-${variantKey}`,
+      name: nameSuffix ? `${base.name} — ${nameSuffix}` : base.name,
+      activityProfile: mergeObjects(base.activityProfile, fields.activityProfile),
+      targetingProfile: mergeObjects(base.targetingProfile, fields.targetingProfile),
+      saveProfile: mergeObjects(base.saveProfile, fields.saveProfile),
+      damageProfile: mergeObjects(base.damageProfile, fields.damageProfile),
+      setupFor: mergeArrays(fields.setupFor, base.setupFor),
+      reasons: mergeArrays(fields.reasons, base.reasons),
+    };
+  });
 }
 
 function rankOverrideFor(curated, castRank) {

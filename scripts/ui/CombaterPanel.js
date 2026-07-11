@@ -89,9 +89,11 @@ import {
 } from "../rules/tactic-personality.js";
 import {
   INTEL_LEDGER_FLAG,
+  INTEL_FALSE_INFORMATION_FLAG,
   INTEL_REVEAL_MODE_FLAG,
   intelLedgerView,
   intelTargetMatchesKey,
+  normalizeIntelFalseInformation,
 } from "../rules/intel-ledger.js";
 import { readCombatContext } from "../state/combat-context.js";
 import { setPlanPreferenceFeedback } from "../state/preference-profile.js";
@@ -235,6 +237,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._plan = null;
     this._builder = null;
     this._gmExecuteMode = false;
+    this._sharedDraftSeed = null;
     this._destinationPicker = null;
     this._areaPicker = null;
     // Draft-step instanceIds currently blocked on a GM socket response (e.g. Retch DC/result), so
@@ -493,6 +496,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
         if (typeof entry.actor?.setFlag !== "function") throw new Error("Actor flags unavailable");
         await entry.actor.setFlag(MODULE_ID, INTEL_LEDGER_FLAG, entry.value);
         await entry.actor.setFlag(MODULE_ID, INTEL_REVEAL_MODE_FLAG, entry.revealMode);
+        await entry.actor.setFlag(MODULE_ID, INTEL_FALSE_INFORMATION_FLAG, normalizeIntelFalseInformation(entry.falseInformation));
       }
       this._pinnedPlanId = null;
       this._pinnedFillPlanId = null;

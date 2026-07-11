@@ -73,6 +73,11 @@ assert.ok(!capture.options.extraRollOptions.includes("target:trait:fiend"), "unr
 assert.match(playerPreflight.tooltip, /^PF2e check preview:/);
 assert.match(playerPreflight.tooltip, /informational only/i);
 assert.match(playerPreflight.tooltip, /does not change Auto-fill ranking/i);
+assert.deepEqual(playerPreflight.tooltipLines, [
+  "Intimidation +16 vs Will DC 26.",
+  "Modifier breakdown: Intimidation +16.",
+  "Informational only; does not change Auto-fill ranking.",
+]);
 
 const unknownCapture = {};
 const unknownContext = {
@@ -149,6 +154,11 @@ assert.equal(preflightChips.length, 1, "non-spell actions should display native 
 assert.equal(preflightChips[0].class, "is-preflight");
 assert.match(preflightChips[0].label, /^PF2e Success /);
 assert.match(preflightChips[0].tooltip, /informational only/i);
+assert.equal(
+  preflightChips[0].tooltipHtml,
+  "<strong>PF2e check preview</strong><ul><li>Intimidation +16 vs Will DC 26.</li><li>Modifier breakdown: Intimidation +16.</li><li>Informational only; does not change Auto-fill ranking.</li></ul>",
+  "Native preflight tooltip should use real list markup instead of one paragraph",
+);
 
 const saveTargetActor = {
   type: "npc",

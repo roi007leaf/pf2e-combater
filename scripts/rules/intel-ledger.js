@@ -4,6 +4,7 @@ import { t } from "../i18n.js";
 
 export const INTEL_LEDGER_FLAG = "intelLedger";
 export const INTEL_REVEAL_MODE_FLAG = "intelRevealMode";
+export const INTEL_FALSE_INFORMATION_FLAG = "intelFalseInformation";
 export const INTEL_REVEAL_MODES = {
   exact: "exact",
   band: "band",
@@ -152,6 +153,66 @@ function readRevealModeFlag(actorOrTarget) {
   if (direct !== undefined) return direct;
   if (typeof actor?.getFlag === "function") return actor.getFlag(MODULE_ID, INTEL_REVEAL_MODE_FLAG);
   return null;
+}
+
+function readFalseInformationFlag(actorOrTarget) {
+  const actor = targetActor(actorOrTarget) ?? actorOrTarget;
+  if (actor?.intelFalseInformation !== undefined) return actor.intelFalseInformation;
+  const direct = actor?.flags?.[MODULE_ID]?.[INTEL_FALSE_INFORMATION_FLAG];
+  if (direct !== undefined) return direct;
+  if (typeof actor?.getFlag === "function") return actor.getFlag(MODULE_ID, INTEL_FALSE_INFORMATION_FLAG);
+  return null;
+}
+
+export function normalizeIntelFalseInformation(value) {
+  return (Array.isArray(value) ? value : []).flatMap((entry, index) => {
+    const text = String(entry?.text ?? (typeof entry === "string" ? entry : "")).trim();
+    const factId = String(entry?.factId ?? "").trim();
+    const factLabel = String(entry?.factLabel ?? "").trim();
+    const numericValue = Number(entry?.value);
+    const hasValue = entry?.value !== "" && entry?.value !== null && entry?.value !== undefined && Number.isFinite(numericValue);
+    const valueNumber = hasValue && numericValue >= 0 ? numericValue : null;
+    const category = CATEGORY_IDS.has(String(entry?.category ?? "")) ? String(entry.category) : "traits";
+    if (!text && !factId) return [];
+    let label = String(entry?.label ?? "").trim();
+    if (factId) {
+      if (category === "saves" || category === "perception") label = `${factLabel || titleCase(factId)}${valueNumber === null ? "" : ` DC ${valueNumber}`}`;
+      else if (category === "weaknesses" || category === "resistances") label = `${factLabel || titleCase(factId)}${valueNumber === null ? "" : ` ${valueNumber}`}`;
+      else label = factLabel || titleCase(factId) || text;
+    } else if (!label) label = text;
+    return [{
+      id: String(entry?.id ?? `false-${index}`),
+      text,
+      factId,
+      factLabel,
+      value: valueNumber,
+      label,
+      sourceActorUuid: String(entry?.sourceActorUuid ?? ""),
+      sourceActorName: String(entry?.sourceActorName ?? ""),
+      category,
+      question: String(entry?.question ?? ""),
+      attempt: Math.max(1, Number(entry?.attempt) || 1),
+      createdAt: String(entry?.createdAt ?? ""),
+    }];
+  });
+}
+
+export function readIntelFalseInformation(actorOrTarget) {
+  return normalizeIntelFalseInformation(readFalseInformationFlag(actorOrTarget));
+}
+
+function falseInformationDisplayLabel(record, target, revealMode) {
+  const label = record.factLabel || titleCase(record.factId) || record.label || record.text;
+  if (record.value === null || revealMode !== INTEL_REVEAL_MODES.band) return record.label || record.text;
+  if (record.category === "saves" || record.category === "perception") {
+    const band = intelSaveBand(record.value, target);
+    return band ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : (record.label || record.text);
+  }
+  if (record.category === "weaknesses" || record.category === "resistances") {
+    const band = intelDefenseValueBand(record.value, target);
+    return band ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : (record.label || record.text);
+  }
+  return record.label || record.text;
 }
 
 function normalizeFactIds(value) {
@@ -529,7 +590,8 @@ export function intelLedgerView(context) {
   const enemies = (context?.intelTargets ?? context?.battlefield?.enemies ?? context?.enemies ?? [])
     .filter(isNpcIntelTarget);
   const isGM = typeof context?.isGM === "boolean" ? context.isGM : globalThis.game?.user?.isGM === true;
-  const canSeeExactIntelLabels = isGM || globalThis.game?.user?.isGM === true;
+  const viewerIsGM = globalThis.game?.user?.isGM === true;
+  const canSeeExactIntelLabels = isGM || viewerIsGM;
   const entries = enemies.map((enemy) => {
     const actor = targetActor(enemy);
     const values = normalizeIntelLedger(enemy?.intelLedger ?? readIntelLedger(actor));
@@ -539,6 +601,18 @@ export function intelLedgerView(context) {
     const available = availableIntelDetails(enemy, { revealMode: labelRevealMode });
     const revealedFacts = revealedIntelFacts(availableFacts, values);
     const revealed = revealedIntelDetails(availableFacts, values);
+    const falseInformation = readIntelFalseInformation(actor);
+    const playerRevealed = isGM ? revealed : Object.fromEntries(
+      INTEL_LEDGER_CATEGORIES.map(({ id }) => [
+        id,
+        [
+          ...(revealed[id] ?? []),
+          ...falseInformation
+            .filter((record) => record.category === id)
+            .map((record) => falseInformationDisplayLabel(record, enemy, labelRevealMode)),
+        ],
+      ]),
+    );
     return {
       id: entityKey(enemy) ?? enemy?.id ?? enemy?.token?.id ?? enemy?.name,
       name: targetName(enemy, actor, isGM, values),
@@ -548,13 +622,15 @@ export function intelLedgerView(context) {
       revealMode,
       available,
       availableFacts,
-      revealed,
+      revealed: playerRevealed,
       revealedFacts,
-      hasRevealed: revealedCount(revealed) > 0,
+      ...(viewerIsGM ? { falseInformation } : {}),
+      hasRevealed: revealedCount(revealed) > 0 || falseInformation.length > 0,
     };
   }).filter((entry) => entry.actor || entry.hasRevealed);
-  const learnedCount = entries.reduce((count, entry) =>
-    count + Object.values(entry.values).reduce((total, value) => total + ledgerCount(value), 0), 0);
+  const learnedCount = entries.reduce((count, entry) => count
+    + Object.values(entry.values).reduce((total, value) => total + ledgerCount(value), 0)
+    + (entry.falseInformation?.length ?? 0), 0);
   const hasPlayerVisibleIntel = entries.some((entry) => entry.hasRevealed);
 
   return {

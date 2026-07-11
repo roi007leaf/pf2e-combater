@@ -1,6 +1,6 @@
 import { CLASS_TACTICS, SUBCLASS_TACTICS } from "./class-tactics-data/index.js";
 import { hasExploitVulnerabilityMark } from "./exploit-vulnerability.js";
-import { readTargetCombatState, targetHasMarkState } from "./combat-state.js";
+import { livingMarkedTarget, readTargetCombatState, targetHasMarkState, targetHasTokenMark } from "./combat-state.js";
 import { pf2eTrait, t } from "../i18n.js";
 
 const MAX_CLASS_TACTIC_DELTA = 44;
@@ -674,11 +674,19 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
   const target = signals.target;
   const state = profile?.combatState ?? {};
   const targetState = readTargetCombatState(target);
-  const hunted = targetState.huntedPrey;
+  const markedUuids = Array.isArray(state.huntedPreyTokenUuids) ? state.huntedPreyTokenUuids : [];
+  const hunted = targetState.huntedPrey || targetHasTokenMark(target, markedUuids);
+  const livingPrey = livingMarkedTarget(signals.context, markedUuids, "hunted-prey");
+  const huntedPreyActive = markedUuids.length ? Boolean(livingPrey) : state.huntedPreyActive === true;
 
   if (actionSlug === "hunt-prey") {
     if (hunted) {
       addPlaybookDelta(parts, -80, t("ClassTactic.TargetIsAlreadyHuntedPrey", "Target is already hunted prey."));
+    } else if (livingPrey) {
+      addPlaybookDelta(parts, -80, t(
+        "ClassTactic.RetargetHuntPreyLowerPriority",
+        "Living hunted prey remains; retarget only when changing focus is worth the action.",
+      ));
     } else {
       addPlaybookDelta(parts, 38, t("ClassTactic.HuntPreyShouldComeBefore", "Hunt Prey should come before Ranger attacks."));
     }
@@ -694,7 +702,7 @@ function rangerPlaybook(parts, profile, action, signals, actionSlug) {
   ) {
     if (hunted) {
       addPlaybookDelta(parts, 24, t("ClassTactic.HuntedPreyMakesRangerAttacks", "Hunted prey makes Ranger attacks better."));
-    } else if (state.huntedPreyActive === true) {
+    } else if (huntedPreyActive) {
       addPlaybookDelta(parts, -6, t("ClassTactic.ThisTargetIsNotThe2", "This target is not the hunted prey."));
     } else {
       addPlaybookDelta(parts, -10, t("ClassTactic.RangerAttacksWantHuntPrey", "Ranger attacks want Hunt Prey first."));

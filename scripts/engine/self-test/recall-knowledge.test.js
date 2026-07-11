@@ -17,6 +17,7 @@ import {
   resetRecallKnowledgeAttemptsForTarget,
   resolveRecallKnowledgeRequest,
 } from "../../ui/recall-knowledge.js";
+import { canUseIntelFact, intelLedgerView, normalizeIntelFalseInformation } from "../../rules/intel-ledger.js";
 import {
   RECALL_KNOWLEDGE_QUESTIONS,
   nextRecallKnowledgeAttempts,
@@ -506,6 +507,30 @@ try {
   );
   assert.equal(openedIntel, 2, "critical success should open target Intel window");
 
+  remoteAttempts = {};
+  let criticalFailureIntelOptions = null;
+  const criticalFailureResult = await adjudicateRecallKnowledgeRequest(
+    { ...payload, outcome: "criticalfailure", attempt: 2 },
+    {
+      openIntel: async (selectedTarget, options) => {
+        assert.equal(selectedTarget, remoteTarget);
+        criticalFailureIntelOptions = options;
+        return true;
+      },
+    },
+  );
+  assert.equal(criticalFailureResult.completed, true);
+  assert.equal(Object.hasOwn(criticalFailureResult, "falseInformationDelivered"), false);
+  assert.equal(criticalFailureIntelOptions.preselectIdentity, false);
+  assert.deepEqual(criticalFailureIntelOptions.falseInformationContext, {
+    actorUuid: remoteActor.uuid,
+    actorName: "Remote Hero",
+    category: "weaknesses",
+    question: "weaknesses",
+    attempt: 2,
+  });
+  assert.equal(recallKnowledgeAttemptState(remoteActor, remoteTarget).blocked, true);
+
   let openedView = null;
   let openedOptions = null;
   const intelOpened = await openRecallKnowledgeIntelWindow(remoteTarget, {
@@ -517,6 +542,7 @@ try {
         actor: remoteTarget,
         value: { ...view.entries[0].values, traits: ["undead"] },
         revealMode: "band",
+        falseInformation: view.entries[0].falseInformation ?? [],
       }]);
     },
   });
@@ -529,6 +555,61 @@ try {
   assert.deepEqual(remoteTargetFlags.intelLedger.identity, ["identity"]);
   assert.deepEqual(remoteTargetFlags.intelLedger.traits, ["undead"]);
   assert.equal(remoteTargetFlags.intelRevealMode, "band");
+
+  const falseIntelOpened = await openRecallKnowledgeIntelWindow(remoteTarget, {
+    preselectIdentity: false,
+    falseInformationContext: {
+      actorUuid: remoteActor.uuid,
+      actorName: "Remote Hero",
+      category: "weaknesses",
+      question: "weaknesses",
+      attempt: 2,
+    },
+    openWindow: async (view, options) => {
+      const record = view.entries[0].falseInformation.at(-1);
+      assert.equal(record.category, "weaknesses");
+      assert.equal(record.text, "");
+      await options.onSave([{
+        actor: remoteTarget,
+        value: view.entries[0].values,
+        revealMode: view.entries[0].revealMode,
+        falseInformation: [{ ...record, factId: "fire", factLabel: "Fire", value: 10 }],
+      }]);
+    },
+  });
+  assert.equal(falseIntelOpened, true);
+  assert.equal(remoteTargetFlags.intelFalseInformation[0].category, "weaknesses");
+  assert.equal(remoteTargetFlags.intelFalseInformation[0].sourceActorName, "Remote Hero");
+  assert.equal(remoteTargetFlags.intelFalseInformation[0].label, "Fire 10");
+  const playerIntelView = intelLedgerView({
+    isGM: false,
+    intelTargets: [{ actor: remoteTarget, name: remoteTarget.name }],
+  });
+  assert.deepEqual(playerIntelView.entries[0].revealed.weaknesses, ["Fire 10"]);
+  assert.equal(Object.hasOwn(playerIntelView.entries[0], "falseInformation"), true, "GM player-perspective preview should retain false Intel markers");
+  assert.equal(playerIntelView.entries[0].values.weaknesses, false);
+  assert.equal(
+    canUseIntelFact({}, { actor: remoteTarget }, "weaknesses", "radiant-damage"),
+    false,
+    "false category information must never unlock planner Intel facts",
+  );
+  globalThis.game.user.isGM = false;
+  const actualPlayerIntelView = intelLedgerView({
+    isGM: false,
+    intelTargets: [{ actor: remoteTarget, name: remoteTarget.name }],
+  });
+  assert.equal(Object.hasOwn(actualPlayerIntelView.entries[0], "falseInformation"), false, "actual players must not receive false Intel markers");
+  assert.match(actualPlayerIntelView.entries[0].revealed.weaknesses[0], /^Fire: (Low|Mid|High)$/, "player false numeric Intel should respect Bands only mode");
+  globalThis.game.user.isGM = true;
+  assert.deepEqual(
+    normalizeIntelFalseInformation([
+      { category: "traits", factId: "dragon", factLabel: "Dragon" },
+      { category: "saves", factId: "reflex", factLabel: "Reflex", value: 18, label: "Reflex" },
+      { category: "immunities", factId: "poison", factLabel: "Poison" },
+    ]).map((record) => record.label),
+    ["Dragon", "Reflex DC 18", "Poison"],
+    "false facts should rebuild structured PF2e labels when numeric values change",
+  );
 
   requesterOwnsActor = false;
   remoteAttempts = {};

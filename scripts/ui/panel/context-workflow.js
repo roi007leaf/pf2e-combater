@@ -35,25 +35,44 @@ function ownershipLevelValue(level) {
   return Number(levels[String(level ?? "").toUpperCase()] ?? 0) || 0;
 }
 
-function actorHasActiveNonGmOwner(actor) {
+function nonGmActorOwners(actor) {
   const document = actor?.document ?? actor;
-  if (!document) return false;
+  if (!document) return [];
   const ownerLevel = ownershipLevelValue(globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
-  const users = collectionValues(globalThis.game?.users).filter((user) => user && user.isGM !== true && user.active === true);
+  const users = collectionValues(globalThis.game?.users).filter((user) => user && user.isGM !== true);
 
   if (typeof document.testUserPermission === "function") {
-    return users.some((user) => document.testUserPermission(user, ownerLevel));
+    return users.filter((user) => document.testUserPermission(user, ownerLevel));
   }
 
   const ownership = document.ownership ?? {};
-  return users.some((user) => ownershipLevelValue(ownership[user.id]) >= ownerLevel);
+  return users.filter((user) => ownershipLevelValue(ownership[user.id]) >= ownerLevel);
+}
+
+export function gmPlayerPlanAccess(actor) {
+  const document = actor?.document ?? actor;
+  const owners = nonGmActorOwners(document).sort((left, right) => {
+    const activityDifference = Number(right?.active === true) - Number(left?.active === true);
+    if (activityDifference !== 0) return activityDifference;
+    return String(left?.name ?? left?.id ?? "").localeCompare(String(right?.name ?? right?.id ?? ""));
+  });
+  const owner = owners[0] ?? null;
+  const isCharacter = String(document?.type ?? "").toLowerCase() === "character";
+  const viewing = globalThis.game?.user?.isGM === true && Boolean(document) && (isCharacter || Boolean(owner));
+  const editable = viewing && Boolean(owner) && owners.every((candidate) => candidate?.active !== true);
+  return {
+    viewing,
+    editable,
+    ownerId: owner?.id ?? "",
+    ownerName: owner?.name ?? "",
+  };
 }
 
 function isPlayerControlledActor(actor) {
   const document = actor?.document ?? actor;
   if (!document) return false;
   if (String(document.type ?? "").toLowerCase() === "character") return true;
-  return actorHasActiveNonGmOwner(document);
+  return nonGmActorOwners(document).length > 0;
 }
 
 function activeNpcIntelTarget(context) {
@@ -148,6 +167,7 @@ export function clearPanelPreparedContext(panel) {
   panel._planningContext = null;
   panel._movementOptions = [];
   panel._weaponOptions = [];
+  panel._sharedDraftSeed = null;
 }
 
 export function preparePanelContext(panel) {
@@ -162,14 +182,33 @@ export function preparePanelContext(panel) {
   const draft = readDraftPlan(context);
   const sharedDraft = game?.user?.isGM === true ? readSharedDraftPlan(context) : null;
   const sharedDraftKnown = hasSharedDraftPlan(sharedDraft);
-  const gmViewingPlayerPlan = game?.user?.isGM === true && isPlayerControlledActor(context.actor?.document ?? context.actor);
-  const useSharedDraft = sharedDraftKnown && (gmViewingPlayerPlan || shouldDisplaySharedDraft(draft, sharedDraft));
+  const playerPlanAccess = gmPlayerPlanAccess(context.actor?.document ?? context.actor);
+  const gmViewingPlayerPlan = playerPlanAccess.viewing;
+  const gmEditingOfflinePlayerPlan = playerPlanAccess.editable;
+  const useSharedDraft = gmEditingOfflinePlayerPlan
+    || (sharedDraftKnown && (gmViewingPlayerPlan || shouldDisplaySharedDraft(draft, sharedDraft)));
   panel._gmExecuteMode = gmViewingPlayerPlan && useSharedDraft;
   const activeDraft = (gmViewingPlayerPlan && useSharedDraft)
-    ? { ...sharedDraft, readonly: true, shared: true }
+    ? {
+        ...sharedDraft,
+        steps: sharedDraftKnown ? sharedDraft.steps : [],
+        uncounted: sharedDraftKnown ? sharedDraft.uncounted : [],
+        userId: gmEditingOfflinePlayerPlan ? playerPlanAccess.ownerId : sharedDraft.userId,
+        userName: gmEditingOfflinePlayerPlan ? playerPlanAccess.ownerName : sharedDraft.userName,
+        readonly: !gmEditingOfflinePlayerPlan,
+        shared: true,
+      }
     : gmViewingPlayerPlan
-      ? { steps: [], readonly: true, shared: true, userName: "" }
+      ? {
+          steps: [],
+          uncounted: [],
+          readonly: true,
+          shared: true,
+          userId: playerPlanAccess.ownerId,
+          userName: playerPlanAccess.ownerName,
+        }
       : draft;
+  panel._sharedDraftSeed = panel._gmExecuteMode ? activeDraft : null;
 
   const baseBuild = buildCandidates(context);
   const autoFillContext = contextWithCurrentAutoFillTargets(context);
@@ -218,7 +257,7 @@ export function preparePanelContext(panel) {
     movementOptions: panel._movementOptions,
     weaponOptions: panel._weaponOptions,
   });
-  panel._builder.readonly = panel._builder.readonly || gmViewingPlayerPlan;
+  panel._builder.readonly = panel._builder.readonly || (gmViewingPlayerPlan && !gmEditingOfflinePlayerPlan);
 
   return viewPanelContext(panel, context);
 }
