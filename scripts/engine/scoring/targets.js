@@ -5,6 +5,7 @@ import { readCombatState, targetHasMarkState, targetHasTokenMark, targetIsDefeat
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { actorItems, entityKey } from "../../foundry-data.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
+import { canStrikeTargetFromCurrentPosition } from "../../readers/action/reach.js";
 import { slugify as slugText } from "../action/text.js";
 import {
   actionTraitSlugs,
@@ -15,6 +16,7 @@ import {
   hasCondition,
   hpPercent,
   inRange,
+  isAreaAction,
   isOffensiveRole,
   maxRange,
   requiresTargetableEnemy,
@@ -279,11 +281,20 @@ function targetInSelectionRange(context, action, target) {
   return !Number.isFinite(max) || max === Infinity || (target?.distance ?? Infinity) <= max;
 }
 
+function targetHasDirectLine(context, action, role, target) {
+  if (!target || isSelfCenteredAreaAction(action) || isAreaAction(action, role)) return true;
+  if (!requiresTargetableEnemy(action, role) && action?.targetingProfile?.enemy !== true) return true;
+  return canStrikeTargetFromCurrentPosition(context, action, target);
+}
+
 function targetPoolForAction(context, action, role, needsTargetableEnemy) {
   const values = needsTargetableEnemy
     ? attackableEnemies(context)
     : contextEnemies(context);
-  return values.filter((target) => canAffectTarget(context, action, target));
+  return values.filter((target) =>
+    canAffectTarget(context, action, target)
+    && targetHasDirectLine(context, action, role, target),
+  );
 }
 
 export function bestTargetForAction(context, action, role) {
@@ -294,6 +305,7 @@ export function bestTargetForAction(context, action, role) {
     action?.preferredTarget
     && (!needsTargetableEnemy || canAttackTarget(action.preferredTarget))
     && canAffectTarget(context, action, action.preferredTarget)
+    && targetHasDirectLine(context, action, role, action.preferredTarget)
   ) {
     return action.preferredTarget;
   }
@@ -308,7 +320,11 @@ export function bestTargetForAction(context, action, role) {
         compareRankedTargets(context, action, role, left, right),
       )[0];
     }
-    return canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
+    return canAttackTarget(target)
+      && canAffectTarget(context, action, target)
+      && targetHasDirectLine(context, action, role, target)
+      ? target
+      : null;
   }
 
   if (isOffensiveRole(role) || targetDefenseSlug(action)) {
@@ -318,7 +334,12 @@ export function bestTargetForAction(context, action, role) {
         compareRankedTargets(context, action, role, left, right),
       )[0];
     }
-    return targetInSelectionRange(context, action, target) && canAttackTarget(target) && canAffectTarget(context, action, target) ? target : null;
+    return targetInSelectionRange(context, action, target)
+      && canAttackTarget(target)
+      && canAffectTarget(context, action, target)
+      && targetHasDirectLine(context, action, role, target)
+      ? target
+      : null;
   }
 
   if (needsTargetableEnemy) {

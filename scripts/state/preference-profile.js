@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from "../constants.js";
+import { planSignature, stablePlanHash } from "../engine/planner/plan-signature.js";
 
 const PROFILE_VERSION = 2;
 const MAX_FEATURE_WEIGHT = 2;
@@ -135,28 +136,9 @@ function planSteps(plan) {
     .filter(Boolean);
 }
 
-function stableHash(value) {
-  let hash = 2166136261;
-  for (const character of String(value ?? "")) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-function planStepSignature(action) {
-  return [
-    preferenceActionId(action),
-    action?.actionCost ?? action?.cost ?? 0,
-    action?.movementAction ?? "",
-    action?.castRank ?? action?.rank ?? "",
-    action?.mapPenalty ?? "",
-  ].join("@");
-}
-
 export function preferencePlanId(plan) {
-  const signature = planSteps(plan).map(planStepSignature).join(">");
-  return signature ? `plan:${stableHash(signature)}` : "";
+  const signature = planSignature(plan);
+  return signature ? `plan:${stablePlanHash(signature)}` : "";
 }
 
 function planTotalCost(plan) {
@@ -176,7 +158,7 @@ function planWideFeatures(plan) {
     .join(">");
   return normalizedFeatures([
     id,
-    `plan-sequence:${stableHash(roleSequence)}`,
+    `plan-sequence:${stablePlanHash(roleSequence)}`,
     `plan-length:${steps.length}`,
     `plan-cost:${planTotalCost(plan)}`,
   ]);
@@ -326,6 +308,11 @@ function planAdjustmentFromNormalizedProfile(normalized, plan) {
   const scoreDelta = Math.max(-MAX_SCORE_DELTA, Math.min(MAX_SCORE_DELTA, Math.round(raw)));
   const examplesCount = Object.keys(normalized.examples).length;
   const signed = scoreDelta > 0 ? `+${scoreDelta}` : String(scoreDelta);
+  const demotionTooltip =
+    " Thumbs-down also moves this exact plan to the end of the plan queue.";
+  const activeDemotionTooltip = feedback === -1
+    ? " This exact plan is moved to the end of the plan queue."
+    : demotionTooltip;
   return {
     id,
     feedback,
@@ -337,10 +324,12 @@ function planAdjustmentFromNormalizedProfile(normalized, plan) {
     contributions,
     label: "Rate plan",
     tooltip: examplesCount
-      ? `Learned from ${examplesCount} rated plan(s); direct plan adjustment ${signed}, total preference impact capped at +/-${MAX_SCORE_DELTA}.`
-      : `Rate this plan to teach future recommendations; total preference impact capped at +/-${MAX_SCORE_DELTA}.`,
+      ? `Learned from ${examplesCount} rated plan(s); direct plan adjustment ${signed}, total preference impact capped at +/-${MAX_SCORE_DELTA}.${activeDemotionTooltip}`
+      : `Rate this plan to teach future recommendations; total preference impact capped at +/-${MAX_SCORE_DELTA}.${demotionTooltip}`,
     positiveTitle: feedback === 1 ? "Remove positive plan feedback" : "Prefer plans like this",
-    negativeTitle: feedback === -1 ? "Remove negative plan feedback" : "Avoid plans like this",
+    negativeTitle: feedback === -1
+      ? "Remove negative plan feedback"
+      : "Move this exact plan to the end of the queue",
   };
 }
 

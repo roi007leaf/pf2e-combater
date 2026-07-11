@@ -59,6 +59,61 @@ function syntheticInteractAction(overrides = {}) {
   };
 }
 
+function syntheticReloadAction(action, reloadCost) {
+  const weaponName = String(action?.name ?? action?.item?.name ?? "weapon").replace(/^Reload\s*->\s*/i, "").trim();
+  return {
+    id: `${action?.id ?? action?.slug ?? "strike"}-reload`,
+    name: pf2eActionName("reload", "Reload"),
+    slug: `reload-${slugify(weaponName) || "weapon"}`,
+    actionCost: reloadCost,
+    source: "generic",
+    role: "utility",
+    confidence: action?.confidence ?? "medium",
+    detected: true,
+    available: true,
+    executable: "reload-weapon",
+    item: action?.item ?? null,
+    activityProfile: {
+      includes: ["reload"],
+      reload: true,
+      reloadCost,
+      weaponId: action?.item?.id ?? action?.weapon?.id ?? action?.activityProfile?.weaponId,
+      weaponName,
+    },
+    reason: t("Reason.ReloadBeforeStrike", "Reload before firing {name}.", { name: weaponName }),
+  };
+}
+
+function reloadBeforeStrikeAtoms(action) {
+  const reloadCost = Number(action?.reloadCost ?? action?.activityProfile?.reloadCost);
+  const totalCost = Number(action?.actionCost ?? action?.cost);
+  if (action?.activityProfile?.reloadBeforeStrike !== true
+    || !Number.isFinite(reloadCost)
+    || reloadCost <= 0
+    || !Number.isFinite(totalCost)
+    || totalCost <= reloadCost) {
+    return null;
+  }
+
+  const strikeName = String(action?.name ?? "").replace(/^Reload\s*->\s*/i, "").trim() || action?.name;
+  return [
+    syntheticReloadAction(action, reloadCost),
+    {
+      ...action,
+      id: `${action?.id ?? action?.slug ?? "strike"}-strike`,
+      name: strikeName,
+      actionCost: Math.max(1, totalCost - reloadCost),
+      cost: Math.max(1, totalCost - reloadCost),
+      reloadCost: 0,
+      activityProfile: {
+        ...(action?.activityProfile ?? {}),
+        reloadBeforeStrike: false,
+        reloadCost: 0,
+      },
+    },
+  ];
+}
+
 // No longer injected into the builder tabs (the sustained-spells section handles sustaining),
 // but kept as a self-contained template the section uses to build a Sustain step.
 export const SUSTAIN_A_SPELL_ACTION = {
@@ -512,6 +567,9 @@ function finalApproachMovementIndex(parts) {
 }
 
 export function builderAtomicActionsForStep(action) {
+  const reloadAtoms = reloadBeforeStrikeAtoms(action);
+  if (reloadAtoms) return reloadAtoms;
+
   const activation = builderActivationAction(action);
   if (activation) {
     return [
@@ -1015,9 +1073,6 @@ function disabledActionReason(action) {
 // that's merely unavailable right now (an unprepared spell, an out-of-range strike, ...) stays
 // out of the visible tabs -- it still resolves via draftOnlyActions for stale draft steps.
 function showDisabledInBuilder(action) {
-  if (!action?.disabled && action?.available !== false) return false;
-  if (action?.tacticSlug === "elemental-blast") return true;
-
   const slug = String(action?.slug ?? "").toLowerCase();
   const role = String(action?.role ?? "").toLowerCase();
   const isMovementAction = isDestinationActionSlug(slug)
@@ -1027,6 +1082,10 @@ function showDisabledInBuilder(action) {
     || actionIncludes(action, "stride")
     || actionIncludes(action, "step")
     || Number(action?.activityProfile?.strideCount) > 0;
+  if (!action?.disabled && action?.available !== false) {
+    return isMovementAction && Boolean(action?.rejectionReason);
+  }
+  if (action?.tacticSlug === "elemental-blast") return true;
   if (isMovementAction) return true;
 
   const reason = disabledActionReason(action);

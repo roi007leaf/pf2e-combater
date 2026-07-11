@@ -7,6 +7,7 @@ import {
   contextActorDocument,
   hasCondition,
   hasEffectSlug,
+  hpPercent,
   inRange,
   isAreaAction,
   isAttackLikeAction,
@@ -14,6 +15,8 @@ import {
 } from "./facts.js";
 import { isRangeBuffSetup, rangeBuffIsNeeded } from "./spells.js";
 import { attackableEnemies, isExtractElementAction } from "./targets.js";
+import { bleedingAlly, dyingAlly } from "./tactic-helpers.js";
+import { contextAllies } from "../target-pool.js";
 
 function blockedAction(action, reason, patch = {}) {
   return {
@@ -46,6 +49,26 @@ function isHuntPreyAction(action) {
   return [action?.slug, action?.tacticSlug, action?.name].map(slugText).includes("hunt-prey");
 }
 
+function isStanceAction(action) {
+  const slug = String(action?.slug ?? action?.tacticSlug ?? "").toLowerCase();
+  const name = String(action?.name ?? "").toLowerCase();
+  const traits = Array.isArray(action?.traits) ? action.traits.map((trait) => String(trait).toLowerCase()) : [];
+  return action?.activityProfile?.stance === true
+    || traits.includes("stance")
+    || slug.endsWith("-stance")
+    || name.includes(" stance");
+}
+
+function activeStanceCount(context, profile) {
+  const profileStances = profile?.combatState?.activeStances;
+  if (Array.isArray(profileStances) && profileStances.length) return profileStances.length;
+
+  const actorState = readCombatState(contextActorDocument(context));
+  if (Array.isArray(actorState?.activeStances) && actorState.activeStances.length) return actorState.activeStances.length;
+
+  return hasCondition(profile, "stance") || hasEffectSlug(profile, "stance") ? 1 : 0;
+}
+
 function kineticAuraActive(context, profile) {
   const states = [
     profile?.combatState,
@@ -63,6 +86,12 @@ function kineticAuraActive(context, profile) {
     || hasCondition(profile, "channel-elements")
     || hasEffectSlug(profile, "kinetic-aura")
     || hasEffectSlug(profile, "channel-elements");
+}
+
+function hasNeededHealingRecipient(context, profile) {
+  if (hpPercent(profile) < 0.5) return true;
+  if (dyingAlly(context) || bleedingAlly(context)) return true;
+  return contextAllies(context).some((ally) => hpPercent(ally) < 0.5);
 }
 
 export function blockedCandidateResult(context, action, { role, target, profile, siblingSpells } = {}) {
@@ -102,6 +131,14 @@ export function blockedCandidateResult(context, action, { role, target, profile,
 
   if (isRangeBuffSetup(action) && !rangeBuffIsNeeded(context, siblingSpells)) {
     return blockedAction(action, t("ScoreReason.NoSpellNeedsExtraRange", "No castable spell currently lacks a target in range."));
+  }
+
+  if (isStanceAction(action) && activeStanceCount(context, profile) > 0) {
+    return blockedAction(action, t("ScoreReason.StanceAlreadyActive", "A stance is already active."));
+  }
+
+  if (role === "healing" && !hasNeededHealingRecipient(context, profile)) {
+    return blockedAction(action, t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
   }
 
   if (action.source === "strike" && !target) {

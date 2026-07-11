@@ -251,7 +251,7 @@ assert.ok(panelTemplateSource.includes("combater-cost-glyph"), "panel template s
 assert.ok(panelViewModelSource.includes("icons/actions/OneAction.webp"), "panel view-model should reference the PF2e action-cost icon set");
 assert.ok(panelTemplateSource.includes("combater-chip-img") && panelTemplateSource.includes("combater-action-img"), "panel should show item images beside action names");
 assert.ok(panelContextWorkflowSource.includes("tacticPersonalityView"), "panel context should expose resolved tactic personality view data");
-assert.ok(panelTemplateSource.includes("data-configure-tactic"), "panel template should render the GM NPC tactic chip");
+assert.ok(panelTemplateSource.includes("data-configure-tactic"), "panel template should render the Auto-fill tactic chip");
 assert.ok(panelContextWorkflowSource.includes("panelIntelLedgerView") && panelContextWorkflowSource.includes("activeNpcIntelTarget")
   && panelContextWorkflowSource.includes("return intelLedgerView(context)"),
   "panel context should expose GM active-NPC Intel editing and player readonly revealed enemy Intel");
@@ -290,20 +290,22 @@ assert.ok(panelEventBindingsSource.includes("data-open-target-intel") && panelEv
 assert.ok(panelSource.includes("_openTargetIntel") && panelSource.includes("intelTargetMatchesKey"),
   "panel should resolve clicked target labels to current battlefield targets before opening Known Intel");
 assert.ok(panelTemplateSource.includes("combater-header-tactic-label"),
-  "NPC tactic chip should wrap its label in a dedicated span so long inferred Auto labels can use two lines");
+  "tactic chip should wrap its label in a dedicated span for constrained overflow");
 assert.ok(panelEventBindingsSource.includes("data-configure-tactic") && panelEventBindingsSource.includes("_configureTacticPersonality"),
   "panel bindings should open tactic personality config from the header chip");
 assert.ok(panelSource.includes("openTacticWindow") && panelSource.includes("_applyTacticPersonalityDecision"),
-  "NPC tactic configuration should use the styled tactic window and keep panel persistence in one callback");
+  "tactic configuration should use the styled tactic window and keep panel persistence in one callback");
 assert.ok(
-  /combater-header-tactic-label\s*\{[\s\S]*?white-space:\s*normal;[\s\S]*?-webkit-line-clamp:\s*2;/.test(panelStyleSource),
-  "NPC tactic chip label should wrap to two lines instead of forcing the header wider",
+  /combater-header-tactic\s*\{[\s\S]*?min-height:\s*28px;/.test(panelStyleSource)
+    && /combater-header-tactic-label\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(panelStyleSource),
+  "tactic chip should match header button height and truncate long Auto labels",
 );
 assert.ok(panelSource.includes("TACTIC_PERSONALITY_FLAG") && panelSource.includes("TACTIC_PERSONALITY_OVERRIDE_FLAG"),
   "panel should write actor default and token override tactic flags");
 assert.ok(tacticWindowSource.includes("ApplicationV2") && tacticWindowTemplateSource.includes('name="customEnabled"')
-  && tacticWindowTemplateSource.includes("data-custom-sliders") && !tacticWindowSource.includes("DialogV2"),
-  "tactic window should hide custom sliders behind an explicit Customize toggle");
+  && tacticWindowTemplateSource.includes("data-custom-sliders") && tacticWindowTemplateSource.includes("{{#if showAdvanced}}")
+  && tacticWindowSource.includes("showAdvanced") && !tacticWindowSource.includes("DialogV2"),
+  "tactic window should hide NPC-only temperament/custom sliders behind advanced mode");
 assert.ok(panelStyleSource.includes(".combater-tactic-editor:not(.is-custom)") && panelStyleSource.includes(".combater-tactic-custom-fields"),
   "tactic window CSS should show slider fields only when Customize is checked");
 assert.ok(panelSource.includes("unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG"),
@@ -1239,8 +1241,8 @@ assert.ok(
   "toggling compact mode should also shrink/restore the window width",
 );
 assert.ok(
-  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-waiting\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
-  "compact mode should hide secondary per-step tools but keep Execute/Remove/awaiting-GM visible",
+  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-waiting\):not\(\[data-choose-target\]\):not\(\[data-choose-destination\]\):not\(\[data-choose-area\]\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
+  "compact mode should hide optional per-step tools but keep Execute/Remove/awaiting-GM and required choice controls visible",
 );
 assert.equal(
   /headerSummary:\s*draftSteps\.length/.test(panelSource),
@@ -2525,7 +2527,7 @@ assert.ok(
 assert.ok(
   scoringSource.includes("../rules/tactic-personality.js")
     && scoringSource.includes("tacticPersonalityAdjustment"),
-  "scoring should apply GM NPC tactic personality adjustments through the tactic personality module",
+  "scoring should apply tactic personality adjustments through the tactic personality module",
 );
 assert.ok(
   aggroSource.includes("./tactic-personality.js")
@@ -3305,7 +3307,7 @@ assert.ok(
 assert.ok(
   panelViewModelSource.includes("const canShowExecuteStep = !minionPlanAsChildren && canRunStep")
   && /canExecuteStep:[^\n]*canShowExecuteStep/.test(panelViewModelSource)
-  && /canReset:[^\n]*gmCanRunPlayerPlan/.test(panelViewModelSource),
+  && /canReset:[^\n]*canRunPlayerPlan/.test(panelViewModelSource),
   "per-step execute/reset controls should be enabled for a GM viewing a player's shared plan",
 );
 assert.ok(

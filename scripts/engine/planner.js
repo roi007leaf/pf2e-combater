@@ -27,6 +27,7 @@ import {
   withProjectedFollowUpStrikeCandidates,
   withQuickenedCastingDiscountCandidates,
 } from "./planner/projections.js";
+import { planSignature } from "./planner/plan-signature.js";
 import {
   BASIC_MOVE_SLUGS,
   hasAttackPathAvailable,
@@ -40,6 +41,10 @@ import {
   boundedPlanPreferenceDelta,
   deterministicPlanPreferenceAdjustment,
 } from "../state/preference-profile.js";
+import {
+  resolveTacticPersonality,
+  tacticPersonalityPlanAdjustment,
+} from "../rules/tactic-personality.js";
 
 export { isAttackAction } from "./planner/rules.js";
 
@@ -86,6 +91,7 @@ const AC_PENALTY_FIELDS = [
 ];
 const PLANNER_EXCLUDED_UTILITY_ROLES = new Set(["exploration-utility"]);
 const PLANNER_EXCLUDED_COMBAT_USE = new Set(["browse-only", "context-only", "never-auto-fill"]);
+const HARD_BLOCK_SCORE = -999;
 
 function emptyPlan(context) {
   return {
@@ -268,6 +274,18 @@ function planReloadsAreUseful(steps) {
   });
 }
 
+function isSpellshapeSetup(step) {
+  return step?.activityProfile?.spellshape === true || step?.activityProfile?.rangeBuff === true;
+}
+
+function planSpellshapesAreUseful(steps) {
+  return steps.every((step, index) => {
+    if (!isSpellshapeSetup(step)) return true;
+    const nextStep = steps[index + 1];
+    return Boolean(nextStep && isSpellAction(nextStep) && !isSpellshapeSetup(nextStep));
+  });
+}
+
 function truthyPenalty(value) {
   if (value === true) return true;
   const number = Number(value);
@@ -341,35 +359,56 @@ function setupPriority(step, allSteps) {
   return 3;
 }
 
+function stepDependsOnStep(step, source) {
+  const requirements = previousActionRequirements(step);
+  if (requirements.length && stepSatisfiesPreviousRequirements(source, requirements)) return true;
+
+  const projectedSource = step?.activityProfile?.requiresProjectedAfterKey;
+  if (projectedSource && actionKey(source) === projectedSource) return true;
+
+  return targetConditionRequirementOptions(step).some((group) =>
+    stepSatisfiesTargetConditionRequirement(source, group),
+  );
+}
+
+function dependencyOrderedSteps(steps) {
+  const ordered = [...steps];
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (let index = 0; index < ordered.length; index += 1) {
+      const dependent = ordered[index];
+      const sourceIndex = ordered.findIndex((source, candidateIndex) =>
+        candidateIndex > index
+        && stepDependsOnStep(dependent, source)
+        && !stepDependsOnStep(source, dependent),
+      );
+      if (sourceIndex < 0) continue;
+
+      const [source] = ordered.splice(sourceIndex, 1);
+      ordered.splice(index, 0, source);
+      changed = true;
+      break;
+    }
+  }
+
+  return ordered;
+}
+
 function orderPlanSteps(steps) {
-  return [...steps].toSorted((left, right) => {
-    const leftRequirements = previousActionRequirements(left);
-    const rightRequirements = previousActionRequirements(right);
-    const leftRequiresRight = leftRequirements.length && stepSatisfiesPreviousRequirements(right, leftRequirements);
-    const rightRequiresLeft = rightRequirements.length && stepSatisfiesPreviousRequirements(left, rightRequirements);
-    if (leftRequiresRight && !rightRequiresLeft) return 1;
-    if (rightRequiresLeft && !leftRequiresRight) return -1;
-
-    const leftProjectedSource = left?.activityProfile?.requiresProjectedAfterKey;
-    const rightProjectedSource = right?.activityProfile?.requiresProjectedAfterKey;
-    if (leftProjectedSource && actionKey(right) === leftProjectedSource) return 1;
-    if (rightProjectedSource && actionKey(left) === rightProjectedSource) return -1;
-
-    const leftTargetConditionRequirements = targetConditionRequirementOptions(left);
-    const rightTargetConditionRequirements = targetConditionRequirementOptions(right);
-    const leftRequiresRightCondition = leftTargetConditionRequirements.some((group) =>
-      stepSatisfiesTargetConditionRequirement(right, group),
-    );
-    const rightRequiresLeftCondition = rightTargetConditionRequirements.some((group) =>
-      stepSatisfiesTargetConditionRequirement(left, group),
-    );
-    if (leftRequiresRightCondition && !rightRequiresLeftCondition) return 1;
-    if (rightRequiresLeftCondition && !leftRequiresRightCondition) return -1;
+  const priorityOrdered = [...steps].toSorted((left, right) => {
+    const leftDependsOnRight = stepDependsOnStep(left, right);
+    const rightDependsOnLeft = stepDependsOnStep(right, left);
+    if (leftDependsOnRight && !rightDependsOnLeft) return 1;
+    if (rightDependsOnLeft && !leftDependsOnRight) return -1;
 
     const priorityDelta = setupPriority(left, steps) - setupPriority(right, steps);
     if (priorityDelta !== 0) return priorityDelta;
     return steps.indexOf(left) - steps.indexOf(right);
   });
+
+  return dependencyOrderedSteps(priorityOrdered);
 }
 
 export function mapPenalty(candidate, attackIndex) {
@@ -410,17 +449,19 @@ function planScore(context, steps, sortedCandidates, budget) {
     - (budget.totalActions - totalCost) * UNUSED_ACTION_PENALTY;
 }
 
-function toPlan(context, steps, sortedCandidates, budget) {
+function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null) {
   const orderedSteps = orderPlanSteps(steps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
   const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget);
+  const tacticPlanAdjustment = tacticPersonalityPlanAdjustment(context, orderedSteps, resolvedTactic);
   const componentScoreDelta = orderedSteps.reduce(
     (total, step) => total + (Number(step?.preference?.scoreDelta) || 0),
     0,
   );
   const directPreference = deterministicPlanPreferenceAdjustment(context, { steps: orderedSteps, totalCost });
   const preferenceScoreDelta = boundedPlanPreferenceDelta(componentScoreDelta, directPreference.scoreDelta);
+  const preferenceQueueDemoted = directPreference.negative === true;
 
   return {
     id: orderedSteps.map((step) => step.id).join("+"),
@@ -429,16 +470,30 @@ function toPlan(context, steps, sortedCandidates, budget) {
     steps: orderedSteps,
     totalCost,
     actionBudget: budget,
-    score: tacticalScore - componentScoreDelta + preferenceScoreDelta,
+    score: tacticalScore + tacticPlanAdjustment.scoreDelta - componentScoreDelta + preferenceScoreDelta,
+    tactic: tacticPlanAdjustment,
     preference: {
       ...directPreference,
       componentScoreDelta,
       scoreDelta: preferenceScoreDelta,
+      queueDemoted: preferenceQueueDemoted,
     },
     confidence: combineConfidence(orderedSteps.map((step) => step.confidence)),
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",
   };
+}
+
+function dedupePlans(plans) {
+  const deduped = [];
+  const seen = new Set();
+  for (const plan of plans) {
+    const signature = planSignature(plan);
+    if (signature && seen.has(signature)) continue;
+    if (signature) seen.add(signature);
+    deduped.push(plan);
+  }
+  return deduped;
 }
 
 function planUsesFullBudget(plan, budget) {
@@ -449,6 +504,7 @@ function planUsesFullBudget(plan, budget) {
 
 export function buildTurnPlans(context, candidates) {
   const budget = actionBudget(context);
+  const resolvedTactic = resolveTacticPersonality(context);
   // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
   // search below runs, for performance — a real actor can easily have 20-40+ legal candidates
   // (cantrips, spell ranks, strikes, item actions, skill actions), and searching all of them in
@@ -461,6 +517,7 @@ export function buildTurnPlans(context, candidates) {
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
+    .filter((candidate) => candidate.score > HARD_BLOCK_SCORE)
     .toSorted((left, right) => right.score - left.score);
   const sortedCandidates = withLingeringCompositionCandidates(
     withProjectedFollowUpStrikeCandidates(
@@ -475,11 +532,11 @@ export function buildTurnPlans(context, candidates) {
   function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions, targetPlans = plans, cap = MAX_PLANS, candidatePool = sortedCandidates) {
     if (targetPlans.length >= cap) return;
 
-    if (steps.length && planReloadsAreUseful(steps)) {
+    if (steps.length && planReloadsAreUseful(steps) && planSpellshapesAreUseful(orderPlanSteps(steps))) {
       const key = steps.map(actionKey).join("|");
       if (!seenPlans.has(key)) {
         seenPlans.add(key);
-        targetPlans.push(toPlan(context, [...steps], sortedCandidates, budget));
+        targetPlans.push(toPlan(context, [...steps], sortedCandidates, budget, resolvedTactic));
       }
     }
 
@@ -607,13 +664,16 @@ export function buildTurnPlans(context, candidates) {
 
   if (!plans.length) return [emptyPlan(context)];
 
-  return plans.toSorted((left, right) => {
+  return dedupePlans(plans.toSorted((left, right) => {
+    const leftDemoted = left.preference?.queueDemoted === true;
+    const rightDemoted = right.preference?.queueDemoted === true;
+    if (leftDemoted !== rightDemoted) return leftDemoted ? 1 : -1;
     const leftFull = planUsesFullBudget(left, budget);
     const rightFull = planUsesFullBudget(right, budget);
     if (leftFull !== rightFull) return rightFull ? 1 : -1;
     if (right.score !== left.score) return right.score - left.score;
     return right.totalCost - left.totalCost;
-  });
+  }));
 }
 
 export function bestTurnPlan(context, candidates) {

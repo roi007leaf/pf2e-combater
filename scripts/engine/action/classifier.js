@@ -826,6 +826,7 @@ function classifySystemActionBase(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["setup"]),
         spellBuff: true,
+        spellshape: true,
         rangeBuff: true,
       },
       targetingProfile: { self: true },
@@ -856,6 +857,7 @@ function classifySystemActionBase(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["setup"]),
         spellBuff: true,
+        spellshape: true,
       },
       targetingProfile: { self: true },
       setupFor: ["spell", "damage", "control", "healing"],

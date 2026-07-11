@@ -1,8 +1,11 @@
 import {
+  candidateAppliedConditions,
+  conditionSatisfies,
   currentAttackRange,
   isAttackAction,
   isCompositionExtenderCandidate,
   profileReach,
+  samePlannedTarget,
   targetForCandidate,
 } from "./rules.js";
 import {
@@ -67,6 +70,16 @@ export function isRepeatablePlanningAction(context, candidate, attackPathAvailab
 function allowsPostChargeTumbleThrough(context) {
   const battlefield = context?.battlefield ?? {};
   return Boolean(context?.postChargeTumbleThrough || battlefield.postChargeTumbleThrough);
+}
+
+function isStanceAction(step) {
+  const slug = String(step?.slug ?? "").toLowerCase();
+  const name = String(step?.name ?? "").toLowerCase();
+  const traits = Array.isArray(step?.traits) ? step.traits.map((trait) => String(trait).toLowerCase()) : [];
+  return step?.activityProfile?.stance === true
+    || traits.includes("stance")
+    || slug.endsWith("-stance")
+    || name.includes(" stance");
 }
 
 function endsAwayFromMelee(step) {
@@ -149,6 +162,22 @@ function hasCommittedMoveTargetConflict(context, candidate, steps) {
   return plainCandidateUnreachableFromCenter(context, candidate, committedCenter);
 }
 
+function appliesHeldCondition(candidate) {
+  return [...candidateAppliedConditions(candidate)]
+    .some((condition) => conditionSatisfies("grabbed", condition));
+}
+
+function hasSameTargetHoldConflict(context, candidate, steps) {
+  if (!appliesHeldCondition(candidate)) return false;
+  const candidateTarget = targetForCandidate(context, candidate);
+  if (!candidateTarget) return false;
+  return steps.some((step) =>
+    appliesHeldCondition(step)
+    && targetForCandidate(context, step)
+    && samePlannedTarget(context, candidate, step),
+  );
+}
+
 function canPairRepeatedStride(context, candidate, steps, attackPathAvailable = false) {
   return targetNeedsRepeatedStride(context, candidate, attackPathAvailable)
     && steps.every((step) =>
@@ -178,6 +207,10 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
   }
 
   if (includesStand(candidate) && steps.some(includesStand)) {
+    return true;
+  }
+
+  if (isStanceAction(candidate) && steps.some(isStanceAction)) {
     return true;
   }
 
@@ -238,6 +271,10 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
   }
 
   if (hasCommittedMoveTargetConflict(context, candidate, steps)) {
+    return true;
+  }
+
+  if (hasSameTargetHoldConflict(context, candidate, steps)) {
     return true;
   }
 

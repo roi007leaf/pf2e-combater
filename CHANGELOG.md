@@ -1,5 +1,83 @@
 # Changelog
 
+## [1.1.7]
+
+### Fixed
+
+- **Player Combater windows now follow the currently selected owned token.** The live selected token
+  now wins over stale panel combatant state, and copied/alternate owned tokens can resolve to the
+  matching unique combatant by actor identity when their token IDs differ. Switching between owned
+  characters now updates the player-side Combater window on refresh instead of staying on the
+  previous actor or falling back to the active tracker combatant.
+- **Players can now steer Auto-fill with focused tactical roles.** The tactic chip is available for
+  character actors too, with PC-facing roles for Melee Striker, Ranged Striker, Spell Damage,
+  Healer, Buffer, Debuffer, Defender, Support, and Skirmisher. Each role now changes final plan
+  ordering, not just individual action scores: melee roles can promote Stride-into-melee plans over
+  higher raw-score bow plans, spell damage prefers offensive spells over weapon attacks, and support
+  roles stay separated between healing, buffing, debuffing, defense, and general support. Player
+  sheets no longer show NPC-only roles such as Boss, Lieutenant, Minion, Brute, Artillery, or
+  Controller, and they also hide/ignore NPC temperament and custom sliders. NPCs keep the full NPC
+  tactic list with temperament controls.
+- **Reload 0 weapons no longer add a fake free Reload action.** Bows and other reload-0 ammunition
+  weapons reload as part of firing, so the action list stays focused on real choices instead of
+  showing a confusing zero-action Reload row.
+- **Player-side plans no longer enter GM-only readonly Player plan mode.** Local player drafts strip
+  leaked shared-plan metadata on read/write, preventing missing execution controls after the plan is
+  mirrored to the GM.
+- **Thumbs-down plan ratings now move that exact plan to the end of the Auto-fill queue.** The
+  learned preference still contributes its capped scoring adjustment, but an explicitly disliked
+  visible plan is no longer kept near the front just because its tactical score is high.
+- **Force Barrage and other targeted player actions show their target button on player clients.**
+  Player local drafts stay editable/executable, so required target choices remain available before
+  pressing play.
+- **Compact player plans now keep required choice buttons visible.** Target, destination, and area
+  pickers no longer disappear in compact mode while the action is still waiting for that choice.
+- **Basic movement stays visible in Browse even when it has no tactical target or path.** Step and
+  Stride can still be added manually unless a condition such as grabbed, restrained, or immobilized
+  blocks movement.
+- **Movement pathfinding now distinguishes allies from enemies.** BFS routes can pass through
+  ally-occupied squares, but enemy-occupied squares still block traversal and occupied landing
+  squares remain invalid.
+- **Auto-fill no longer stacks duplicate holds on the same target.** Grapple and NPC Grab-style
+  actions that would apply grabbed/restrained to the same creature now conflict, so generated plans
+  do not spend extra actions trying to hold a target already held earlier in the same plan.
+- **Grab-required follow-ups now stay after the Grab setup.** Activities such as Worry that require
+  a grabbed creature are dependency-ordered after the planned Grab/Grapple effect that satisfies
+  their requirement.
+- **Single-target spells now respect wall-blocked line of effect when choosing targets.** Direct
+  spells such as Force Barrage no longer treat an in-range enemy behind a wall as a valid target;
+  movement or another legal line must open the shot first. Area effects keep their separate area
+  targeting behavior.
+- **Spellshape actions now follow PF2e sequencing.** Reach Spell, Conceal Spell, and other
+  Spellshape actions must be immediately followed by the non-Spellshape spell they modify; they can
+  no longer appear after a spell, at the end of a plan, standalone, or chained into another
+  Spellshape action.
+- **Quick Alchemy Why text now stays Alchemist-specific.** Quick Alchemy no longer inherits Wizard
+  arcane-school or arcane-thesis spellcasting reasons from multiclass/archetype actors, and its
+  setup explanation now describes creating a short-lived alchemical tool instead of stronger
+  follow-up attacks.
+- **Auto-fill plan cycling now collapses duplicate visible plans.** Plans with the same ordered
+  actions, target, rank, MAP, destination, and area placement no longer appear again later in the
+  numbered queue just because they came from a different generated source or search path.
+- **Thumbs-down demotion now follows regenerated versions of the same visible plan.** If Auto-fill
+  rebuilds a disliked plan with different internal candidate IDs, the same action sequence still
+  moves to the end of the queue instead of reappearing near the front.
+- **Auto-fill and Shuffle no longer re-resolve player tactics for every generated plan.** Plan-level
+  role scoring now caches the resolved tactic once per planning pass, avoiding the FPS drop that
+  could happen after player role weighting was added.
+- **Battle Medicine no longer appears in Auto-fill when nobody needs healing.** Healing actions now
+  require a badly injured, dying, or bleeding self/ally target before they can enter generated plans,
+  instead of showing a contradictory "No ally is badly injured" reason while still being selected.
+- **Battle Medicine execution now uses the right roll path.** If PF2e Workbench's "Treat Wounds and
+  Battle Medicine" macro exists, Battle Medicine executes that macro; otherwise it falls back to
+  PF2e's Treat Wounds action because PF2e has no native Battle Medicine action API.
+- **Reloading weapons now show repeated shots as separate actions.** A second firearm/crossbow shot
+  now renders and persists as Strike, Reload, Strike instead of showing the follow-up shot as a
+  misleading 2-action attack row.
+- **Stances no longer repeat in generated plans.** Stance actions are blocked when the actor already
+  has an active stance effect, and Auto-fill will not place a second stance action later in the same
+  plan even if it came from a different generated action source.
+
 ## [1.1.6]
 
 ### Added

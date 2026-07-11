@@ -4,6 +4,8 @@ import { chatActionRevert } from "./chat-revert.js";
 import { executionPatch } from "./results.js";
 import { resolveTarget, setTarget, targetActor } from "./targets.js";
 
+const BATTLE_MEDICINE_WORKBENCH_MACRO_UUID = "Compendium.xdy-pf2e-workbench.asymonous-benefactor-macros.Macro.puqbJZ211kYfU2Se";
+
 function numeric(value, fallback = null) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -82,13 +84,53 @@ export async function usePf2eAction({ actor, action, event, targetToken = null, 
   return null;
 }
 
+async function workbenchBattleMedicineMacro({ actor, action, event, targetToken, step }) {
+  if (typeof globalThis.fromUuid !== "function") return null;
+  try {
+    const macro = await globalThis.fromUuid(BATTLE_MEDICINE_WORKBENCH_MACRO_UUID);
+    if (typeof macro?.execute !== "function") return null;
+    const result = await macro.execute({
+      actor,
+      action,
+      event,
+      step,
+      target: targetActor(targetToken) ?? targetToken ?? null,
+      targetToken,
+    });
+    return result ?? { executed: true, macroUuid: BATTLE_MEDICINE_WORKBENCH_MACRO_UUID };
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function useBattleMedicineAction({ actor, action, event, targetToken = null, step = null }) {
+  const macroResult = await workbenchBattleMedicineMacro({ actor, action, event, targetToken, step });
+  if (macroResult) return macroResult;
+
+  return usePf2eAction({
+    actor,
+    action: {
+      ...action,
+      name: "Treat Wounds",
+      slug: "treat-wounds",
+      statistic: action?.statistic ?? action?.skill ?? "medicine",
+      skill: action?.skill ?? "medicine",
+    },
+    event,
+    targetToken,
+    step,
+  });
+}
+
 export async function executeSystemAction({ actor, step, action, event, choices }) {
   const target = requiresTargetForAction(action) ? resolveTarget(step, action, choices) : null;
   if (requiresTargetForAction(action) && !target) {
     return { status: "needs-choice", choices: ["target"], patch: {} };
   }
   if (target) setTarget(target.token);
-  const result = await usePf2eAction({ actor, action, event, targetToken: target?.token ?? null, step });
+  const result = actionSlug(action) === "battle-medicine"
+    ? await useBattleMedicineAction({ actor, action, event, targetToken: target?.token ?? null, step })
+    : await usePf2eAction({ actor, action, event, targetToken: target?.token ?? null, step });
   if (!result) {
     return {
       status: "failed",

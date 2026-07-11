@@ -460,6 +460,18 @@ function tokenIdentityValues(value) {
     .map((entry) => String(entry));
 }
 
+function actorIdentityValues(value) {
+  const actor = tokenActor(value) ?? value?.actor ?? value?.document?.actor ?? value;
+  return [
+    actor?.id,
+    actor?.uuid,
+    actor?.document?.id,
+    actor?.document?.uuid,
+  ]
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry));
+}
+
 function tokenMatchesCombatant(token, combatant) {
   const tokenIds = new Set(tokenIdentityValues(token));
   if (!tokenIds.size) return false;
@@ -474,6 +486,27 @@ function tokenMatchesCombatant(token, combatant) {
   return combatantTokenValues.some((value) =>
     tokenIdentityValues(value).some((id) => tokenIds.has(id)),
   );
+}
+
+function combatantMatchesActor(token, combatant) {
+  const actorIds = new Set(actorIdentityValues(token));
+  if (!actorIds.size) return false;
+  return [
+    combatant?.actor,
+    combatant?.token?.actor,
+    combatant?.token?.object?.actor,
+    combatant?.tokenDocument?.actor,
+    combatant?.document?.actor,
+  ].some((actor) => actorIdentityValues(actor).some((id) => actorIds.has(id)));
+}
+
+function combatantForSelectedToken(combat, token) {
+  const combatants = collectionValues(combat?.combatants);
+  const exact = combatants.find((combatant) => tokenMatchesCombatant(token, combatant));
+  if (exact) return exact;
+
+  const actorMatches = combatants.filter((combatant) => combatantMatchesActor(token, combatant));
+  return actorMatches.length === 1 ? actorMatches[0] : null;
 }
 
 function tokenForCombatant(combatant, actor) {
@@ -515,18 +548,16 @@ function combatantInCombat(combat, combatant) {
 
 function selectedEncounterCombatant(options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
+  const selectedToken = (globalThis.canvas?.tokens?.controlled ?? [])
+    .find((token) => tokenActor(token));
+  const selectedCombatant = selectedToken ? combatantForSelectedToken(combat, selectedToken) : null;
+  if (selectedCombatant) return selectedCombatant;
+
   if (options.combatant) {
     return combatantInCombat(combat, options.combatant) ? options.combatant : null;
   }
 
-  const selectedToken = (globalThis.canvas?.tokens?.controlled ?? [])
-    .find((token) => tokenInCombat(combat, token));
-  if (!selectedToken) return combat?.combatant ?? null;
-
-  const combatants = collectionValues(combat?.combatants);
-  return combatants.find((combatant) => tokenMatchesCombatant(selectedToken, combatant))
-    ?? combat?.combatant
-    ?? null;
+  return combat?.combatant ?? null;
 }
 
 function actorTraitSlugs(actor) {

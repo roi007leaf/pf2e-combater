@@ -809,6 +809,15 @@ try {
             },
           },
         ],
+        [
+          "treat-wounds",
+          {
+            use: async (options) => {
+              pf2eActionCalls.push({ ...options, action: "treat-wounds" });
+              return { ok: true };
+            },
+          },
+        ],
       ]),
     },
   };
@@ -944,6 +953,36 @@ try {
   });
   assert.equal(seekResult.status, "done");
   assert.equal(pf2eActionCalls.at(-1).action, "seek", "Seek must roll through PF2e's native action API instead of posting its item card");
+
+  const battleMedicineMacroUuid = "Compendium.xdy-pf2e-workbench.asymonous-benefactor-macros.Macro.puqbJZ211kYfU2Se";
+  const battleMedicineMacroCalls = [];
+  createdEffects.set(battleMedicineMacroUuid, {
+    execute: async (scope) => {
+      battleMedicineMacroCalls.push(scope);
+      return { ok: true, source: "workbench-battle-medicine" };
+    },
+  });
+  const battleMedicineMacroResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "battle-medicine-macro-step" },
+    action: { name: "Battle Medicine", slug: "battle-medicine", executable: "pf2e-action", skill: "medicine" },
+    event: { type: "click" },
+  });
+  assert.equal(battleMedicineMacroResult.status, "done");
+  assert.equal(battleMedicineMacroCalls.length, 1, "Battle Medicine should prefer PF2e Workbench Treat Wounds/Battle Medicine macro when installed");
+  assert.equal(battleMedicineMacroCalls[0].actor, actorDocument);
+  assert.equal(pf2eActionCalls.at(-1).action, "seek", "Battle Medicine macro path should not fall through to PF2e Treat Wounds");
+  createdEffects.delete(battleMedicineMacroUuid);
+
+  const battleMedicineFallbackResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "battle-medicine-fallback-step" },
+    action: { name: "Battle Medicine", slug: "battle-medicine", executable: "pf2e-action", skill: "medicine" },
+    event: { type: "click" },
+  });
+  assert.equal(battleMedicineFallbackResult.status, "done");
+  assert.equal(pf2eActionCalls.at(-1).action, "treat-wounds", "Battle Medicine should fall back to PF2e Treat Wounds because PF2e has no Battle Medicine action API");
+  assert.equal(pf2eActionCalls.at(-1).statistic, "medicine");
 
   // Open-item actions that parsed an @Damage formula auto-roll typed damage to chat.
   const damageActionResult = await executeDraftStep({
@@ -2535,6 +2574,45 @@ try {
 const plans = buildTurnPlans(fighterContext, fixtureCandidates);
 assert.ok(plans.length >= 1);
 
+const duplicateVisiblePlans = buildTurnPlans(fighterContext, [
+  {
+    id: "raise-a-shield-source-a",
+    slug: "raise-a-shield",
+    name: "Raise a Shield",
+    actionCost: 1,
+    score: 80,
+    source: "custom-curated",
+    role: "defense",
+    targetingProfile: { self: true },
+  },
+  {
+    id: "raise-a-shield-source-b",
+    slug: "raise-a-shield",
+    name: "Raise a Shield",
+    actionCost: 1,
+    score: 70,
+    source: "system-inferred",
+    role: "defense",
+    targetingProfile: { self: true },
+  },
+  {
+    id: "courageous-anthem",
+    slug: "courageous-anthem",
+    name: "Courageous Anthem",
+    actionCost: 1,
+    score: 60,
+    source: "spell-inferred",
+    role: "buff",
+    targetingProfile: { self: true },
+  },
+]);
+const duplicateVisibleSummaries = duplicateVisiblePlans.map((plan) => plan.summary);
+assert.equal(
+  duplicateVisibleSummaries.length,
+  new Set(duplicateVisibleSummaries).size,
+  `auto-fill plan queue should collapse duplicate visible plans, got ${duplicateVisibleSummaries.join(" | ")}`,
+);
+
 const best = bestTurnPlan(fighterContext, fixtureCandidates);
 assert.equal(best.id, "demoralize+strike+raise-a-shield");
 assert.equal(best.actor.id, "fighter-1");
@@ -2720,7 +2798,19 @@ try {
   writeDraftPlan(builderContext, { steps: [] });
   upsertDraftStep(builderContext, { instanceId: "step-1", actionKey: "stride", actionCost: 1 });
   assert.equal(readDraftPlan(builderContext).steps[0].actionKey, "stride");
+  writeDraftPlan(builderContext, {
+    readonly: true,
+    shared: true,
+    userId: "user-1",
+    userName: "Player One",
+    steps: [{ instanceId: "player-force", actionKey: "spell-force-barrage-1a", actionCost: 1 }],
+  });
+  const sanitizedPlayerDraft = readDraftPlan(builderContext);
+  assert.equal(sanitizedPlayerDraft.readonly, undefined, "player local drafts must never persist readonly mode");
+  assert.equal(sanitizedPlayerDraft.shared, undefined, "player local drafts must never persist GM player-plan mirror mode");
+  assert.equal(sanitizedPlayerDraft.userId, undefined, "player local drafts should not carry shared-plan ownership metadata");
   removeDraftStep(builderContext, "step-1");
+  removeDraftStep(builderContext, "player-force");
   assert.deepEqual(readDraftPlan(builderContext).steps, []);
   upsertDraftStep(builderContext, { instanceId: "step-clear", actionKey: "stride", actionCost: 1 });
   assert.equal(readDraftPlan(builderContext).steps.length, 1);
@@ -3160,6 +3250,46 @@ assert.equal(
   readonlySharedRecallKnowledgeDraftModel.draft.steps[0].canDuplicateStep,
   false,
   "readonly executable player-plan rows should still hide edit-only controls",
+);
+const previousGameForPlayerForceBarrage = globalThis.game;
+globalThis.game = { user: { id: "player-1", isGM: false } };
+const playerForceBarrageDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [{
+    id: "spell-force-barrage-1a",
+    key: "spell-force-barrage-1a",
+    slug: "force-barrage",
+    name: "Force Barrage",
+    actionCost: 1,
+    source: "spell-curated",
+    targetingProfile: { enemy: true, maxRange: 120 },
+  }],
+  plans: [],
+  draft: {
+    steps: [{ instanceId: "force-barrage-readonly-1", actionKey: "spell-force-barrage-1a", name: "Force Barrage", actionCost: 1 }],
+  },
+  favorites: new Set(),
+}), "one");
+globalThis.game = previousGameForPlayerForceBarrage;
+assert.equal(
+  playerForceBarrageDraftModel.isPlayerPlan,
+  false,
+  "player-side local plans should not render as GM-side player-plan mirrors",
+);
+assert.equal(
+  playerForceBarrageDraftModel.readonly,
+  false,
+  "player-side local plans should not be readonly",
+);
+assert.equal(
+  playerForceBarrageDraftModel.draft.steps[0].requiresTarget,
+  true,
+  "Force Barrage player-plan rows should require a target",
+);
+assert.equal(
+  playerForceBarrageDraftModel.draft.steps[0].canChooseTarget,
+  true,
+  "players should see the target button on Force Barrage rows",
 );
 const resolvedActionMissingTargetDraftModel = decorateBuilder(buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
@@ -4120,6 +4250,30 @@ assert.equal(rejectedStrideRow.disabled, false);
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].stale, false);
 assert.equal(panelRejectedDraftBuilderModel.draft.steps[0].action.name, "Stride");
 
+const noTargetMovementBuild = buildCandidates({
+  actor: { name: "Mover", type: "character", document: { name: "Mover", type: "character", system: { actions: [] }, items: [], itemTypes: {} } },
+  profile: { actorType: "character", conditions: { slugs: [] }, movement: { speed: 25 } },
+  battlefield: { targets: [], enemies: [], allies: [] },
+  targets: [],
+  enemies: [],
+});
+const noTargetMovementBuilderModel = buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.mover" } },
+  candidates: noTargetMovementBuild.candidates,
+  rejected: noTargetMovementBuild.rejected,
+  draft: { steps: [] },
+});
+assert.equal(
+  noTargetMovementBuilderModel.tabs.one.all.some((action) => action.key === "step"),
+  true,
+  "Step should stay visible in Browse even when no combatant, target, or tactical path makes it score well",
+);
+assert.equal(
+  noTargetMovementBuilderModel.tabs.one.all.some((action) => action.key === "stride"),
+  true,
+  "Stride should stay visible in Browse even when no combatant, target, or tactical path makes it score well",
+);
+
 const inapplicableMovementBuilderModel = buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
   candidates: [],
@@ -5040,10 +5194,310 @@ assert.equal(tacticPersonalityView(tacticContext({
   custom: { action: { damage: 2 } },
 }, undefined)).label, "Boss / Aggressive / Custom",
   "enabled custom sliders should be explicit in the tactic chip label");
-assert.equal(tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined, { actorType: "character" })).visible, false,
-  "PC context should not expose NPC tactic UI");
+assert.equal(tacticPersonalityView(tacticContext({ role: "melee-striker", temperament: "aggressive" }, undefined, { actorType: "character" })).visible, true,
+  "PC context should expose Auto-fill tactic UI");
+assert.equal(tacticPersonalityView(tacticContext({ role: "ranged-striker", temperament: "opportunist" }, undefined, { actorType: "character", isGM: false })).visible, true,
+  "player character context should expose Auto-fill tactic UI");
+const playerTacticView = tacticPersonalityView(tacticContext({ role: "support", temperament: "auto" }, undefined, { actorType: "character", isGM: false }));
+assert.deepEqual(
+  playerTacticView.roles.map((role) => role.id),
+  [
+    "auto",
+    "melee-striker",
+    "ranged-striker",
+    "spell-damage",
+    "healer",
+    "buffer",
+    "debuffer",
+    "defender",
+    "support",
+    "skirmisher",
+  ],
+  "player tactic role picker should show PC-facing combat roles only",
+);
+assert.equal(playerTacticView.title, "Player tactic");
+assert.equal(playerTacticView.label, "Support", "player tactic chip should show role only, without temperament");
+assert.equal(playerTacticView.showAdvanced, false, "player tactic view should hide NPC temperament/custom controls");
+const playerIgnoredTemperament = resolveTacticPersonality(tacticContext({
+  role: "melee-striker",
+  temperament: "berserker",
+  customEnabled: true,
+  custom: { action: { damage: 3 } },
+}, undefined, { actorType: "character", isGM: false }));
+assert.equal(playerIgnoredTemperament.temperament, "auto", "player tactic should ignore stored NPC temperament");
+assert.equal(playerIgnoredTemperament.effectiveTemperament, "auto", "player tactic should not apply temperament scoring");
+assert.equal(playerIgnoredTemperament.customEnabled, false, "player tactic should ignore stored custom sliders");
+const npcTacticView = tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined));
+assert.equal(npcTacticView.title, "NPC tactic");
+assert.equal(npcTacticView.showAdvanced, true, "NPC tactic view should keep temperament/custom controls");
+assert.equal(
+  npcTacticView.roles.some((role) => [
+    "melee-striker",
+    "ranged-striker",
+    "spell-damage",
+    "healer",
+    "buffer",
+    "debuffer",
+  ].includes(role.id)),
+  false,
+  "NPC tactic role picker should not show player-only role names",
+);
 assert.equal(tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined, { isGM: false })).visible, false,
-  "player context should not expose NPC tactic UI");
+  "player NPC context should not expose tactic UI");
+
+const playerMeleeStrikeDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "melee-striker", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "longsword", name: "Longsword", role: "damage", actionCost: 1, source: "strike", range: { max: 5 } },
+  { role: "damage" },
+);
+const playerMeleeBowDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "melee-striker", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "longbow", name: "Longbow", role: "damage", actionCost: 1, source: "strike", range: { max: 100 }, traits: ["ranged"] },
+  { role: "damage" },
+);
+assert.ok(playerMeleeStrikeDelta.scoreDelta > playerMeleeBowDelta.scoreDelta,
+  "Melee Striker should bias player Auto-fill toward melee attacks over ranged attacks");
+
+const playerRangedShotDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "ranged-striker", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "longbow", name: "Longbow", role: "damage", actionCost: 1, source: "strike", range: { max: 100 }, traits: ["ranged"] },
+  { role: "damage" },
+);
+const playerRangedGrappleDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "ranged-striker", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "grapple", name: "Grapple", role: "grab", actionCost: 1, source: "generic", slug: "grapple" },
+  { role: "grab" },
+);
+assert.ok(playerRangedShotDelta.scoreDelta > playerRangedGrappleDelta.scoreDelta,
+  "Ranged Striker should bias player Auto-fill toward ranged pressure over melee control");
+
+const playerHealerHealDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "healer", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "heal", name: "Heal", role: "healing", actionCost: 1, source: "spell-inferred", activityProfile: { spellBuff: true } },
+  { role: "healing" },
+);
+const playerHealerStrikeDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "healer", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike", range: { max: 5 } },
+  { role: "damage" },
+);
+assert.ok(playerHealerHealDelta.scoreDelta > playerHealerStrikeDelta.scoreDelta,
+  "Healer should bias player Auto-fill toward healing/support over damage");
+
+const playerSpellDamageDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "spell-damage", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "fireball", name: "Fireball", role: "area-damage", actionCost: 1, source: "spell-inferred", targetingProfile: { maxRange: 500 }, activityProfile: { areaShape: "burst" } },
+  { role: "area-damage" },
+);
+const playerWeaponForSpellDamageDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "spell-damage", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "longbow", name: "Longbow", role: "damage", actionCost: 1, source: "strike", range: { max: 100 }, traits: ["ranged"] },
+  { role: "damage" },
+);
+assert.ok(playerSpellDamageDelta.scoreDelta > playerWeaponForSpellDamageDelta.scoreDelta,
+  "Spell Damage should bias player Auto-fill toward offensive spells over weapon shots");
+
+const playerBuffDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "buffer", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "heroism", name: "Heroism", role: "buff", actionCost: 1, source: "spell-inferred", activityProfile: { spellBuff: true } },
+  { role: "buff" },
+);
+const playerStrikeForBufferDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "buffer", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "strike", name: "Strike", role: "damage", actionCost: 1, source: "strike", range: { max: 5 } },
+  { role: "damage" },
+);
+assert.ok(playerBuffDelta.scoreDelta > playerStrikeForBufferDelta.scoreDelta,
+  "Buffer should bias player Auto-fill toward ally buffs over damage");
+
+const playerDebuffDelta = tacticPersonalityAdjustment(
+  tacticContext({ role: "debuffer", temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  { id: "fear", name: "Fear", role: "debuff", actionCost: 1, source: "spell-inferred", targetingProfile: { maxRange: 30 }, activityProfile: { appliesCondition: "frightened" } },
+  { role: "debuff" },
+);
+assert.ok(playerDebuffDelta.scoreDelta > playerStrikeForBufferDelta.scoreDelta,
+  "Debuffer should bias player Auto-fill toward condition/debuff actions");
+
+const playerTacticPlanContext = (role, extra = {}) => ({
+  ...tacticContext({ role, temperament: "auto" }, undefined, { actorType: "character", isGM: false }),
+  actionsSpent: { normal: 2, total: 2 },
+  ...extra,
+});
+const playerPlanMeleeStrike = {
+  id: "player-longsword",
+  name: "Longsword",
+  slug: "strike",
+  role: "damage",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 5 },
+};
+const playerPlanRangedStrike = {
+  id: "player-longbow",
+  name: "Longbow",
+  slug: "strike",
+  role: "damage",
+  actionCost: 1,
+  source: "strike",
+  range: { max: 100 },
+  traits: ["ranged"],
+};
+const playerMeleePlanContext = playerTacticPlanContext("melee-striker");
+const playerMeleePlan = bestTurnPlan(playerMeleePlanContext, [
+  scoreCandidate(playerMeleePlanContext, playerPlanMeleeStrike),
+  scoreCandidate(playerMeleePlanContext, playerPlanRangedStrike),
+]);
+assert.equal(playerMeleePlan.steps[0]?.id, "player-longsword",
+  "Melee Striker player tactic should change actual Auto-fill plan ordering toward melee attacks");
+assert.ok(playerMeleePlan.steps[0]?.reasons?.some((reason) => /Melee Striker/i.test(reason)),
+  "player tactic plan should keep the role reason visible in Why details");
+
+const playerRangedPlanContext = playerTacticPlanContext("ranged-striker");
+const playerRangedPlan = bestTurnPlan(playerRangedPlanContext, [
+  scoreCandidate(playerRangedPlanContext, playerPlanMeleeStrike),
+  scoreCandidate(playerRangedPlanContext, playerPlanRangedStrike),
+]);
+assert.equal(playerRangedPlan.steps[0]?.id, "player-longbow",
+  "Ranged Striker player tactic should change actual Auto-fill plan ordering toward ranged attacks");
+
+const playerRolePlanPool = [
+  { id: "pool-melee", name: "Longsword", role: "damage", source: "strike", range: { max: 5 }, actionCost: 1 },
+  { id: "pool-ranged", name: "Longbow", role: "damage", source: "strike", range: { max: 100 }, traits: ["ranged"], actionCost: 1 },
+  { id: "pool-melee-spell", name: "Gouging Claw", role: "damage", source: "spell-inferred", targetingProfile: { maxRange: 5 }, actionCost: 1 },
+  { id: "pool-ranged-spell", name: "Force Barrage", role: "damage", source: "spell-inferred", targetingProfile: { maxRange: 120 }, actionCost: 1 },
+  { id: "pool-blast", name: "Fireball", role: "area-damage", source: "spell-inferred", targetingProfile: { maxRange: 500 }, activityProfile: { areaShape: "burst" }, actionCost: 1 },
+  { id: "pool-heal", name: "Heal", role: "healing", source: "spell-inferred", actionCost: 1 },
+  { id: "pool-buff", name: "Heroism", role: "buff", source: "spell-inferred", activityProfile: { spellBuff: true }, actionCost: 1 },
+  { id: "pool-debuff", name: "Fear", role: "debuff", source: "spell-inferred", targetingProfile: { maxRange: 30 }, activityProfile: { appliesCondition: "frightened" }, actionCost: 1 },
+  { id: "pool-control", name: "Grapple", role: "grab", source: "generic", slug: "grapple", actionCost: 1 },
+  { id: "pool-defense", name: "Raise a Shield", role: "defense", source: "generic", slug: "raise-a-shield", actionCost: 1 },
+  { id: "pool-support", name: "Aid", role: "support", source: "generic", slug: "aid", actionCost: 1 },
+  { id: "pool-skirmish", name: "Tumble Through", role: "mobility-attack", source: "generic", slug: "tumble-through", actionCost: 1 },
+];
+function playerRoleWeightedPool(role) {
+  const context = playerTacticPlanContext(role);
+  return playerRolePlanPool.map((action) => {
+    const adjustment = tacticPersonalityAdjustment(context, action, { role: action.role });
+    return {
+      ...action,
+      score: 100 + adjustment.scoreDelta,
+      reasons: adjustment.reasons,
+      reason: adjustment.reasons[0] ?? "",
+    };
+  });
+}
+for (const [role, expectedAction] of Object.entries({
+  "melee-striker": "pool-melee",
+  "ranged-striker": "pool-ranged",
+  "spell-damage": "pool-blast",
+  healer: "pool-heal",
+  buffer: "pool-buff",
+  debuffer: "pool-debuff",
+  defender: "pool-defense",
+  support: "pool-support",
+  skirmisher: "pool-skirmish",
+})) {
+  assert.equal(
+    bestTurnPlan(playerTacticPlanContext(role), playerRoleWeightedPool(role)).steps[0]?.id,
+    expectedAction,
+    `${role} player tactic should move its intended action to the first plan`,
+  );
+}
+
+const meleeStrikerRealisticPool = [
+  {
+    id: "realistic-demoralize",
+    name: "Demoralize",
+    role: "control",
+    source: "generic",
+    slug: "demoralize",
+    actionCost: 1,
+    score: 86,
+  },
+  {
+    id: "realistic-longbow",
+    name: "Composite Longbow",
+    role: "damage",
+    source: "strike",
+    range: { max: 100 },
+    traits: ["ranged", "volley-30"],
+    actionCost: 1,
+    score: 104,
+  },
+  {
+    id: "realistic-stride-melee",
+    name: "Stride -> Shortsword",
+    role: "mobility-attack",
+    source: "system-inferred",
+    slug: "stride-strike-shortsword",
+    actionCost: 2,
+    activityProfile: { includesStrike: true, strideCount: 1 },
+    score: 70,
+  },
+].map((action) => {
+  const context = playerTacticPlanContext("melee-striker");
+  const adjustment = tacticPersonalityAdjustment(context, action, { role: action.role });
+  return {
+    ...action,
+    score: action.score + adjustment.scoreDelta,
+    reasons: adjustment.reasons,
+    reason: adjustment.reasons[0] ?? "",
+  };
+});
+assert.equal(
+  bestTurnPlan(playerTacticPlanContext("melee-striker", { actionsSpent: { normal: 1, total: 1 } }), meleeStrikerRealisticPool).steps[0]?.id,
+  "realistic-stride-melee",
+  "Melee Striker should beat a high-scoring bow plan when a melee approach-attack is available",
+);
+
+let planTacticFlagReads = 0;
+const planTacticPerfContext = {
+  ...playerTacticPlanContext("melee-striker", { actionsSpent: { normal: 0, total: 0 } }),
+  actor: {
+    id: "perf-player",
+    name: "Perf Player",
+    document: {
+      type: "character",
+      flags: { "pf2e-combater": { tacticPersonality: { role: "melee-striker", temperament: "auto" } } },
+      getFlag: () => {
+        planTacticFlagReads += 1;
+        return { role: "melee-striker", temperament: "auto" };
+      },
+    },
+  },
+  token: {
+    id: "perf-token",
+    name: "Perf Token",
+    document: { type: "character", getFlag: () => undefined },
+  },
+};
+const manyPlanCandidates = Array.from({ length: 10 }, (_, index) => ({
+  id: `perf-candidate-${index}`,
+  name: `Perf Candidate ${index}`,
+  slug: `perf-candidate-${index}`,
+  role: index % 2 ? "damage" : "mobility-attack",
+  source: index % 2 ? "strike" : "system-inferred",
+  actionCost: 1,
+  score: 100 - index,
+  ...(index % 2 ? { range: { max: 100 }, traits: ["ranged"] } : { activityProfile: { includesStrike: true, strideCount: 1 } }),
+}));
+const manyRolePlans = buildTurnPlans(planTacticPerfContext, manyPlanCandidates);
+assert.ok(manyRolePlans.length > 10, "perf regression fixture should generate many plans");
+assert.ok(planTacticFlagReads <= 1,
+  `plan-level tactic scoring should resolve actor tactic once per buildTurnPlans call, got ${planTacticFlagReads}`);
+
+const playerAutoHighLevelContext = tacticContext({ role: "auto", temperament: "auto" }, undefined, {
+  actorType: "character",
+  isGM: false,
+  actorDocument: {
+    system: { details: { level: { value: 20 } } },
+  },
+});
+const resolvedPlayerAutoHighLevel = resolveTacticPersonality(playerAutoHighLevelContext);
+assert.notEqual(resolvedPlayerAutoHighLevel.effectiveRole, "boss",
+  "PC Auto tactic should not resolve to NPC-only Boss even when level heuristics would match");
+assert.ok(playerTacticView.roles.some((role) => role.id === resolvedPlayerAutoHighLevel.effectiveRole || resolvedPlayerAutoHighLevel.effectiveRole === "auto"),
+  `PC Auto tactic should resolve to a selectable player role, got ${resolvedPlayerAutoHighLevel.effectiveRole}`);
 
 const bossHighImpactDelta = tacticPersonalityAdjustment(
   tacticContext({ role: "boss", temperament: "auto" }, undefined),
@@ -6657,6 +7111,87 @@ assert.deepEqual(
   "Sure Strike should precede movement and the attack it improves",
 );
 
+const reachSpellSetupCandidate = {
+  id: "reach-spell",
+  name: "Reach Spell",
+  slug: "reach-spell",
+  role: "setup",
+  actionCost: 1,
+  source: "system-inferred",
+  score: 101,
+  confidence: "high",
+  activityProfile: { rangeBuff: true, spellBuff: true, spellshape: true },
+  targetingProfile: { self: true },
+  setupFor: ["spell", "damage", "control"],
+};
+const concealSpellSetupCandidate = {
+  id: "conceal-spell",
+  name: "Conceal Spell",
+  slug: "conceal-spell",
+  role: "setup",
+  actionCost: 1,
+  source: "system-inferred",
+  score: 102,
+  confidence: "high",
+  activityProfile: { spellBuff: true, spellshape: true },
+  targetingProfile: { self: true },
+  setupFor: ["spell", "damage", "control", "healing"],
+};
+const frostbiteSpellCandidate = {
+  id: "frostbite",
+  name: "Frostbite",
+  slug: "frostbite",
+  role: "damage",
+  actionCost: 1,
+  source: "spell-curated",
+  score: 210,
+  confidence: "high",
+  activityProfile: { spell: true, cantrip: true },
+};
+const reachSpellPlans = buildTurnPlans(fighterContext, [
+  frostbiteSpellCandidate,
+  reachSpellSetupCandidate,
+]);
+const reachSpellPairPlan = reachSpellPlans.find((plan) =>
+  plan.steps.some((step) => step.slug === "reach-spell")
+  && plan.steps.some((step) => step.slug === "frostbite"),
+);
+assert.deepEqual(
+  reachSpellPairPlan?.steps.map((step) => step.slug),
+  ["reach-spell", "frostbite"],
+  "Reach Spell should be planned immediately before the spell it modifies",
+);
+assert.equal(
+  reachSpellPlans.some((plan) => plan.steps.at(-1)?.slug === "reach-spell"),
+  false,
+  "Reach Spell should never trail the spell or end a plan",
+);
+assert.equal(
+  buildTurnPlans(fighterContext, [reachSpellSetupCandidate])
+    .some((plan) => plan.steps.some((step) => step.slug === "reach-spell")),
+  false,
+  "Reach Spell should not be backfilled as a standalone plan",
+);
+const chainedSpellshapePlans = buildTurnPlans(fighterContext, [
+  frostbiteSpellCandidate,
+  reachSpellSetupCandidate,
+  concealSpellSetupCandidate,
+]);
+assert.equal(
+  chainedSpellshapePlans.some((plan) => {
+    const slugs = plan.steps.map((step) => step.slug);
+    return slugs.includes("reach-spell") && slugs.includes("conceal-spell");
+  }),
+  false,
+  "Spellshape actions should not chain into each other because each one must be followed by the spell it modifies",
+);
+assert.deepEqual(
+  chainedSpellshapePlans.find((plan) => plan.steps.some((step) => step.slug === "conceal-spell"))
+    ?.steps.map((step) => step.slug),
+  ["conceal-spell", "frostbite"],
+  "A Spellshape action should still be valid when immediately followed by the spell it modifies",
+);
+
 const unrelatedReloadPlans = buildTurnPlans(fighterContext, [{
   id: "reload-gakgung",
   name: "Reload Gakgung",
@@ -7261,6 +7796,45 @@ assert.equal(
   occupiedReachableCenters.some((center) => center.x === 5 && center.y === 0),
   false,
   "movement route reachable centers filter occupied landing squares",
+);
+const allyTransitRoute = movementRouteForStep({
+  token: { id: "route-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 10 } },
+  battlefield: {
+    allies: [{ token: { center: { x: 5, y: 0 }, width: 1, height: 1 } }],
+    enemies: [],
+  },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 0 },
+}, { gridSize: 5 });
+assert.equal(allyTransitRoute.reachable, true, "movement route BFS can pass through ally-occupied squares");
+assert.equal(allyTransitRoute.cost, 10, "ally transit keeps straight-line movement cost");
+const enemyTransitRoute = movementRouteForStep({
+  token: { id: "route-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 10 } },
+  battlefield: {
+    allies: [],
+    enemies: [{ token: { center: { x: 5, y: 0 }, width: 1, height: 1 } }],
+  },
+}, {
+  slug: "stride",
+  destination: { x: 10, y: 0 },
+}, { gridSize: 5 });
+assert.equal(enemyTransitRoute.reachable, false, "movement route BFS treats enemy-occupied squares as blockers");
+const enemyBlockedReachableCenters = reachableMovementCenters({ x: 0, y: 0 }, 10, {
+  gridSize: 5,
+  context: {
+    token: { center: { x: 0, y: 0 }, width: 1, height: 1 },
+    battlefield: {
+      enemies: [{ token: { center: { x: 5, y: 0 }, width: 1, height: 1 } }],
+    },
+  },
+});
+assert.equal(
+  enemyBlockedReachableCenters.some((center) => center.x === 10 && center.y === 0),
+  false,
+  "movement route reachable centers cannot pass through enemy-occupied squares",
 );
 assert.equal(
   movementBudgetForStep({
@@ -11446,8 +12020,8 @@ assert.ok(
   "an already-loaded firearm (has a loaded ammo subitem) should not offer a Reload action",
 );
 
-// A reload-0 ammunition weapon (e.g. a bow) reloads as part of firing: still show the Reload step,
-// but as a free action that does not draw from the action budget.
+// A reload-0 ammunition weapon (e.g. a bow) reloads as part of firing, so it should not add a
+// separate free Reload action to the action list.
 const bowReloadContext = {
   actor: {
     document: {
@@ -11466,10 +12040,7 @@ const bowReloadContext = {
   targets: [],
 };
 const reloadBow = readActionSources(bowReloadContext).find((action) => action.slug === "reload-longbow");
-assert.ok(reloadBow, "a reload-0 ammunition weapon should still show a Reload step");
-assert.equal(reloadBow.actionCost, 0, "a reload-0 Reload should not draw from the action budget");
-assert.equal(reloadBow.actionType, "free");
-assert.equal(reloadBow.executable, "reload-weapon");
+assert.equal(reloadBow, undefined, "a reload-0 ammunition weapon should not show a separate free Reload action");
 
 const amiriContext = {
   actor: {
@@ -12011,6 +12582,36 @@ assert.equal(potionAction.role, "healing");
 const scoredPotion = scoreCandidate(potionContext, potionAction);
 assert.ok(scoredPotion.reasons.includes("Includes Interact to draw or retrieve the consumable."));
 assert.ok(scoredPotion.reasons.includes("Valeros is badly injured."));
+
+const battleMedicineCandidate = {
+  id: "battle-medicine",
+  slug: "battle-medicine",
+  name: "Battle Medicine",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "healing",
+  skill: "medicine",
+  activityProfile: { includes: ["healing"] },
+};
+const healthyHealingContext = {
+  ...fighterContext,
+  profile: { ...fighterContext.profile, hpPercent: 1 },
+  allies: [],
+  battlefield: { ...(fighterContext.battlefield ?? {}), allies: [] },
+};
+const healthyBattleMedicine = scoreCandidate(healthyHealingContext, battleMedicineCandidate);
+assert.equal(healthyBattleMedicine.score, -999, "Battle Medicine should not auto-fill when nobody needs healing");
+assert.equal(healthyBattleMedicine.reason, "No ally is badly injured.");
+assert.equal(
+  buildTurnPlans(healthyHealingContext, [healthyBattleMedicine])[0]?.id,
+  "empty",
+  "Auto-fill planner should not build plans from hard-blocked -999 guard candidates",
+);
+const injuredAllyBattleMedicine = scoreCandidate({
+  ...healthyHealingContext,
+  allies: [{ id: "injured-ally", name: "Injured Ally", hpPercent: 0.25 }],
+}, battleMedicineCandidate);
+assert.ok(injuredAllyBattleMedicine.score > -999, "Battle Medicine should remain usable when an ally is badly injured");
 
 const mundaneChalk = {
   id: "chalk",
@@ -14915,6 +15516,22 @@ assert.equal(repeatedReloadStrikePlan.totalCost, 3);
 assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.name), ["Crossbow", "Reload -> Crossbow"]);
 assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.actionCost), [1, 2]);
 assert.deepEqual(repeatedReloadStrikePlan.steps.map((step) => step.mapPenalty), [0, 5]);
+const repeatedReloadDisplaySteps = displayStepEntries(repeatedReloadStrikePlan.steps);
+assert.deepEqual(
+  repeatedReloadDisplaySteps.map((entry) => entry.step.name),
+  ["Crossbow", "Reload", "Crossbow"],
+  "repeated reload weapons should display as Strike, Reload, Strike -- not a 2-action shot",
+);
+assert.deepEqual(repeatedReloadDisplaySteps.map((entry) => entry.step.actionCost), [1, 1, 1]);
+const repeatedReloadAtoms = builderAtomicActionsForStep(repeatedReloadStrikePlan.steps[1]);
+assert.deepEqual(
+  repeatedReloadAtoms.map((step) => step.name),
+  ["Reload", "Crossbow"],
+  "auto-filled repeated reload weapons should persist as executable Reload then Strike rows",
+);
+assert.deepEqual(repeatedReloadAtoms.map((step) => step.actionCost), [1, 1]);
+assert.equal(repeatedReloadAtoms[0].executable, "reload-weapon");
+assert.equal(repeatedReloadAtoms[1].mapPenalty, 5);
 
 const quickenedReloadPlan = bestTurnPlan(quickenedContext, [{
   id: "demoralize-reload",
@@ -15903,6 +16520,23 @@ expectReason(
 expectReason(
   scoreCandidate(classContext("alchemist"), mergeCandidate("quick-alchemy", "Quick Alchemy")),
   "Quick Alchemy creates the right tool",
+);
+const wizardArchetypeQuickAlchemy = scoreCandidate(
+  classContext("wizard", { subclassSlugs: ["school-of-ars-grammatica", "spell-substitution"] }),
+  mergeCandidate("quick-alchemy", "Quick Alchemy", {
+    traits: ["alchemist", "manipulate"],
+    role: "setup",
+    activityProfile: { includes: ["setup"], createsConsumable: true },
+    targetingProfile: { self: true },
+  }),
+);
+assert.ok(
+  !wizardArchetypeQuickAlchemy.reasons.some((reason) => /Arcane school|Arcane thesis|Wizard tactic/i.test(reason)),
+  `Quick Alchemy should not inherit wizard spell reasons, got ${wizardArchetypeQuickAlchemy.reasons.join(" | ")}`,
+);
+assert.ok(
+  !wizardArchetypeQuickAlchemy.reasons.some((reason) => /stronger follow-up attacks/i.test(reason)),
+  `Quick Alchemy should not use generic attack-setup reason, got ${wizardArchetypeQuickAlchemy.reasons.join(" | ")}`,
 );
 expectReason(
   scoreCandidate(classContext("animist"), mergeCandidate("circle-of-spirits", "Circle of Spirits", {
@@ -17673,6 +18307,19 @@ try {
     tokenId: "token-owned",
     token: { object: { id: "token-owned", document: { id: "token-owned", x: 0, y: 0, width: 1, height: 1 }, actor: ownedActor } },
   };
+  const secondOwnedActor = {
+    ...ownedActor,
+    id: "actor-second-owned",
+    uuid: "Actor.actor-second-owned",
+    name: "Second Owned Hero",
+  };
+  const secondOwnedCombatant = {
+    id: "combatant-second-owned",
+    actor: secondOwnedActor,
+    name: "Second Owned Hero",
+    tokenId: "token-second-owned",
+    token: { object: { id: "token-second-owned", document: { id: "token-second-owned", x: 10, y: 0, width: 1, height: 1 }, actor: secondOwnedActor } },
+  };
   const unownedCombatant = {
     id: "combatant-unowned",
     actor: unownedActor,
@@ -17688,18 +18335,37 @@ try {
       turn: 0,
       started: true,
       combatant: selectedCombatant,
-      combatants: [selectedCombatant, unownedCombatant],
+      combatants: [selectedCombatant, secondOwnedCombatant, unownedCombatant],
     },
   };
   globalThis.canvas = {
     grid: { size: 5 },
     tokens: {
       controlled: [],
-      placeables: [selectedCombatant.token.object, unownedCombatant.token.object],
+      placeables: [selectedCombatant.token.object, secondOwnedCombatant.token.object, unownedCombatant.token.object],
     },
   };
   const selectedContext = readCombatContext("test", { combatant: selectedCombatant });
   assert.equal(selectedContext.combatant.id, "combatant-owned");
+  globalThis.canvas.tokens.controlled = [secondOwnedCombatant.token.object];
+  const controlledOverridesStaleContext = readCombatContext("test", { combatant: selectedCombatant });
+  assert.equal(
+    controlledOverridesStaleContext.combatant.id,
+    "combatant-second-owned",
+    "controlled token should override stale panel-selected combatant on player refresh",
+  );
+  globalThis.canvas.tokens.controlled = [{
+    id: "token-second-owned-copy",
+    document: { id: "token-second-owned-copy", x: 15, y: 0, width: 1, height: 1 },
+    actor: secondOwnedActor,
+  }];
+  const copiedTokenContext = readCombatContext("copied-token-selection-test", { combatant: selectedCombatant });
+  assert.equal(
+    copiedTokenContext.combatant.id,
+    "combatant-second-owned",
+    "controlled copied token should resolve to the unique combatant for the same actor instead of falling back to the stale/active combatant",
+  );
+  globalThis.canvas.tokens.controlled = [];
   const blockedContext = readCombatContext("test", { combatant: unownedCombatant });
   assert.equal(blockedContext, null);
   globalThis.game.combat.combatant = unownedCombatant;
@@ -17735,6 +18401,7 @@ try {
     tokenId: "token-foreign",
     token: { object: { id: "token-foreign", document: { id: "token-foreign", x: 10, y: 0, width: 1, height: 1 }, actor: ownedActor } },
   };
+  globalThis.canvas.tokens.controlled = [];
   assert.equal(readCombatContext("foreign-combatant-test", { combatant: foreignCombatant }), null);
 } finally {
   globalThis.game = previousGame;
@@ -18522,6 +19189,7 @@ const widenSpellClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(widenSpellClassification.role, "setup");
 assert.equal(widenSpellClassification.activityProfile.spellBuff, true);
+assert.equal(widenSpellClassification.activityProfile.spellshape, true);
 assert.deepEqual(widenSpellClassification.setupFor, ["spell", "damage", "control", "healing"]);
 
 const followUpClassification = classifySystemAction({
@@ -20127,6 +20795,62 @@ const selfSetupTarget = scoreCandidate(fighterContext, {
 });
 assert.equal(selfSetupTarget.suggestedTarget.name, "Valeros");
 assert.equal(selfSetupTarget.suggestedTarget.type, "self");
+const activeStanceScore = scoreCandidate({
+  ...fighterContext,
+  profile: {
+    ...fighterContext.profile,
+    combatState: { ...(fighterContext.profile?.combatState ?? {}), activeStances: ["mountain-stance"] },
+  },
+}, {
+  id: "mountain-stance",
+  name: "Mountain Stance",
+  slug: "mountain-stance",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  activityProfile: { includes: ["setup"], stance: true },
+  targetingProfile: { self: true },
+  setupFor: ["strike", "damage"],
+});
+assert.equal(activeStanceScore.score, -999, "stance actions should not auto-fill when any stance effect is already active");
+assert.equal(activeStanceScore.reason, "A stance is already active.");
+const repeatedStancePlan = bestTurnPlan(fighterContext, [{
+  id: "mountain-stance-a",
+  name: "Mountain Stance",
+  slug: "mountain-stance",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  score: 120,
+  confidence: "high",
+  activityProfile: { includes: ["setup"], stance: true },
+  targetingProfile: { self: true },
+}, {
+  id: "stride",
+  name: "Stride",
+  slug: "stride",
+  actionCost: 1,
+  source: "generic",
+  role: "mobility",
+  score: 100,
+  confidence: "medium",
+}, {
+  id: "mountain-stance-b",
+  name: "Mountain Stance",
+  slug: "mountain-stance",
+  actionCost: 1,
+  source: "system-inferred",
+  role: "setup",
+  score: 110,
+  confidence: "high",
+  activityProfile: { includes: ["setup"], stance: true },
+  targetingProfile: { self: true },
+}]);
+assert.equal(
+  repeatedStancePlan.steps.filter((step) => step.activityProfile?.stance === true).length,
+  1,
+  `generated plans should never include more than one stance action, got ${repeatedStancePlan.summary}`,
+);
 
 // Focused Assault "counts as a number of attacks equal to the number of heads"
 // toward MAP, so a follow-up Strike should be at full MAP -10, not -5.
@@ -20387,6 +21111,22 @@ try {
     buildCandidates(blockedDirectCrossbowContext).candidates.some((action) => action.name === "Crossbow"),
     false,
   );
+  const blockedDirectForceBarrage = scoreCandidate(blockedDirectCrossbowContext, {
+    id: "force-barrage",
+    name: "Force Barrage",
+    slug: "force-barrage",
+    actionCost: 1,
+    source: "spell-curated",
+    role: "damage",
+    targetingProfile: { enemy: true, maxRange: 120 },
+    damageProfile: { average: 10, types: ["force"] },
+  });
+  assert.equal(
+    blockedDirectForceBarrage.score,
+    -999,
+    "single-target non-AoE spells should require line of effect, not only range",
+  );
+  assert.equal(blockedDirectForceBarrage.suggestedTarget, null);
   const moveToShootCrossbow = readActionSources(blockedDirectCrossbowContext)
     .find((action) => action.slug === "stride-strike-crossbow");
   assert.ok(moveToShootCrossbow, "expected Stride -> Crossbow when current shot is blocked");
@@ -21006,6 +21746,128 @@ try {
     ),
     false,
     "retreating out of melee for a ranged attack must not be paired with Grapple",
+  );
+  const grabbedTarget = { id: "rootfall", name: "Rootfall", distance: 5, hpPercent: 1, conditions: { slugs: [], values: {} } };
+  const duplicateGrabContext = {
+    ...rangedRetreatContext,
+    profile: { ...rangedRetreatContext.profile, reach: 10 },
+    targets: [grabbedTarget],
+    battlefield: { targets: [grabbedTarget], enemies: [grabbedTarget], allies: [] },
+  };
+  const duplicateGrabPlans = buildTurnPlans(duplicateGrabContext, [{
+    id: "grapple-rootfall",
+    name: "Grapple",
+    slug: "grapple",
+    actionCost: 1,
+    source: "generic",
+    confidence: "medium",
+    role: "grab",
+    skill: "athletics",
+    requiresEnemyInReach: true,
+    attackTrait: true,
+    score: 105,
+    preferredTarget: grabbedTarget,
+    reason: "Target is not grabbed.",
+  }, {
+    id: "jaws-rootfall",
+    name: "Jaws",
+    slug: "jaws",
+    actionCost: 1,
+    source: "strike",
+    confidence: "high",
+    role: "damage",
+    attack: true,
+    score: 55,
+    preferredTarget: grabbedTarget,
+    reason: "Bite Rootfall.",
+  }, {
+    id: "grab-rootfall",
+    name: "Grab",
+    slug: "grab",
+    actionCost: 1,
+    source: "system-inferred",
+    confidence: "high",
+    role: "grab",
+    score: 108,
+    preferredTarget: grabbedTarget,
+    activityProfile: {
+      includesGrab: true,
+      appliesCondition: "grabbed",
+      npcFamily: "grab-rider",
+      requiresPreviousStrike: true,
+      previousActionRequirements: ["after-strike"],
+    },
+    reason: "Grab Rootfall.",
+  }]);
+  assert.equal(
+    duplicateGrabPlans.some((plan) =>
+      plan.steps.some((step) => step.slug === "grapple")
+      && plan.steps.some((step) => step.slug === "grab"),
+    ),
+    false,
+    "planner must not recommend Grapple and Grab against the same target in one plan",
+  );
+  const worryClassification = classifySystemAction({
+    name: "Worry",
+    system: {
+      actionType: { value: "action" },
+      actions: { value: 1 },
+      category: "offensive",
+      traits: { value: ["attack"] },
+      description: {
+        value: "<p><strong>Requirements</strong> The dire wolf has a creature @UUID[Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei]{Grabbed} with its jaws.</p><p><strong>Effect</strong> The dire wolf fiercely shakes the grabbed creature with its teeth, dealing @Damage[1d10+2[piercing]] damage (@Check[fortitude|dc:20|basic] save).</p>",
+      },
+    },
+  }, { actionCost: 1, type: "action" });
+  assert.equal(worryClassification.activityProfile.requiresTargetCondition, "grabbed");
+  const worryPlans = buildTurnPlans(duplicateGrabContext, [{
+    id: "jaws-rootfall",
+    name: "Jaws",
+    slug: "jaws",
+    actionCost: 1,
+    source: "strike",
+    confidence: "high",
+    role: "damage",
+    attack: true,
+    attackEffects: ["grab", "knockdown"],
+    traits: ["attack"],
+    range: { max: 10 },
+    score: 98,
+    preferredTarget: grabbedTarget,
+    activityProfile: { includes: ["strike"], includesStrike: true },
+    reason: "Bite Rootfall.",
+  }, scoreCandidate(duplicateGrabContext, {
+    id: "worry-rootfall",
+    name: "Worry",
+    slug: "worry",
+    actionCost: 1,
+    source: "system-inferred",
+    confidence: "high",
+    preferredTarget: grabbedTarget,
+    score: 36,
+    ...worryClassification,
+  }), scoreCandidate(duplicateGrabContext, {
+    id: "grab-rootfall",
+    name: "Grab",
+    slug: "grab",
+    actionCost: 1,
+    source: "system-inferred",
+    confidence: "high",
+    role: "grab",
+    score: 129,
+    preferredTarget: grabbedTarget,
+    activityProfile: {
+      includesGrab: true,
+      appliesCondition: "grabbed",
+      npcFamily: "grab-rider",
+      requiresPreviousStrike: true,
+      previousActionRequirements: ["after-strike"],
+    },
+    reason: "Grab Rootfall.",
+  })]);
+  assert.ok(
+    worryPlans.some((plan) => plan.summary === "Jaws -> Grab -> Worry"),
+    `Worry must be ordered after the Grab that satisfies its grabbed-creature requirement, got ${worryPlans.map((plan) => plan.summary).join(" | ")}`,
   );
 } finally {
   globalThis.canvas = previousRangedRetreatCanvas;

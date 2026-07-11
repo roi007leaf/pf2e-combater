@@ -7,6 +7,12 @@ export const TACTIC_PERSONALITY_OVERRIDE_FLAG = "tacticPersonalityOverride";
 
 export const TACTIC_ROLES = Object.freeze([
   { id: "auto", label: "Auto" },
+  { id: "melee-striker", label: "Melee Striker" },
+  { id: "ranged-striker", label: "Ranged Striker" },
+  { id: "spell-damage", label: "Spell Damage" },
+  { id: "healer", label: "Healer" },
+  { id: "buffer", label: "Buffer" },
+  { id: "debuffer", label: "Debuffer" },
   { id: "boss", label: "Boss" },
   { id: "lieutenant", label: "Lieutenant" },
   { id: "minion", label: "Minion" },
@@ -17,6 +23,43 @@ export const TACTIC_ROLES = Object.freeze([
   { id: "defender", label: "Defender" },
   { id: "support", label: "Support" },
 ]);
+
+const PLAYER_TACTIC_ROLE_IDS = [
+  "auto",
+  "melee-striker",
+  "ranged-striker",
+  "spell-damage",
+  "healer",
+  "buffer",
+  "debuffer",
+  "defender",
+  "support",
+  "skirmisher",
+];
+const PLAYER_ONLY_TACTIC_ROLE_IDS = new Set([
+  "melee-striker",
+  "ranged-striker",
+  "spell-damage",
+  "healer",
+  "buffer",
+  "debuffer",
+]);
+const PLAYER_TACTIC_ROLE_ID_SET = new Set(PLAYER_TACTIC_ROLE_IDS);
+const NPC_TACTIC_ROLE_ID_SET = new Set(
+  TACTIC_ROLES
+    .map((role) => role.id)
+    .filter((id) => !PLAYER_ONLY_TACTIC_ROLE_IDS.has(id)),
+);
+
+export const PLAYER_TACTIC_ROLES = Object.freeze(
+  PLAYER_TACTIC_ROLE_IDS
+    .map((id) => TACTIC_ROLES.find((role) => role.id === id))
+    .filter(Boolean),
+);
+
+export const NPC_TACTIC_ROLES = Object.freeze(
+  TACTIC_ROLES.filter((role) => !PLAYER_ONLY_TACTIC_ROLE_IDS.has(role.id)),
+);
 
 export const TACTIC_TEMPERAMENTS = Object.freeze([
   { id: "auto", label: "Auto" },
@@ -56,15 +99,21 @@ const AUTO_ROLE_MIN_SCORE = 5;
 const AUTO_TEMPERAMENT_MIN_SCORE = 4;
 
 const ROLE_ACTION_WEIGHTS = {
+  "melee-striker": { melee: 34, damage: 16, mobilityAttack: 32, highImpact: 6, ranged: -40, rangedSpell: -24, spell: -12, support: -10, healing: -12 },
+  "ranged-striker": { ranged: 18, damage: 12, mobility: 4, spell: -8, melee: -12, grab: -8, defense: -2 },
+  "spell-damage": { spell: 18, damage: 14, areaDamage: 14, rangedSpell: 10, meleeSpell: 8, highImpact: 8, control: -4, support: -8, healing: -10, ranged: -6 },
+  healer: { healing: 22, support: 14, defense: 6, damage: -10, melee: -8 },
+  buffer: { buff: 20, support: 16, spell: 8, defense: 6, healing: 4, damage: -8 },
+  debuffer: { debuff: 20, control: 16, spell: 10, rangedSpell: 6, damage: -6 },
   boss: { highImpact: 22, reaction: 10, damage: 6, control: 8, support: 4, mobility: -4 },
   lieutenant: { support: 12, control: 10, damage: 4, highImpact: 6 },
   minion: { simple: 10, support: 5, mobility: 4, highImpact: -10, reaction: -4 },
   brute: { damage: 14, grab: 12, control: 6, mobilityAttack: 8, support: -8 },
   skirmisher: { mobility: 14, mobilityAttack: 14, defense: 6, damage: 4, highImpact: -4 },
   artillery: { ranged: 14, spell: 12, damage: 8, control: 5, defense: -4, melee: -10 },
-  controller: { control: 16, debuff: 14, grab: 8, damage: -4 },
+  controller: { control: 16, grab: 14, mobilityAttack: 6, debuff: 4, damage: -4 },
   defender: { defense: 16, control: 8, support: 8, reaction: 8, damage: -4 },
-  support: { support: 18, healing: 14, defense: 6, damage: -8 },
+  support: { support: 22, simple: 8, healing: 4, defense: 6, damage: -8 },
 };
 
 const TEMPERAMENT_ACTION_WEIGHTS = {
@@ -76,6 +125,12 @@ const TEMPERAMENT_ACTION_WEIGHTS = {
 };
 
 const ROLE_TARGET_WEIGHTS = {
+  "melee-striker": { "immediate-threat": 8, "finisher-target": 8, "caster": 4, "main-defender": -4 },
+  "ranged-striker": { "caster": 10, "healer": 8, "controller": 6, "main-defender": -8 },
+  "spell-damage": { "finisher-target": 10, "caster": 6, "controller": 6, "main-defender": -6 },
+  healer: { "immediate-threat": 8, "main-attacker": 6, "main-defender": -4 },
+  buffer: { "main-attacker": 8, "immediate-threat": 6, "main-defender": 4 },
+  debuffer: { "main-attacker": 10, "caster": 8, "controller": 6, "main-defender": -2 },
   boss: { "healer": 10, "caster": 10, "controller": 8, "immediate-threat": 6, "finisher-target": 4, "main-defender": -4 },
   lieutenant: { "healer": 8, "controller": 8, "main-attacker": 5 },
   minion: { "immediate-threat": 8, "main-defender": -6 },
@@ -85,6 +140,19 @@ const ROLE_TARGET_WEIGHTS = {
   controller: { "caster": 8, "healer": 8, "main-attacker": 8, "main-defender": 4 },
   defender: { "immediate-threat": 12, "main-attacker": 10, "finisher-target": -2 },
   support: { "immediate-threat": 8, "main-attacker": 6, "main-defender": -4 },
+};
+
+const ROLE_PLAN_WEIGHTS = {
+  "melee-striker": { prefer: ["melee", "mobilityAttack"], avoid: ["ranged", "rangedSpell"], bonus: 70, penalty: -90 },
+  "ranged-striker": { prefer: ["ranged"], avoid: ["melee", "meleeSpell"], bonus: 50, penalty: -60 },
+  "spell-damage": { prefer: ["areaDamage", "rangedSpell", "meleeSpell"], avoid: ["healing", "buff", "melee", "ranged"], bonus: 60, penalty: -45 },
+  healer: { prefer: ["healing"], avoid: ["damage"], bonus: 60, penalty: -45 },
+  buffer: { prefer: ["buff"], avoid: ["damage"], bonus: 55, penalty: -35 },
+  debuffer: { prefer: ["debuff"], avoid: ["damage"], bonus: 55, penalty: -35 },
+  controller: { prefer: ["grab", "control"], avoid: ["ranged"], bonus: 50, penalty: -25 },
+  defender: { prefer: ["defense"], avoid: ["ranged"], bonus: 50, penalty: -25 },
+  support: { prefer: ["support"], avoid: ["damage"], bonus: 50, penalty: -30 },
+  skirmisher: { prefer: ["mobility", "mobilityAttack"], avoid: ["defense"], bonus: 50, penalty: -25 },
 };
 
 const TEMPERAMENT_TARGET_WEIGHTS = {
@@ -156,8 +224,38 @@ function isGmContext(context) {
   return globalThis.game?.user?.isGM === true;
 }
 
-function isNpcGmContext(context) {
-  return isGmContext(context) && actorType(context) === "npc";
+function canUseTacticPersonality(context) {
+  if (!context?.actor) return false;
+  const type = actorType(context);
+  if (!type) return false;
+  if (isGmContext(context)) return true;
+  return type !== "npc";
+}
+
+function tacticRoleOptions(context) {
+  return actorType(context) === "npc" ? NPC_TACTIC_ROLES : PLAYER_TACTIC_ROLES;
+}
+
+function tacticForActorType(context, tactic) {
+  if (actorType(context) === "npc") return tactic;
+  const role = PLAYER_TACTIC_ROLE_ID_SET.has(tactic.role) ? tactic.role : "auto";
+  const inferredRole = tactic.inferredRole === undefined
+    ? undefined
+    : PLAYER_TACTIC_ROLE_ID_SET.has(tactic.inferredRole) ? tactic.inferredRole : "auto";
+  const effectiveRole = tactic.effectiveRole === undefined
+    ? undefined
+    : role === "auto" ? (inferredRole ?? "auto") : role;
+  return {
+    ...tactic,
+    role,
+    ...(inferredRole === undefined ? {} : { inferredRole }),
+    ...(effectiveRole === undefined ? {} : { effectiveRole }),
+    temperament: "auto",
+    inferredTemperament: "auto",
+    effectiveTemperament: "auto",
+    customEnabled: false,
+    custom: null,
+  };
 }
 
 function normalizeSliderBlock(value, ids) {
@@ -209,6 +307,12 @@ function documentText(document) {
 function scoreBag() {
   return {
     role: {
+      "melee-striker": 0,
+      "ranged-striker": 0,
+      "spell-damage": 0,
+      healer: 0,
+      buffer: 0,
+      debuffer: 0,
       boss: 0,
       lieutenant: 0,
       minion: 0,
@@ -239,6 +343,18 @@ function bestScoredKey(scores, minimum) {
   let best = "auto";
   let bestScore = minimum;
   for (const [key, score] of Object.entries(scores)) {
+    if (score <= bestScore) continue;
+    best = key;
+    bestScore = score;
+  }
+  return best;
+}
+
+function bestAllowedScoredKey(scores, minimum, allowed) {
+  let best = "auto";
+  let bestScore = minimum;
+  for (const [key, score] of Object.entries(scores)) {
+    if (allowed && !allowed.has(key)) continue;
     if (score <= bestScore) continue;
     best = key;
     bestScore = score;
@@ -371,10 +487,12 @@ const AREA_DAMAGE_RE = /\b(area|burst|cone|line|emanation|breath|fireball|blast|
 
 function scoreTextSignals(scores, text) {
   if (hasPattern(text, HEALING_RE)) {
+    addScore(scores, "role", "healer", 10);
     addScore(scores, "role", "support", 8);
     addScore(scores, "temperament", "cautious", 2);
   }
   if (hasPattern(text, SUPPORT_RE)) {
+    addScore(scores, "role", "healer", 2);
     addScore(scores, "role", "support", 4);
     addScore(scores, "role", "lieutenant", 3);
   }
@@ -412,9 +530,9 @@ function scoreTextSignals(scores, text) {
 }
 
 function inferTacticPersonality(context) {
-  if (actorType(context) !== "npc") return { role: "auto", temperament: "auto" };
-
   const actor = actorDocument(context);
+  if (!actor) return { role: "auto", temperament: "auto" };
+  const npc = actorType(context) === "npc";
   const scores = scoreBag();
   const level = actorLevel(actor);
   const enemyLevels = opposingLevels(context);
@@ -458,13 +576,16 @@ function inferTacticPersonality(context) {
       const range = strikeRange(action, traits);
       const averageDamage = strikeAverageDamage(action);
       if (range > 10 || traits.some((trait) => ["ranged", "thrown", "propulsive", "volley"].includes(trait) || trait.startsWith("volley-"))) {
+        addScore(scores, "role", "ranged-striker", 8);
         addScore(scores, "role", "artillery", 6);
         addScore(scores, "temperament", "aggressive", 3);
       } else {
+        addScore(scores, "role", "melee-striker", 7);
         addScore(scores, "role", "brute", 5);
         addScore(scores, "temperament", "aggressive", 2);
       }
       if (averageDamage !== null && averageDamage >= 18) {
+        addScore(scores, "role", range > 10 ? "ranged-striker" : "melee-striker", 4);
         addScore(scores, "role", "brute", 4);
         addScore(scores, "temperament", "aggressive", 4);
         addScore(scores, "temperament", "berserker", 5);
@@ -481,11 +602,33 @@ function inferTacticPersonality(context) {
   for (const spell of spellItems) {
     const text = documentText(spell);
     scoreTextSignals(scores, text);
-    if (hasPattern(text, HEALING_RE)) continue;
-    if (hasPattern(text, CONTROL_RE)) continue;
-    if (hasPattern(text, SUPPORT_RE)) continue;
+    if (!npc) {
+      addScore(scores, "role", "spell-damage", 2);
+      if (hasPattern(text, HEALING_RE)) {
+        addScore(scores, "role", "healer", 5);
+        continue;
+      }
+      if (hasPattern(text, CONTROL_RE)) {
+        addScore(scores, "role", "debuffer", 5);
+        addScore(scores, "role", "controller", 3);
+        continue;
+      }
+      if (hasPattern(text, SUPPORT_RE)) {
+        addScore(scores, "role", "buffer", 5);
+        addScore(scores, "role", "support", 3);
+        continue;
+      }
+    } else {
+      if (hasPattern(text, HEALING_RE)) continue;
+      if (hasPattern(text, CONTROL_RE)) continue;
+      if (hasPattern(text, SUPPORT_RE)) continue;
+    }
     if (spell?.system?.damage || hasPattern(text, /\b(attack|damage|fire|cold|electricity|acid|mental|void|poison)\b/)) {
+      addScore(scores, "role", "ranged-striker", 3);
       addScore(scores, "role", "artillery", 5);
+      if (!npc) {
+        addScore(scores, "role", "spell-damage", hasPattern(text, AREA_DAMAGE_RE) ? 10 : 6);
+      }
       addScore(scores, "temperament", "aggressive", 3);
     }
   }
@@ -494,8 +637,10 @@ function inferTacticPersonality(context) {
     addScore(scores, "role", "lieutenant", 3);
   }
 
-  const role = bestScoredKey(scores.role, AUTO_ROLE_MIN_SCORE);
-  const temperament = bestScoredKey(scores.temperament, AUTO_TEMPERAMENT_MIN_SCORE);
+  const role = bestAllowedScoredKey(scores.role, AUTO_ROLE_MIN_SCORE, npc ? NPC_TACTIC_ROLE_ID_SET : PLAYER_TACTIC_ROLE_ID_SET);
+  const temperament = npc
+    ? bestScoredKey(scores.temperament, AUTO_TEMPERAMENT_MIN_SCORE)
+    : "auto";
   return { role, temperament };
 }
 
@@ -525,31 +670,31 @@ export function resolveTacticPersonality(context) {
   const inferred = inferTacticPersonality(context);
   const tokenRaw = readFlag(context?.token, TACTIC_PERSONALITY_OVERRIDE_FLAG);
   if (hasFlagValue(tokenRaw)) {
-    const tactic = normalizeTactic(tokenRaw);
+    const tactic = tacticForActorType(context, normalizeTactic(tokenRaw));
     return {
       ...tactic,
       inferredRole: inferred.role,
       inferredTemperament: inferred.temperament,
-      effectiveRole: tactic.role === "auto" ? inferred.role : tactic.role,
-      effectiveTemperament: tactic.temperament === "auto" ? inferred.temperament : tactic.temperament,
+      effectiveRole: tactic.effectiveRole ?? (tactic.role === "auto" ? inferred.role : tactic.role),
+      effectiveTemperament: tactic.effectiveTemperament ?? (tactic.temperament === "auto" ? inferred.temperament : tactic.temperament),
       source: "token",
     };
   }
 
   const actorRaw = readFlag(context?.actor, TACTIC_PERSONALITY_FLAG);
   if (hasFlagValue(actorRaw)) {
-    const tactic = normalizeTactic(actorRaw);
+    const tactic = tacticForActorType(context, normalizeTactic(actorRaw));
     return {
       ...tactic,
       inferredRole: inferred.role,
       inferredTemperament: inferred.temperament,
-      effectiveRole: tactic.role === "auto" ? inferred.role : tactic.role,
-      effectiveTemperament: tactic.temperament === "auto" ? inferred.temperament : tactic.temperament,
+      effectiveRole: tactic.effectiveRole ?? (tactic.role === "auto" ? inferred.role : tactic.role),
+      effectiveTemperament: tactic.effectiveTemperament ?? (tactic.temperament === "auto" ? inferred.temperament : tactic.temperament),
       source: "actor",
     };
   }
 
-  return {
+  return tacticForActorType(context, {
     role: "auto",
     temperament: "auto",
     customEnabled: false,
@@ -559,7 +704,7 @@ export function resolveTacticPersonality(context) {
     effectiveRole: inferred.role,
     effectiveTemperament: inferred.temperament,
     source: "default",
-  };
+  });
 }
 
 function actionRole(action, explicitRole) {
@@ -582,19 +727,35 @@ function actionCategories(action, explicitRole) {
   const source = normalizeId(action?.source);
   const slug = normalizeId(action?.slug ?? action?.id);
   const profile = action?.activityProfile ?? {};
+  const spell = source === "spell" || source === "spell-inferred" || action?.spell === true || action?.item?.type === "spell";
+  const maxRange = Number(action?.range?.max ?? action?.targetingProfile?.maxRange);
+  const ranged = traits.has("ranged") || (Number.isFinite(maxRange) && maxRange > 10);
+  const offensiveOrControl = [
+    "damage",
+    "save-damage",
+    "area-damage",
+    "multiattack",
+    "control",
+    "debuff",
+    "grab",
+  ].includes(role) || profile.appliesCondition || Array.isArray(profile.appliesConditions);
 
   if (["damage", "save-damage", "area-damage", "multiattack"].includes(role) || source === "strike" || profile.includesStrike === true || action?.damageProfile) categories.add("damage");
   if (["control", "debuff", "grab", "setup"].includes(role) || profile.appliesCondition || Array.isArray(profile.appliesConditions)) categories.add("control");
   if (["debuff"].includes(role)) categories.add("debuff");
   if (role === "grab" || ["grapple", "grab"].includes(slug)) categories.add("grab");
   if (["defense", "stealth-defense"].includes(role) || ["raise-a-shield", "take-cover", "hide"].includes(slug)) categories.add("defense");
-  if (["buff", "healing", "summon"].includes(role) || profile.spellBuff === true || profile.companion === true) categories.add("support");
+  if (["buff", "healing", "summon", "support"].includes(role) || profile.spellBuff === true || profile.companion === true) categories.add("support");
+  if (role === "buff" || profile.spellBuff === true) categories.add("buff");
   if (role === "healing") categories.add("healing");
   if (["mobility", "mobility-attack"].includes(role) || ["stride", "step", "crawl", "tumble-through"].includes(slug)) categories.add("mobility");
   if (role === "mobility-attack") categories.add("mobilityAttack");
-  if (source === "spell" || source === "spell-inferred" || action?.spell === true || action?.item?.type === "spell") categories.add("spell");
-  if (traits.has("ranged") || Number(action?.range?.max ?? action?.targetingProfile?.maxRange) > 10) categories.add("ranged");
-  if (source === "strike" && !categories.has("ranged")) categories.add("melee");
+  if (spell) categories.add("spell");
+  if (spell && offensiveOrControl && ranged) categories.add("rangedSpell");
+  if (spell && offensiveOrControl && Number.isFinite(maxRange) && maxRange <= 10) categories.add("meleeSpell");
+  if (ranged) categories.add("ranged");
+  if (source === "strike" && !ranged) categories.add("melee");
+  if (role === "area-damage" || profile.area === true || profile.areaShape || profile.areaHitCount) categories.add("areaDamage");
   if (action?.actionCost === "reaction" || role === "reaction" || profile.reaction === true) categories.add("reaction");
   if ((Number.isFinite(cost) && cost >= 2 && (categories.has("damage") || categories.has("control") || categories.has("support"))) || profile.npcFamily || profile.highImpact === true) categories.add("highImpact");
   if (Number.isFinite(cost) && cost <= 1 && !categories.has("spell")) categories.add("simple");
@@ -676,7 +837,7 @@ function reasonFor(tactic, parts) {
 }
 
 export function tacticPersonalityAdjustment(context, action, { role = null } = {}) {
-  if (!isNpcGmContext(context)) return { scoreDelta: 0, reasons: [] };
+  if (!canUseTacticPersonality(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolveTacticPersonality(context);
   const effectiveRole = tactic.effectiveRole ?? tactic.role;
   const effectiveTemperament = tactic.effectiveTemperament ?? tactic.temperament;
@@ -693,6 +854,30 @@ export function tacticPersonalityAdjustment(context, action, { role = null } = {
   return {
     scoreDelta,
     reasons: reason ? [reason] : [],
+  };
+}
+
+export function tacticPersonalityPlanAdjustment(context, steps = [], resolvedTactic = null) {
+  if (!canUseTacticPersonality(context)) return { scoreDelta: 0, reasons: [] };
+  const tactic = resolvedTactic ?? resolveTacticPersonality(context);
+  const effectiveRole = tactic.effectiveRole ?? tactic.role;
+  const weights = ROLE_PLAN_WEIGHTS[effectiveRole];
+  if (!weights || !Array.isArray(steps) || !steps.length) return { scoreDelta: 0, reasons: [] };
+
+  const categories = new Set();
+  for (const step of steps) {
+    for (const category of actionCategories(step, step?.role)) categories.add(category);
+  }
+  const preferred = weights.prefer.some((category) => categories.has(category));
+  const avoided = weights.avoid.some((category) => categories.has(category));
+  const scoreDelta = preferred ? weights.bonus : avoided ? weights.penalty : 0;
+  if (!scoreDelta) return { scoreDelta: 0, reasons: [] };
+  const label = formatTacticLabel(tacticForActorType(context, tactic));
+  return {
+    scoreDelta,
+    reasons: [scoreDelta > 0
+      ? t("Tactic.PlanFavors", "{label} tactic promotes matching plans.", { label })
+      : t("Tactic.PlanAvoids", "{label} tactic demotes off-role plans.", { label })],
   };
 }
 
@@ -744,7 +929,7 @@ function addCustomTargetParts(parts, custom, roles, target) {
 }
 
 export function tacticPersonalityTargetAdjustment(context, action, { target = null, aggroProfile = null } = {}) {
-  if (!isNpcGmContext(context)) return { scoreDelta: 0, reasons: [] };
+  if (!canUseTacticPersonality(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolveTacticPersonality(context);
   const effectiveRole = tactic.effectiveRole ?? tactic.role;
   const effectiveTemperament = tactic.effectiveTemperament ?? tactic.temperament;
@@ -767,10 +952,21 @@ export function tacticPersonalityTargetAdjustment(context, action, { target = nu
 
 export function tacticPersonalityView(context) {
   const tactic = resolveTacticPersonality(context);
-  const visible = isNpcGmContext(context) && Boolean(context?.actor);
-  const label = formatTacticLabel(tactic);
+  const visible = canUseTacticPersonality(context);
+  const npc = actorType(context) === "npc";
+  const label = formatTacticLabel(npc ? tactic : {
+    ...tactic,
+    temperament: "auto",
+    effectiveTemperament: "auto",
+    inferredTemperament: "auto",
+  });
   return {
     visible,
+    showAdvanced: npc,
+    title: npc ? t("Tactic.NpcTitle", "NPC tactic") : t("Tactic.PlayerTitle", "Player tactic"),
+    help: npc
+      ? t("Tactic.NpcHelp", "Set this NPC's tactical personality. Auto-fill and shuffle weight actions and targets from this profile.")
+      : t("Tactic.PlayerHelp", "Set this character's combat role. Auto-fill and shuffle weight actions and targets from this profile."),
     label,
     tooltip: tactic.source === "token"
       ? t("Tactic.TokenOverrideTooltip", "Token tactic override: {label}", { label })
@@ -785,7 +981,7 @@ export function tacticPersonalityView(context) {
     custom: tactic.custom,
     source: tactic.source,
     isOverride: tactic.source === "token",
-    roles: TACTIC_ROLES,
+    roles: tacticRoleOptions(context),
     temperaments: TACTIC_TEMPERAMENTS,
     actionSliders: TACTIC_ACTION_SLIDERS,
     targetSliders: TACTIC_TARGET_SLIDERS,

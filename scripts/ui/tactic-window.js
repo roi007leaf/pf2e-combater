@@ -2,7 +2,6 @@ import { MODULE_ID } from "../constants.js";
 import { t } from "../i18n.js";
 import {
   TACTIC_ACTION_SLIDERS,
-  TACTIC_ROLES,
   TACTIC_TARGET_SLIDERS,
   TACTIC_TEMPERAMENTS,
 } from "../rules/tactic-personality.js";
@@ -42,17 +41,18 @@ function windowContext(view) {
   const role = view?.role ?? "auto";
   const temperament = view?.temperament ?? "auto";
   return {
-    title: t("Tactic.ConfigureTitle", "NPC tactic"),
-    help: t("Tactic.Help", "Set this NPC's tactical personality. Auto-fill and shuffle weight actions and targets from this profile."),
+    title: view?.title ?? t("Tactic.ConfigureTitle", "Auto-fill tactic"),
+    help: view?.help ?? t("Tactic.Help", "Set this actor's tactical profile. Auto-fill and shuffle weight actions and targets from it."),
+    showAdvanced: view?.showAdvanced === true,
     roleLabel: t("Tactic.Role", "Role"),
     temperamentLabel: t("Tactic.Temperament", "Temperament"),
     customLabel: t("Tactic.CustomizePreset", "Customize preset"),
     customHelp: t("Tactic.CustomHelp", "Adjust the selected preset with custom priorities."),
     actionStyleLabel: t("Tactic.ActionStyle", "Action style"),
     targetStyleLabel: t("Tactic.TargetStyle", "Target style"),
-    roles: TACTIC_ROLES.map((option) => optionModel(option, role)),
+    roles: (Array.isArray(view?.roles) ? view.roles : []).map((option) => optionModel(option, role)),
     temperaments: TACTIC_TEMPERAMENTS.map((option) => optionModel(option, temperament)),
-    customEnabled: view?.customEnabled === true,
+    customEnabled: view?.showAdvanced === true && view?.customEnabled === true,
     actionSliders: TACTIC_ACTION_SLIDERS.map((slider) => sliderModel("action", slider, custom.action)),
     targetSliders: TACTIC_TARGET_SLIDERS.map((slider) => sliderModel("target", slider, custom.target)),
     cancelLabel: t("Dialog.Cancel", "Cancel"),
@@ -92,7 +92,7 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   get title() {
-    return t("Tactic.ConfigureTitle", "NPC tactic");
+    return this._view?.title ?? t("Tactic.ConfigureTitle", "Auto-fill tactic");
   }
 
   async _prepareContext(options) {
@@ -114,9 +114,9 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     for (const slider of TACTIC_TARGET_SLIDERS) target[slider.id] = clampSlider(read(`target.${slider.id}`));
     return {
       role: read("role") || "auto",
-      temperament: read("temperament") || "auto",
-      customEnabled: readChecked("customEnabled"),
-      custom: { action, target },
+      temperament: this._view?.showAdvanced === true ? (read("temperament") || "auto") : "auto",
+      customEnabled: this._view?.showAdvanced === true && readChecked("customEnabled"),
+      custom: this._view?.showAdvanced === true ? { action, target } : null,
     };
   }
 

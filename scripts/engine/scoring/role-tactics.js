@@ -103,7 +103,11 @@ export function scoreCuratedRoleTactics(context, action, {
 
   if (isCurated(action) && role === "setup" && target) {
     nextScore += action.activityProfile?.precisionDamageSetup ? 28 : 20;
-    nextReasons.unshift(t("ScoreReason.SetsUpStrongerFollowUp", "{p0} sets up stronger follow-up attacks.", { p0: action.name }));
+    if (action.activityProfile?.createsConsumable === true) {
+      nextReasons.unshift(t("ScoreReason.QuickAlchemyCreatesAlchemicalTool", "{p0} creates a short-lived alchemical tool for this turn.", { p0: action.name }));
+    } else {
+      nextReasons.unshift(t("ScoreReason.SetsUpStrongerFollowUp", "{p0} sets up stronger follow-up attacks.", { p0: action.name }));
+    }
   }
 
   if (isCurated(action) && role === "mobility") {

@@ -45,11 +45,27 @@ function tokenIdentityValues(value) {
     .map((entry) => String(entry));
 }
 
+function tokenActor(token) {
+  return token?.actor ?? token?.document?.actor ?? null;
+}
+
+function actorIdentityValues(value) {
+  const actor = tokenActor(value) ?? value?.actor ?? value?.document?.actor ?? value;
+  return [
+    actor?.id,
+    actor?.uuid,
+    actor?.document?.id,
+    actor?.document?.uuid,
+  ]
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry));
+}
+
 // Hazards and loot aren't plannable actors — selecting one shouldn't switch the panel to them.
 const NON_PLANNABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 
 function isNonPlannableActorToken(token) {
-  const actorType = String(token?.actor?.type ?? token?.document?.actor?.type ?? "").toLowerCase();
+  const actorType = String(tokenActor(token)?.type ?? "").toLowerCase();
   return NON_PLANNABLE_ACTOR_TYPES.has(actorType);
 }
 
@@ -67,6 +83,27 @@ function tokenMatchesCombatant(token, combatant) {
   return references.some((value) =>
     tokenIdentityValues(value).some((id) => tokenIds.has(id)),
   );
+}
+
+function combatantMatchesActor(token, combatant) {
+  const actorIds = new Set(actorIdentityValues(token));
+  if (!actorIds.size) return false;
+  return [
+    combatant?.actor,
+    combatant?.token?.actor,
+    combatant?.token?.object?.actor,
+    combatant?.tokenDocument?.actor,
+    combatant?.document?.actor,
+  ].some((actor) => actorIdentityValues(actor).some((id) => actorIds.has(id)));
+}
+
+function combatantForSelectedToken(token, combat = game.combat) {
+  const combatants = collectionValues(combat?.combatants);
+  const exact = combatants.find((combatant) => tokenMatchesCombatant(token, combatant));
+  if (exact) return exact;
+
+  const actorMatches = combatants.filter((combatant) => combatantMatchesActor(token, combatant));
+  return actorMatches.length === 1 ? actorMatches[0] : null;
 }
 
 function inlineTurnCombatant(combat = game.combat) {
@@ -140,9 +177,7 @@ function panelCombatantForTokenTool() {
 function selectedTokenCombatant() {
   const selectedToken = canvas?.tokens?.controlled?.[0] ?? null;
   if (!selectedToken || isNonPlannableActorToken(selectedToken)) return null;
-  return collectionValues(game.combat?.combatants)
-    .find((combatant) => tokenMatchesCombatant(selectedToken, combatant))
-    ?? null;
+  return combatantForSelectedToken(selectedToken);
 }
 
 function refreshSceneControls() {
@@ -510,8 +545,7 @@ Hooks.on("controlToken", (token, controlled) => {
   // already shows is the hitch felt at drag-start — skip it. Only a genuine switch to a different
   // combatant's token needs the rebuild.
   if (token?.id && token.id === activePanel._context?.token?.id) return;
-  const combatant = collectionValues(game.combat?.combatants)
-    .find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
+  const combatant = combatantForSelectedToken(token);
   if (!combatant) return;
   // Switch the planned combatant cheaply, then rebuild on the debounce. Rebuilding synchronously
   // inside this canvas-thread hook is what makes selecting a token feel laggy.

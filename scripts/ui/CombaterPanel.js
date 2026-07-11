@@ -461,8 +461,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       globalThis.ui?.notifications?.info?.(t("Tactic.Saved", "Tactic set to {label}.", { label: tacticPersonalityView(this._context).label }));
       await this.refresh("tactic-update");
     } catch (error) {
-      console.warn(`${MODULE_ID} | Failed to update NPC tactic`, error);
-      globalThis.ui?.notifications?.warn?.(t("Tactic.SaveFailed", "Could not update NPC tactic."));
+      console.warn(`${MODULE_ID} | Failed to update tactic`, error);
+      globalThis.ui?.notifications?.warn?.(t("Tactic.SaveFailed", "Could not update tactic."));
     }
   }
 

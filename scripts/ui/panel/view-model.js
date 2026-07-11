@@ -914,8 +914,8 @@ export function groupDraftSteps(steps) {
 export function decorateBuilder(builder, activeTab, searchQuery = "", { sustainedSpells = [], awaitingGm = null, movementOptions = [], weaponOptions = [] } = {}) {
   if (!builder) return null;
   const draftReadonly = builder.draft?.readonly === true;
-  const isPlayerPlan = builder.draft?.shared === true;
-  const gmCanRunPlayerPlan = globalThis.game?.user?.isGM === true && isPlayerPlan;
+  const isPlayerPlan = globalThis.game?.user?.isGM === true && builder.draft?.shared === true;
+  const canRunPlayerPlan = isPlayerPlan;
   const sharedDraftUserName = String(builder.draft?.userName ?? "").trim();
   const rawSteps = builder.draft?.steps ?? [];
   const reorderLocked = rawSteps.some((step) => executionStatus(step) !== "pending");
@@ -923,7 +923,7 @@ export function decorateBuilder(builder, activeTab, searchQuery = "", { sustaine
   const rawDraftSteps = planMap.steps
     .map((step, index) => decorateDraftStep(step, index, {
       readonly: draftReadonly,
-      gmExecute: gmCanRunPlayerPlan,
+      gmExecute: canRunPlayerPlan,
       reorderLocked,
       awaitingGm,
       movementOptions,
@@ -942,7 +942,7 @@ export function decorateBuilder(builder, activeTab, searchQuery = "", { sustaine
   const uncountedMap = injectMapInfo(rawUncounted, planMap.attackCount);
   const rawUncountedSteps = uncountedMap.steps.map((step, index) => decorateDraftStep(step, index, {
     readonly: draftReadonly,
-    gmExecute: gmCanRunPlayerPlan,
+    gmExecute: canRunPlayerPlan,
     reorderLocked: uncountedReorderLocked,
     awaitingGm,
     movementOptions,
@@ -993,9 +993,9 @@ export function decorateBuilder(builder, activeTab, searchQuery = "", { sustaine
     },
     execution: {
       hasSteps: allExecutable.length > 0,
-      canReset: (draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution,
+      canReset: (draftReadonly !== true || canRunPlayerPlan) && canResetExecution,
       progressLabel: executedCount > 0 ? t("Summary.Progress", "{done}/{total} done", { done: executedCount, total: allExecutable.length }) : "",
-      hasStatus: ((draftReadonly !== true || gmCanRunPlayerPlan) && canResetExecution) || executedCount > 0,
+      hasStatus: ((draftReadonly !== true || canRunPlayerPlan) && canResetExecution) || executedCount > 0,
       current: currentExecutionStep ?? null,
       currentInstanceId: currentExecutionStep?.instanceId ?? "",
     },

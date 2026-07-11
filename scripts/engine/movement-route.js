@@ -250,6 +250,16 @@ function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
   });
 }
 
+function centerOccupiedByEnemyToken(context, center, footprint, gridSize) {
+  const candidatePlacement = movementPlacementForCenter(center, footprint, gridSize);
+  return contextEnemies(context).some((enemy) => {
+    const enemyCenter = point(enemy);
+    if (!enemyCenter) return false;
+    const enemyPlacement = movementPlacementForCenter(enemyCenter, enemy, gridSize);
+    return rectanglesOverlap(candidatePlacement, enemyPlacement);
+  });
+}
+
 function destinationOccupied(context, destination, options = {}) {
   if (typeof options.isOccupied === "function") return options.isOccupied(destination, context, options) === true;
   const gridSize = routeGridSize(options);
@@ -333,6 +343,7 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
   const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
   const queue = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
   const centers = [];
+  const footprint = options.context ? movementFootprintForToken(contextToken(options.context, options)) : null;
 
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
@@ -346,6 +357,7 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
         if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
+        if (footprint && centerOccupiedByEnemyToken(options.context, center, footprint, gridSize)) continue;
 
         const movement = movementRouteSegmentCost(current.center, center, options, current.diagonalCount);
         const cost = current.cost + movement.cost;
@@ -364,7 +376,6 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
   }
 
   if (!options.context) return centers;
-  const footprint = movementFootprintForToken(contextToken(options.context, options));
   return centers.filter((center) => !centerOccupiedByOtherToken(options.context, center, footprint, gridSize));
 }
 
@@ -375,6 +386,7 @@ export function directMovementRouteToCenter(origin, destination, budget, options
   const destinationKey = pointKey(destination);
   const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
   const open = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
+  const footprint = options.context ? movementFootprintForToken(contextToken(options.context, options)) : null;
 
   while (open.length) {
     open.sort((left, right) => routePriority(left, destination, options) - routePriority(right, destination, options));
@@ -391,6 +403,7 @@ export function directMovementRouteToCenter(origin, destination, budget, options
         if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
+        if (footprint && centerOccupiedByEnemyToken(options.context, center, footprint, gridSize)) continue;
 
         const movement = movementRouteSegmentCost(current.center, center, options, current.diagonalCount);
         const cost = current.cost + movement.cost;
@@ -521,7 +534,7 @@ function movementRouteForDestination(context, origin, destination, maxCost, opti
 
   const verticalCost = verticalSegmentCost(origin, destination);
   const horizontalBudget = Math.max(0, maxCost - verticalCost);
-  const route = directMovementRouteToCenter(origin, destination, horizontalBudget, options);
+  const route = directMovementRouteToCenter(origin, destination, horizontalBudget, { ...options, context });
   if (!Array.isArray(route)) {
     const directCost = movementRouteSegmentCost(origin, destination, options, 0).cost + verticalCost;
     const reason = directCost > maxCost ? BEYOND_RANGE_REASON : NO_PATH_REASON;

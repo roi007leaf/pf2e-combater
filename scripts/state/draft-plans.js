@@ -62,6 +62,12 @@ function userId() {
   return globalThis.game?.user?.id ?? "anonymous";
 }
 
+function localDraftMetadata(draft) {
+  if (globalThis.game?.user?.isGM === true) return draft;
+  const { readonly: _readonly, shared: _shared, userId: _userId, userName: _userName, ...localDraft } = draft ?? {};
+  return localDraft;
+}
+
 // Drafts are keyed per combatant (NOT per round) so an execution plan survives turn and
 // round changes. It is cleared explicitly when that combatant's turn ends.
 export function draftPlanKey(context) {
@@ -89,7 +95,7 @@ function uncountedEntries(draft) {
 
 export function readDraftPlan(context) {
   const drafts = readStoredDrafts();
-  const draft = drafts[draftPlanKey(context)];
+  const draft = localDraftMetadata(drafts[draftPlanKey(context)]);
   if (!draft || !Array.isArray(draft.steps)) return emptyDraftPlan();
   return {
     ...draft,
@@ -101,10 +107,11 @@ export function readDraftPlan(context) {
 
 export function writeDraftPlan(context, draft) {
   const drafts = readStoredDrafts();
+  const localDraft = localDraftMetadata(draft);
   drafts[draftPlanKey(context)] = {
-    ...draft,
-    steps: Array.isArray(draft?.steps) ? [...draft.steps] : [],
-    uncounted: [...uncountedEntries(draft)],
+    ...localDraft,
+    steps: Array.isArray(localDraft?.steps) ? [...localDraft.steps] : [],
+    uncounted: [...uncountedEntries(localDraft)],
     updatedAt: Date.now(),
   };
   writeStoredDrafts(drafts);

@@ -220,30 +220,27 @@ function readReloadWeaponActions(actor) {
   return readWeaponItems(actor)
     .filter(isHeldWeapon)
     .map((weapon) => ({ weapon, reload: weaponReloadValue(weapon) }))
-    .filter(({ reload }) => reload !== null)
-    .filter(({ weapon, reload }) => reload <= 0 || !weaponHasLoadedAmmo(weapon))
+    .filter(({ reload }) => reload !== null && reload > 0)
+    .filter(({ weapon }) => !weaponHasLoadedAmmo(weapon))
     .map(({ weapon, reload }) => {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
-      const free = reload <= 0;
       return {
         id: `reload-weapon-${weapon.id ?? slug}`,
         name: t("Action.Reload", "Reload {weapon}", { weapon: weapon.name }),
         slug: `reload-${slug}`,
-        actionCost: free ? 0 : Math.max(1, Math.min(3, reload)),
-        actionType: free ? "free" : "action",
+        actionCost: Math.max(1, Math.min(3, reload)),
+        actionType: "action",
         source: "system-inferred",
-        confidence: free ? "low" : "medium",
+        confidence: "medium",
         executable: "reload-weapon",
         detected: true,
         available: true,
         item: weapon,
         role: "setup",
-        activityProfile: { includes: ["reload"], reload: true, free, weaponName: weapon.name },
+        activityProfile: { includes: ["reload"], reload: true, free: false, weaponName: weapon.name },
         targetingProfile: { self: true },
         setupFor: ["strike", "damage"],
-        reasons: [free
-          ? t("Reason.ReloadFree", "{weapon} reloads as part of firing (no action).", { weapon: weapon.name })
-          : t("Reason.ReloadWeapon", "Reload {weapon}.", { weapon: weapon.name })],
+        reasons: [t("Reason.ReloadWeapon", "Reload {weapon}.", { weapon: weapon.name })],
         traits: [],
         attackTrait: false,
       };

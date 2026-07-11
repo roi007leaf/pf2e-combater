@@ -207,6 +207,17 @@ function addSubclassDeltas(currentClassSlug, actorClasses, parts, profile, actio
     if (requiredClasses.length && !requiredClasses.some((slug) => actorClassSet.has(slug))) continue;
     if (requiredClasses.length && !requiredClasses.includes(currentClassSlug)) continue;
 
+    const actionSpecificDelta = tactic.actions?.[actionSlug];
+    const actionHasSubclassClassTrait = actionTraits.has(currentClassSlug);
+    if (
+      currentClassSlug === "wizard"
+      && !signals.isSpell
+      && !Number.isFinite(Number(actionSpecificDelta))
+      && !actionHasSubclassClassTrait
+    ) {
+      continue;
+    }
+
     const entries = [];
     const add = (delta, label) => {
       const number = Number(delta);
@@ -214,7 +225,7 @@ function addSubclassDeltas(currentClassSlug, actorClasses, parts, profile, actio
       entries.push({ delta: number, label });
     };
 
-    add(tactic.actions?.[actionSlug], t("ClassTactic.LabelAction", "{label} action", { label: tactic.label }));
+    add(actionSpecificDelta, t("ClassTactic.LabelAction", "{label} action", { label: tactic.label }));
     add(tactic.roles?.[signals.role], roleLabel(signals.role));
 
     for (const [trait, delta] of Object.entries(tactic.traits ?? {})) {

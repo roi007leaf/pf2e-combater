@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { buildTurnPlans } from "../planner.js";
 import {
   boundedPlanPreferenceDelta,
   deterministicPlanPreferenceAdjustment,
@@ -63,17 +64,17 @@ assert.equal(planPreferenceAdjustmentFromProfile(profile, plan).scoreDelta, 0, "
 let saturated = {};
 for (let index = 0; index < 10; index += 1) {
   saturated = nextPlanPreferenceProfile(saturated, {
-    steps: [{ ...action, id: `debuff-${index}` }],
+    steps: [{ ...action, id: `debuff-${index}`, name: `Debuff ${index}` }],
     totalCost: 1,
   }, 1);
 }
 assert.equal(
-  preferenceAdjustmentFromProfile(saturated, { ...action, id: "debuff-0" }).scoreDelta,
+  preferenceAdjustmentFromProfile(saturated, { ...action, id: "debuff-0", name: "Debuff 0" }).scoreDelta,
   8,
   "component preference impact must never exceed scoring cap",
 );
 assert.ok(
-  Math.abs(planPreferenceAdjustmentFromProfile(saturated, { steps: [{ ...action, id: "debuff-0" }], totalCost: 1 }).scoreDelta) <= 8,
+  Math.abs(planPreferenceAdjustmentFromProfile(saturated, { steps: [{ ...action, id: "debuff-0", name: "Debuff 0" }], totalCost: 1 }).scoreDelta) <= 8,
   "direct plan preference impact must never exceed scoring cap",
 );
 
@@ -110,6 +111,45 @@ try {
     0,
     "plan learning must remain user/actor scoped",
   );
+
+  const dislikedCandidate = {
+    id: "high-score-plan",
+    name: "High Score Plan",
+    source: "system-inferred",
+    actionCost: 3,
+    score: 500,
+    confidence: "high",
+  };
+  const normalCandidate = {
+    id: "normal-score-plan",
+    name: "Normal Score Plan",
+    source: "system-inferred",
+    actionCost: 3,
+    score: 10,
+    confidence: "high",
+  };
+  const demotionContext = { actor: { document: { uuid: "Actor.preference-demotion" } } };
+  const initialPlans = buildTurnPlans(demotionContext, [dislikedCandidate, normalCandidate]);
+  const dislikedPlan = initialPlans.find((candidatePlan) => candidatePlan.steps[0]?.id === "high-score-plan");
+  assert.ok(dislikedPlan, "test fixture should create the high-score plan");
+  setPlanPreferenceFeedback(demotionContext, dislikedPlan, -1);
+  const demotedPlans = buildTurnPlans(demotionContext, [dislikedCandidate, normalCandidate]);
+  assert.equal(
+    demotedPlans.at(-1).steps[0]?.id,
+    "high-score-plan",
+    "thumbs-down should move the exact disliked plan to the end of the plan queue",
+  );
+  assert.equal(demotedPlans.at(-1).preference.queueDemoted, true);
+  const regeneratedDemotedPlans = buildTurnPlans(demotionContext, [
+    { ...dislikedCandidate, id: "high-score-plan-regenerated" },
+    normalCandidate,
+  ]);
+  assert.equal(
+    regeneratedDemotedPlans.at(-1).steps[0]?.id,
+    "high-score-plan-regenerated",
+    "thumbs-down demotion should survive regenerated candidate ids for the same visible plan",
+  );
+  assert.equal(regeneratedDemotedPlans.at(-1).preference.queueDemoted, true);
 } finally {
   globalThis.localStorage = previousStorage;
   globalThis.game = previousGame;

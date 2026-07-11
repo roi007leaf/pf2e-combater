@@ -514,7 +514,7 @@
   display: flex;
 }
 
-.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-waiting) {
+.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]) {
   display: none;
 }
 
@@ -999,20 +999,19 @@
 
 .pf2e-combater .combater-header-tactic {
   display: inline-flex;
-  flex: 0 1 150px;
+  flex: 0 1 auto;
   align-items: center;
   gap: 5px;
-  width: min(150px, 38vw);
-  max-width: 150px;
-  min-height: 38px;
+  max-width: min(220px, 42vw);
+  min-height: 28px;
   border: 1px solid #6f607c;
-  border-radius: 16px;
-  padding: 4px 9px;
+  border-radius: 999px;
+  padding: 3px 10px;
   background: #262230;
   color: #d7c6ee;
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -1027,14 +1026,12 @@
 }
 
 .pf2e-combater .combater-header-tactic-label {
-  display: -webkit-box;
+  display: inline-block;
   overflow: hidden;
   min-width: 0;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.1;
-  text-overflow: clip;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pf2e-combater .combater-header-tactic:hover,
