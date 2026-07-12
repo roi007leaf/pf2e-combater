@@ -659,6 +659,7 @@ const previousExecutionFromUuid = globalThis.fromUuid;
 try {
   const targetCalls = [];
   const pf2eActionCalls = [];
+  const spellCastCalls = [];
   const raiseShieldCalls = [];
   const tokenUpdates = [];
   const tokenMoves = [];
@@ -679,6 +680,17 @@ try {
   const actorDocument = {
     name: "Valeros",
     uuid: "Actor.valeros",
+    itemTypes: {
+      spellcastingEntry: [
+        {
+          id: "arcane-entry",
+          cast: async (item, options = {}) => {
+            spellCastCalls.push({ item, options, targets: Array.from(globalThis.game?.user?.targets ?? []) });
+            return { spellCastMessage: true, timestamp: 1 };
+          },
+        },
+      ],
+    },
     decreaseCondition: async (slug, options = {}) => {
       conditionUpdates.push({ slug, options });
     },
@@ -730,6 +742,7 @@ try {
     },
     setTarget: (selected, options = {}) => {
       targetCalls.push({ selected, options });
+      if (selected === true && globalThis.game?.user?.targets) globalThis.game.user.targets.add(targetToken);
     },
   };
   globalThis.canvas = {
@@ -752,7 +765,10 @@ try {
     },
     tokens: {
       placeables: [actorToken, targetToken],
-      setTargets: (ids) => targetCalls.push({ reset: ids }),
+      setTargets: (ids) => {
+        targetCalls.push({ reset: ids });
+        if (globalThis.game?.user?.targets) globalThis.game.user.targets = new Set();
+      },
     },
     walls: { placeables: [] },
   };
@@ -925,6 +941,27 @@ try {
   assert.equal(targetCalls.some((call) => call.selected === true), true, "execution should set stored target");
   assert.equal(pf2eActionCalls[0].target.name, "Goblin");
   assert.equal(pf2eActionCalls[0].variant, undefined, "single-variant actions should not force a variant");
+
+  targetCalls.length = 0;
+  const saveCantripResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "save-cantrip-step", targetTokenIds: ["target-token"], targetSelection: "manual" },
+    action: {
+      name: "Frostbite",
+      slug: "frostbite",
+      source: "spell",
+      spellcastingEntryId: "arcane-entry",
+      item: { id: "frostbite", isCantrip: true },
+      targetingProfile: { enemy: true, maxRange: 60 },
+      saveProfile: { statistic: "fortitude" },
+      suggestedTarget: { type: "enemy", id: "target-token", name: "Goblin", token: targetToken },
+    },
+    event: { type: "click" },
+  });
+  assert.equal(saveCantripResult.status, "done");
+  assert.deepEqual(saveCantripResult.patch.targetTokenIds, ["target-token"]);
+  assert.equal(targetCalls.some((call) => call.selected === true), true, "single-target save cantrip execution should target the planned token before casting");
+  assert.equal(spellCastCalls.at(-1)?.targets?.[0]?.name, "Goblin", "PF2e spell cast should see the same target as the plan row");
 
   // Multi-variant skill actions must pass a variant or PF2e's use() throws.
   const diversionResult = await executeDraftStep({
@@ -12606,6 +12643,33 @@ assert.equal(
   buildTurnPlans(healthyHealingContext, [healthyBattleMedicine])[0]?.id,
   "empty",
   "Auto-fill planner should not build plans from hard-blocked -999 guard candidates",
+);
+const healthyPlayerHealerBattleMedicine = scoreCandidate({
+  ...healthyHealingContext,
+  isGM: false,
+  profile: {
+    ...healthyHealingContext.profile,
+    actorType: "character",
+    skills: { ...(healthyHealingContext.profile?.skills ?? {}), medicine: { rank: 1, value: 8 } },
+  },
+  actor: {
+    ...healthyHealingContext.actor,
+    document: {
+      ...(healthyHealingContext.actor?.document ?? {}),
+      type: "character",
+      flags: { "pf2e-combater": { tacticPersonality: { role: "healer", temperament: "auto" } } },
+      getFlag: (moduleId, key) => ({ "pf2e-combater": { tacticPersonality: { role: "healer", temperament: "auto" } } })?.[moduleId]?.[key],
+    },
+  },
+}, battleMedicineCandidate);
+assert.ok(
+  healthyPlayerHealerBattleMedicine.score > -999,
+  "Explicit PC Healer role should keep healing actions visible even when allies are healthy",
+);
+assert.equal(
+  buildTurnPlans(healthyHealingContext, [healthyPlayerHealerBattleMedicine])[0]?.id !== "empty",
+  true,
+  "Auto-fill planner should be allowed to build from Healer-preferred healthy healing candidates",
 );
 const injuredAllyBattleMedicine = scoreCandidate({
   ...healthyHealingContext,

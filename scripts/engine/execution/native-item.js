@@ -4,6 +4,7 @@ import { chatActionRevert } from "./chat-revert.js";
 import { flushPendingChat, rollActionDamageMessages } from "./damage.js";
 import { createGuidance } from "./guidance.js";
 import { attachRevertOp, executionPatch } from "./results.js";
+import { setTarget } from "./targets.js";
 
 function numeric(value, fallback = null) {
   const number = Number(value);
@@ -73,6 +74,7 @@ function slotSnapshot(slot) {
 export function findSpellcastingEntry(actor, action) {
   const id = action?.spellcastingEntryId;
   const uuid = action?.spellcastingEntryUuid;
+  if (!id && !uuid) return null;
   return collectionValues(actor?.itemTypes?.spellcastingEntry).find((entry) =>
     entry?.id === id
     || entry?._id === id
@@ -278,6 +280,7 @@ export async function executeOpenItem({ actor, action, event }) {
 }
 
 export async function executeNativeAction({ actor, action, event, target = null, patch = {} }) {
+  if (target?.token) setTarget(target.token);
   const slotOp = spellSlotRevertOp(actor, action);
   const nativeResult = await executeOpenItem({ actor, action, event });
   if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {

@@ -1,6 +1,7 @@
 import { hasDemoralizeImmunity } from "../../rules/demoralize-immunity.js";
 import { livingMarkedTarget, readCombatState, targetHasMarkState } from "../../rules/combat-state.js";
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
+import { resolveTacticPersonality } from "../../rules/tactic-personality.js";
 import { t } from "../../i18n.js";
 import { slugify as slugText } from "../action/text.js";
 import {
@@ -94,6 +95,22 @@ function hasNeededHealingRecipient(context, profile) {
   return contextAllies(context).some((ally) => hpPercent(ally) < 0.5);
 }
 
+function actorType(context) {
+  return String(
+    context?.profile?.actorType
+      ?? context?.actor?.profile?.actorType
+      ?? context?.actor?.document?.type
+      ?? context?.actor?.type
+      ?? "",
+  ).toLowerCase();
+}
+
+function hasExplicitPlayerHealerPreference(context) {
+  const type = actorType(context);
+  if (!type || type === "npc") return false;
+  return resolveTacticPersonality(context)?.role === "healer";
+}
+
 export function blockedCandidateResult(context, action, { role, target, profile, siblingSpells } = {}) {
   if (action.slug === "demoralize" && !target && attackableEnemies(context).some(hasDemoralizeImmunity)) {
     return blockedAction(action, t("ScoreReason.TargetIsTemporarilyImmune", "Target is temporarily immune to Demoralize."));
@@ -137,7 +154,7 @@ export function blockedCandidateResult(context, action, { role, target, profile,
     return blockedAction(action, t("ScoreReason.StanceAlreadyActive", "A stance is already active."));
   }
 
-  if (role === "healing" && !hasNeededHealingRecipient(context, profile)) {
+  if (role === "healing" && !hasNeededHealingRecipient(context, profile) && !hasExplicitPlayerHealerPreference(context)) {
     return blockedAction(action, t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
   }
 

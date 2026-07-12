@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.8]
+
+### Fixed
+
+- **Single-target save spells now auto-target like Strikes.** If a save cantrip or spell row has a
+  selected target, execution now applies that token as the active Foundry target before PF2e casts
+  the spell, so the spell card/roll uses the same target shown by the Combater plan.
+- **Explicit PC Healer role keeps healing options visible even when everyone is healthy.** The
+  normal Auto-fill guard still hides healing when nobody needs it, but a player who deliberately
+  chooses Healer now treats healthy-party healing as low-priority preference content instead of a
+  hard rejection. Hard gates such as missing Medicine training still apply.
+
 ## [1.1.7]
 
 ### Fixed
