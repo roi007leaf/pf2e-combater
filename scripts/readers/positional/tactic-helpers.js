@@ -2,7 +2,7 @@ import { normalizedTraits } from "../action/reader-helpers.js";
 
 export function strikeMeleeReach(strike) {
   const reach = Number(strike?.range?.max);
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 export function rangedStrikeReach(strike) {

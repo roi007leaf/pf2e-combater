@@ -52,7 +52,7 @@ function profileReach(context) {
       ?? context?.actor?.document?.system?.attributes?.reach?.base
       ?? 5,
   );
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 function hasCondition(entity, slug) {

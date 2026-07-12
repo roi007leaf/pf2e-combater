@@ -62,7 +62,7 @@ export function uniqueTargets(context) {
 
 export function meleeReach(profile) {
   const reach = Number(profile?.reach ?? profile?.meleeReach);
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 export function movementRange(profile) {

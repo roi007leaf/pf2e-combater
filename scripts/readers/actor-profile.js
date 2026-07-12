@@ -1,6 +1,6 @@
 import { readCombatState } from "../rules/combat-state.js";
 import { KNOWN_SUBCLASS_SLUGS, SUBCLASS_TAGS } from "../rules/class-tactics-data/index.js";
-import { collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
+import { actorItems, collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
 
 const ABILITY_SLUGS = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -143,7 +143,7 @@ function reachFromTraits(traits) {
   const numericReach = slugs
     .map((trait) => trait.match(/^reach-(\d+)$/)?.[1])
     .map(Number)
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .filter((value) => Number.isFinite(value) && value >= 0);
 
   if (numericReach.length) return Math.max(...numericReach);
   if (slugs.includes("reach")) return 10;
@@ -172,7 +172,7 @@ function readReach(actor) {
       .filter((strike) => strike?.type === "strike" || strike?.canAttack)
       .map(strikeReach),
     ...collectionValues(actor?.itemTypes?.melee).map(itemReach),
-  ].filter((value) => Number.isFinite(value) && value > 0);
+  ].filter((value) => Number.isFinite(value) && value >= 0);
 
   return candidates.length ? Math.max(...candidates) : 5;
 }
@@ -209,7 +209,41 @@ function isEquipped(item) {
 }
 
 function readHasShield(actor) {
-  return collectionValues(actor?.items).some((item) => isShieldLike(item) && isEquipped(item));
+  const heldShield = actor?.heldShield;
+  if (heldShield && heldShield.isBroken !== true && heldShield.isDestroyed !== true) return true;
+  return actorItems(actor).some((item) =>
+    isShieldLike(item)
+      && isEquipped(item)
+      && item?.isBroken !== true
+      && item?.isDestroyed !== true);
+}
+
+function itemHandsHeld(item) {
+  const explicit = numericValue(item?.handsHeld ?? item?.system?.equipped?.handsHeld, null);
+  if (Number.isFinite(explicit)) return Math.max(0, explicit);
+
+  const carryType = String(systemValue(item?.system?.equipped?.carryType) ?? "").toLowerCase();
+  if (item?.isHeld !== true && carryType !== "held") return 0;
+  const usageHands = numericValue(systemValue(item?.system?.usage?.hands), 1);
+  return Number.isFinite(usageHands) ? Math.max(1, usageHands) : 1;
+}
+
+function readHandsFree(actor) {
+  const nativeHandsFree = numericValue(
+    actor?.handsFree
+      ?? actor?.system?.hands?.free?.value
+      ?? actor?.system?.attributes?.handsFree,
+    null,
+  );
+  if (Number.isFinite(nativeHandsFree)) return Math.max(0, nativeHandsFree);
+
+  const occupiedHands = actorItems(actor).reduce((total, item) => {
+    const traits = traitSlugs(item);
+    const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
+    if (category === "unarmed" || traits.includes("unarmed") || traits.includes("free-hand")) return total;
+    return total + itemHandsHeld(item);
+  }, 0);
+  return Math.max(0, 2 - occupiedHands);
 }
 
 function isRangedWeapon(item) {
@@ -410,6 +444,6 @@ export function readActorProfile(actor) {
     defenses: readDefenses(actor),
     hasShield: readHasShield(actor),
     equippedRangedWeapon: readHasRangedWeapon(actor),
-    handsFree: numericValue(actor.system?.attributes?.handsFree, null),
+    handsFree: readHandsFree(actor),
   };
 }

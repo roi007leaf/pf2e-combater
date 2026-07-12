@@ -92,14 +92,18 @@ function hasName(action, pattern) {
 
 function readSaveProfile(action) {
   const raw = rawDescription(action);
-  const match = raw.match(/@Check\[(fortitude|reflex|will)([^\]]*)\]/i);
-  if (match) {
-    const dc = Number(match[2]?.match(/dc:(\d+)/i)?.[1]);
-    return {
-      stat: match[1].toLowerCase(),
-      dc: Number.isFinite(dc) ? dc : null,
-      basic: /\bbasic\b/i.test(match[2] ?? raw),
-    };
+  for (const match of raw.matchAll(/@Check\[([^\]]+)\]/gi)) {
+    const checkOptions = String(match[1] ?? "");
+    const stat = checkOptions.match(/^(fortitude|reflex|will)(?:\||$)/i)?.[1]
+      ?? checkOptions.match(/(?:^|\|)type:(fortitude|reflex|will)(?:\||$)/i)?.[1];
+    if (stat) {
+      const dc = Number(checkOptions.match(/(?:^|\|)dc:(\d+)/i)?.[1]);
+      return {
+        stat: stat.toLowerCase(),
+        dc: Number.isFinite(dc) ? dc : null,
+        basic: /(?:^|\|)basic(?:\||$)/i.test(checkOptions) || /\bbasic\b/i.test(raw),
+      };
+    }
   }
 
   const textMatch = normalizeText(raw).match(/\b(fortitude|reflex|will)\s+save\b/);
@@ -186,6 +190,7 @@ function readTemplateProfile(action) {
       type: first.type,
       distance: first.distance,
       ...(first.width ? { width: first.width } : {}),
+      ...(first.type === "emanation" ? { selfCentered: true } : {}),
       ...(templates.length > 1 ? { templates } : {}),
     };
   }
@@ -196,10 +201,12 @@ function readTemplateProfile(action) {
   if (!textMatch) return null;
 
   const firstIsNumber = Number.isFinite(Number(textMatch[1]));
+  const type = firstIsNumber ? textMatch[2] : textMatch[1];
   return {
     area: true,
-    type: firstIsNumber ? textMatch[2] : textMatch[1],
+    type,
     distance: Number(firstIsNumber ? textMatch[1] : textMatch[2]),
+    ...(type === "emanation" ? { selfCentered: true } : {}),
   };
 }
 
@@ -519,19 +526,16 @@ function decorateClassificationResult(action, result) {
   return result;
 }
 
-// Attach a multi-template choice list (and ensure area flags) so the panel can let the player
-// pick which @Template to place. Runs regardless of which classifier branch produced the result.
+// Preserve template targeting regardless of which classifier branch produced the result. Multiple
+// templates retain their picker choices; a single template still needs its shape and placement.
 export function classifySystemAction(action, parsedCost) {
   const result = decorateClassificationResult(action, classifySystemActionBase(action, parsedCost));
   if (!result) return result;
   const templateProfile = readTemplateProfile(action);
-  if (Array.isArray(templateProfile?.templates) && templateProfile.templates.length > 1) {
+  if (templateProfile) {
     result.targetingProfile = {
       ...(result.targetingProfile ?? {}),
-      area: true,
-      type: result.targetingProfile?.type ?? templateProfile.type,
-      distance: result.targetingProfile?.distance ?? templateProfile.distance,
-      templates: templateProfile.templates,
+      ...templateProfile,
     };
   }
   return result;
@@ -1300,7 +1304,7 @@ function classifySystemActionBase(action, parsedCost) {
   // Attack-trait actions whose effect lives in prose / rules rather than a
   // structured save or @Damage (e.g. Elemental Blast, athletics-free maneuvers).
   if (!mentionsStrike && (offensive || traits.includes("attack"))) {
-    const proseDamage = /\b\d+d\d+\b|\bdeals?\b[^.]*\bdamage\b/.test(text);
+    const proseDamage = /\b(?:deals?|takes?)\b[^.]*\bdamage\b|\b\d+d\d+\b[^.]*\bdamage\b/.test(text);
     return proseDamage
       ? inferred("damage", {
         activityProfile: baseAttackProfile(),
@@ -1337,10 +1341,13 @@ function classifySystemActionBase(action, parsedCost) {
   // Speed... Strike"), which would misclassify genuine single-strike
   // mobility-attacks (e.g. Rending Pounce) as multiattack.
   if (mentionsStride && !mentionsDifferentTargets) {
+    const strideCount = /\b(?:strides?|steps?|moves?|leaps?|jumps?|bounds?|springs?)\s+twice\b/.test(text)
+      ? 2
+      : 1;
     return inferred("mobility-attack", {
       activityProfile: {
-        includes: ["stride", "strike"],
-        strideCount: 1,
+        includes: [...Array(strideCount).fill("stride"), "strike"],
+        strideCount,
         includesStrike: true,
         requiresBackingStrike: true,
       },

@@ -42,7 +42,7 @@ export function profileSpeed(profile) {
 
 export function profileReach(profile) {
   const reach = Number(profile?.reach ?? profile?.meleeReach);
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 export function inProfileReach(profile, target) {
@@ -60,7 +60,7 @@ export function profileMoveReach(profile, strideCount = 1) {
 
 export function activityStrikeReach(profile, action) {
   const reach = Number(action?.activityProfile?.strikeReach);
-  return Number.isFinite(reach) && reach > 0 ? reach : profileReach(profile);
+  return Number.isFinite(reach) && reach >= 0 ? reach : profileReach(profile);
 }
 
 export function activityMoveReach(profile, action, strideCount = 1) {

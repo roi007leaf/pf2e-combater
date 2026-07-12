@@ -108,7 +108,7 @@ function reachesCurrentTarget(context, candidate) {
   if (!isAttackAction(candidate)) return false;
 
   const range = currentAttackRange(candidate);
-  if (!Number.isFinite(range) || range <= 0) return false;
+  if (!Number.isFinite(range) || range < 0) return false;
 
   const target = targetForCandidate(context, candidate);
   const distance = Number(target?.distance);
@@ -142,7 +142,7 @@ function plainCandidateUnreachableFromCenter(context, plainCandidate, attackCent
   if (!target || !targetCenter) return false;
 
   const range = currentAttackRange(plainCandidate) ?? profileReach(context);
-  if (!Number.isFinite(range) || range <= 0) return false;
+  if (!Number.isFinite(range) || range < 0) return false;
 
   const footprint = movementFootprintForToken(context?.token);
   const distance = footprintPathDistanceFeet(attackCenter, footprint, targetCenter, target);

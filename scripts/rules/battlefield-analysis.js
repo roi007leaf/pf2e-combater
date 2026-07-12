@@ -55,7 +55,7 @@ export function entityThreatReach(entity) {
       ?? entity?.profile?.reach
       ?? entity?.profile?.meleeReach,
   );
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 export function distanceFromCenterToEntity(context, center, entity) {

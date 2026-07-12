@@ -210,7 +210,7 @@ export function isRangedAttackStep(step) {
 export function profileReach(context) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const value = Number(profile.reach?.value ?? profile.reach ?? profile.meleeReach);
-  return Number.isFinite(value) && value > 0 ? value : 5;
+  return Number.isFinite(value) && value >= 0 ? value : 5;
 }
 
 
@@ -422,9 +422,11 @@ export function currentAttackRange(candidate) {
     candidate?.targetingProfile?.range,
     candidate?.range?.increment,
     candidate?.activityProfile?.strikeReach,
-  ].map(Number);
-  const range = values.find((value) => Number.isFinite(value) && value > 0);
-  if (range) return range;
+  ]
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map(Number);
+  const range = values.find((value) => Number.isFinite(value) && value >= 0);
+  if (range !== undefined) return range;
   return candidate?.source === "strike" ? 5 : null;
 }
 

@@ -22,6 +22,7 @@ import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
 import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
 import { INTEL_LEDGER_FLAG, INTEL_REVEAL_MODE_FLAG } from "./rules/intel-ledger.js";
 import { registerRecallKnowledgeChatHooks, resolveRecallKnowledgeRequest } from "./ui/recall-knowledge.js";
+import { isPlannableActor, isPlannableCombatant } from "./rules/actor-eligibility.js";
 
 let activePanel = null;
 let refreshTimer = null;
@@ -62,11 +63,8 @@ function actorIdentityValues(value) {
 }
 
 // Hazards and loot aren't plannable actors — selecting one shouldn't switch the panel to them.
-const NON_PLANNABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
-
 function isNonPlannableActorToken(token) {
-  const actorType = String(tokenActor(token)?.type ?? "").toLowerCase();
-  return NON_PLANNABLE_ACTOR_TYPES.has(actorType);
+  return !isPlannableActor(tokenActor(token));
 }
 
 function tokenMatchesCombatant(token, combatant) {
@@ -110,9 +108,10 @@ function inlineTurnCombatant(combat = game.combat) {
   const turnIndex = Number(combat?.turn);
   const turns = collectionValues(combat?.turns);
   if (Number.isInteger(turnIndex) && turnIndex >= 0 && turnIndex < turns.length) {
-    return turns[turnIndex] ?? null;
+    const combatant = turns[turnIndex] ?? null;
+    return isPlannableCombatant(combatant) ? combatant : null;
   }
-  return combat?.combatant ?? null;
+  return isPlannableCombatant(combat?.combatant) ? combat.combatant : null;
 }
 
 function previousTurnCombatant(combat = game.combat) {
@@ -158,7 +157,7 @@ function nextOwnedCombatant(combat = game.combat, user = game.user) {
   const start = Number.isInteger(turnIndex) && turnIndex >= 0 && turnIndex < turns.length ? turnIndex : 0;
   for (let offset = 0; offset < turns.length; offset += 1) {
     const combatant = turns[(start + offset) % turns.length];
-    if (combatantOwnedByUser(combatant, user)) return combatant;
+    if (isPlannableCombatant(combatant) && combatantOwnedByUser(combatant, user)) return combatant;
   }
   return null;
 }
@@ -546,10 +545,10 @@ Hooks.on("controlToken", (token, controlled) => {
   // combatant's token needs the rebuild.
   if (token?.id && token.id === activePanel._context?.token?.id) return;
   const combatant = combatantForSelectedToken(token);
-  if (!combatant) return;
+  if (!combatant && game.user?.isGM !== true) return;
   // Switch the planned combatant cheaply, then rebuild on the debounce. Rebuilding synchronously
   // inside this canvas-thread hook is what makes selecting a token feel laggy.
-  activePanel.selectCombatant?.(combatant);
+  activePanel.selectCombatant?.(combatant ?? null);
   scheduleRefresh("token-control");
 });
 

@@ -282,6 +282,11 @@ export function rectangleDistanceFeet(left, right, metrics) {
 }
 
 export function gridReachDistance(left, right, gridSize) {
+  const overlaps = left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+  if (overlaps) return 0;
   const dx = Math.max(right.x - (left.x + left.width), left.x - (right.x + right.width), 0);
   const dy = Math.max(right.y - (left.y + left.height), left.y - (right.y + right.height), 0);
   return Math.max(dx, dy) + gridSize;

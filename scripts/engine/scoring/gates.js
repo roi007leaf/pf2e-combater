@@ -112,7 +112,20 @@ function hasExplicitPlayerHealerPreference(context) {
   return resolveTacticPersonality(context)?.role === "healer";
 }
 
-export function blockedCandidateResult(context, action, { role, target, profile, siblingSpells } = {}) {
+export function blockedCandidateResult(context, action, {
+  role,
+  target,
+  profile,
+  siblingSpells,
+  backingStrikes,
+} = {}) {
+  if (
+    action.activityProfile?.requiresDualBackingStrike === true
+    && (!Array.isArray(backingStrikes) || backingStrikes.length < 2)
+  ) {
+    return blockedAction(action, t("ScoreReason.RequiresTwoHeldMeleeWeapons", "Requires two held melee weapons."));
+  }
+
   if (action.slug === "demoralize" && !target && attackableEnemies(context).some(hasDemoralizeImmunity)) {
     return blockedAction(action, t("ScoreReason.TargetIsTemporarilyImmune", "Target is temporarily immune to Demoralize."));
   }

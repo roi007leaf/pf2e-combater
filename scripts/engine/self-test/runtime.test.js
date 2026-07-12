@@ -1300,6 +1300,34 @@ try {
   assert.equal(expelInfestation.targetingProfile?.type, "cone", "Foundry shorthand @Template[cone|distance:30] must parse as a cone, not generic area/burst");
   assert.equal(expelInfestation.targetingProfile?.distance, 30);
 
+  const funerealDirge = classifySystemAction({
+    name: "Funereal Dirge",
+    system: {
+      actionType: { value: "action" },
+      actions: { value: 2 },
+      category: "offensive",
+      description: {
+        value: `<p>The cairn wight chants a low, haunting melody. Living creatures within @Template[type:emanation|distance:50]{50 feet} must attempt a @Check[type:will|dc:21] save.</p>
+          <p>The cairn wight can't chant a new Funereal Dirge for [[/br 1d4 #Recharge Funereal Dirge]]{1d4 rounds}.</p>`,
+      },
+      traits: { value: ["divine", "auditory", "fear", "mental", "emotion"] },
+    },
+  }, { actionCost: 2, type: "action" });
+  assert.equal(funerealDirge?.role, "control", "cooldown dice must not turn Funereal Dirge into a damage Strike");
+  assert.equal(funerealDirge?.saveProfile?.stat, "will", "Foundry @Check[type:will] syntax must expose the save");
+  assert.equal(funerealDirge?.saveProfile?.dc, 21);
+  assert.equal(funerealDirge?.activityProfile?.includesStrike, false);
+  assert.equal(funerealDirge?.targetingProfile?.area, true, "single-template actions must retain their area profile");
+  assert.equal(funerealDirge?.targetingProfile?.type, "emanation");
+  assert.equal(funerealDirge?.targetingProfile?.distance, 50);
+  assert.equal(funerealDirge?.targetingProfile?.selfCentered, true, "emanations must automatically center on the acting token");
+  assert.equal(requiresAreaMarkerForAction(funerealDirge), true);
+  assert.equal(requiresTargetForAction(funerealDirge), false, "self-centered emanations must not ask for a target");
+  const funerealDirgeMarker = computeAreaMarker({ token: { center: { x: 125, y: 275 } } }, funerealDirge);
+  assert.equal(funerealDirgeMarker?.shape, "emanation");
+  assert.equal(funerealDirgeMarker?.distance, 50);
+  assert.deepEqual(funerealDirgeMarker?.center, { x: 125, y: 275 }, "Funereal Dirge must receive an automatic actor-centered template");
+
   const movementResult = await executeDraftStep({
     context: executionContext,
     step: { instanceId: "move-step", destination: { x: 5, y: 0 } },
@@ -1636,6 +1664,56 @@ try {
   const sheatheRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "sheathe-weapon-step", execution: sheatheResult.patch.execution } });
   assert.equal(sheatheRevert.status, "reverted");
   assert.deepEqual(carryChanges.at(-1), { item: "rapier", carryType: "held", handsHeld: 1 }, "reverting Sheathe should restore the held weapon");
+
+  // Swap Items is one Interact: put away one held item and draw one worn item. Both carry-state
+  // changes must execute atomically and Undo must restore both original states in safe order.
+  const swapHeldItem = { id: "swap-dagger", name: "Dagger", uuid: "Actor.valeros.Item.swap-dagger", type: "weapon", actor: actorDocument, system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } } };
+  const swapDrawItem = { id: "swap-mace", name: "Mace", uuid: "Actor.valeros.Item.swap-mace", type: "weapon", actor: actorDocument, system: { equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 1 } } };
+  actorDocument.itemTypes.weapon = [swapHeldItem, swapDrawItem];
+  createdEffects.set(swapHeldItem.uuid, swapHeldItem);
+  createdEffects.set(swapDrawItem.uuid, swapDrawItem);
+  const swapResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "swap-items-step" },
+    action: { name: "Swap Items", slug: "swap-items", executable: "swap-items" },
+    choices: { swapHeldItemId: swapHeldItem.id, swapDrawItemId: swapDrawItem.id },
+  });
+  assert.equal(swapResult.status, "done");
+  assert.deepEqual(carryChanges.slice(-2), [
+    { item: "swap-dagger", carryType: "worn", handsHeld: 0 },
+    { item: "swap-mace", carryType: "held", handsHeld: 1 },
+  ]);
+  assert.equal(swapResult.patch.swapHeldItemId, "swap-dagger");
+  assert.equal(swapResult.patch.swapDrawItemId, "swap-mace");
+  assert.equal(swapResult.patch.execution.revert.ops.filter((op) => op.kind === "carry-type").length, 2);
+  const swapRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "swap-items-step", execution: swapResult.patch.execution } });
+  assert.equal(swapRevert.status, "reverted");
+  assert.deepEqual(carryChanges.slice(-2), [
+    { item: "swap-mace", carryType: "worn", handsHeld: 0 },
+    { item: "swap-dagger", carryType: "held", handsHeld: 1 },
+  ], "reverting Swap must put away the newly drawn item before restoring the original held item");
+
+  const failedSwapChanges = [];
+  const failedSwapActor = {
+    itemTypes: { weapon: [swapHeldItem, swapDrawItem] },
+    changeCarryType: async (item, options = {}) => {
+      failedSwapChanges.push({ item: item.id, carryType: options.carryType, handsHeld: options.handsHeld ?? 0 });
+      return item.id !== "swap-mace";
+    },
+  };
+  const failedSwap = await executeDraftStep({
+    context: { actor: { document: failedSwapActor } },
+    step: { instanceId: "failed-swap-items-step" },
+    action: { name: "Swap Items", slug: "swap-items", executable: "swap-items" },
+    choices: { swapHeldItemId: swapHeldItem.id, swapDrawItemId: swapDrawItem.id },
+  });
+  assert.equal(failedSwap.status, "failed");
+  assert.deepEqual(failedSwapChanges, [
+    { item: "swap-dagger", carryType: "worn", handsHeld: 0 },
+    { item: "swap-mace", carryType: "held", handsHeld: 1 },
+    { item: "swap-dagger", carryType: "held", handsHeld: 1 },
+  ], "a failed draw must restore the item that Swap already put away");
+  delete actorDocument.itemTypes.weapon;
 
   // Using a consumable that still has quantity left: revert restores the quantity.
   let healingPotionQuantity = 2;
@@ -3808,6 +3886,7 @@ const doubleStrideExpansion = builderAtomicActionsForStep({
     includes: ["stride", "stride", "strike"],
     includesStrike: true,
     strideCount: 2,
+    strikeReach: 0,
     attackCenter: { x: 10, y: 0 },
   },
 });
@@ -3826,6 +3905,12 @@ assert.deepEqual(
   { x: 10, y: 0 },
   "the second (final) Stride before the Strike must land on the composite's pre-validated attackCenter",
 );
+assert.equal(
+  doubleStrideExpansion[1].activityProfile.allowTargetOverlap,
+  true,
+  "the final approach Stride must preserve zero-reach target-overlap permission for execution",
+);
+assert.equal(doubleStrideExpansion[1].preferredTarget.id, "isqulug");
 
 const suddenChargeAtomFixture = {
   id: "sudden-charge",
@@ -5550,6 +5635,53 @@ assert.ok(bossHighImpactDelta.scoreDelta > bossStrideDelta.scoreDelta,
   "Boss tactic should prefer high-impact multi-action options over plain movement");
 assert.ok(bossHighImpactDelta.reasons.some((reason) => /Boss/i.test(reason)),
   "Boss tactic should surface a tactic reason");
+
+const bossNoSkillPlans = buildTurnPlans(
+  tacticContext({ role: "boss", temperament: "auto" }, undefined),
+  [
+    {
+      id: "boss-demoralize",
+      name: "Demoralize",
+      slug: "demoralize",
+      source: "generic",
+      role: "debuff",
+      skill: "intimidation",
+      actionCost: 1,
+      score: 999,
+    },
+    {
+      id: "boss-special-action",
+      name: "Soul Rend",
+      slug: "soul-rend",
+      source: "system-inferred",
+      role: "damage",
+      actionCost: 2,
+      score: 100,
+    },
+    {
+      id: "boss-spell",
+      name: "Harm",
+      slug: "harm",
+      source: "spell-inferred",
+      role: "damage",
+      actionCost: 1,
+      score: 90,
+      activityProfile: { spell: true },
+    },
+  ],
+);
+assert.ok(bossNoSkillPlans.length > 0, "Boss tactic should still generate plans from owned actions and spells");
+assert.equal(
+  bossNoSkillPlans.some((plan) => plan.steps.some((step) => step.slug === "demoralize")),
+  false,
+  "Boss tactic must exclude generic skill actions from every Auto-fill plan",
+);
+assert.ok(
+  bossNoSkillPlans.some((plan) =>
+    plan.steps.some((step) => step.slug === "soul-rend")
+      && plan.steps.some((step) => step.slug === "harm")),
+  "Boss tactic should spend its turn on owned boss actions and spells instead",
+);
 
 const aggressiveDamageDelta = tacticPersonalityAdjustment(
   tacticContext({ role: "auto", temperament: "aggressive" }, undefined),
@@ -7276,6 +7408,49 @@ const fiveFootFlurryApproach = readStrideMultiattackActivities({
 }]);
 assert.equal(fiveFootFlurryApproach[0]?.activityProfile?.includes?.[0], "step", "a 5-foot Flurry approach should use Step instead of Stride");
 assert.equal(builderAtomicActionsForStep(fiveFootFlurryApproach[0])[0]?.slug, "step");
+
+const strideBeforeRush = readStrideMultiattackActivities({
+  actor: { profile: { speed: 25, reach: 5 } },
+  profile: { speed: 25, reach: 5 },
+  token: {},
+  targets: [{ id: "target-50", name: "Celdar", distance: 50, disposition: -1 }],
+  enemies: [],
+}, [{
+  id: "rush",
+  name: "Rush",
+  slug: "rush",
+  actionCost: 2,
+  available: true,
+  executable: "open-item",
+  activityProfile: {
+    requiresBackingStrike: true,
+    includesStrike: true,
+    includes: ["stride", "strike"],
+    strideCount: 1,
+    backingStrike: {
+      id: "strike-jaws",
+      name: "Jaws",
+      slug: "strike",
+      source: "strike",
+      executable: "strike",
+      item: { id: "jaws", name: "Jaws" },
+    },
+  },
+  targetingProfile: { enemy: true, reachAfterMove: true },
+}]);
+assert.equal(strideBeforeRush.length, 1, "a 2-action Rush that cannot reach alone must gain a separate preceding Stride when that makes the target reachable");
+assert.equal(strideBeforeRush[0].name, "Stride -> Rush");
+assert.equal(strideBeforeRush[0].actionCost, 3);
+assert.equal(strideBeforeRush[0].activityProfile.strideCount, 2);
+assert.equal(strideBeforeRush[0].activityProfile.precedingMoveAtomCount, 1);
+assert.deepEqual(strideBeforeRush[0].activityProfile.includes, ["stride", "stride", "strike"]);
+const strideBeforeRushAtoms = builderAtomicActionsForStep(strideBeforeRush[0]);
+assert.deepEqual(strideBeforeRushAtoms.map((atom) => atom.name), ["Stride", "Stride", "Rush -> Jaws"]);
+assert.deepEqual(strideBeforeRushAtoms.map((atom) => atom.actionCost), [1, 2, 0]);
+assert.equal(strideBeforeRushAtoms[0].groupId, undefined, "preceding Stride must stay outside the Rush group");
+assert.equal(strideBeforeRushAtoms[1].groupLabel, "Rush");
+assert.equal(strideBeforeRushAtoms[1].groupId, strideBeforeRushAtoms[2].groupId);
+
 const fiveFootMeleeApproach = readStrideStrikeActivities({
   actor: { profile: { speed: 25, reach: 5 } },
   profile: { speed: 25, reach: 5 },
@@ -7603,6 +7778,113 @@ const hydraProfileFromGeneratedStrike = readActorProfile({
 assert.equal(hydraProfileFromGeneratedStrike.reach, 10);
 assert.equal(hydraProfileFromGeneratedStrike.meleeReach, 10);
 
+const tinyProfile = readActorProfile({
+  id: "tiny-reach",
+  name: "Tiny Creature",
+  type: "npc",
+  items: [],
+  itemTypes: { condition: [], melee: [] },
+  system: {
+    attributes: { reach: { base: 0, manipulate: 0 }, hp: { value: 10, max: 10 } },
+    traits: { size: { value: "tiny" } },
+    actions: [],
+    movement: { speeds: { land: { value: 25 } } },
+    details: {},
+    skills: {},
+    abilities: {},
+  },
+});
+assert.equal(tinyProfile.reach, 0, "Tiny actor profile must preserve PF2e's explicit zero reach");
+assert.equal(tinyProfile.meleeReach, 0, "Tiny melee reach must not fall back to 5 feet");
+
+const twoHandedWeaponItem = {
+  id: "held-greatsword",
+  name: "Greatsword",
+  type: "weapon",
+  system: {
+    equipped: { carryType: "held", handsHeld: 2 },
+    usage: { hands: 2 },
+    traits: { value: [] },
+  },
+};
+const twoHandedProfileActor = {
+  id: "two-handed-npc",
+  name: "Two-Handed NPC",
+  type: "npc",
+  items: [twoHandedWeaponItem],
+  itemTypes: { weapon: [twoHandedWeaponItem], condition: [] },
+  system: {
+    attributes: { hp: { value: 20, max: 20 }, reach: { base: 5 } },
+    actions: [], movement: { speeds: { land: { value: 25 } } }, details: {}, skills: {}, abilities: {},
+  },
+};
+const twoHandedProfile = readActorProfile(twoHandedProfileActor);
+assert.equal(twoHandedProfile.handsFree, 0, "actor profile must derive zero free hands from a weapon held in two hands");
+const twoHandedManeuverContext = {
+  ...fighterContext,
+  actor: { document: twoHandedProfileActor, profile: twoHandedProfile },
+  profile: twoHandedProfile,
+  targets: [{ ...fighterContext.targets[0], distance: 5 }],
+};
+assert.equal(
+  buildCandidates(twoHandedManeuverContext).candidates.some((action) => ["disarm", "trip", "grapple", "reposition", "shove"].includes(action.slug)),
+  false,
+  "two-handed weapon occupancy must keep free-hand skill actions out of Auto-fill end to end",
+);
+
+const npcShieldItem = {
+  id: "npc-steel-shield",
+  name: "Steel Shield",
+  type: "shield",
+  isEquipped: true,
+  isBroken: false,
+  isDestroyed: false,
+  system: { equipped: { carryType: "held", handsHeld: 1 }, hp: { value: 20, max: 20 } },
+};
+const shieldNpcActor = {
+  id: "shield-npc",
+  uuid: "Actor.shield-npc",
+  name: "Shield Guard",
+  type: "npc",
+  items: [],
+  itemTypes: {
+    shield: [npcShieldItem],
+    condition: [], action: [], feat: [], feature: [], consumable: [], spell: [], weapon: [], melee: [],
+  },
+  system: {
+    attributes: { hp: { value: 18, max: 30 }, reach: { base: 5 } },
+    actions: [], movement: { speeds: { land: { value: 25 } } }, details: {}, skills: {}, abilities: {},
+  },
+};
+const shieldNpcProfile = readActorProfile(shieldNpcActor);
+const shieldNpcContext = {
+  actor: { document: shieldNpcActor, profile: shieldNpcProfile },
+  profile: shieldNpcProfile,
+  token: { id: "shield-npc-token", center: { x: 0, y: 0 } },
+  targets: [],
+  enemies: [],
+  allies: [],
+  battlefield: { targets: [], enemies: [], allies: [] },
+  actionsSpent: { normal: 2, total: 2 },
+};
+assert.equal(shieldNpcProfile.hasShield, true, "NPC profile must detect PF2e typed held shield items");
+const npcRaiseShield = readActionSources(shieldNpcContext).find((action) => action.slug === "raise-a-shield");
+assert.equal(npcRaiseShield?.available, true, npcRaiseShield?.unavailableReason);
+const npcRaiseShieldPlan = bestTurnPlan(shieldNpcContext, [scoreCandidate(shieldNpcContext, npcRaiseShield)]);
+assert.equal(
+  npcRaiseShieldPlan.steps[0]?.slug,
+  "raise-a-shield",
+  "NPC Auto-fill must be able to spend its remaining action raising an equipped shield",
+);
+assert.equal(
+  readActorProfile({
+    ...shieldNpcActor,
+    itemTypes: { ...shieldNpcActor.itemTypes, shield: [{ ...npcShieldItem, isBroken: true }] },
+  }).hasShield,
+  false,
+  "NPC must not plan Raise a Shield with only a broken shield",
+);
+
 const focusedAssaultFromGeneratedReach = scoreCandidate({
   ...fighterContext,
   profile: hydraProfileFromGeneratedStrike,
@@ -7796,6 +8078,52 @@ const occupiedMovementRoute = movementRouteForStep(baseRouteContext, {
 });
 assert.equal(occupiedMovementRoute.reachable, false, "occupied destination is illegal");
 assert.match(occupiedMovementRoute.reason, /occupied/i);
+
+const tinyRouteTarget = {
+  id: "tiny-route-target",
+  name: "Guard",
+  token: { id: "tiny-route-target-token", center: { x: 5, y: 0 }, width: 1, height: 1 },
+};
+const tinyRouteContext = {
+  token: { id: "tiny-route-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+  actor: { profile: { speed: 5 } },
+  battlefield: { allies: [], enemies: [tinyRouteTarget], targets: [tinyRouteTarget] },
+};
+assert.equal(
+  movementRouteForStep(tinyRouteContext, {
+    slug: "stride",
+    destination: { x: 5, y: 0 },
+    preferredTarget: tinyRouteTarget,
+  }, { gridSize: 5 }).reachable,
+  false,
+  "ordinary movement must still reject an enemy-occupied destination",
+);
+assert.equal(
+  movementRouteForStep(tinyRouteContext, {
+    slug: "stride",
+    destination: { x: 5, y: 0 },
+    preferredTarget: tinyRouteTarget,
+    activityProfile: { strikeReach: 0, allowTargetOverlap: true },
+  }, { gridSize: 5 }).reachable,
+  true,
+  "a zero-reach approach may enter only its intended target's square",
+);
+assert.equal(
+  movementRouteForStep({
+    ...tinyRouteContext,
+    battlefield: {
+      ...tinyRouteContext.battlefield,
+      allies: [{ id: "unrelated-blocker", token: { center: { x: 5, y: 0 }, width: 1, height: 1 } }],
+    },
+  }, {
+    slug: "stride",
+    destination: { x: 5, y: 0 },
+    preferredTarget: tinyRouteTarget,
+    activityProfile: { strikeReach: 0, allowTargetOverlap: true },
+  }, { gridSize: 5 }).reachable,
+  false,
+  "zero-reach overlap permission must not ignore an unrelated token in the same destination",
+);
 
 const teleportMovementRoute = movementRouteForStep(baseRouteContext, {
   slug: "translocate",
@@ -8108,6 +8436,11 @@ assert.equal(
   gridReachDistanceFeet(reachOriginPlacement, reachTargetPlacement, reachMetrics),
   10,
   "canvas geometry grid reach includes adjacent square reach",
+);
+assert.equal(
+  gridReachDistanceFeet(reachOriginPlacement, reachOriginPlacement, reachMetrics),
+  0,
+  "canvas geometry reports zero reach for overlapping spaces",
 );
 assert.equal(
   canReachPlacementPerimeter(reachOriginPlacement, reachTargetPlacement, 5, { pathBlocked: () => false }),
@@ -11989,6 +12322,48 @@ assert.equal(sheatheDagger.actionCost, 1);
 assert.equal(sheatheDagger.executable, "sheathe-weapon");
 assert.equal(sheatheDagger.name, "Sheathe Dagger");
 assert.ok(!weaponSources.some((action) => action.slug === "sheathe-longsword"), "a sheathed weapon should not get a Sheathe");
+const swapItemsAction = weaponSources.find((action) => action.slug === "swap-items");
+assert.ok(swapItemsAction, "an actor with one held item and one worn item should get Swap Items");
+assert.equal(swapItemsAction.name, "Swap Items");
+assert.equal(swapItemsAction.actionCost, 1);
+assert.equal(swapItemsAction.executable, "swap-items");
+assert.equal(swapItemsAction.combatUse, "browse-only", "Swap Items must stay player-selected instead of entering Auto-fill");
+assert.deepEqual(swapItemsAction.activityProfile.heldItemIds, ["w-held"]);
+assert.deepEqual(swapItemsAction.activityProfile.drawableItemIds, ["w-sheathed"]);
+const noHeldSwapSources = readActionSources({
+  ...weaponActionsContext,
+  actor: {
+    ...weaponActionsContext.actor,
+    document: {
+      ...weaponActionsContext.actor.document,
+      itemTypes: {
+        ...weaponActionsContext.actor.document.itemTypes,
+        weapon: [weaponActionsContext.actor.document.itemTypes.weapon[0]],
+      },
+    },
+  },
+});
+assert.equal(noHeldSwapSources.some((action) => action.slug === "swap-items"), false, "Swap Items must be absent without a held item");
+const nonWeaponSwapSources = readActionSources({
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [],
+        equipment: [{ id: "held-tool", name: "Tool", type: "equipment", system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } } }],
+        consumable: [{ id: "worn-potion", name: "Potion", type: "consumable", system: { equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 1 } } }],
+        action: [],
+        feat: [],
+        feature: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+});
+const nonWeaponSwap = nonWeaponSwapSources.find((action) => action.slug === "swap-items");
+assert.deepEqual(nonWeaponSwap?.activityProfile?.heldItemIds, ["held-tool"], "Swap held choices should include physical equipment, not only weapons");
+assert.deepEqual(nonWeaponSwap?.activityProfile?.drawableItemIds, ["worn-potion"], "Swap draw choices should include worn consumables, not only weapons");
 const ownTurnDropProne = weaponSources.find((action) => action.slug === "drop-prone");
 assert.ok(ownTurnDropProne, "Drop Prone should be offered when the actor lacks its own");
 assert.equal(ownTurnDropProne.actionCost, 1);
@@ -14188,8 +14563,50 @@ const handlessContext = {
   ...handedContext,
   profile: { ...fighterContext.profile, handsFree: 0 },
 };
-const handlessDisarm = readActionSources(handlessContext).find((action) => action.slug === "disarm");
-assert.equal(handlessDisarm.available, true);
+const freeHandManeuverSlugs = ["disarm", "trip", "grapple", "reposition", "shove"];
+const handlessManeuvers = readActionSources(handlessContext)
+  .filter((action) => freeHandManeuverSlugs.includes(action.slug));
+assert.deepEqual(handlessManeuvers.map((action) => action.slug).toSorted(), freeHandManeuverSlugs.toSorted());
+for (const maneuver of handlessManeuvers) {
+  assert.equal(maneuver.available, false, `${maneuver.name} must be unavailable without a free hand`);
+  assert.equal(maneuver.unavailableReason, "No free hand available.");
+  assert.equal(maneuver.criticalFailureRisk, "major", `${maneuver.name} must keep its MAP-ordering risk metadata`);
+}
+assert.equal(
+  buildCandidates(handlessContext).candidates.some((action) => freeHandManeuverSlugs.includes(action.slug)),
+  false,
+  "free-hand maneuvers must never enter Auto-fill when both hands are occupied",
+);
+
+const oneFreeHandManeuvers = readActionSources({
+  ...handedContext,
+  profile: { ...fighterContext.profile, handsFree: 1 },
+}).filter((action) => freeHandManeuverSlugs.includes(action.slug));
+assert.ok(oneFreeHandManeuvers.every((action) => action.available), "all free-hand maneuvers stay available with one hand free");
+
+const heldTripWeapon = {
+  id: "held-trip-weapon",
+  type: "weapon",
+  system: { equipped: { carryType: "held", handsHeld: 2 }, traits: { value: ["trip"] } },
+};
+const tripWeaponContext = {
+  ...handlessContext,
+  actor: { document: { itemTypes: { weapon: [heldTripWeapon] }, items: [heldTripWeapon], system: { actions: [] } } },
+};
+const tripWeaponManeuvers = readActionSources(tripWeaponContext)
+  .filter((action) => freeHandManeuverSlugs.includes(action.slug));
+assert.equal(tripWeaponManeuvers.find((action) => action.slug === "trip")?.available, true, "held trip weapon replaces Trip's free-hand requirement");
+assert.equal(tripWeaponManeuvers.find((action) => action.slug === "grapple")?.available, false, "trip weapon must not unlock unrelated maneuvers");
+
+const grabbedTargetContext = {
+  ...handlessContext,
+  targets: [{ ...handlessContext.targets[0], conditions: { slugs: ["grabbed"], values: { grabbed: 1 } } }],
+};
+assert.equal(
+  readActionSources(grabbedTargetContext).find((action) => action.slug === "reposition")?.available,
+  true,
+  "Reposition stays available without a free hand when target is already grabbed",
+);
 
 const closeFeint = scoreCandidate({
   ...fighterContext,
@@ -14455,6 +14872,26 @@ try {
     centers.some((center) => center.x === 5 && center.y === 15),
     true,
     "a same-cost orthogonal square (real distance 10 ft) must qualify for a 10-ft reach",
+  );
+
+  const tinyTarget = {
+    id: "tiny-overlap-target",
+    name: "Guard",
+    token: { id: "tiny-overlap-target-token", center: { x: 10, y: 0 }, width: 1, height: 1 },
+  };
+  const tinyCenters = reachableAttackCenters({
+    token: { id: "tiny-reach-actor-token", center: { x: 0, y: 0 }, width: 1, height: 1 },
+    battlefield: { allies: [], enemies: [tinyTarget], targets: [tinyTarget] },
+  }, tinyTarget, 10, 0);
+  assert.equal(
+    tinyCenters.some((center) => center.x === 10 && center.y === 0),
+    true,
+    "zero-reach movement may select a center overlapping the intended target",
+  );
+  assert.equal(
+    tinyCenters.some((center) => center.x === 5 && center.y === 0),
+    false,
+    "zero-reach movement must not stop adjacent to the target",
   );
 } finally {
   if (previousReachCentersCanvas === undefined) {
@@ -15807,6 +16244,40 @@ assert.equal(attackTraitPlan.steps.filter((step) => step.slug === "trip").length
 assert.equal(attackTraitPlan.steps.filter((step) => step.attackIndex).length, 3);
 assert.equal(attackTraitPlan.steps.filter((step) => step.slug === "strike").length, 2);
 assert.deepEqual(attackTraitPlan.steps.map((step) => step.mapPenalty), [0, 5, 10]);
+
+const riskyManeuverPlan = bestTurnPlan(fighterContext, [
+  {
+    id: "high-score-longsword",
+    name: "Longsword",
+    slug: "strike",
+    actionCost: 1,
+    source: "strike",
+    attackTrait: true,
+    score: 100,
+    confidence: "medium",
+    reason: "Strong Strike.",
+  },
+  {
+    id: "risky-trip",
+    name: "Trip",
+    slug: "trip",
+    actionCost: 1,
+    source: "generic",
+    skill: "athletics",
+    attackTrait: true,
+    criticalFailureRisk: "major",
+    score: 60,
+    confidence: "medium",
+    reason: "Knock prone.",
+  },
+]);
+assert.deepEqual(
+  riskyManeuverPlan.steps.map((step) => step.name),
+  ["Trip", "Longsword", "Longsword"],
+  "major-critical-failure attack skill must precede higher-scoring Strikes so it rolls before MAP",
+);
+assert.deepEqual(riskyManeuverPlan.steps.map((step) => step.mapPenalty), [0, 5, 10]);
+assert.deepEqual(riskyManeuverPlan.steps.map((step) => step.attackIndex), [1, 2, 3]);
 
 const farStrikeTarget = {
   ...fighterContext.targets[0],
@@ -18291,6 +18762,16 @@ try {
   assert.equal(objectTargetContext.battlefield.targets.length, 1);
   assert.equal(objectTargetContext.battlefield.targets[0].name, "Giant Centipede");
 
+  globalThis.game.user.targets = new Set();
+  globalThis.canvas.tokens.controlled = [];
+  globalThis.game.combat.combatant = makeCombatant(hiddenPitToken);
+  assert.equal(
+    readCombatContext("hazard-active-test"),
+    null,
+    "hazards must never produce a Combater planning context",
+  );
+  globalThis.game.combat.combatant = activeCombatant;
+
   const offCombatActor = makeActor("off-combat", "Off Combat Target");
   const offCombatToken = makeToken("token-off-combat", "Off Combat Target", offCombatActor, -1, 1);
   globalThis.game.user.targets = new Set([offCombatToken]);
@@ -18467,6 +18948,32 @@ try {
   };
   globalThis.canvas.tokens.controlled = [];
   assert.equal(readCombatContext("foreign-combatant-test", { combatant: foreignCombatant }), null);
+
+  globalThis.game.combat = null;
+  globalThis.game.user.isGM = true;
+  globalThis.canvas.scene = { id: "exploration-scene" };
+  const explorationSelectedToken = makeToken("token-exploration-owned", "Owned Hero", ownedActor, 1, 0);
+  const explorationEnemyToken = makeToken("token-exploration-unowned", "Unowned Hero", unownedActor, -1, 5);
+  globalThis.canvas.tokens.controlled = [explorationSelectedToken];
+  globalThis.canvas.tokens.placeables = [explorationSelectedToken, explorationEnemyToken];
+  const gmExplorationContext = readCombatContext("gm-exploration-test");
+  assert.ok(gmExplorationContext, "a GM must be able to plan for a selected token outside combat");
+  assert.equal(gmExplorationContext.actor.id, "actor-owned");
+  assert.equal(gmExplorationContext.token.id, "token-exploration-owned");
+  assert.equal(gmExplorationContext.combat.started, false);
+  assert.equal(gmExplorationContext.actionsSpent.normal, 0);
+  assert.deepEqual(
+    gmExplorationContext.battlefield.enemies.map((target) => target.name),
+    ["Unowned Hero"],
+    "out-of-combat GM planning should still read other scene tokens as tactical targets",
+  );
+
+  globalThis.game.user.isGM = false;
+  assert.equal(
+    readCombatContext("player-exploration-test"),
+    null,
+    "out-of-combat panel access must remain GM-only",
+  );
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;
@@ -23082,6 +23589,24 @@ const suddenChargeStillSafe = classifySystemAction({
 assert.equal(suddenChargeStillSafe.role, "mobility-attack");
 assert.equal(suddenChargeStillSafe.activityProfile.requiresDistinctTargets, undefined);
 
+const boarChargeStrideCount = classifySystemAction({
+  name: "Boar Charge",
+  system: {
+    actionType: { value: "action" },
+    actions: { value: 2 },
+    category: "offensive",
+    description: { value: "The boar Strides twice and then makes a tusk Strike. As long as it moved at least 20 feet, it gains a +2 circumstance bonus to its attack roll." },
+    traits: { value: [] },
+  },
+}, { actionCost: 2, type: "action" });
+assert.equal(boarChargeStrideCount.role, "mobility-attack");
+assert.equal(boarChargeStrideCount.activityProfile.strideCount, 2, "Boar Charge must preserve its two intrinsic Strides instead of classifying as one Stride");
+assert.deepEqual(
+  boarChargeStrideCount.activityProfile.includes,
+  ["stride", "stride", "strike"],
+  "Boar Charge must atomize into two Stride rows followed by its backing tusk Strike",
+);
+
 const doubleAttackCandidate = {
   id: "kraken-double-attack",
   name: "Double Attack",
@@ -23386,6 +23911,47 @@ const rangedAndMeleeActor = {
 assert.equal(bestReadyStrike(rangedAndMeleeActor, {}, backingStrikeFilterByPreset("ranged-reload-zero"))?.name, "Shortbow", "the 'ranged-reload-zero' filter preset must restrict the pick to a genuine ranged weapon (raw item.system.range present) with no reload, even when a melee Strike deals more damage");
 assert.equal(bestReadyStrike(rangedAndMeleeActor, {}, backingStrikeFilterByPreset("nonexistent-preset"))?.name, "Shortsword", "an unknown preset name must not throw or filter out everything -- it falls back to unfiltered (highest damage wins)");
 
+// PF2e's generated Strike can expose a display placeholder (`reload: "-"`) even when the backing
+// weapon has a real reload value. The placeholder must not mask item.system.reload or a reload-1
+// firearm can be repeated as two consecutive Strikes with no Reload between them.
+const reloadOnePistolActor = {
+  system: {
+    actions: [{
+      slug: "dueling-pistol",
+      label: "+1 Dueling Pistol",
+      name: "+1 Dueling Pistol",
+      type: "strike",
+      visible: true,
+      ready: true,
+      canAttack: true,
+      reload: "-",
+      item: {
+        id: "dueling-pistol",
+        type: "weapon",
+        system: {
+          reload: { value: "1" },
+          range: { increment: 60 },
+          traits: { value: ["concealable", "concussive", "fatal-d10"] },
+          damageRolls: { a: { damage: "1d6+1", damageType: "piercing" } },
+        },
+      },
+    }],
+  },
+};
+const reloadOnePistol = actorStrikeOptions(reloadOnePistolActor, fighterContext)[0];
+assert.equal(reloadOnePistol.reload, 1, "a generated Strike reload placeholder must defer to the weapon's real reload value");
+const reloadOnePistolPlan = bestTurnPlan(fighterContext, [{
+  ...reloadOnePistol,
+  score: 90,
+  confidence: "medium",
+  reason: "Shoot.",
+}]);
+assert.deepEqual(
+  displayStepEntries(reloadOnePistolPlan.steps).map((entry) => entry.step.name),
+  ["+1 Dueling Pistol", "Reload", "+1 Dueling Pistol"],
+  "a reload-1 pistol must plan Strike, Reload, Strike instead of consecutive Strikes",
+);
+
 const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });
 const multiStrikeActorForOptions = {
   type: "npc",
@@ -23403,6 +23969,30 @@ assert.equal(strikeOptions.length, 2, "actorStrikeOptions should return every re
 assert.deepEqual(strikeOptions.map((option) => option.id), ["strike-claw", "strike-bite"], "each strike option should carry a stable, weapon-specific id");
 assert.equal(strikeOptions[0].name, "Claw");
 assert.equal(strikeOptions[1].name, "Bite");
+
+const tinyStrikeActor = {
+  type: "npc",
+  itemTypes: {},
+  getReach: () => 0,
+  system: {
+    attributes: { reach: { base: 0 } },
+    traits: { size: { value: "tiny" } },
+    actions: [{
+      type: "strike", name: "Jaws", label: "Jaws", slug: "jaws",
+      item: meleeItem("1d4+1", "piercing", []), traits: [], weaponTraits: [], variants: [],
+    }],
+  },
+};
+const overlappingTinyTarget = { id: "overlap-target", name: "Guard", distance: 0 };
+const adjacentTinyTarget = { id: "adjacent-target", name: "Guard", distance: 5 };
+const tinyOverlapStrike = actorStrikeOptions(tinyStrikeActor, {
+  battlefield: { targets: [overlappingTinyTarget], enemies: [overlappingTinyTarget] },
+})[0];
+assert.equal(tinyOverlapStrike.range.max, 0, "Tiny Strike must preserve PF2e's native zero reach");
+assert.equal(tinyOverlapStrike.available, true, "Tiny Strike is available while sharing the target's square");
+assert.equal(actorStrikeOptions(tinyStrikeActor, {
+  battlefield: { targets: [adjacentTinyTarget], enemies: [adjacentTinyTarget] },
+})[0].available, false, "Tiny Strike is unavailable from an adjacent square");
 
 const attackEffectsActorForOptions = {
   type: "npc",
@@ -23580,9 +24170,25 @@ const twinTakedownForBackingStrike = {
 };
 const twinTakedownBackingStrikeContext = { ...fighterContext, actor: { document: twinTakedownActorForBackingStrike } };
 const twinTakedownScored = scoreCandidateWithActorStrikes(twinTakedownBackingStrikeContext, twinTakedownForBackingStrike);
+assert.notEqual(twinTakedownScored.score, -999, "Twin Takedown must remain usable when two melee weapons are held");
 assert.equal(twinTakedownScored.activityProfile.backingStrikes?.length, 2, "requiresDualBackingStrike must compute an array of the actor's two held melee weapons");
 assert.equal(twinTakedownScored.activityProfile.backingStrikes[0]?.name, "Sickle");
 assert.equal(twinTakedownScored.activityProfile.backingStrikes[1]?.name, "Dagger");
+
+const oneWeaponTwinTakedownContext = { ...fighterContext, actor: { document: oneHeldMeleeWeaponActor } };
+const oneWeaponTwinTakedown = scoreCandidateWithActorStrikes(oneWeaponTwinTakedownContext, twinTakedownForBackingStrike);
+assert.equal(oneWeaponTwinTakedown.score, -999, "Twin Takedown must be blocked unless two melee weapons are held");
+assert.equal(oneWeaponTwinTakedown.reason, "Requires two held melee weapons.");
+assert.equal(
+  bestTurnPlan(oneWeaponTwinTakedownContext, [oneWeaponTwinTakedown]).steps.length,
+  0,
+  "a blocked one-weapon Twin Takedown must never atomize into indented fallback Twin Takedown rows",
+);
+
+const noWeaponTwinTakedownContext = { ...fighterContext, actor: { document: { type: "npc", system: { actions: [] } } } };
+const noWeaponTwinTakedown = scoreCandidateWithActorStrikes(noWeaponTwinTakedownContext, twinTakedownForBackingStrike);
+assert.equal(noWeaponTwinTakedown.score, -999, "Twin Takedown must be blocked when no melee weapons are held");
+assert.equal(noWeaponTwinTakedown.reason, "Requires two held melee weapons.");
 
 const ordinaryDualBackingScored = scoreCandidateWithActorStrikes(twinTakedownBackingStrikeContext, { id: "strike", name: "Strike", slug: "strike", actionCost: 1, source: "strike", role: "damage", activityProfile: { averageDamage: 10 } });
 assert.equal(ordinaryDualBackingScored.activityProfile?.backingStrikes, undefined, "an ordinary action must not gain a backingStrikes array");

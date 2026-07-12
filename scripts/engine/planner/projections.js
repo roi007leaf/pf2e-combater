@@ -178,7 +178,7 @@ function projectedFollowUpStrikeCandidate(candidate) {
     executable: "strike",
     attackTrait: true,
     available: true,
-    range: Number.isFinite(range) && range > 0 ? { ...(candidate.range ?? {}), max: range } : candidate.range,
+    range: Number.isFinite(range) && range >= 0 ? { ...(candidate.range ?? {}), max: range } : candidate.range,
     score: followUpStrikeScore(candidate),
     reason: t("Plan.ProjectedFollowUpStrike", "{name} is in range after the movement.", { name: strikeLeafName(candidate) }),
     activityProfile: {
@@ -300,7 +300,7 @@ export function projectedFollowUpSatisfied(context, candidate, steps) {
   if (!origin || !targetCenter) return true;
 
   const range = currentAttackRange(candidate);
-  if (!Number.isFinite(range) || range <= 0) return true;
+  if (!Number.isFinite(range) || range < 0) return true;
 
   const distance = Math.hypot(targetCenter.x - origin.x, targetCenter.y - origin.y) * gridFeetPerPixel();
   return distance <= range + 1e-6;
