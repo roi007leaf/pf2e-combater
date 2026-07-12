@@ -135,14 +135,31 @@ function offensiveTargetValue(context, action, role, target) {
   return value;
 }
 
-function compareRankedTargets(context, action, role, left, right) {
+// offensiveTargetValue (and the DC lookup below) were previously recomputed inside the comparator
+// itself, so a single `.toSorted()` call re-ran them roughly 2*n*log(n) times instead of n times.
+// Precompute each target's rank inputs once, then sort by the cached values.
+function rankedTargetEntry(context, action, role, target) {
   const defenseSlug = targetDefenseSlug(action);
-  if (action?.skill && defenseSlug) {
-    const leftDc = canUseTargetSave(context, left, defenseSlug) ? targetDc(left, defenseSlug) : null;
-    const rightDc = canUseTargetSave(context, right, defenseSlug) ? targetDc(right, defenseSlug) : null;
-    if (Number.isFinite(leftDc) && Number.isFinite(rightDc) && leftDc !== rightDc) return leftDc - rightDc;
-  }
-  return offensiveTargetValue(context, action, role, right) - offensiveTargetValue(context, action, role, left);
+  const dc = action?.skill && defenseSlug && canUseTargetSave(context, target, defenseSlug)
+    ? targetDc(target, defenseSlug)
+    : null;
+  return {
+    target,
+    dc: Number.isFinite(dc) ? dc : null,
+    value: offensiveTargetValue(context, action, role, target),
+  };
+}
+
+function compareRankedEntries(left, right) {
+  if (left.dc !== null && right.dc !== null && left.dc !== right.dc) return left.dc - right.dc;
+  return right.value - left.value;
+}
+
+function sortRankedTargets(context, action, role, targets) {
+  return targets
+    .map((target) => rankedTargetEntry(context, action, role, target))
+    .toSorted(compareRankedEntries)
+    .map((entry) => entry.target);
 }
 
 export function targetRankingReasons(context, action, role, target) {
@@ -191,7 +208,7 @@ export function targetRankingReasons(context, action, role, target) {
   }
 
   const aggro = aggroProfile(context, target);
-  if (!hasOutcomeReason && aggro?.score > 0 && aggro.reasons.length) {
+  if (!hasOutcomeReason && aggro?.gmOnly && aggro?.score > 0 && aggro.reasons.length) {
     aggro.reasons.forEach((reason, index) => {
       if (aggro.roles[index] === "immediate-threat" && pressure.meleeThreatKeys.has(entityKey(target))) return;
       reasons.push(reason);
@@ -316,9 +333,7 @@ export function bestTargetForAction(context, action, role) {
   if (action.source === "strike") {
     const reachable = enemyValues.filter((enemy) => inRange(action, enemy));
     if (reachable.length) {
-      return reachable.toSorted((left, right) =>
-        compareRankedTargets(context, action, role, left, right),
-      )[0];
+      return sortRankedTargets(context, action, role, reachable)[0];
     }
     return canAttackTarget(target)
       && canAffectTarget(context, action, target)
@@ -330,9 +345,7 @@ export function bestTargetForAction(context, action, role) {
   if (isOffensiveRole(role) || targetDefenseSlug(action)) {
     const reachable = enemyValues.filter((enemy) => targetInSelectionRange(context, action, enemy));
     if (reachable.length) {
-      return reachable.toSorted((left, right) =>
-        compareRankedTargets(context, action, role, left, right),
-      )[0];
+      return sortRankedTargets(context, action, role, reachable)[0];
     }
     return targetInSelectionRange(context, action, target)
       && canAttackTarget(target)
@@ -356,9 +369,12 @@ export function bestTargetForAction(context, action, role) {
 
 export function distinctTargetsFor(context, action, role) {
   const count = Number.isFinite(action.activityProfile?.distinctStrikeCount) ? action.activityProfile.distinctStrikeCount : 2;
-  const reachable = attackableEnemies(context)
-    .filter((enemy) => targetInSelectionRange(context, action, enemy))
-    .toSorted((left, right) => compareRankedTargets(context, action, role, left, right));
+  const reachable = sortRankedTargets(
+    context,
+    action,
+    role,
+    attackableEnemies(context).filter((enemy) => targetInSelectionRange(context, action, enemy)),
+  );
 
   if (!reachable.length) return [];
 

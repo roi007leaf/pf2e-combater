@@ -17,7 +17,7 @@ export const SWASHBUCKLER_CLASS_TACTIC = {
 
 export const SWASHBUCKLER_SUBCLASS_TACTICS = {
   "battledancer": {
-    "label": "Battledancer style",
+    "label": "Battledancer",
     "classSlug": "swashbuckler",
     "actions": {
       "perform": 16,
@@ -30,7 +30,7 @@ export const SWASHBUCKLER_SUBCLASS_TACTICS = {
     "reason": "Battledancer style favors performance to gain panache."
   },
   "braggart": {
-    "label": "Braggart style",
+    "label": "Braggart",
     "classSlug": "swashbuckler",
     "actions": {
       "demoralize": 16
@@ -42,7 +42,7 @@ export const SWASHBUCKLER_SUBCLASS_TACTICS = {
     "reason": "Braggart style favors Demoralize to gain panache."
   },
   "fencer": {
-    "label": "Fencer style",
+    "label": "Fencer",
     "classSlug": "swashbuckler",
     "actions": {
       "feint": 16
@@ -54,7 +54,7 @@ export const SWASHBUCKLER_SUBCLASS_TACTICS = {
     "reason": "Fencer style favors Feint before finishers."
   },
   "gymnast": {
-    "label": "Gymnast style",
+    "label": "Gymnast",
     "classSlug": "swashbuckler",
     "actions": {
       "grapple": 16,
@@ -69,7 +69,7 @@ export const SWASHBUCKLER_SUBCLASS_TACTICS = {
     "reason": "Gymnast style favors athletics actions to gain panache."
   },
   "rascal": {
-    "label": "Rascal style",
+    "label": "Rascal",
     "classSlug": "swashbuckler",
     "actions": {
       "create-a-diversion": 14,
@@ -83,7 +83,7 @@ export const SWASHBUCKLER_SUBCLASS_TACTICS = {
     "reason": "Rascal style favors deception and mobility."
   },
   "wit": {
-    "label": "Wit style",
+    "label": "Wit",
     "classSlug": "swashbuckler",
     "actions": {
       "bon-mot": 16,

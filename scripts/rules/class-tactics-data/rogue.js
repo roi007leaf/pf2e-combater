@@ -17,7 +17,7 @@ export const ROGUE_CLASS_TACTIC = {
 
 export const ROGUE_SUBCLASS_TACTICS = {
   "avenger": {
-    "label": "Avenger racket",
+    "label": "Avenger",
     "classSlug": "rogue",
     "meleeStrike": 10,
     "roles": {
@@ -27,7 +27,7 @@ export const ROGUE_SUBCLASS_TACTICS = {
     "reason": "Avenger racket favors direct weapon pressure on openings."
   },
   "eldritch-trickster": {
-    "label": "Eldritch Trickster racket",
+    "label": "Eldritch Trickster",
     "classSlug": "rogue",
     "spell": 8,
     "roles": {
@@ -38,7 +38,7 @@ export const ROGUE_SUBCLASS_TACTICS = {
     "reason": "Eldritch Trickster favors spell setup into rogue payoffs."
   },
   "mastermind": {
-    "label": "Mastermind racket",
+    "label": "Mastermind",
     "classSlug": "rogue",
     "actions": {
       "recall-knowledge": 16,
@@ -51,7 +51,7 @@ export const ROGUE_SUBCLASS_TACTICS = {
     "reason": "Mastermind racket favors knowledge setup before sneak attack."
   },
   "ruffian": {
-    "label": "Ruffian racket",
+    "label": "Ruffian",
     "classSlug": "rogue",
     "traits": {
       "shove": 8,
@@ -66,7 +66,7 @@ export const ROGUE_SUBCLASS_TACTICS = {
     "reason": "Ruffian racket favors athletics control and hard hits."
   },
   "scoundrel": {
-    "label": "Scoundrel racket",
+    "label": "Scoundrel",
     "classSlug": "rogue",
     "actions": {
       "feint": 16,
@@ -80,7 +80,7 @@ export const ROGUE_SUBCLASS_TACTICS = {
     "reason": "Scoundrel racket favors social misdirection before damage."
   },
   "thief": {
-    "label": "Thief racket",
+    "label": "Thief",
     "classSlug": "rogue",
     "traits": {
       "finesse": 14,

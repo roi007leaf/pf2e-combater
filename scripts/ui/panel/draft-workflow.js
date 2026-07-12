@@ -55,6 +55,13 @@ import {
   stepMovementAction,
   sustainedSpellDraftFields,
 } from "./view-model.js";
+import {
+  mergeMovementOptions,
+  minionStepKey,
+  minionStepName,
+  normalizeMovementOptions,
+  uniqueMinionStepNames,
+} from "./minion-step-helpers.js";
 import { t } from "../../i18n.js";
 
 // Reads/writes route to the shared draft when the GM is editing or executing a player plan;
@@ -106,55 +113,6 @@ function isMinionBrowseAction(action) {
   return action?.source === "minion-action" || action?.activityProfile?.minionBrowseAction === true;
 }
 
-function normalizeMinionStepKey(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-")
-    .replace(/[^a-z0-9-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function titleCaseSlug(value) {
-  return String(value ?? "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function minionStepName(value) {
-  const direct = typeof value === "object" && value !== null
-    ? value.name ?? value.label ?? value.title
-    : value;
-  const name = String(direct ?? "").trim();
-  if (name) return name;
-  const slug = typeof value === "object" && value !== null
-    ? value.slug ?? value.key ?? value.action
-    : "";
-  return titleCaseSlug(slug) || t("Panel.UnknownAction", "Unknown action");
-}
-
-function minionStepKey(value, fallbackName = "") {
-  const raw = typeof value === "object" && value !== null
-    ? value.slug ?? value.key ?? value.action ?? value.name ?? value.label ?? value.title
-    : value;
-  return normalizeMinionStepKey(raw) || normalizeMinionStepKey(fallbackName);
-}
-
-function uniqueMinionStepNames(values) {
-  const seen = new Set();
-  const result = [];
-  for (const value of values) {
-    const name = minionStepName(value);
-    const key = minionStepKey(value, name);
-    if (!name || seen.has(key)) continue;
-    seen.add(key);
-    result.push(name);
-  }
-  return result;
-}
 
 function fallbackMinionActionOptions() {
   return [
@@ -439,31 +397,6 @@ function targetTokenForPlan(plan) {
 
 function actorSpeed(actor) {
   return readActorSpeed(actor);
-}
-
-function normalizeMovementOptions(options) {
-  const seen = new Set();
-  const result = [];
-  for (const option of Array.isArray(options) ? options : []) {
-    const action = String(option?.action ?? "").trim().toLowerCase();
-    if (!action || seen.has(action)) continue;
-    seen.add(action);
-    const speed = Number(option?.speed);
-    result.push({ action, speed: Number.isFinite(speed) ? speed : 0 });
-  }
-  return result;
-}
-
-function mergeMovementOptions(...optionLists) {
-  const merged = [];
-  const seen = new Set();
-  for (const option of optionLists.flat()) {
-    const action = String(option?.action ?? "").trim().toLowerCase();
-    if (!action || seen.has(action)) continue;
-    seen.add(action);
-    merged.push(option);
-  }
-  return merged;
 }
 
 function minionMovementOptions(plan, actor) {
@@ -880,20 +813,42 @@ export async function cyclePanelMinionPlanStep(panel, instanceId, stepIndex, dir
 }
 
 export async function addPanelAction(panel, actionKey) {
-  if (!panel._canEditDraft()) return;
+  return appendAtomizedActionToDraft(panel, actionKey, {
+    listKey: "steps",
+    canEdit: (activePanel) => activePanel._canEditDraft(),
+    checkBudgetAndMinion: true,
+  });
+}
+
+// Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
+// for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
+export async function addPanelUncountedAction(panel, actionKey) {
+  return appendAtomizedActionToDraft(panel, actionKey, {
+    listKey: "uncounted",
+    canEdit: (activePanel) => activePanel._canExecuteDraft(),
+    checkBudgetAndMinion: false,
+  });
+}
+
+// Shared by addPanelAction/addPanelUncountedAction, which differ only in which draft list they
+// append to, which permission gate applies, and whether a plan add can be refused/redirected
+// (budget check, minion-browse delegation) -- off-budget uncounted adds skip both by design.
+async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit, checkBudgetAndMinion }) {
+  if (!canEdit(panel)) return;
   const action = panel._findBuilderAction(actionKey);
   if (!panel._context || !action) return;
 
-  if (isMinionBrowseAction(action)) {
-    await addPanelMinionBrowseAction(panel, action);
-    return;
-  }
-
-  // The normal plan respects the turn's action economy; only uncounted actions
-  // run off-budget. Refuse a plan add that would exceed the budget.
-  if (action.overBudget) {
-    globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
-    return;
+  if (checkBudgetAndMinion) {
+    if (isMinionBrowseAction(action)) {
+      await addPanelMinionBrowseAction(panel, action);
+      return;
+    }
+    // The normal plan respects the turn's action economy; only uncounted actions
+    // run off-budget. Refuse a plan add that would exceed the budget.
+    if (action.overBudget) {
+      globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
+      return;
+    }
   }
 
   const draft = panel._readActiveDraftPlan();
@@ -907,56 +862,13 @@ export async function addPanelAction(panel, actionKey) {
     : atoms;
   await panel._writeActiveDraftPlan(markManualDraft({
     ...draft,
-    steps: [
-      ...(draft.steps ?? []),
+    [listKey]: [
+      ...(draft[listKey] ?? []),
       ...newSteps.map((atom) => {
         // A self-centered area (e.g. an emanation) needs no manual placement -- it's always
         // centered on the caster, so pre-fill it here the same way Auto-fill already does,
         // instead of forcing a "Place template" prompt for something with only one possible
         // location.
-        const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(panel._context, atom) : null;
-        return {
-          instanceId: draftStepId(),
-          actionKey: atom === action ? action.key : panel._actionKeyForStep(atom),
-          // Persist a display name so the step still reads correctly if its action stops being
-          // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
-          name: atom?.name ?? atom?.action?.name,
-          actionCost: atom?.actionCost ?? atom?.cost,
-          requiresDestination: requiresDestinationForAction(atom),
-          requiresTarget: requiresTargetForAction(atom),
-          ...(atom?.groupId
-            ? { groupId: atom.groupId, groupLabel: atom.groupLabel, ...(Number.isFinite(atom?.atomIndex) ? { atomIndex: atom.atomIndex } : {}) }
-            : atom?.activityProfile?.requiresDistinctTargets
-              ? { groupId: atom.id, groupLabel: String(atom?.name ?? "").split(" -> ")[0] }
-              : {}),
-          ...minionPlanDraftFields(atom),
-          ...(presetAreaMarker ? { areaMarker: presetAreaMarker } : {}),
-        };
-      }),
-    ],
-  }));
-  clearActionPreview();
-  await panel.render({ force: true });
-}
-
-// Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
-// for a GM running an AFK player's shared plan (hence _canExecuteDraft, not _canEditDraft).
-export async function addPanelUncountedAction(panel, actionKey) {
-  if (!panel._canExecuteDraft()) return;
-  const action = panel._findBuilderAction(actionKey);
-  if (!panel._context || !action) return;
-  const draft = panel._readActiveDraftPlan();
-  // A composite (e.g. Stand -> Stride, Rush, Sudden Charge) atomizes into its separate parts,
-  // mirroring _addAction -- a raw single-step push left the whole bundled ability as one
-  // multi-action uncounted entry, asking for a target/destination the parts don't individually need.
-  const atoms = builderAtomicActionsForStep(action);
-  const newAtoms = atoms.length === 1 && atoms[0] === action ? [action] : atoms;
-  await panel._writeActiveDraftPlan(markManualDraft({
-    ...draft,
-    uncounted: [
-      ...(draft.uncounted ?? []),
-      ...newAtoms.map((atom) => {
-        // See _addAction: a self-centered area needs no manual placement, pre-fill it the same way.
         const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(panel._context, atom) : null;
         return {
           instanceId: draftStepId(),

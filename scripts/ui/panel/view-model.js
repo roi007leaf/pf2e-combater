@@ -11,6 +11,13 @@ import { confidenceLabel } from "../../engine/confidence.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
+import {
+  mergeMovementOptions,
+  minionStepKey,
+  minionStepName,
+  normalizeMovementOptions,
+  uniqueMinionStepNames,
+} from "./minion-step-helpers.js";
 import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { intelTargetKey, isNpcIntelTarget } from "../../rules/intel-ledger.js";
 import { groupActionsByBuilderCategory } from "../action/categories.js";
@@ -274,56 +281,6 @@ function minionPlanSource(...values) {
   return values.find((value) => value && Array.isArray(value.steps) && value.steps.length) ?? null;
 }
 
-function normalizeMinionStepKey(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-")
-    .replace(/[^a-z0-9-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function titleCaseSlug(value) {
-  return String(value ?? "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function minionStepName(value) {
-  const direct = typeof value === "object" && value !== null
-    ? value.name ?? value.label ?? value.title
-    : value;
-  const name = String(direct ?? "").trim();
-  if (name) return name;
-  const slug = typeof value === "object" && value !== null
-    ? value.slug ?? value.key ?? value.action
-    : "";
-  return titleCaseSlug(slug) || t("Panel.UnknownAction", "Unknown action");
-}
-
-function minionStepKey(value, fallbackName = "") {
-  const raw = typeof value === "object" && value !== null
-    ? value.slug ?? value.key ?? value.action ?? value.name ?? value.label ?? value.title
-    : value;
-  return normalizeMinionStepKey(raw) || normalizeMinionStepKey(fallbackName);
-}
-
-function uniqueMinionStepNames(values) {
-  const seen = new Set();
-  const result = [];
-  for (const value of values) {
-    const name = minionStepName(value);
-    const key = minionStepKey(value, name);
-    if (!name || seen.has(key)) continue;
-    seen.add(key);
-    result.push(name);
-  }
-  return result;
-}
-
 function minionActionOptions(plan) {
   return uniqueMinionStepNames([
     ...(Array.isArray(plan?.actionOptions) ? plan.actionOptions : []),
@@ -339,19 +296,6 @@ function minionPlanDisplayLabel(plan, steps) {
   return target
     ? t("MinionPlan.Label", "{minion}: {steps} vs {target}", { minion, steps: stepText, target })
     : t("MinionPlan.LabelNoTarget", "{minion}: {steps}", { minion, steps: stepText });
-}
-
-function normalizeMovementOptions(options) {
-  const seen = new Set();
-  const result = [];
-  for (const option of Array.isArray(options) ? options : []) {
-    const action = String(option?.action ?? "").trim().toLowerCase();
-    if (!action || seen.has(action)) continue;
-    seen.add(action);
-    const speed = Number(option?.speed);
-    result.push({ action, speed: Number.isFinite(speed) ? speed : 0 });
-  }
-  return result;
 }
 
 function tokenIdMatchesMinion(token, plan) {
@@ -403,18 +347,6 @@ function liveMinionActor(plan) {
   if (byId) return tokenActor(byId);
   const byName = canvasTokens().find((token) => tokenNameMatchesMinion(token, plan));
   return byName ? tokenActor(byName) : null;
-}
-
-function mergeMovementOptions(...optionLists) {
-  const merged = [];
-  const seen = new Set();
-  for (const option of optionLists.flat()) {
-    const action = String(option?.action ?? "").trim().toLowerCase();
-    if (!action || seen.has(action)) continue;
-    seen.add(action);
-    merged.push(option);
-  }
-  return merged;
 }
 
 function movementOptionsForMinionPlan(plan, context) {

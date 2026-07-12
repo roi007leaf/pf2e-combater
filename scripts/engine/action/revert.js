@@ -38,9 +38,12 @@ async function applyRevertOp(op, scope) {
 export async function revertDraftStep({ context, step } = {}) {
   const revert = step?.execution?.revert;
   const warnings = [...(revert?.manualWarnings ?? [])];
-  const resetPatch = { execution: { status: "pending" } };
+  // warnings collected here are also persisted onto the reset step (not just shown as a toast),
+  // so a step whose real-world effect wasn't actually undone stays distinguishable from a clean
+  // revert even after the notification disappears -- it can still be re-executed either way.
+  const resetPatch = () => ({ execution: { status: "pending", revertWarnings: warnings } });
   if (step?.execution?.status !== "done" || !Array.isArray(revert?.ops)) {
-    return { status: "reverted", patch: resetPatch, warnings };
+    return { status: "reverted", patch: resetPatch(), warnings };
   }
 
   const actor = contextActorDocument(context, { allowActorFallback: true });
@@ -51,7 +54,7 @@ export async function revertDraftStep({ context, step } = {}) {
       warnings.push(t("Revert.CouldNotRevert", "Could not revert {kind}: {error}", { kind: op?.kind ?? "action", error: error?.message ?? error }));
     }
   }
-  return { status: "reverted", patch: resetPatch, warnings };
+  return { status: "reverted", patch: resetPatch(), warnings };
 }
 
 // Revert every completed step across the plan and uncounted lists in reverse execution

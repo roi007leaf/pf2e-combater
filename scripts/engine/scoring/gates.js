@@ -18,11 +18,12 @@ import { isRangeBuffSetup, rangeBuffIsNeeded } from "./spells.js";
 import { attackableEnemies, isExtractElementAction } from "./targets.js";
 import { bleedingAlly, dyingAlly } from "./tactic-helpers.js";
 import { contextAllies } from "../target-pool.js";
+import { HARD_BLOCK_SCORE } from "./weights.js";
 
 function blockedAction(action, reason, patch = {}) {
   return {
     ...action,
-    score: -999,
+    score: HARD_BLOCK_SCORE,
     suggestedTarget: null,
     reason,
     reasons: [reason],

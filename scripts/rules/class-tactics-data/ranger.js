@@ -18,7 +18,7 @@ export const RANGER_CLASS_TACTIC = {
 
 export const RANGER_SUBCLASS_TACTICS = {
   "flurry": {
-    "label": "Flurry edge",
+    "label": "Flurry",
     "classSlug": "ranger",
     "actions": {
       "hunted-shot": 18,
@@ -32,7 +32,7 @@ export const RANGER_SUBCLASS_TACTICS = {
     "reason": "Flurry edge favors multiple attacks against hunted prey."
   },
   "outwit": {
-    "label": "Outwit edge",
+    "label": "Outwit",
     "classSlug": "ranger",
     "actions": {
       "recall-knowledge": 12,
@@ -47,7 +47,7 @@ export const RANGER_SUBCLASS_TACTICS = {
     "reason": "Outwit edge favors skill setup and defensive pressure."
   },
   "precision": {
-    "label": "Precision edge",
+    "label": "Precision",
     "classSlug": "ranger",
     "actions": {
       "hunters-aim": 16
@@ -60,7 +60,7 @@ export const RANGER_SUBCLASS_TACTICS = {
     "reason": "Precision edge favors one accurate hit per round."
   },
   "vindicator": {
-    "label": "Vindicator edge",
+    "label": "Vindicator",
     "classSlug": "ranger",
     "spell": 6,
     "roles": {

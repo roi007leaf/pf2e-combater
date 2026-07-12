@@ -398,6 +398,8 @@ function opposingLevels(context) {
   return values;
 }
 
+// Unknown HP defaults to full health (1), matching aggro.js's hpPercent() -- both files agree
+// that "can't tell" should read as healthy rather than as a false low-HP signal.
 function actorHpPercent(context, actor) {
   const explicit = Number(context?.profile?.hpPercent);
   if (Number.isFinite(explicit)) return explicit;
@@ -405,7 +407,7 @@ function actorHpPercent(context, actor) {
   const current = numericValue(hp?.value);
   const max = numericValue(hp?.max);
   if (current !== null && max !== null && max > 0) return current / max;
-  return null;
+  return 1;
 }
 
 function actorMaxHp(actor) {
@@ -529,7 +531,23 @@ function scoreTextSignals(scores, text) {
   }
 }
 
+// Inference depends only on the acting actor's own kit, never on a target, but resolveTacticPersonality()
+// calls it on every candidate/target combination during a scoring pass -- memoize per-context like
+// aggro.js's aggroProfile() does, so the kit-wide regex rescan only runs once per turn instead of
+// once per (candidate, target) pair.
+const inferredTacticPersonalityCache = new WeakMap();
+
 function inferTacticPersonality(context) {
+  if (context && typeof context === "object") {
+    if (inferredTacticPersonalityCache.has(context)) return inferredTacticPersonalityCache.get(context);
+    const computed = computeInferTacticPersonality(context);
+    inferredTacticPersonalityCache.set(context, computed);
+    return computed;
+  }
+  return computeInferTacticPersonality(context);
+}
+
+function computeInferTacticPersonality(context) {
   const actor = actorDocument(context);
   if (!actor) return { role: "auto", temperament: "auto" };
   const npc = actorType(context) === "npc";
@@ -544,10 +562,8 @@ function inferTacticPersonality(context) {
   }
 
   const hpPercent = actorHpPercent(context, actor);
-  if (hpPercent !== null) {
-    if (hpPercent <= 0.2) addScore(scores, "temperament", "coward", 12);
-    else if (hpPercent <= 0.4) addScore(scores, "temperament", "cautious", 9);
-  }
+  if (hpPercent <= 0.2) addScore(scores, "temperament", "coward", 12);
+  else if (hpPercent <= 0.4) addScore(scores, "temperament", "cautious", 9);
 
   const maxHp = actorMaxHp(actor);
   if (maxHp !== null && maxHp >= 70) {

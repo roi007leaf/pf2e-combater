@@ -10,12 +10,12 @@
     "url": "git+https://github.com/roi007leaf/pf2e-combater.git"
   },
   "author": "",
-  "license": "ISC",
+  "license": "GPL-3.0",
   "bugs": {
     "url": "https://github.com/roi007leaf/pf2e-combater/issues"
   },
   "homepage": "https://github.com/roi007leaf/pf2e-combater#readme",
-  "description": "",
+  "description": "Floating tactical combat advisor for PF2e in Foundry VTT",
   "type": "module",
   "scripts": {
     "test": "node scripts/engine/self-test.js",
@@ -32,12 +32,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "classic-level": "^3.0.0",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.3.0",
     "husky": "^9.1.7",
-    "prettier": "^3.6.2",
-    "classic-level": "^3.0.0"
+    "prettier": "^3.6.2"
   }
 }

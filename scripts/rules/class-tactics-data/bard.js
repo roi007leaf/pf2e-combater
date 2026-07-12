@@ -19,7 +19,7 @@ export const BARD_CLASS_TACTIC = {
 
 export const BARD_SUBCLASS_TACTICS = {
   "enigma": {
-    "label": "Enigma muse",
+    "label": "Enigma",
     "classSlug": "bard",
     "actions": {
       "recall-knowledge": 14
@@ -32,7 +32,7 @@ export const BARD_SUBCLASS_TACTICS = {
     "reason": "Enigma muse favors knowledge setup and occult control."
   },
   "maestro": {
-    "label": "Maestro muse",
+    "label": "Maestro",
     "classSlug": "bard",
     "actions": {
       "lingering-composition": 20,
@@ -45,7 +45,7 @@ export const BARD_SUBCLASS_TACTICS = {
     "reason": "Maestro muse favors composition support."
   },
   "polymath": {
-    "label": "Polymath muse",
+    "label": "Polymath",
     "classSlug": "bard",
     "actions": {
       "bon-mot": 12,
@@ -59,7 +59,7 @@ export const BARD_SUBCLASS_TACTICS = {
     "reason": "Polymath muse favors flexible skill setup."
   },
   "warrior": {
-    "label": "Warrior muse",
+    "label": "Warrior",
     "classSlug": "bard",
     "actions": {
       "courageous-assault": 16,
@@ -73,7 +73,7 @@ export const BARD_SUBCLASS_TACTICS = {
     "reason": "Warrior muse favors martial compositions and ally attacks."
   },
   "zoophonia": {
-    "label": "Zoophonia muse",
+    "label": "Zoophonia",
     "classSlug": "bard",
     "roles": {
       "summon": 8,

@@ -17,7 +17,7 @@ export const DRUID_CLASS_TACTIC = {
 
 export const DRUID_SUBCLASS_TACTICS = {
   "animal-order": {
-    "label": "Animal order",
+    "label": "Animal Order",
     "classSlug": "druid",
     "roles": {
       "summon": 12,
@@ -100,7 +100,7 @@ export const DRUID_SUBCLASS_TACTICS = {
     "label": "Stone Order"
   },
   "untamed-order": {
-    "label": "Untamed order",
+    "label": "Untamed Order",
     "classSlug": "druid",
     "actions": {
       "wild-shape": 18,

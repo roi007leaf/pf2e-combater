@@ -1,11 +1,7 @@
 import { actorStrikeOptions } from "../readers/action/reader.js";
 import { actorMovementOptions, readActorSpeed } from "../readers/actor-profile.js";
 import { t } from "../i18n.js";
-
-function numeric(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
+import { numeric } from "./canvas-geometry.js";
 
 function center(value) {
   const point = value?.center ?? value?.token?.center;

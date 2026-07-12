@@ -50,23 +50,13 @@ export function scoreActivityProfileTactics(context, action, {
   let nextScore = Number.isFinite(Number(score)) ? Number(score) : 0;
   const nextReasons = Array.isArray(reasons) ? reasons : [];
 
-  if (action.slug === "sudden-charge" && target) {
-    const speed = profileSpeed(profile);
-    const reach = profileReach(profile);
-    const distance = Number(target.distance ?? Infinity);
-    const chargeReach = speed * 2 + reach;
-
-    if (distance > reach && distance <= chargeReach) {
-      nextScore += 72;
-      nextReasons.push(t("ScoreReason.ClosesAndAttacks", "Closes {distance} ft and attacks in one activity.", { distance }));
-    } else if (distance <= reach) {
-      nextScore -= 18;
-      nextReasons.push(t("ScoreReason.AlreadyInReachSudden", "Already in reach; Sudden Charge has less value."));
-    } else {
-      nextScore -= 24;
-      nextReasons.push(t("ScoreReason.TargetIsBeyondSudden", "Target is beyond Sudden Charge reach."));
-    }
-  }
+  // Sudden Charge used to have its own distance-tier scoring block here (keyed on
+  // action.slug === "sudden-charge"), but its catalog entry sets includesStrike+strideCount,
+  // so the generic move-and-strike block below always fired too -- for the same candidate,
+  // on the same distance tiers, unconditionally. The generic block already covers Sudden
+  // Charge (and is strictly more complete: retreat-before-strike, destination-threat, and
+  // route-budget adjustments this slug-specific block never had), so it was removed rather
+  // than kept as a second, redundant scorer.
 
   if (action.activityProfile?.includesStrike && action.activityProfile?.strideCount > 0 && target) {
     const speed = profileSpeed(profile);

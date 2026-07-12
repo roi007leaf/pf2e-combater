@@ -39,6 +39,7 @@ import { t } from "../i18n.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { deterministicPreferenceAdjustment } from "../state/preference-profile.js";
 import { SETTINGS, settingOrDefault } from "../settings.js";
+import { HARD_BLOCK_SCORE } from "./scoring/weights.js";
 
 // PF2e core rule: affecting a hidden creature (any attack roll or save-requiring effect) needs a
 // DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
@@ -54,7 +55,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   if (requiredTraining) {
     return {
       ...action,
-      score: -999,
+      score: HARD_BLOCK_SCORE,
       suggestedTarget: null,
       reason: requiredTraining.reason,
       reasons: [requiredTraining.reason],

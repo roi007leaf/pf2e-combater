@@ -1,14 +1,5 @@
 import { actorItems } from "../foundry-data.js";
-
-function normalize(value) {
-  return String(value ?? "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/['']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { slugify as normalize } from "../engine/action/text.js";
 
 function itemSlug(item) {
   return normalize(

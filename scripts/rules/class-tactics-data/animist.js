@@ -15,6 +15,38 @@ export const ANIMIST_CLASS_TACTIC = {
     },
   };
 
+// 13 of the 17 practices/apparitions ("crafter-in-the-vault" through "witness-to-ancient-battles")
+// are byte-identical copies of one template -- previously each repeated its full roles/reason
+// verbatim. Liturgist/Medium/Seer/Shaman are each unique and stay as literal entries.
+function expandApparitionTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = { classSlug: "animist", spell: template.spell, roles: template.roles, reason: template.reason, label };
+  }
+  return entries;
+}
+
+const CHOSEN_APPARITION_TACTIC = {
+  spell: 6,
+  roles: { buff: 6, control: 8, debuff: 6, summon: 6 },
+  reason: "Chosen apparition favors spirit magic over filler attacks.",
+  members: [
+    ["crafter-in-the-vault", "Crafter in the Vault"],
+    ["custodian-of-groves-and-gardens", "Custodian of Groves and Gardens"],
+    ["echo-of-lost-moments", "Echo of Lost Moments"],
+    ["impostor-in-hidden-places", "Impostor in Hidden Places"],
+    ["lurker-in-devouring-dark", "Lurker in Devouring Dark"],
+    ["monarch-of-the-fey-courts", "Monarch of the Fey Courts"],
+    ["reveler-in-lost-glee", "Reveler in Lost Glee"],
+    ["shepherd-of-errant-winds", "Shepherd of Errant Winds"],
+    ["speaker-in-sibilance", "Speaker in Sibilance"],
+    ["stalker-in-darkened-boughs", "Stalker in Darkened Boughs"],
+    ["steward-of-stone-and-fire", "Steward of Stone and Fire"],
+    ["vanguard-of-roaring-waters", "Vanguard of Roaring Waters"],
+    ["witness-to-ancient-battles", "Witness to Ancient Battles"],
+  ],
+};
+
 export const ANIMIST_SUBCLASS_TACTICS = {
   "liturgist": {
     "classSlug": "animist",
@@ -66,160 +98,5 @@ export const ANIMIST_SUBCLASS_TACTICS = {
     "reason": "Shaman practice favors spirits, summons, and control.",
     "label": "Shaman"
   },
-  "crafter-in-the-vault": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Crafter In The Vault"
-  },
-  "custodian-of-groves-and-gardens": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Custodian Of Groves And Gardens"
-  },
-  "echo-of-lost-moments": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Echo Of Lost Moments"
-  },
-  "impostor-in-hidden-places": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Impostor In Hidden Places"
-  },
-  "lurker-in-devouring-dark": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Lurker In Devouring Dark"
-  },
-  "monarch-of-the-fey-courts": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Monarch Of The Fey Courts"
-  },
-  "reveler-in-lost-glee": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Reveler In Lost Glee"
-  },
-  "shepherd-of-errant-winds": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Shepherd Of Errant Winds"
-  },
-  "speaker-in-sibilance": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Speaker In Sibilance"
-  },
-  "stalker-in-darkened-boughs": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Stalker In Darkened Boughs"
-  },
-  "steward-of-stone-and-fire": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Steward Of Stone And Fire"
-  },
-  "vanguard-of-roaring-waters": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Vanguard Of Roaring Waters"
-  },
-  "witness-to-ancient-battles": {
-    "classSlug": "animist",
-    "spell": 6,
-    "roles": {
-      "buff": 6,
-      "control": 8,
-      "debuff": 6,
-      "summon": 6
-    },
-    "reason": "Chosen apparition favors spirit magic over filler attacks.",
-    "label": "Witness To Ancient Battles"
-  }
+  ...expandApparitionTactics(CHOSEN_APPARITION_TACTIC),
 };

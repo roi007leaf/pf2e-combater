@@ -1,8 +1,8 @@
+# PF2e Combater – Tactical Turn Planner And Executioner
+
 [![Latest Version](https://img.shields.io/github/v/release/roi007leaf/pf2e-combater?display_name=tag&sort=semver&label=Latest%20Version)](https://github.com/roi007leaf/pf2e-combater/releases/latest)
 
 [![GitHub all releases](https://img.shields.io/github/downloads/roi007leaf/pf2e-combater/total)](https://github.com/roi007leaf/pf2e-combater/releases)
-
-# PF2e Combater – Tactical Turn Planner And Executioner
 
 PF2e Combater is a floating combat advisor for Foundry VTT's Pathfinder 2e system. It reads the
 acting creature's real options — strikes, spells, feats, generic actions — together with the
@@ -13,13 +13,13 @@ players plan their own turns.
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf)
 
 ---
+
 <img width="1712" height="1115" alt="image" src="https://github.com/user-attachments/assets/24d3aecb-0fe5-4b94-bd71-024ba41555f6" />
 <img width="1907" height="1022" alt="image" src="https://github.com/user-attachments/assets/2a7b22aa-0ec2-472b-9865-8d74b55802ed" />
 <img width="1886" height="1108" alt="image" src="https://github.com/user-attachments/assets/d310dd82-6024-4693-b6f9-3e62a27f2a9f" />
 <img width="747" height="381" alt="image" src="https://github.com/user-attachments/assets/15ec9258-a9f0-4884-aed2-fcf4e05088d6" />
 <img width="852" height="926" alt="image" src="https://github.com/user-attachments/assets/a226ba6d-b0d7-449e-88bf-36047c8b7ab7" />
 <img width="1533" height="773" alt="image" src="https://github.com/user-attachments/assets/52a8f8d5-f4ba-44dd-b82e-15b656a99270" />
-
 
 ## ✨ What it does
 
@@ -28,23 +28,35 @@ players plan their own turns.
   the creature can actually do this turn.
 - **Auto-fill.** One click builds a sensible turn from the highest-value actions and fits it to the
   action economy — moving into reach, attacking, casting, or repositioning as the situation calls
-  for.
+  for. Shift-click it to discard the current draft and rebuild a whole new plan from scratch. The
+  shuffle-icon counter next to it cycles through the next-best ranked alternative plans (right-click
+  to go back) — that cycling is what the rest of this doc calls **Shuffle**.
 - **Real action sources.** Options are read from the actor itself, not a fixed list:
   - **Strikes** (melee and ranged), with the multiple attack penalty accounted for — and a
     per-strike MAP button to pin a level when an ability keeps MAP flat across attacks.
   - **Spells** — curated catalog plus inferred classification (damage, save, area, control,
     healing, buff…), respecting slots, focus points, and prepared/spontaneous/innate entries.
+    Wands, scrolls, and spell gems with a stored spell show up as real castable actions too,
+    tracked against their own charges or quantity.
   - **Generic & skill actions** (Stride, Step, Demoralize, Trip, Grapple, Recall Knowledge, …),
     gated by whether they're usable right now.
   - **Class & system feats/actions** detected from the actor's items.
 - **Move-and-strike composites.** When a target is a stride or two away, the planner offers
   combined "Stride → Strike" (and "Stride → Stride → Strike") plays, with the destination computed
-  to land in reach.
+  to land in reach — plus Step-first and Stand-first variants, and Stride into a multiattack
+  ability, for the actions that support them.
 - **Positional tactics (GM NPCs).** Recommends **Skirmish/Kite** (optional melee → stride out of
   threat → ranged Strike or offensive spell) and **Flank-and-Strike** (stride to a flanking square
   for an off-guard hit) when the situation favors them.
 - **Situational remedies.** A dedicated section surfaces condition responses only when they apply —
-  Stand / Crawl while prone, Retch while sickened, Escape while grabbed/restrained.
+  Stand / Crawl while prone, Retch while sickened (the GM sets the sickened Fortitude DC, the player
+  rolls, and the GM rules the outcome over a synced "waiting for the GM" hand-off), Escape while
+  grabbed/restrained.
+- **Action favorites.** Star an action in Browse to pin it into a dedicated Favorites section, and
+  drag to reorder your favorites — saved per user, per actor.
+- **Uncounted actions.** Multi-step activities such as Sudden Charge's Stride-Stride-Strike run
+  alongside the main plan without spending the 3-action budget or slot tracking, and each still
+  executes and reverts independently.
 - **Weapon & position handling.** Draw, **Sheathe**, Release (drop), and Reload for the right
   weapons; a 1-action Drop Prone when it helps.
 - **GM aggro targeting.** For GM-run NPCs, the planner weighs which player character is the best
@@ -53,9 +65,32 @@ players plan their own turns.
   (Boss, Lieutenant, Minion, Brute, Skirmisher, Artillery, Controller, Defender, Support), a
   temperament (Aggressive, Cautious, Opportunist, Berserker, Coward), and optional custom priorities.
   Auto-fill and Shuffle use that profile when ranking actions and choosing targets.
-- **Recall Knowledge Intel.** GMs can reveal individual NPC facts — traits, save DCs, weaknesses,
-  resistances, and immunities — and players can inspect only those revealed facts. Player Auto-fill
-  and Shuffle use revealed Intel, but never unrevealed defenses.
+- **Player tactic roles.** Character actors get their own tactic chip with PC-facing roles — Melee
+  Striker, Ranged Striker, Spell Damage, Healer, Buffer, Debuffer, Defender, Support, and Skirmisher.
+  Picking a role changes which whole plans Auto-fill and Shuffle prefer, not just individual action
+  scores (e.g. Melee Striker can promote a Stride-into-melee plan over a higher raw-score bow shot).
+  Players don't get the NPC-only roles, temperament, or custom sliders.
+- **Recall Knowledge Intel.** Players roll one secret d20 to attempt Recall Knowledge; the GM sees the
+  degrees of success across every applicable skill/Lore DC and chooses the outcome, then can mark
+  individual facts — traits, save DCs, weaknesses, resistances, and immunities — as revealed on the
+  NPC, either as **exact** numbers or level-scaled **Low/Mid/High bands**. Players can inspect only
+  those revealed facts, and Player Auto-fill/Shuffle use revealed Intel but never unrevealed defenses.
+- **Intel misinformation.** On a Critical Failure, the GM can instead reveal prepared false
+  information for that category (a wrong trait, save, weakness, etc.) instead of the real fact.
+  Misinformation displays as ordinary truth to players — no false marker — while GMs still see it
+  flagged. Auto-fill, Best target, and planner scoring only ever use real facts, never planted false
+  ones.
+- **Plan preference learning.** Thumbs-up/down a visible plan to teach Auto-fill and Shuffle which
+  complete turn sequences you like. Ratings are local per user and actor and give future rankings a
+  capped, predictable nudge for similar actions, roles, and ordering — they never touch actor data or
+  PF2e rules.
+- **Native Roll-Context Preflight.** A chip on supported actions previews what PF2e's live check
+  context would say before you roll it — Hit/Success chance or the named check modifier — using only
+  the target information you're allowed to know. GMs always see it; showing it to players is an
+  opt-in world setting, off by default, and it never changes Auto-fill's ranking.
+- **Best target chip.** Each scored action names the combatant recommendation scoring picked for it.
+  A normal target-button click still uses your current Foundry target; Shift-click commits the scored
+  Best target directly.
 - **Companion/minion support.** Command an Animal appears when a commandable companion, familiar, or
   minion is detected, and its recommendation can show the two-action minion subturn it is trying to
   set up.
@@ -84,6 +119,8 @@ players plan their own turns.
 
 - Run the plan **step by step**, or each step on its own. Strikes read your current target; moves
   go to the planned destination; spells cast through the system.
+- **Drag to reorder** a planned step — grouped composites move as one block — or **duplicate** a
+  step to clone it (including its target, weapon, and MAP overrides) right after the original.
 - **Revert** a completed step's real effect — movement returns the token, Stand re-applies prone,
   area actions delete their template — and **Reset** undoes the whole turn in reverse. Effects that
   can't be safely auto-undone (e.g. a condition applied to another token) are flagged for manual
@@ -99,7 +136,9 @@ players plan their own turns.
 - GMs can save an NPC tactic profile as an **actor default** for every copy of that creature, or as a
   **token override** when one battlefield copy should behave differently.
 - GMs reveal Recall Knowledge Intel from the NPC's Combater panel. The Intel ledger is saved on the
-  NPC actor, so the same creature keeps those revealed facts in later combats.
+  NPC actor, so the same creature keeps those revealed facts in later combats. **Reset RK Attempts**
+  in the same editor clears every actor's attempt history and failure blocks for that NPC, restoring
+  first-attempt DCs.
 - Players see revealed NPC Intel from their own Combater panel's **Intel** button, the brain button
   on visible NPC combat tracker rows, or by clicking an NPC target label inside a suggested/drafted
   step. Players never get the GM editor and never see unrevealed NPC facts.
@@ -110,7 +149,7 @@ players plan their own turns.
 
 > **🚧 Work in progress.** The **Auto-fill planner**, **NPC tactic personality**, and **GM
 > aggro/target-picking engine** are actively evolving. The exact scores, weights, and heuristics
-> below are current-but-not-final and *will* change as they're tuned — treat the numbers as
+> below are current-but-not-final and _will_ change as they're tuned — treat the numbers as
 > illustrative, not a contract. Feedback, disagreements, and "it picked a weird turn here" reports
 > are genuinely wanted: please
 > [open an issue](https://github.com/roi007leaf/pf2e-combater/issues) with the situation.
@@ -130,7 +169,7 @@ Every option starts from a base value by how confidently it's understood (curate
 generic action), then gets adjusted for the actual situation:
 
 - **Disqualified outright** (never suggested) when there's no valid target, the target is out of
-  range, the target is *immune* to the effect, or the action would be redundant (a buff the target
+  range, the target is _immune_ to the effect, or the action would be redundant (a buff the target
   already has, an aura that's already up, an untrained skill).
 - **Rewarded** for expected impact: a Strike that's in range and hits hard, useful movement, setup
   that enables a payoff, and good action economy. GM-run NPCs can also use full hidden defenses and
@@ -170,54 +209,63 @@ That splits the scoring into two honest modes:
 ### The numbers, roughly
 
 **Every** action the creature has lands in exactly one "source" bucket, and the bucket sets the
-starting score. The bucket reflects *how confidently Combater understands the action*, not how good it
+starting score. The bucket reflects _how confidently Combater understands the action_, not how good it
 is — it's just a small tie-breaking prior. The situational math below (a Strike in range is already
 `+24`, damage adds up to `+40`, etc.) easily overturns it, and a great-fit action from a low bucket
 beats a poor-fit one from a high bucket every time.
 
-| Source bucket | Base | What falls here |
-| --- | --- | --- |
-| `spell-curated` | **50** | A spell in the hand-tuned catalog (known role, targeting, save profile). |
-| `custom-curated` | **48** | An actor-specific action Combater recognizes (a class feature/impulse). |
-| `strike` | **46** | Any weapon or unarmed Strike read off the actor. |
-| `system-inferred` | **44** | A non-spell action recognized by pattern (feats, system actions). |
-| `spell-inferred` | **44** | A spell auto-classified by pattern (damage / save / area / buff / heal…). |
-| `generic` | **42** | The basic actions — Stride, Step, Demoralize, Trip, Grapple, Seek… |
-| *(anything else)* | **20** | The fallback: a spell that couldn't be classified at all (`spell-unknown`) or any action with an unrecognized source. Still offered, just ranked cautiously. |
+| Source bucket     | Base   | What falls here                                                                                                                                              |
+| ----------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `spell-curated`   | **50** | A spell in the hand-tuned catalog (known role, targeting, save profile).                                                                                     |
+| `custom-curated`  | **48** | An actor-specific action Combater recognizes (a class feature/impulse).                                                                                      |
+| `strike`          | **46** | Any weapon or unarmed Strike read off the actor.                                                                                                             |
+| `system-inferred` | **44** | A non-spell action recognized by pattern (feats, system actions).                                                                                            |
+| `spell-inferred`  | **44** | A spell auto-classified by pattern (damage / save / area / buff / heal…).                                                                                    |
+| `generic`         | **42** | The basic actions — Stride, Step, Demoralize, Trip, Grapple, Seek…                                                                                           |
+| _(anything else)_ | **20** | The fallback: a spell that couldn't be classified at all (`spell-unknown`) or any action with an unrecognized source. Still offered, just ranked cautiously. |
 
-So there's no spell or action that gets *ignored* — unrecognized ones simply start at **20** and rise
+So there's no spell or action that gets _ignored_ — unrecognized ones simply start at **20** and rise
 or fall on their situational fit like everything else.
 
 Beyond the base, a few of the actual values the engine uses (🔒 = hidden-knowledge factor: GM-only
 by default; player auto-fill uses it only when the exact matching Recall Knowledge Intel is revealed):
 
-| Factor | Effect on score |
-| --- | --- |
-| Base value (by source) | see the source table above |
-| Strike is in range/reach | **+24** |
-| Strike damage (your own weapon) | `min(avg damage × 2, 40)` |
-| 🔒 Target **weakness** to the damage type | `+min(weakness × 4, 45)` |
-| 🔒 Target **resistance** | `−min(resistance × 3, 35)` |
-| 🔒 Target **immunity** | **−70** (effectively removes it) |
-| 🔒 Save spell vs target's save DC | expected-damage multiplier (see below) |
-| 🔒 Skill action vs target's defense DC | **degree-of-success** delta from your skill **modifier** vs the target's Will/Reflex/Fort/Perception DC (Demoralize→Will, Trip/Disarm/Tumble Through→Reflex, Grapple/Shove/Reposition→Fort, Feint/Create a Diversion→Perception). A likely **critical** success is worth extra (crit Demoralize = frightened 2, etc.); a likely crit failure costs. |
-| 🔒 Incapacitation spell vs a much higher-level target | resistance modeled — a target of more than **twice the spell's rank** saves one degree better, so hard control (Slow, Paralyze…) is scored down against over-leveled foes |
-| 🔒 Poor skill odds (< 35% success) | `−4` |
-| Untrained (proficiency rank 0) in the skill | `−6`, and the action is hidden entirely if *Hide untrained skill actions* is on |
-| Untrained Athletics for a melee maneuver (own skill) | `−80` (PC) / `−42` (NPC), `−110` for a primary spellcaster; low Athletics (mod < 5) `−12` |
-| Multiple attack penalty (2nd / 3rd attack) | `−15 / −30` (agile: `−12 / −24`) |
-| Target is **hidden** (detected only by an imprecise sense) | attack-like actions have their target-dependent gain discounted **50%**, since a DC 11 flat check can fail before the attack roll or save even matters. Not GM-only — your own creature's detection of the target isn't a hidden enemy stat. |
-| Heal when you or an ally is **injured** (< 50% HP) | `+34`; if nobody is hurt, `−10` (don't waste the spell) |
-| Area spell hits **multiple** enemies | `+34 + 18 per enemy`; a single enemy in the blast `+14`; **no** enemy in it `−28` |
-| An **ally** caught in your area | `−18 each`; a clean placement that hits 2+ enemies and no allies `+8` |
-| 🔒 Debuff spell on an enemy | `+20` |
-| Setup that enables a follow-up (Feint, Recall, etc.) | `+20`, or `+28` if it specifically sets up **precision damage** (sneak attack) |
-| Draw a weapon then Strike | `+82` if nothing else is in reach, `+18` if an in-hand Strike is already available, `−40` if still out of range after drawing |
-| Stand up while prone | **+18**, `+22` if an enemy is in melee |
-| Stride/Step that actually closes distance | Stride `+8`, Step `+4` |
-| Move toward a target already in reach | forced to **−10** (won't pad the turn) |
-| Volley weapon fired inside its volley range | **−10** |
-| Leftover unused action | `−1` each (nudges toward a full turn) |
+| Factor                                                     | Effect on score                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Base value (by source)                                     | see the source table above                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Strike is in range/reach                                   | **+24**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Strike damage (your own weapon)                            | `min(avg damage × 2, 40) + avg damage × 0.25` (small uncapped tiebreaker)                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 🔒 Target **weakness** to the damage type                  | `+min(weakness × 4, 45)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 🔒 Target **resistance**                                   | `−min(resistance × 3, 35)`, plus a further **−18** if it would absorb most of the expected damage                                                                                                                                                                                                                                                                                                                                                                                          |
+| 🔒 Target **immunity**                                     | **−70** (effectively removes it)                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 🔒 Save spell vs target's save DC                          | an odds multiplier from the save-outcome distribution feeds a larger formula (roughly `(multiplier−0.7)×34 + min(36, avg damage×multiplier×0.7)`); curated "save-damage" spells also carry their own **+34/+52** base on top                                                                                                                                                                                                                                                               |
+| 🔒 Skill action vs target's defense DC                     | **degree-of-success** delta from your skill **modifier** vs the target's Will/Reflex/Fort/Perception DC (Demoralize→Will, Trip/Disarm/Tumble Through→Reflex, Grapple/Shove/Reposition→Fort, Feint/Create a Diversion→Perception), on top of a per-action flat bonus (Demoralize +22, Feint/Trip +18, Grapple +16, Tumble Through +14, Reposition/Shove +12, Disarm +10). A likely **critical** success is worth extra (crit Demoralize = frightened 2, etc.); a likely crit failure costs. |
+| 🔒 Incapacitation spell vs a much higher-level target      | resistance modeled — a target of more than **twice the spell's rank** saves one degree better, so hard control (Slow, Paralyze…) is scored down against over-leveled foes                                                                                                                                                                                                                                                                                                                  |
+| 🔒 Poor skill odds (< 35% success)                         | `−4`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Untrained (proficiency rank 0) in the skill                | `−6`, and the action is hidden entirely if _Hide untrained skill actions_ is on                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Untrained Athletics for a melee maneuver (own skill)       | `−80` (PC) / `−42` (NPC), `−110` for a primary spellcaster; low Athletics (mod < 5) `−36` (spellcaster) / `−12` (other); no Athletics data at all `−70` (spellcaster) / `−20` (other); wizard-like spellcasters eat a further flat `−12` on top                                                                                                                                                                                                                                            |
+| Multiple attack penalty (2nd / 3rd attack)                 | `−15 / −30` (agile: `−12 / −24`)                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Target is **hidden** (detected only by an imprecise sense) | attack-like actions have their target-dependent gain discounted **50%**, since a DC 11 flat check can fail before the attack roll or save even matters. Not GM-only — your own creature's detection of the target isn't a hidden enemy stat.                                                                                                                                                                                                                                               |
+| Heal when you or an ally is **injured** (< 50% HP)         | `+34`; if nobody is hurt, `−10` (don't waste the spell)                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Area spell hits **multiple** enemies                       | `+34 + 18 per enemy`; a single enemy in the blast `+14`; **no** enemy in it `−28`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| An **ally** caught in your area                            | `−18 each`; a clean placement that hits 2+ enemies and no allies `+8`; a separate flat `−18` "friendly fire risk" also applies whenever any ally is within 20 ft, regardless of the actual blast math                                                                                                                                                                                                                                                                                      |
+| 🔒 Debuff spell on an enemy                                | `+20` base, plus a further `+42` (applies a condition) or `+32` (no condition) from a second pass — a typical single-target debuff spell nets roughly **+52 to +62**, not a flat +20                                                                                                                                                                                                                                                                                                       |
+| Setup that enables a follow-up (Feint, Recall, etc.)       | `+20`, or `+28` if it specifically sets up **precision damage** (sneak attack)                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Draw a weapon then Strike                                  | `+82` if nothing else is in reach, `+18` if an in-hand Strike is already available, `−40` if still out of range after drawing                                                                                                                                                                                                                                                                                                                                                              |
+| Stand up while prone                                       | **+18**, `+22` if an enemy is in melee, plus `+14` more if standing unlocks a Stride/Step toward an otherwise out-of-reach enemy — all three can stack to `+54`                                                                                                                                                                                                                                                                                                                            |
+| Stride/Step that actually closes distance                  | Stride `+8`, Step `+4`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Move toward a target already in reach                      | forced to **−10** (won't pad the turn)                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Volley weapon fired inside its volley range                | **−10**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Leftover unused action                                     | `−1` each (nudges toward a full turn)                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+
+This table isn't exhaustive — dozens of smaller per-action, per-role, and per-class bonuses exist
+beyond what's itemized here. On top of everything above, several more additive layers apply to every
+candidate: **class-specific tactical tuning** (bespoke adjustments per PF2e class and subclass),
+**NPC signature-ability families** (breath weapon, grab-into-swallow-whole, aura, recharge, and
+similar kit-specific bonuses, GM-only), the **NPC tactic personality** and **player tactic role**
+adjustments described below, and each user's own **learned plan preference**. A multi-action spell or
+attack also gets roughly **+55 per extra action** committed to it (or **+20** for a single-hit area
+spell), so it isn't out-scored by cheap one-action filler.
 
 Hard limits: max **2** Strike steps per plan, an action budget of **3** (± Slowed / Stunned /
 Quickened), and a Quickened action may only be a Strike or Stride.
@@ -228,35 +276,43 @@ than trading blows.
 
 ### 🎯 The aggro engine: which target is worth hitting 🔒
 
-Everything above scores *actions*. The **aggro engine** answers the other half — *who* to point them
+Everything above scores _actions_. The **aggro engine** answers the other half — _who_ to point them
 at — and it's **GM-only, for the NPCs a GM runs**. When a player auto-fills, aggro contributes
 **nothing** (it would require reading party members' kits), so this whole layer is skipped.
 
 For each possible target, the engine builds an **aggro profile** by reading that creature's kit — the
-slugs, names, and traits of its spells, feats, and actions (identity fields only, not the rules prose,
-so a description that merely *mentions* a condition doesn't trip a false match) — and matching them
-against role cue-words. Each role a target fills adds to its priority:
+slugs, names, and traits of its spells, feats, actions, and relevant equipment (weapons, armor,
+consumables count toward Healer cues) — identity fields only, not the rules prose, so a description
+that merely _mentions_ a condition doesn't trip a false match — and matching them against role
+cue-words. Each role a target fills adds to its priority:
 
-| Target role | Priority | How it's detected |
-| --- | --- | --- |
-| **Finisher target** — nearly down | `+24` (`+34` at ≤ 20% HP) | HP ≤ 35%, or **dying** (not the *wounded* counter, which can sit on a full-HP creature) |
-| **Immediate threat** — in your face | `+10` (`+18` at ≤ 5 ft) | within 10 ft |
-| **Healer** | `+42` | kit has heal / lay on hands / battle medicine / restore… |
-| **Controller** | `+26` | kit has slow / fear / grapple / wall / command… |
-| **Caster** | `+18` + `2 per spell` (max `+12`) | has spells or a spellcasting entry |
-| **Main attacker** | `+8`, scaled by stacked offense (`+3` per weapon, `+4` per damage feat/impulse/spell, capped) | so a glass-cannon striker outranks a one-weapon mook, instead of everyone with a weapon reading the same |
-| **Main defender** | `+18` | AC a clear margin **above the average of the other targets** in the fight (whoever's hardest to hit *here*), or shield/guardian/intercept cues |
+| Target role                         | Priority                                                                                                     | How it's detected                                                                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Finisher target** — nearly down   | `+24` (`+34` at ≤ 20% HP)                                                                                    | HP ≤ 35%, or **dying** (not the _wounded_ counter, which can sit on a full-HP creature)                                                                                                    |
+| **Immediate threat** — in your face | `+10` (`+18` at ≤ 5 ft)                                                                                      | within 10 ft                                                                                                                                                                               |
+| **Healer**                          | `+42`                                                                                                        | kit has heal / lay on hands / battle medicine / restore…                                                                                                                                   |
+| **Controller**                      | `+26`                                                                                                        | kit has slow / fear / grapple / wall / command…                                                                                                                                            |
+| **Caster**                          | `+18` + `2 per spell` (max `+12`)                                                                            | has spells or a spellcasting entry                                                                                                                                                         |
+| **Main attacker**                   | `+8`, scaled by stacked offense (`+3` per weapon, `+4` per damage feat/impulse/spell, capped at `+28` total) | so a glass-cannon striker outranks a one-weapon mook, instead of everyone with a weapon reading the same                                                                                   |
+| **Main defender**                   | `+18`                                                                                                        | AC a clear margin **above the average of the other targets** in the fight — needs at least 2 other targets with a known AC, otherwise only shield/guardian/intercept kit cues can grant it |
 
 Then the target's priority is **weighted by the action you'd use on it**, so the engine spends the
-*right tool* on the *right enemy*:
+_right tool_ on the _right enemy_:
 
-- **Caster / controller** → control, debuff, and grab actions are worth **~1.7–1.8×**, plain damage
-  only **~0.8×** — shut the dangerous ones down rather than chip their HP.
+- **Caster** → control/debuff/grab actions are worth **×1.8**, plain damage only **×0.8** — shut
+  casters down rather than chip their HP.
+- **Controller** → control/debuff/grab **×1.7**, plain damage **×0.75**.
 - **Finisher target** → control/debuff **×4**, everything else **×1.15** — lock in the kill.
 - **Main defender (the tank)** → almost everything is **discouraged** (`×−0.45`), only control
   `×0.35` — don't waste swings on the wall built to eat them.
-- **Immediate threat** → a mild damper (`×0.65`) so the NPC isn't tunnel-visioned on whoever's
-  adjacent.
+- **Immediate threat** → a mild damper on non-control actions (`×0.65`), a smaller one on control
+  (`×0.8`) — so the NPC isn't tunnel-visioned on whoever's adjacent.
+- **Healer** → non-control actions **×1.1**, control/debuff **×0.9**.
+- **Main attacker** → non-control actions **×0.85**, control/debuff/grab **×0.75**.
+
+On top of these multipliers, the NPC's **tactic personality** (below) adds its own separate, additive
+target weighting — e.g. an Artillery NPC gets a further `+10` toward casters and healers and `−10`
+away from tanks, stacked on top rather than replacing any of this.
 
 The finisher and immediate-threat cues need no hidden data, but because the whole layer only runs for
 **GM-controlled NPCs**, players never see or benefit from any of it.
@@ -265,49 +321,70 @@ The finisher and immediate-threat cues need no hidden data, but because the whol
 
 For NPC turns, the tactic chip can stay on **Auto** or be set manually. Auto infers a role and
 temperament from the NPC's sheet and the current fight: ranged strikes and combat spells lean
-Artillery, healing and ally buffs lean Support, heavy melee and grab tools lean Brute, shield/guard
-tools lean Defender, level gaps can imply Boss or Minion, and low HP or melee pressure can shift the
-temperament.
+Artillery, healing and ally buffs lean Support, heavy melee leans Brute while grab/control tools lean
+Controller, shield/guard tools lean Defender, level gaps can imply Boss, Lieutenant, or Minion, and HP,
+damage type, mobility, and reaction cues in the kit can shift the temperament toward Berserker,
+Coward, Opportunist, Aggressive, or Cautious.
 
 Manual presets override that inference. The role and temperament then add action and target weights:
 Bosses favor high-impact turns, Artillery favors ranged/spell pressure, Defenders value protection and
 control, Support values allies, Aggressive creatures push damage, Cautious creatures value survival,
-and Opportunists chase openings. The optional **Customize preset** layer exposes sliders for action
-style and target style, such as finishing wounded enemies, pressuring casters/healers/controllers,
-avoiding hard defenders, or preferring the nearest reachable enemy.
+and Opportunists chase openings. The optional **Customize preset** layer exposes six action-style
+sliders (damage, survival, control, mobility, support, reaction) and six target-style sliders —
+finishing wounded enemies, pressuring casters/healers/controllers, punishing immediate threats,
+avoiding hard defenders, preferring the nearest reachable enemy, or preferring a marked objective
+target.
+
+NPCs also get a separate, kit-specific bonus layer independent of role and temperament: signature
+abilities such as a breath weapon, a grab-into-swallow-whole combo, an aura, a recharge mechanic, or a
+troop/trample action each carry their own tactical weighting, GM-only.
 
 These profiles never change PF2e legality or creature stats. They only bias which legal plan Auto-fill
 and Shuffle prefer.
+
+### Player tactic roles: steering your own character
+
+Character actors get the same tactic chip, scoped to a smaller PC-facing role list: **Auto, Melee
+Striker, Ranged Striker, Spell Damage, Healer, Buffer, Debuffer, Defender, Support, Skirmisher.** There's
+no temperament or custom sliders on the player side — just the role.
+
+The role reorders whole candidate plans, not just individual action scores: Melee Striker can promote
+a Stride-into-melee plan over a higher-scoring bow shot, and Spell Damage prefers offensive spells over
+weapon Strikes. Debuffer is fully independent of the others; Healer, Buffer, and Support overlap by
+design (a Support plan bonus can also favor a Healer- or Buffer-shaped turn), so don't expect those
+three to be perfectly separate dials. An explicit Healer role also keeps healing options visible even
+when the whole party is healthy — Auto-fill's normal "nobody needs it" guard becomes a soft preference
+instead of a hard hide (missing Medicine training and other hard gates still apply).
 
 ### Worked examples
 
 **"Swing twice, or hit and run?"** — Fighter with a non-agile weapon (avg 11 damage), one goblin in
 reach, three actions.
 
-- Strike #1 ≈ `46 + 24 + 22` = **92**
-- Strike #2 = `92 − 15` (MAP) = **77**
+- Strike #1 ≈ `46 + 24 + 24.75` (damage term includes its small tiebreaker) ≈ **95**
+- Strike #2 ≈ `95 − 15` (MAP) ≈ **80**
 - A third Strike is blocked (2-Strike cap), so the last action goes to the next-best legal option —
   Raise a Shield, Demoralize the goblin, or Stride to a second enemy.
 - Result: **Strike → Strike → Demoralize**, not three flailing swings.
 
-**"Which damage type?"** 🔒 *(GM-run NPC)* — an enemy caster with both a fire and a cold spell,
+**"Which damage type?"** 🔒 _(GM-run NPC)_ — an enemy caster with both a fire and a cold spell,
 targeting a PC with **fire weakness 5**.
 
 - Fire spell: `+min(5 × 4, 45)` = **+20**
-- Cold spell (no weakness): **+0** → the fire spell is picked. If the PC were fire-*immune*, the fire
+- Cold spell (no weakness): **+0** → the fire spell is picked. If the PC were fire-_immune_, the fire
   spell takes **−70** and drops out of consideration entirely.
 - When that **PC** plans their own turn, they get no such adjustment against enemies unless the GM has
   revealed the matching weakness, resistance, or immunity as Recall Knowledge Intel.
 
-**"Is the save spell worth it?"** 🔒 *(GM-run NPC)* — an enemy caster's Fireball (basic Reflex) at a
+**"Is the save spell worth it?"** 🔒 _(GM-run NPC)_ — an enemy caster's Fireball (basic Reflex) at a
 PC. The engine rolls the PC's save against the spell DC across all 20 die faces and weights the
 outcomes:
 `multiplier = P(crit fail) × 2 + P(fail) × 1 + P(success) × 0.5`. A weak-save target pushes the
-multiplier up (bigger odds bonus *and* bigger expected-damage bonus); a strong-save target drags it
+multiplier up (bigger odds bonus _and_ bigger expected-damage bonus); a strong-save target drags it
 below a plain Strike. For a **player**, this comparison only happens if the GM revealed that exact
 save DC as Recall Knowledge Intel; otherwise the save spell is scored on its base value alone.
 
-**"Is Demoralize worth an action?"** 🔒 *(GM-run NPC)* — an NPC deciding between Demoralize
+**"Is Demoralize worth an action?"** 🔒 _(GM-run NPC)_ — an NPC deciding between Demoralize
 (Intimidation) on two PCs. The engine rolls the Intimidation modifier against each PC's **Will DC**
 across all 20 die faces and weights the **degrees of success** — a critical success (frightened 2)
 counts extra, a critical failure counts against it. Against a low-Will PC that means frequent
@@ -318,24 +395,26 @@ the modifier drives the odds. For a **player**, target DC math only turns on for
 so unrevealed DCs stay out of scoring.
 
 **"Buffs, but only useful ones."** — Heroism on a martial ally: `12 (ally) + 24 (attack buff on a
-martial)` = **+36**. The *same* ally who already has Heroism: **−60** → never suggested. A wounded
-ally under fire nudges it up a further `+14`. (This one works for players too — it reads *ally* class
-and buff state, not hidden enemy stats.)
+martial)` from the recipient math, plus a further `min(24, 6 + attackers × 4)` from a second,
+role-specific pass — roughly **+50** with two living allies, not a flat +36. The _same_ ally who
+already has Heroism stacks two separate penalties down to roughly **−96**, not −60 — never suggested
+either way. A wounded ally under fire nudges it up a further `+14`. (This one works for players too —
+it reads _ally_ class and buff state, not hidden enemy stats.)
 
 **"Heal now, or keep swinging?"** — a cleric with a Heal spell. If nobody is below half HP, the Heal
-takes `−10` and a Strike wins. The moment the cleric *or* an ally drops under 50%, Heal gains `+34` and
+takes `−10` and a Strike wins. The moment the cleric _or_ an ally drops under 50%, Heal gains `+34` and
 jumps ahead — and if a party member is **dying**, the healing role is prioritized outright. (Reads
-*ally* HP, not hidden enemy stats, so it works for players too.)
+_ally_ HP, not hidden enemy stats, so it works for players too.)
 
-**"Fireball placement."** 🔒 *(GM-run NPC)* — a caster's Fireball. Two PCs clustered with no allies
+**"Fireball placement."** 🔒 _(GM-run NPC)_ — a caster's Fireball. Two PCs clustered with no allies
 nearby: `34 + 18 × 2` = **+70**, plus the Reflex-save math. Drag the same blast so it also clips an
 NPC ally: each ally in the radius is `−18`, quickly dropping it below a single-target spell — so the
 engine prefers the clean placement.
 
-**"Who do I hit?"** 🔒 *(GM-run NPC)* — a monster faces a fighter (AC 26, sword) and an enemy cleric
+**"Who do I hit?"** 🔒 _(GM-run NPC)_ — a monster faces a fighter (AC 26, sword) and an enemy cleric
 (spells, a Heal). The cleric profiles as **healer + caster** (`42 + ~20`), the fighter as
 **main-defender + main-attacker**. A damaging Strike aimed at the cleric keeps most of that priority,
-but aimed at the tank it's *multiplied by −0.45* — so the engine steers the attack at the healer. Had
+but aimed at the tank it's _multiplied by −0.45_ — so the engine steers the attack at the healer. Had
 the monster a **Slow** spell, it'd weight even harder toward the caster (control ×1.8). Whenever a PC
 drops to dying, that PC lights up as a **finisher target** and jumps the queue.
 
@@ -353,6 +432,7 @@ editable, and **Browse** lets you build the turn by hand instead.
 
 - Foundry VTT **v14**
 - Pathfinder 2e system
+- socketlib module enabled in the world
 
 ## 🔌 Installation
 
@@ -368,6 +448,28 @@ editable, and **Browse** lets you build the turn by hand instead.
 - Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself, then execute.
 - On an NPC turn, use the **Tactic** chip to set monster behavior and the **Intel** chip to reveal
   Recall Knowledge facts players are allowed to use.
+
+---
+
+## ⚙️ Settings
+
+Configurable from Foundry's module settings:
+
+- **Auto-open on turn start** — open the Combater panel automatically when a combatant's turn starts.
+- **Compact by default** — open new panels in compact mode before any saved panel state exists.
+- **Remember panel position** — save the floating panel's screen position per client.
+- **Enable spell recommendations** — include curated spells in recommended full-turn plans.
+- **Hide untrained skill actions** — hide skill actions the combatant isn't trained in.
+- **Show unknown custom actions in alternatives** — surface actor actions Combater detects but can't
+  tactically score, instead of hiding them.
+- **Hide Auto-fill from players** — remove the Auto-fill button for players so they plan their own
+  turn instead of accepting the generic recommendation; the GM still sees it.
+- **Show PF2e check previews to players** — let players see Native Roll-Context Preflight chips using
+  only their revealed Intel; GMs always see previews regardless. Off by default.
+- **Show GM debug tab** — a GM-only panel tab for inspecting scoring inputs, rejected actions, and
+  detected actor actions.
+- **Disable PF2e Combater for players** — hide the panel and toolbar toggle from players entirely; the
+  GM keeps full access.
 
 ---
 

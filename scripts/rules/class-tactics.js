@@ -2,6 +2,7 @@ import { CLASS_TACTICS, SUBCLASS_TACTICS } from "./class-tactics-data/index.js";
 import { hasExploitVulnerabilityMark } from "./exploit-vulnerability.js";
 import { livingMarkedTarget, readTargetCombatState, targetHasMarkState, targetHasTokenMark } from "./combat-state.js";
 import { pf2eTrait, t } from "../i18n.js";
+import { slugify as normalize } from "../engine/action/text.js";
 
 const MAX_CLASS_TACTIC_DELTA = 44;
 
@@ -35,16 +36,6 @@ function roleLabel(role) {
   const fallback = ROLE_LABELS[role] ?? role;
   if (!role) return fallback;
   return t(`ClassTactic.Role_${String(role).replace(/[^a-z0-9]+/gi, "_")}`, fallback);
-}
-
-function normalize(value) {
-  return String(value ?? "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/['']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 function values(value) {

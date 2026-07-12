@@ -40,7 +40,7 @@ export const CLERIC_SUBCLASS_TACTICS = {
     "reason": "Cloistered doctrine favors spellcasting over weapon fallback."
   },
   "warpriest": {
-    "label": "Warpriest doctrine",
+    "label": "Warpriest",
     "classSlug": "cleric",
     "actions": {
       "channel-smite": 18,

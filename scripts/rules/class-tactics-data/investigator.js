@@ -15,7 +15,7 @@ export const INVESTIGATOR_CLASS_TACTIC = {
 
 export const INVESTIGATOR_SUBCLASS_TACTICS = {
   "alchemical-sciences-methodology": {
-    "label": "Alchemical sciences methodology",
+    "label": "Alchemical Sciences Methodology",
     "classSlug": "investigator",
     "actions": {
       "quick-tincture": 18
@@ -29,7 +29,7 @@ export const INVESTIGATOR_SUBCLASS_TACTICS = {
     "reason": "Alchemical sciences favors tinctures and prepared utility."
   },
   "empiricism-methodology": {
-    "label": "Empiricism methodology",
+    "label": "Empiricism Methodology",
     "classSlug": "investigator",
     "actions": {
       "devise-a-stratagem": 12,
@@ -42,7 +42,7 @@ export const INVESTIGATOR_SUBCLASS_TACTICS = {
     "reason": "Empiricism favors Devise and knowledge setup."
   },
   "forensic-medicine-methodology": {
-    "label": "Forensic medicine methodology",
+    "label": "Forensic Medicine Methodology",
     "classSlug": "investigator",
     "actions": {
       "battle-medicine": 18
@@ -54,7 +54,7 @@ export const INVESTIGATOR_SUBCLASS_TACTICS = {
     "reason": "Forensic medicine favors Battle Medicine and support."
   },
   "interrogation-methodology": {
-    "label": "Interrogation methodology",
+    "label": "Interrogation Methodology",
     "classSlug": "investigator",
     "actions": {
       "pointed-question": 16,

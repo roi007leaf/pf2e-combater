@@ -16,138 +16,53 @@ export const SUMMONER_CLASS_TACTIC = {
     },
   };
 
-export const SUMMONER_SUBCLASS_TACTICS = {
-  "angel-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "healing": 8,
-      "buff": 10,
-      "defense": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem support and protection.",
-    "label": "Angel Eidolon"
-  },
-  "devotion-phantom-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "healing": 8,
-      "buff": 10,
-      "defense": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem support and protection.",
-    "label": "Devotion Phantom Eidolon"
-  },
-  "psychopomp-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "healing": 8,
-      "buff": 10,
-      "defense": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem support and protection.",
-    "label": "Psychopomp Eidolon"
-  },
-  "beast-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "damage": 10,
-      "mobility-attack": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem offense.",
-    "label": "Beast Eidolon"
-  },
-  "dragon-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "damage": 10,
-      "mobility-attack": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem offense.",
-    "label": "Dragon Eidolon"
-  },
-  "demon-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "damage": 10,
-      "mobility-attack": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem offense.",
-    "label": "Demon Eidolon"
-  },
-  "anger-phantom-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Anger Phantom Eidolon"
-  },
-  "construct-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Construct Eidolon"
-  },
-  "elemental-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Elemental Eidolon"
-  },
-  "fey-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Fey Eidolon"
-  },
-  "plant-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Plant Eidolon"
-  },
-  "swarm-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Swarm Eidolon"
-  },
-  "undead-eidolon": {
-    "classSlug": "summoner",
-    "roles": {
-      "control": 10,
-      "damage": 8,
-      "summon": 8
-    },
-    "reason": "Eidolon choice favors tandem control and pressure.",
-    "label": "Undead Eidolon"
+// The 13 eidolons collapse to 3 tactical templates (support/offense/control) that only differ in
+// which specific eidolons belong to each -- previously each of the 13 repeated its template's full
+// roles/reason verbatim.
+function expandEidolonTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = { classSlug: "summoner", roles: template.roles, reason: template.reason, label };
   }
+  return entries;
+}
+
+const SUPPORT_EIDOLON_TACTIC = {
+  roles: { healing: 8, buff: 10, defense: 8, summon: 8 },
+  reason: "Eidolon choice favors tandem support and protection.",
+  members: [
+    ["angel-eidolon", "Angel Eidolon"],
+    ["devotion-phantom-eidolon", "Devotion Phantom Eidolon"],
+    ["psychopomp-eidolon", "Psychopomp Eidolon"],
+  ],
+};
+
+const OFFENSE_EIDOLON_TACTIC = {
+  roles: { damage: 10, "mobility-attack": 8, summon: 8 },
+  reason: "Eidolon choice favors tandem offense.",
+  members: [
+    ["beast-eidolon", "Beast Eidolon"],
+    ["dragon-eidolon", "Dragon Eidolon"],
+    ["demon-eidolon", "Demon Eidolon"],
+  ],
+};
+
+const CONTROL_EIDOLON_TACTIC = {
+  roles: { control: 10, damage: 8, summon: 8 },
+  reason: "Eidolon choice favors tandem control and pressure.",
+  members: [
+    ["anger-phantom-eidolon", "Anger Phantom Eidolon"],
+    ["construct-eidolon", "Construct Eidolon"],
+    ["elemental-eidolon", "Elemental Eidolon"],
+    ["fey-eidolon", "Fey Eidolon"],
+    ["plant-eidolon", "Plant Eidolon"],
+    ["swarm-eidolon", "Swarm Eidolon"],
+    ["undead-eidolon", "Undead Eidolon"],
+  ],
+};
+
+export const SUMMONER_SUBCLASS_TACTICS = {
+  ...expandEidolonTactics(SUPPORT_EIDOLON_TACTIC),
+  ...expandEidolonTactics(OFFENSE_EIDOLON_TACTIC),
+  ...expandEidolonTactics(CONTROL_EIDOLON_TACTIC),
 };

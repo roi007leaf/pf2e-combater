@@ -41,6 +41,7 @@ import {
   boundedPlanPreferenceDelta,
   deterministicPlanPreferenceAdjustment,
 } from "../state/preference-profile.js";
+import { HARD_BLOCK_SCORE, MAP_PENALTY_BY_ATTACK_INDEX } from "./scoring/weights.js";
 import {
   resolveTacticPersonality,
   tacticPersonalityPlanAdjustment,
@@ -91,7 +92,6 @@ const AC_PENALTY_FIELDS = [
 ];
 const PLANNER_EXCLUDED_UTILITY_ROLES = new Set(["exploration-utility"]);
 const PLANNER_EXCLUDED_COMBAT_USE = new Set(["browse-only", "context-only", "never-auto-fill"]);
-const HARD_BLOCK_SCORE = -999;
 
 function emptyPlan(context) {
   return {
@@ -414,10 +414,10 @@ function orderPlanSteps(steps) {
 export function mapPenalty(candidate, attackIndex) {
   if (!isAttackAction(candidate)) return 0;
   if (attackIndex <= 0) return 0;
-  const agile = hasAgileTrait(candidate);
-  return attackIndex === 1
-    ? (agile ? 4 : 5)
-    : (agile ? 8 : 10);
+  // PF2e's MAP stops getting worse after the second extra attack, so a 3rd+ attack in one turn
+  // is still capped at the same penalty as the 2nd.
+  const tier = MAP_PENALTY_BY_ATTACK_INDEX[Math.min(attackIndex, 2)];
+  return hasAgileTrait(candidate) ? tier.agile : tier.standard;
 }
 
 // How many attacks this action advances the multiple attack penalty by. Most

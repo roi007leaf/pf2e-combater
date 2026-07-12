@@ -1,9 +1,5 @@
 import { collectionValues } from "../foundry-data.js";
-
-function numeric(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
+import { numeric } from "./canvas-geometry.js";
 
 function clampDifficulty(value) {
   return Math.max(1, Math.min(3, Math.trunc(numeric(value, 1)) || 1));
@@ -87,8 +83,8 @@ function regionShapes(region) {
 
 function scaledPoint(point, scale = 1) {
   return {
-    x: point.x * scale,
-    y: point.y * scale,
+    x: numeric(point?.x) * scale,
+    y: numeric(point?.y) * scale,
   };
 }
 

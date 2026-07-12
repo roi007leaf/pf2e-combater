@@ -96,10 +96,10 @@ export function scoreCuratedRoleTactics(context, action, {
     nextReasons.push(t("ScoreReason.AggroPriority", "Aggro priority: {roles}.", { roles: aggro.roles.join(" -> ") }));
   }
 
-  if (isCurated(action) && role === "debuff" && target) {
-    nextScore += 20;
-    nextReasons.push(t("ScoreReason.DebuffPressure", "Debuff spell can pressure {target}.", { target: target.name }));
-  }
+  // Debuff/control scoring against a real target lives entirely in the control-or-debuff block
+  // below (handles the area vs. single-target split and the already-has/requires-condition
+  // nuance) -- a separate flat +20 used to also fire here for every debuff action unconditionally,
+  // double-counting on top of that block's +32/+42 and fighting its -10/-24 penalties.
 
   if (isCurated(action) && role === "setup" && target) {
     nextScore += action.activityProfile?.precisionDamageSetup ? 28 : 20;
@@ -329,38 +329,27 @@ export function scoreCuratedRoleTactics(context, action, {
   }
 
   if (isCurated(action) && role === "buff") {
+    // recipient.value (buffs.js) already scores attackBuff/damageBuff, extraAction, defensive
+    // buffs, removesCondition, and an "already has this" penalty for the chosen recipient -- it is
+    // the complete signal, not a starting point to layer more of the same weights on top of.
     const recipient = bestBuffRecipient(context, action);
     const allyTarget = recipient?.type === "ally";
     const grantsQuickened = actionGrantsQuickened(action);
-    let buffValue = Math.max(0, Number(recipient?.value) || 0);
-    if (action.activityProfile?.attackBuff || action.activityProfile?.damageBuff) {
-      const attackerCount = [profile, ...contextAllies(context)].filter((entity) => hpPercent(entity) > 0).length;
-      buffValue += Math.min(24, 6 + attackerCount * 4);
-    }
-    if (grantsQuickened) buffValue += 24;
-    if (action.activityProfile?.acBuff || action.activityProfile?.saveBuff || action.activityProfile?.resistance) {
-      buffValue += contextEnemies(context).length ? 10 : 4;
-    }
-    if (action.activityProfile?.removesCondition) {
-      const constrained = [profile, ...contextAllies(context)].some((entity) =>
-        hasAnyCondition(entity, ["grabbed", "restrained", "immobilized", "slowed", "stunned", "paralyzed"]),
-      );
-      buffValue += constrained ? 28 : 0;
-    }
+    const buffValue = Number(recipient?.value) || 0;
+    nextScore += buffValue;
     if (recipient?.entity && targetAlreadyHasBuff(recipient.entity, action)) {
-      buffValue -= 36;
       nextReasons.push(t("ScoreReason.RecipientAlreadyHas", "{recipient} already has {action}.", { recipient: recipient.entity.name ?? t("ScoreReason.TargetWord", "Target"), action: action.name }));
     }
-    nextScore += buffValue;
     nextReasons.unshift(grantsQuickened ? t("ScoreReason.GrantsQuickened", "{p0} grants quickened.", { p0: action.name }) : allyTarget ? t("ScoreReason.CanBoost", "{p0} can boost {p1}.", { p0: action.name, p1: recipient.entity?.name ?? "an ally" }) : t("ScoreReason.GrantsTheActorABeneficial", "{p0} grants the actor a beneficial effect.", { p0: action.name }));
   }
 
   if (isCurated(action) && role === "stealth-defense") {
+    // Same principle as the buff block above: recipient.value already reflects an "already has
+    // this" penalty, so it is not re-applied a second time here on top of the stealth-specific base.
     const recipient = bestBuffRecipient(context, action);
     const recipientName = recipient?.type === "ally" ? recipient.entity?.name ?? "an ally" : "the actor";
-    nextScore += 22 + Math.max(0, Number(recipient?.value) || 0);
+    nextScore += 22 + (Number(recipient?.value) || 0);
     if (targetAlreadyHasBuff(recipient?.entity, action)) {
-      nextScore -= 44;
       nextReasons.push(t("ScoreReason.RecipientAlreadyHas", "{recipient} already has {action}.", { recipient: recipientName, action: action.name }));
     }
     nextReasons.unshift(t("ScoreReason.CanMakeHarderToTarget", "{p0} can make {p1} harder to target.", { p0: action.name, p1: recipientName }));

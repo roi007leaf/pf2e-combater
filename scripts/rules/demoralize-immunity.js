@@ -1,3 +1,5 @@
+import { slugify as normalize } from "../engine/action/text.js";
+
 const IMMUNITY_TERMS = [
   "immunity",
   "immune",
@@ -5,16 +7,6 @@ const IMMUNITY_TERMS = [
   "temporarily-immune",
   "temporary-immunity",
 ];
-
-function normalize(value) {
-  return String(value ?? "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/['']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function effectValues(entity) {
   const values = [

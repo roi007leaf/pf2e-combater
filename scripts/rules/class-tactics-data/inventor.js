@@ -14,7 +14,7 @@ export const INVENTOR_CLASS_TACTIC = {
 
 export const INVENTOR_SUBCLASS_TACTICS = {
   "armor-innovation": {
-    "label": "Armor innovation",
+    "label": "Armor Innovation",
     "classSlug": "inventor",
     "roles": {
       "defense": 12,
@@ -24,7 +24,7 @@ export const INVENTOR_SUBCLASS_TACTICS = {
     "reason": "Armor innovation favors defensive positioning and Overdrive attacks."
   },
   "construct-innovation": {
-    "label": "Construct innovation",
+    "label": "Construct Innovation",
     "classSlug": "inventor",
     "roles": {
       "summon": 12,
@@ -34,7 +34,7 @@ export const INVENTOR_SUBCLASS_TACTICS = {
     "reason": "Construct innovation favors companion coordination."
   },
   "light-mortar-innovation": {
-    "label": "Light mortar innovation",
+    "label": "Light Mortar Innovation",
     "classSlug": "inventor",
     "rangedStrike": 12,
     "roles": {
@@ -44,7 +44,7 @@ export const INVENTOR_SUBCLASS_TACTICS = {
     "reason": "Light mortar innovation favors ranged explosive pressure."
   },
   "weapon-innovation": {
-    "label": "Weapon innovation",
+    "label": "Weapon Innovation",
     "classSlug": "inventor",
     "includesStrike": 10,
     "roles": {

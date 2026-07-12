@@ -15,6 +15,55 @@ export const ORACLE_CLASS_TACTIC = {
     },
   };
 
+// Battle and Life mysteries are each unique; the other 9 collapse to 3 tactical templates that
+// only differ in which specific mysteries belong to each -- previously each repeated its
+// template's full roles/reason (and, for the elemental trio, traits) verbatim.
+function expandMysteryTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = {
+      classSlug: "oracle",
+      spell: 8,
+      roles: template.roles,
+      ...(template.traits ? { traits: template.traits } : {}),
+      reason: template.reason,
+      label,
+    };
+  }
+  return entries;
+}
+
+const ELEMENTAL_MYSTERY_TACTIC = {
+  roles: { damage: 8, "save-damage": 8, "area-damage": 8 },
+  traits: { fire: 6, electricity: 6, cold: 6 },
+  reason: "Mystery favors elemental spell pressure.",
+  members: [
+    ["flames", "Flames"],
+    ["ashes", "Ashes"],
+    ["tempest", "Tempest"],
+  ],
+};
+
+const REVELATION_CONTROL_MYSTERY_TACTIC = {
+  roles: { control: 10, debuff: 8, "save-damage": 6, setup: 8 },
+  reason: "Mystery favors revelation control and setup.",
+  members: [
+    ["cosmos", "Cosmos"],
+    ["time", "Time"],
+    ["lore", "Lore"],
+    ["ancestors", "Ancestors"],
+  ],
+};
+
+const DEBILITATING_REVELATION_MYSTERY_TACTIC = {
+  roles: { control: 10, debuff: 8, "save-damage": 6, damage: 6 },
+  reason: "Mystery favors debilitating revelation magic.",
+  members: [
+    ["blight", "Blight"],
+    ["bones", "Bones"],
+  ],
+};
+
 export const ORACLE_SUBCLASS_TACTICS = {
   "battle": {
     "classSlug": "oracle",
@@ -37,124 +86,7 @@ export const ORACLE_SUBCLASS_TACTICS = {
     "reason": "Life mystery favors healing and protection.",
     "label": "Life"
   },
-  "flames": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8
-    },
-    "traits": {
-      "fire": 6,
-      "electricity": 6,
-      "cold": 6
-    },
-    "reason": "Mystery favors elemental spell pressure.",
-    "label": "Flames"
-  },
-  "ashes": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8
-    },
-    "traits": {
-      "fire": 6,
-      "electricity": 6,
-      "cold": 6
-    },
-    "reason": "Mystery favors elemental spell pressure.",
-    "label": "Ashes"
-  },
-  "tempest": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8
-    },
-    "traits": {
-      "fire": 6,
-      "electricity": 6,
-      "cold": 6
-    },
-    "reason": "Mystery favors elemental spell pressure.",
-    "label": "Tempest"
-  },
-  "cosmos": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "setup": 8
-    },
-    "reason": "Mystery favors revelation control and setup.",
-    "label": "Cosmos"
-  },
-  "time": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "setup": 8
-    },
-    "reason": "Mystery favors revelation control and setup.",
-    "label": "Time"
-  },
-  "lore": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "setup": 8
-    },
-    "reason": "Mystery favors revelation control and setup.",
-    "label": "Lore"
-  },
-  "ancestors": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "setup": 8
-    },
-    "reason": "Mystery favors revelation control and setup.",
-    "label": "Ancestors"
-  },
-  "blight": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "damage": 6
-    },
-    "reason": "Mystery favors debilitating revelation magic.",
-    "label": "Blight"
-  },
-  "bones": {
-    "classSlug": "oracle",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "damage": 6
-    },
-    "reason": "Mystery favors debilitating revelation magic.",
-    "label": "Bones"
-  }
+  ...expandMysteryTactics(ELEMENTAL_MYSTERY_TACTIC),
+  ...expandMysteryTactics(REVELATION_CONTROL_MYSTERY_TACTIC),
+  ...expandMysteryTactics(DEBILITATING_REVELATION_MYSTERY_TACTIC),
 };

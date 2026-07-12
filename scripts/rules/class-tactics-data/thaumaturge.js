@@ -16,7 +16,7 @@ export const THAUMATURGE_CLASS_TACTIC = {
 
 export const THAUMATURGE_SUBCLASS_TACTICS = {
   "amulet": {
-    "label": "Amulet implement",
+    "label": "Amulet",
     "classSlug": "thaumaturge",
     "roles": {
       "defense": 14,
@@ -25,7 +25,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Amulet implement favors protective reactions and defense."
   },
   "bell": {
-    "label": "Bell implement",
+    "label": "Bell",
     "classSlug": "thaumaturge",
     "roles": {
       "debuff": 12,
@@ -34,7 +34,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Bell implement favors reaction debuffs and control."
   },
   "chalice": {
-    "label": "Chalice implement",
+    "label": "Chalice",
     "classSlug": "thaumaturge",
     "actions": {
       "drink-from-the-chalice": 18
@@ -46,7 +46,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Chalice implement favors healing and sustain."
   },
   "lantern": {
-    "label": "Lantern implement",
+    "label": "Lantern",
     "classSlug": "thaumaturge",
     "actions": {
       "seek": 14,
@@ -59,7 +59,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Lantern implement favors Seek and awareness setup."
   },
   "mirror": {
-    "label": "Mirror implement",
+    "label": "Mirror",
     "classSlug": "thaumaturge",
     "roles": {
       "mobility": 12,
@@ -69,7 +69,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Mirror implement favors repositioning and control."
   },
   "regalia": {
-    "label": "Regalia implement",
+    "label": "Regalia",
     "classSlug": "thaumaturge",
     "actions": {
       "demoralize": 10
@@ -82,7 +82,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Regalia implement favors aura support and intimidation."
   },
   "shield": {
-    "label": "Shield implement",
+    "label": "Shield",
     "classSlug": "thaumaturge",
     "actions": {
       "raise-a-shield": 16
@@ -94,7 +94,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Shield implement favors defensive turns."
   },
   "tome": {
-    "label": "Tome implement",
+    "label": "Tome",
     "classSlug": "thaumaturge",
     "actions": {
       "recall-knowledge": 16,
@@ -107,7 +107,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Tome implement favors knowledge setup before exploiting."
   },
   "wand": {
-    "label": "Wand implement",
+    "label": "Wand",
     "classSlug": "thaumaturge",
     "actions": {
       "fling-magic": 18
@@ -119,7 +119,7 @@ export const THAUMATURGE_SUBCLASS_TACTICS = {
     "reason": "Wand implement favors Fling Magic damage."
   },
   "weapon": {
-    "label": "Weapon implement",
+    "label": "Weapon",
     "classSlug": "thaumaturge",
     "includesStrike": 12,
     "roles": {

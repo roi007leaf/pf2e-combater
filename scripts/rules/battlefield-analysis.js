@@ -1,11 +1,6 @@
-import { canvasLinePathBlocked, gridReachDistanceFeet } from "./canvas-geometry.js";
+import { canvasLinePathBlocked, gridReachDistanceFeet, numeric } from "./canvas-geometry.js";
 import { movementPlacementForCenter } from "./token-geometry.js";
 import { entityKey as targetKey } from "../foundry-data.js";
-
-function numeric(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 
 function point(value) {
   const center = value?.center ?? value?.token?.center;
@@ -98,6 +93,9 @@ export function lineThreatsAtCenter(context, center, { maxRange = 60 } = {}) {
     });
 }
 
+// Deliberately not memoized: threat/line-of-sight detection reads live canvas wall geometry
+// (canvasLinePathBlocked), which can change independently of the context object -- caching on
+// context identity alone would go stale if walls move between calls with the same context.
 export function battlefieldPressure(context) {
   const actorCenter = point(context?.token);
   const meleeThreats = threatsAtCenter(context, actorCenter);

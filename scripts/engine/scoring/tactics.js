@@ -41,6 +41,7 @@ import {
   selfReference,
 } from "./tactic-helpers.js";
 import { t } from "../../i18n.js";
+import { HARD_BLOCK_SCORE } from "./weights.js";
 
 export { baseScore, defaultReason, includesStand } from "./tactic-helpers.js";
 
@@ -181,7 +182,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
 
   if (includesStand(action)) {
     if (!hasCondition(profile, "prone")) {
-      score = -999;
+      score = HARD_BLOCK_SCORE;
       reasons.push(t("ScoreReason.ActorIsNotProne", "Actor is not prone."));
     } else {
       score += 18;
@@ -205,7 +206,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
 
   if (action.slug === "retch") {
     if (!hasCondition(profile, "sickened")) {
-      score = -999;
+      score = HARD_BLOCK_SCORE;
       reasons.push(t("ScoreReason.ActorIsNotSickened", "Actor is not sickened."));
     } else {
       score += 30;

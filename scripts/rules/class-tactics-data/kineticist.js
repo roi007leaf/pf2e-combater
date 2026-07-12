@@ -16,7 +16,7 @@ export const KINETICIST_CLASS_TACTIC = {
 
 export const KINETICIST_SUBCLASS_TACTICS = {
   "air-gate": {
-    "label": "Air gate",
+    "label": "Air Gate",
     "classSlug": "kineticist",
     "traits": {
       "air": 14
@@ -29,7 +29,7 @@ export const KINETICIST_SUBCLASS_TACTICS = {
     "reason": "Air gate favors air impulses and movement."
   },
   "earth-gate": {
-    "label": "Earth gate",
+    "label": "Earth Gate",
     "classSlug": "kineticist",
     "traits": {
       "earth": 14
@@ -42,7 +42,7 @@ export const KINETICIST_SUBCLASS_TACTICS = {
     "reason": "Earth gate favors durable earth impulses."
   },
   "fire-gate": {
-    "label": "Fire gate",
+    "label": "Fire Gate",
     "classSlug": "kineticist",
     "traits": {
       "fire": 14
@@ -54,7 +54,7 @@ export const KINETICIST_SUBCLASS_TACTICS = {
     "reason": "Fire gate favors fire impulses and blasts."
   },
   "metal-gate": {
-    "label": "Metal gate",
+    "label": "Metal Gate",
     "classSlug": "kineticist",
     "traits": {
       "metal": 14
@@ -67,7 +67,7 @@ export const KINETICIST_SUBCLASS_TACTICS = {
     "reason": "Metal gate favors metal impulses and protection."
   },
   "water-gate": {
-    "label": "Water gate",
+    "label": "Water Gate",
     "classSlug": "kineticist",
     "traits": {
       "water": 14
@@ -80,7 +80,7 @@ export const KINETICIST_SUBCLASS_TACTICS = {
     "reason": "Water gate favors water impulses and healing control."
   },
   "wood-gate": {
-    "label": "Wood gate",
+    "label": "Wood Gate",
     "classSlug": "kineticist",
     "traits": {
       "wood": 14

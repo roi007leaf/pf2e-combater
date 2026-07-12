@@ -329,6 +329,9 @@ const DESTINATION_BORDER_COLOR = 0xf0eee8;
 const AVAILABLE_COLOR = 0x66c78f;
 const DESTINATION_COLOR = 0xe0b35a;
 const UNAVAILABLE_COLOR = 0xc94f4f;
+// Dark outline used to edge various overlay strokes against the canvas -- width and alpha still
+// vary per shape, only the color itself was repeated at every call site.
+const OUTLINE_STROKE_COLOR = 0x101418;
 
 function strideMovementColor(index) {
   return STRIDE_COLORS[index % STRIDE_COLORS.length];
@@ -902,7 +905,7 @@ function drawPlacement(graphics, placement, scale, fill, alpha, line, lineAlpha,
   );
   graphics.endFill();
 
-  graphics.lineStyle(lineWidth + 2, 0x101418, Math.min(0.9, lineAlpha + 0.2));
+  graphics.lineStyle(lineWidth + 2, OUTLINE_STROKE_COLOR, Math.min(0.9, lineAlpha + 0.2));
   graphics.drawRect(x, y, width, height);
   graphics.lineStyle(lineWidth, line, lineAlpha);
   graphics.drawRect(x, y, width, height);
@@ -911,7 +914,7 @@ function drawPlacement(graphics, placement, scale, fill, alpha, line, lineAlpha,
 function drawXMarker(graphics, marker, scale, color = 0xf0eee8) {
   if (!marker?.strokes?.length) return;
 
-  graphics.lineStyle(4, 0x101418, 0.82);
+  graphics.lineStyle(4, OUTLINE_STROKE_COLOR, 0.82);
   for (const stroke of marker.strokes) {
     graphics.moveTo(stroke.start.x * scale, stroke.start.y * scale);
     graphics.lineTo(stroke.end.x * scale, stroke.end.y * scale);
@@ -949,8 +952,8 @@ function drawOriginMarker(graphics, origin, footprint, scale, color = 0x66c78f) 
   const radius = (cells * pixelSize) / 2;
   const x = origin.x * scale;
   const y = origin.y * scale;
-  graphics.beginFill(0x101418, 0.12);
-  graphics.lineStyle(4, 0x101418, 0.82);
+  graphics.beginFill(OUTLINE_STROKE_COLOR, 0.12);
+  graphics.lineStyle(4, OUTLINE_STROKE_COLOR, 0.82);
   graphics.drawCircle(x, y, radius);
   graphics.lineStyle(2, color, 0.95);
   graphics.drawCircle(x, y, radius);
@@ -1108,7 +1111,7 @@ function drawWaypointIndicators(graphics, waypoints, scale, color) {
   for (const waypoint of waypoints) {
     index += 1;
     const radius = index === waypoints.length ? 10 : 8;
-    graphics.lineStyle(radius + 4, 0x101418, 0.86);
+    graphics.lineStyle(radius + 4, OUTLINE_STROKE_COLOR, 0.86);
     graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
     graphics.lineStyle(radius, color, 0.96);
     graphics.drawCircle(waypoint.x * scale, waypoint.y * scale, radius);
@@ -1178,7 +1181,7 @@ function drawStridePath(graphics, origin, stridePath, scale, originElevation = 0
     const trail = waypoint.trail?.length ? waypoint.trail : [waypoint.center];
     // Dark outline first so the thicker stride line stays legible over busy maps.
     let outlineFrom = from;
-    graphics.lineStyle(8, 0x101418, 0.7);
+    graphics.lineStyle(8, OUTLINE_STROKE_COLOR, 0.7);
     for (const point of trail) {
       graphics.moveTo(outlineFrom.x * scale, outlineFrom.y * scale);
       graphics.lineTo(point.x * scale, point.y * scale);
@@ -1353,7 +1356,7 @@ export function showMovementPreview(context, step) {
       const cy = preview.origin.y * scale;
       const radius = preview.teleportRange * scale;
       graphics.beginFill(AVAILABLE_COLOR, 0.04);
-      graphics.lineStyle(6, 0x101418, 0.6);
+      graphics.lineStyle(6, OUTLINE_STROKE_COLOR, 0.6);
       graphics.drawCircle(cx, cy, radius);
       graphics.lineStyle(3, AVAILABLE_COLOR, 0.9);
       graphics.drawCircle(cx, cy, radius);

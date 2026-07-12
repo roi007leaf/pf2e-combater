@@ -14,175 +14,56 @@ export const WIZARD_CLASS_TACTIC = {
     },
   };
 
+// 14 of the 19 arcane schools collapse to 3 tactical templates (offensive/control/specialized)
+// that only differ in which specific schools belong to each -- previously each of the 14 repeated
+// its template's full roles/reason verbatim. The 5 "arcane thesis" entries below are each unique.
+function expandArcaneSchoolTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = { classSlug: "wizard", spell: 8, roles: template.roles, reason: template.reason, label };
+  }
+  return entries;
+}
+
+const OFFENSIVE_ARCANE_SCHOOL_TACTIC = {
+  roles: { damage: 8, "save-damage": 8, "area-damage": 8, control: 6 },
+  reason: "Arcane school favors offensive spells.",
+  members: [
+    ["school-of-battle-magic", "School of Battle Magic"],
+    ["school-of-gates", "School of Gates"],
+    ["red-mantis-magic-school", "Red Mantis Magic School"],
+    ["runelord", "Runelord"],
+  ],
+};
+
+const CONTROL_ARCANE_SCHOOL_TACTIC = {
+  roles: { control: 10, debuff: 8, "save-damage": 6, defense: 6 },
+  reason: "Arcane school favors battlefield control.",
+  members: [
+    ["school-of-civic-wizardry", "School of Civic Wizardry"],
+    ["school-of-the-boundary", "School of the Boundary"],
+    ["school-of-the-reclamation", "School of the Reclamation"],
+    ["school-of-rooted-wisdom", "School of Rooted Wisdom"],
+  ],
+};
+
+const SPECIALIZED_ARCANE_SCHOOL_TACTIC = {
+  roles: { control: 8, buff: 8, setup: 8, "save-damage": 6 },
+  reason: "Arcane school favors specialized spellcasting.",
+  members: [
+    ["school-of-ars-grammatica", "School of Ars Grammatica"],
+    ["school-of-kalistrade", "School of Kalistrade"],
+    ["school-of-mentalism", "School of Mentalism"],
+    ["school-of-protean-form", "School of Protean Form"],
+    ["school-of-magical-technologies", "School of Magical Technologies"],
+    ["school-of-unified-magical-theory", "School of Unified Magical Theory"],
+  ],
+};
+
 export const WIZARD_SUBCLASS_TACTICS = {
-  "school-of-battle-magic": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8,
-      "control": 6
-    },
-    "reason": "Arcane school favors offensive spells.",
-    "label": "School Of Battle Magic"
-  },
-  "school-of-gates": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8,
-      "control": 6
-    },
-    "reason": "Arcane school favors offensive spells.",
-    "label": "School Of Gates"
-  },
-  "red-mantis-magic-school": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8,
-      "control": 6
-    },
-    "reason": "Arcane school favors offensive spells.",
-    "label": "Red Mantis Magic School"
-  },
-  "runelord": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "damage": 8,
-      "save-damage": 8,
-      "area-damage": 8,
-      "control": 6
-    },
-    "reason": "Arcane school favors offensive spells.",
-    "label": "Runelord"
-  },
-  "school-of-civic-wizardry": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "defense": 6
-    },
-    "reason": "Arcane school favors battlefield control.",
-    "label": "School Of Civic Wizardry"
-  },
-  "school-of-the-boundary": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "defense": 6
-    },
-    "reason": "Arcane school favors battlefield control.",
-    "label": "School Of The Boundary"
-  },
-  "school-of-the-reclamation": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "defense": 6
-    },
-    "reason": "Arcane school favors battlefield control.",
-    "label": "School Of The Reclamation"
-  },
-  "school-of-rooted-wisdom": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 10,
-      "debuff": 8,
-      "save-damage": 6,
-      "defense": 6
-    },
-    "reason": "Arcane school favors battlefield control.",
-    "label": "School Of Rooted Wisdom"
-  },
-  "school-of-ars-grammatica": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Ars Grammatica"
-  },
-  "school-of-kalistrade": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Kalistrade"
-  },
-  "school-of-mentalism": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Mentalism"
-  },
-  "school-of-protean-form": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Protean Form"
-  },
-  "school-of-magical-technologies": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Magical Technologies"
-  },
-  "school-of-unified-magical-theory": {
-    "classSlug": "wizard",
-    "spell": 8,
-    "roles": {
-      "control": 8,
-      "buff": 8,
-      "setup": 8,
-      "save-damage": 6
-    },
-    "reason": "Arcane school favors specialized spellcasting.",
-    "label": "School Of Unified Magical Theory"
-  },
+  ...expandArcaneSchoolTactics(OFFENSIVE_ARCANE_SCHOOL_TACTIC),
+  ...expandArcaneSchoolTactics(CONTROL_ARCANE_SCHOOL_TACTIC),
+  ...expandArcaneSchoolTactics(SPECIALIZED_ARCANE_SCHOOL_TACTIC),
   "experimental-spellshaping": {
     "label": "Experimental Spellshaping",
     "classSlug": "wizard",

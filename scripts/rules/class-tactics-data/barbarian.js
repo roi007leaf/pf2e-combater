@@ -18,7 +18,7 @@ export const BARBARIAN_CLASS_TACTIC = {
 
 export const BARBARIAN_SUBCLASS_TACTICS = {
   "animal-instinct": {
-    "label": "Animal instinct",
+    "label": "Animal Instinct",
     "classSlug": "barbarian",
     "traits": {
       "unarmed": 14,
@@ -35,7 +35,7 @@ export const BARBARIAN_SUBCLASS_TACTICS = {
     "reason": "Animal instinct favors unarmed Rage attacks and athletics control."
   },
   "dragon-instinct": {
-    "label": "Dragon instinct",
+    "label": "Dragon Instinct",
     "classSlug": "barbarian",
     "traits": {
       "dragon": 10,
@@ -53,7 +53,7 @@ export const BARBARIAN_SUBCLASS_TACTICS = {
     "reason": "Dragon instinct favors high-damage elemental Rage attacks."
   },
   "elemental-instinct": {
-    "label": "Elemental instinct",
+    "label": "Elemental Instinct",
     "classSlug": "barbarian",
     "traits": {
       "air": 6,
@@ -72,7 +72,7 @@ export const BARBARIAN_SUBCLASS_TACTICS = {
     "reason": "Elemental instinct favors elemental Rage damage and movement."
   },
   "superstition-instinct": {
-    "label": "Superstition instinct",
+    "label": "Superstition Instinct",
     "classSlug": "barbarian",
     "spell": -18,
     "meleeStrike": 12,
@@ -83,7 +83,7 @@ export const BARBARIAN_SUBCLASS_TACTICS = {
     "reason": "Superstition instinct favors anti-magic martial pressure."
   },
   "bloodrager": {
-    "label": "Bloodrager instinct",
+    "label": "Bloodrager",
     "classSlug": "barbarian",
     "spell": 6,
     "meleeStrike": 10,

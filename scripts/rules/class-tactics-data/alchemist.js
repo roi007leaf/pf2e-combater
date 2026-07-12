@@ -15,7 +15,7 @@ export const ALCHEMIST_CLASS_TACTIC = {
 
 export const ALCHEMIST_SUBCLASS_TACTICS = {
   "bomber": {
-    "label": "Bomber field",
+    "label": "Bomber",
     "classSlug": "alchemist",
     "actions": {
       "quick-bomber": 24,
@@ -36,7 +36,7 @@ export const ALCHEMIST_SUBCLASS_TACTICS = {
     "reason": "Bomber field favors bombs and versatile vial Strikes."
   },
   "chirurgeon": {
-    "label": "Chirurgeon field",
+    "label": "Chirurgeon",
     "classSlug": "alchemist",
     "actions": {
       "quick-alchemy": 10,
@@ -55,7 +55,7 @@ export const ALCHEMIST_SUBCLASS_TACTICS = {
     "reason": "Chirurgeon field favors healing elixirs and support actions."
   },
   "mutagenist": {
-    "label": "Mutagenist field",
+    "label": "Mutagenist",
     "classSlug": "alchemist",
     "actions": {
       "quick-alchemy": 8,
@@ -77,7 +77,7 @@ export const ALCHEMIST_SUBCLASS_TACTICS = {
     "reason": "Mutagenist field favors mutagens before direct offense."
   },
   "toxicologist": {
-    "label": "Toxicologist field",
+    "label": "Toxicologist",
     "classSlug": "alchemist",
     "actions": {
       "quick-alchemy": 8,

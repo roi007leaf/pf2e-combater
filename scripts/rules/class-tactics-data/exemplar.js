@@ -13,191 +13,72 @@ export const EXEMPLAR_CLASS_TACTIC = {
     },
   };
 
-export const EXEMPLAR_SUBCLASS_TACTICS = {
-  "the-brave": {
-    "classSlug": "exemplar",
-    "includesStrike": 8,
-    "roles": {
-      "damage": 8,
-      "mobility-attack": 8,
-      "multiattack": 8,
-      "buff": 6
-    },
-    "reason": "Epithet favors bold Exemplar offense.",
-    "label": "The Brave"
-  },
-  "the-proud": {
-    "classSlug": "exemplar",
-    "includesStrike": 8,
-    "roles": {
-      "damage": 8,
-      "mobility-attack": 8,
-      "multiattack": 8,
-      "buff": 6
-    },
-    "reason": "Epithet favors bold Exemplar offense.",
-    "label": "The Proud"
-  },
-  "the-radiant": {
-    "classSlug": "exemplar",
-    "includesStrike": 8,
-    "roles": {
-      "damage": 8,
-      "mobility-attack": 8,
-      "multiattack": 8,
-      "buff": 6
-    },
-    "reason": "Epithet favors bold Exemplar offense.",
-    "label": "The Radiant"
-  },
-  "the-cunning": {
-    "classSlug": "exemplar",
-    "roles": {
-      "mobility": 10,
-      "setup": 8,
-      "damage": 6
-    },
-    "reason": "Epithet favors mobility and setup.",
-    "label": "The Cunning"
-  },
-  "the-deft": {
-    "classSlug": "exemplar",
-    "roles": {
-      "mobility": 10,
-      "setup": 8,
-      "damage": 6
-    },
-    "reason": "Epithet favors mobility and setup.",
-    "label": "The Deft"
-  },
-  "restless-as-the-tide": {
-    "classSlug": "exemplar",
-    "roles": {
-      "mobility": 10,
-      "setup": 8,
-      "damage": 6
-    },
-    "reason": "Epithet favors mobility and setup.",
-    "label": "Restless As The Tide"
-  },
-  "thief-of-moonlight": {
-    "classSlug": "exemplar",
-    "roles": {
-      "mobility": 10,
-      "setup": 8,
-      "damage": 6
-    },
-    "reason": "Epithet favors mobility and setup.",
-    "label": "Thief Of Moonlight"
-  },
-  "the-mournful": {
-    "classSlug": "exemplar",
-    "roles": {
-      "healing": 10,
-      "buff": 10,
-      "defense": 6
-    },
-    "reason": "Epithet favors support and protection.",
-    "label": "The Mournful"
-  },
-  "healer-of-the-world": {
-    "classSlug": "exemplar",
-    "roles": {
-      "healing": 10,
-      "buff": 10,
-      "defense": 6
-    },
-    "reason": "Epithet favors support and protection.",
-    "label": "Healer Of The World"
-  },
-  "teacher-of-heroes": {
-    "classSlug": "exemplar",
-    "roles": {
-      "healing": 10,
-      "buff": 10,
-      "defense": 6
-    },
-    "reason": "Epithet favors support and protection.",
-    "label": "Teacher Of Heroes"
-  },
-  "of-verse-unbroken": {
-    "classSlug": "exemplar",
-    "roles": {
-      "healing": 10,
-      "buff": 10,
-      "defense": 6
-    },
-    "reason": "Epithet favors support and protection.",
-    "label": "Of Verse Unbroken"
-  },
-  "born-of-the-bones-of-the-earth": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Born Of The Bones Of The Earth"
-  },
-  "dancer-in-the-seasons": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Dancer In The Seasons"
-  },
-  "peerless-under-heaven": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Peerless Under Heaven"
-  },
-  "plunderer-of-the-hives-riches": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Plunderer Of The Hives Riches"
-  },
-  "trespasser-in-deaths-realm": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Trespasser In Deaths Realm"
-  },
-  "whose-cry-is-thunder": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "Whose Cry Is Thunder"
-  },
-  "the-last-ruler": {
-    "classSlug": "exemplar",
-    "roles": {
-      "damage": 8,
-      "control": 8,
-      "defense": 6
-    },
-    "reason": "Epithet favors Exemplar class payoffs over filler.",
-    "label": "The Last Ruler"
+// The 18 epithets collapse to 4 tactical templates that only differ in which specific epithets
+// belong to each -- previously each of the 18 repeated its template's full roles/reason verbatim.
+function expandEpithetTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = {
+      classSlug: "exemplar",
+      ...(template.includesStrike !== undefined ? { includesStrike: template.includesStrike } : {}),
+      roles: template.roles,
+      reason: template.reason,
+      label,
+    };
   }
+  return entries;
+}
+
+const BOLD_OFFENSE_EPITHET_TACTIC = {
+  includesStrike: 8,
+  roles: { damage: 8, "mobility-attack": 8, multiattack: 8, buff: 6 },
+  reason: "Epithet favors bold Exemplar offense.",
+  members: [
+    ["the-brave", "The Brave"],
+    ["the-proud", "The Proud"],
+    ["the-radiant", "The Radiant"],
+  ],
+};
+
+const MOBILITY_SETUP_EPITHET_TACTIC = {
+  roles: { mobility: 10, setup: 8, damage: 6 },
+  reason: "Epithet favors mobility and setup.",
+  members: [
+    ["the-cunning", "The Cunning"],
+    ["the-deft", "The Deft"],
+    ["restless-as-the-tide", "Restless as the Tide"],
+    ["thief-of-moonlight", "Thief of Moonlight"],
+  ],
+};
+
+const SUPPORT_PROTECTION_EPITHET_TACTIC = {
+  roles: { healing: 10, buff: 10, defense: 6 },
+  reason: "Epithet favors support and protection.",
+  members: [
+    ["the-mournful", "The Mournful"],
+    ["healer-of-the-world", "Healer of the World"],
+    ["teacher-of-heroes", "Teacher of Heroes"],
+    ["of-verse-unbroken", "Of Verse Unbroken"],
+  ],
+};
+
+const CLASS_PAYOFF_EPITHET_TACTIC = {
+  roles: { damage: 8, control: 8, defense: 6 },
+  reason: "Epithet favors Exemplar class payoffs over filler.",
+  members: [
+    ["born-of-the-bones-of-the-earth", "Born of the Bones of the Earth"],
+    ["dancer-in-the-seasons", "Dancer in the Seasons"],
+    ["peerless-under-heaven", "Peerless under Heaven"],
+    ["plunderer-of-the-hives-riches", "Plunderer of the Hive's Riches"],
+    ["trespasser-in-deaths-realm", "Trespasser In Death's Realm"],
+    ["whose-cry-is-thunder", "Whose Cry is Thunder"],
+    ["the-last-ruler", "The Last Ruler"],
+  ],
+};
+
+export const EXEMPLAR_SUBCLASS_TACTICS = {
+  ...expandEpithetTactics(BOLD_OFFENSE_EPITHET_TACTIC),
+  ...expandEpithetTactics(MOBILITY_SETUP_EPITHET_TACTIC),
+  ...expandEpithetTactics(SUPPORT_PROTECTION_EPITHET_TACTIC),
+  ...expandEpithetTactics(CLASS_PAYOFF_EPITHET_TACTIC),
 };
