@@ -15,6 +15,46 @@ export const DRUID_CLASS_TACTIC = {
     },
   };
 
+// cultivation/leaf, flame/storm/wave, and spore/stone orders are byte-identical copies of three
+// templates -- previously each repeated its full roles/reason verbatim. Animal and Untamed orders
+// are each unique.
+function expandOrderTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = { classSlug: "druid", ...(template.spell !== undefined ? { spell: template.spell } : {}), roles: template.roles, reason: template.reason, label };
+  }
+  return entries;
+}
+
+const NATURE_HEALING_ORDER_TACTIC = {
+  roles: { healing: 12, buff: 10, control: 6 },
+  reason: "Druid order favors nature healing and support.",
+  members: [
+    ["cultivation-order", "Cultivation Order"],
+    ["leaf-order", "Leaf Order"],
+  ],
+};
+
+const ELEMENTAL_AREA_ORDER_TACTIC = {
+  spell: 8,
+  roles: { "area-damage": 12, control: 10, damage: 8 },
+  reason: "Druid order favors elemental area pressure.",
+  members: [
+    ["flame-order", "Flame Order"],
+    ["storm-order", "Storm Order"],
+    ["wave-order", "Wave Order"],
+  ],
+};
+
+const TERRAIN_CONTROL_ORDER_TACTIC = {
+  roles: { control: 10, defense: 10, damage: 6 },
+  reason: "Druid order favors terrain control and defense.",
+  members: [
+    ["spore-order", "Spore Order"],
+    ["stone-order", "Stone Order"],
+  ],
+};
+
 export const DRUID_SUBCLASS_TACTICS = {
   "animal-order": {
     "label": "Animal Order",
@@ -26,79 +66,9 @@ export const DRUID_SUBCLASS_TACTICS = {
     },
     "reason": "Animal order favors companion and creature support."
   },
-  "cultivation-order": {
-    "classSlug": "druid",
-    "roles": {
-      "healing": 12,
-      "buff": 10,
-      "control": 6
-    },
-    "reason": "Druid order favors nature healing and support.",
-    "label": "Cultivation Order"
-  },
-  "leaf-order": {
-    "classSlug": "druid",
-    "roles": {
-      "healing": 12,
-      "buff": 10,
-      "control": 6
-    },
-    "reason": "Druid order favors nature healing and support.",
-    "label": "Leaf Order"
-  },
-  "flame-order": {
-    "classSlug": "druid",
-    "spell": 8,
-    "roles": {
-      "area-damage": 12,
-      "control": 10,
-      "damage": 8
-    },
-    "reason": "Druid order favors elemental area pressure.",
-    "label": "Flame Order"
-  },
-  "storm-order": {
-    "classSlug": "druid",
-    "spell": 8,
-    "roles": {
-      "area-damage": 12,
-      "control": 10,
-      "damage": 8
-    },
-    "reason": "Druid order favors elemental area pressure.",
-    "label": "Storm Order"
-  },
-  "wave-order": {
-    "classSlug": "druid",
-    "spell": 8,
-    "roles": {
-      "area-damage": 12,
-      "control": 10,
-      "damage": 8
-    },
-    "reason": "Druid order favors elemental area pressure.",
-    "label": "Wave Order"
-  },
-  "spore-order": {
-    "classSlug": "druid",
-    "roles": {
-      "control": 10,
-      "defense": 10,
-      "damage": 6
-    },
-    "reason": "Druid order favors terrain control and defense.",
-    "label": "Spore Order"
-  },
-  "stone-order": {
-    "classSlug": "druid",
-    "roles": {
-      "control": 10,
-      "defense": 10,
-      "damage": 6
-    },
-    "reason": "Druid order favors terrain control and defense.",
-    "label": "Stone Order"
-  },
+  ...expandOrderTactics(NATURE_HEALING_ORDER_TACTIC),
+  ...expandOrderTactics(ELEMENTAL_AREA_ORDER_TACTIC),
+  ...expandOrderTactics(TERRAIN_CONTROL_ORDER_TACTIC),
   "untamed-order": {
     "label": "Untamed Order",
     "classSlug": "druid",

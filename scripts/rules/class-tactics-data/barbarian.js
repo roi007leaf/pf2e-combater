@@ -16,6 +16,37 @@ export const BARBARIAN_CLASS_TACTIC = {
     },
   };
 
+// decay/ligneous/spirit and fury/giant instincts are byte-identical copies of two templates --
+// previously each repeated its full roles/reason verbatim. The other 5 instincts are each unique.
+function expandInstinctTactics(template) {
+  const entries = {};
+  for (const [key, label] of template.members) {
+    entries[key] = { classSlug: "barbarian", meleeStrike: template.meleeStrike, roles: template.roles, reason: template.reason, label };
+  }
+  return entries;
+}
+
+const MARTIAL_PRESSURE_INSTINCT_TACTIC = {
+  meleeStrike: 10,
+  roles: { damage: 10, control: 6, defense: 6 },
+  reason: "Instinct choice favors Rage-enhanced martial pressure.",
+  members: [
+    ["decay-instinct", "Decay Instinct"],
+    ["ligneous-instinct", "Ligneous Instinct"],
+    ["spirit-instinct", "Spirit Instinct"],
+  ],
+};
+
+const DIRECT_DAMAGE_INSTINCT_TACTIC = {
+  meleeStrike: 12,
+  roles: { damage: 12, "mobility-attack": 8 },
+  reason: "Instinct choice favors direct Rage damage.",
+  members: [
+    ["fury-instinct", "Fury Instinct"],
+    ["giant-instinct", "Giant Instinct"],
+  ],
+};
+
 export const BARBARIAN_SUBCLASS_TACTICS = {
   "animal-instinct": {
     "label": "Animal Instinct",
@@ -94,57 +125,6 @@ export const BARBARIAN_SUBCLASS_TACTICS = {
     },
     "reason": "Bloodrager instinct blends spell setup with Rage attacks."
   },
-  "decay-instinct": {
-    "classSlug": "barbarian",
-    "meleeStrike": 10,
-    "roles": {
-      "damage": 10,
-      "control": 6,
-      "defense": 6
-    },
-    "reason": "Instinct choice favors Rage-enhanced martial pressure.",
-    "label": "Decay Instinct"
-  },
-  "ligneous-instinct": {
-    "classSlug": "barbarian",
-    "meleeStrike": 10,
-    "roles": {
-      "damage": 10,
-      "control": 6,
-      "defense": 6
-    },
-    "reason": "Instinct choice favors Rage-enhanced martial pressure.",
-    "label": "Ligneous Instinct"
-  },
-  "spirit-instinct": {
-    "classSlug": "barbarian",
-    "meleeStrike": 10,
-    "roles": {
-      "damage": 10,
-      "control": 6,
-      "defense": 6
-    },
-    "reason": "Instinct choice favors Rage-enhanced martial pressure.",
-    "label": "Spirit Instinct"
-  },
-  "fury-instinct": {
-    "classSlug": "barbarian",
-    "meleeStrike": 12,
-    "roles": {
-      "damage": 12,
-      "mobility-attack": 8
-    },
-    "reason": "Instinct choice favors direct Rage damage.",
-    "label": "Fury Instinct"
-  },
-  "giant-instinct": {
-    "classSlug": "barbarian",
-    "meleeStrike": 12,
-    "roles": {
-      "damage": 12,
-      "mobility-attack": 8
-    },
-    "reason": "Instinct choice favors direct Rage damage.",
-    "label": "Giant Instinct"
-  }
+  ...expandInstinctTactics(MARTIAL_PRESSURE_INSTINCT_TACTIC),
+  ...expandInstinctTactics(DIRECT_DAMAGE_INSTINCT_TACTIC),
 };
