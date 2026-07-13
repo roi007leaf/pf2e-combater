@@ -53,6 +53,187 @@ function strikeDamageScore(averageDamage) {
   return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
 }
 
+function demoralizeTactic(acc, { target }) {
+  if (!(target && !hasCondition(target, "frightened"))) return;
+  acc.score += 22;
+  acc.reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
+}
+
+function tripTactic(acc, { target }) {
+  if (!(target && !hasCondition(target, "prone"))) return;
+  acc.score += 18;
+  acc.reasons.push(t("ScoreReason.TargetIsStandingAnd", "Target is standing and can be knocked prone."));
+}
+
+function grappleTactic(acc, { target }) {
+  if (!(target && !hasCondition(target, "grabbed"))) return;
+  acc.score += 16;
+  acc.reasons.push(t("ScoreReason.TargetIsNotGrabbed", "Target is not grabbed."));
+}
+
+function disarmTactic(acc, { target }) {
+  if (!target) return;
+  acc.score += 10;
+  acc.reasons.push(t("ScoreReason.CanPressureEnemyWeapon", "Can pressure enemy weapon or held item."));
+}
+
+function repositionTactic(acc, { target }) {
+  if (!target) return;
+  acc.score += 12;
+  acc.reasons.push(t("ScoreReason.CanMoveTargetInto", "Can move target into a better square."));
+}
+
+function shoveTactic(acc, { target }) {
+  if (!target) return;
+  acc.score += 12;
+  acc.reasons.push(t("ScoreReason.CanPushTargetOut", "Can push target out of position."));
+}
+
+function feintTactic(acc, { context, target }) {
+  if (!(enemyInMelee(context) && !hasCondition(target, "off-guard"))) return;
+  acc.score += 18;
+  acc.reasons.push(t("ScoreReason.TargetIsInMelee", "Target is in melee and not off-guard."));
+}
+
+function createADiversionTactic(acc, { profile, target }) {
+  if (!(target && !hasCondition(profile, "hidden"))) return;
+  acc.score += 12;
+  acc.reasons.push(t("ScoreReason.CanCreateAHidden", "Can create a hidden opening."));
+}
+
+function tumbleThroughTactic(acc, { target }) {
+  if (!(target && !hasCondition(target, "off-guard"))) return;
+  acc.score += 14;
+  acc.reasons.push(t("ScoreReason.CanMoveThroughEnemy", "Can move through enemy and set up off-guard pressure."));
+}
+
+function terrainMovementTactic(acc) {
+  acc.score += 6;
+  acc.reasons.push(t("ScoreReason.TerrainMakesThisMovement", "Terrain makes this movement action relevant."));
+}
+
+function forceOpenTactic(acc) {
+  acc.score += 8;
+  acc.reasons.push(t("ScoreReason.ObstacleOrObjectCan", "Obstacle or object can be forced open."));
+}
+
+function seekTactic(acc) {
+  acc.score += 8;
+  acc.reasons.push(t("ScoreReason.UsefulWhenHiddenEnemies", "Useful when hidden enemies or hazards may matter."));
+}
+
+function senseMotiveTactic(acc, { target }) {
+  if (!target) return;
+  acc.score += 6;
+  acc.reasons.push(t("ScoreReason.UsefulWhenEnemyIntent", "Useful when enemy intent is unclear."));
+}
+
+function recallKnowledgeTactic(acc, { target }) {
+  if (!target) return;
+  acc.score += 16;
+  acc.reasons.push(t("ScoreReason.IdentifyDefenses", "Identify {target} defenses and weaknesses.", { target: target.name }));
+}
+
+function raiseAShieldTactic(acc, { profile, pressure }) {
+  if (!profile.hasShield) return;
+  acc.score += hpPercent(profile) < 0.5 ? 24 : 12;
+  acc.reasons.push(t("ScoreReason.ShieldEquipped", "Shield equipped."));
+  if (pressure.inMeleeThreat || pressure.hasOpenEnemyLine) {
+    acc.score += 12;
+    acc.reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
+  }
+}
+
+function takeCoverTactic(acc, { profile, pressure }) {
+  acc.score += hpPercent(profile) < 0.5 ? 18 : 10;
+  acc.reasons.push(t("ScoreReason.CoverIsAvailable", "Cover is available."));
+  if (pressure.hasOpenEnemyLine) {
+    acc.score += 18;
+    acc.reasons.push(t("ScoreReason.OpenEnemyLineMakes", "Open enemy line makes cover valuable."));
+  }
+}
+
+function escapeTactic(acc) {
+  acc.score += 30;
+  acc.reasons.push(t("ScoreReason.ActorIsGrabbedOr", "Actor is grabbed or restrained."));
+}
+
+function hideTactic(acc) {
+  acc.score += 12;
+  acc.reasons.push(t("ScoreReason.CoverOrConcealmentSupports", "Cover or concealment supports hiding."));
+}
+
+function sneakTactic(acc) {
+  acc.score += 10;
+  acc.reasons.push(t("ScoreReason.CanRepositionWhileHidden", "Can reposition while hidden or covered."));
+}
+
+function stealTactic(acc, { target }) {
+  if (!target) return;
+  acc.score -= 4;
+  acc.reasons.push(t("ScoreReason.CombatTheftIsSituational", "Combat theft is situational."));
+}
+
+function palmAnObjectTactic(acc) {
+  acc.score -= 2;
+  acc.reasons.push(t("ScoreReason.NearbyObjectCanBe", "Nearby object can be palmed, but combat value is situational."));
+}
+
+function commandAnAnimalTactic(acc, { context, action }) {
+  acc.minionPlan = planMinionSubturn(context, {
+    minionActionBudget: action.activityProfile?.minionActionBudget,
+  });
+  acc.score += 18;
+  acc.reasons.push(t("ScoreReason.CompanionOrMinionCan", "Companion or minion can contribute this turn."));
+  if (acc.minionPlan) {
+    acc.score += acc.minionPlan.scoreDelta;
+    acc.reasons.push(...acc.minionPlan.reasons);
+  }
+}
+
+function administerFirstAidTactic(acc, { context }) {
+  const ally = dyingAlly(context) ?? bleedingAlly(context);
+  if (!ally) return;
+  acc.score += 36;
+  acc.reasons.push(t("ScoreReason.AllyNeedsAid", "{ally} needs immediate aid.", { ally: ally.name }));
+}
+
+function stabilizeTactic(acc, { context }) {
+  const ally = dyingAlly(context);
+  if (!ally) return;
+  acc.score += 40;
+  acc.reasons.push(t("ScoreReason.AllyDying", "{ally} is dying.", { ally: ally.name }));
+}
+
+const SLUG_TACTICS = {
+  demoralize: demoralizeTactic,
+  trip: tripTactic,
+  grapple: grappleTactic,
+  disarm: disarmTactic,
+  reposition: repositionTactic,
+  shove: shoveTactic,
+  feint: feintTactic,
+  "create-a-diversion": createADiversionTactic,
+  "tumble-through": tumbleThroughTactic,
+  balance: terrainMovementTactic,
+  climb: terrainMovementTactic,
+  swim: terrainMovementTactic,
+  "force-open": forceOpenTactic,
+  seek: seekTactic,
+  "sense-motive": senseMotiveTactic,
+  "recall-knowledge": recallKnowledgeTactic,
+  "raise-a-shield": raiseAShieldTactic,
+  "take-cover": takeCoverTactic,
+  escape: escapeTactic,
+  hide: hideTactic,
+  sneak: sneakTactic,
+  steal: stealTactic,
+  "palm-an-object": palmAnObjectTactic,
+  "command-an-animal": commandAnAnimalTactic,
+  "administer-first-aid": administerFirstAidTactic,
+  stabilize: stabilizeTactic,
+};
+
 export function suggestedTargetFor(context, action, role, preferredTarget = firstContextTarget(context)) {
   const target = preferredTarget;
   const needsTargetableEnemy = requiresTargetableEnemy(action, role);
@@ -226,146 +407,10 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
     }
   }
 
-  if (action.slug === "demoralize" && target && !hasCondition(target, "frightened")) {
-    score += 22;
-    reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
-  }
-
-  if (action.slug === "trip" && target && !hasCondition(target, "prone")) {
-    score += 18;
-    reasons.push(t("ScoreReason.TargetIsStandingAnd", "Target is standing and can be knocked prone."));
-  }
-
-  if (action.slug === "grapple" && target && !hasCondition(target, "grabbed")) {
-    score += 16;
-    reasons.push(t("ScoreReason.TargetIsNotGrabbed", "Target is not grabbed."));
-  }
-
-  if (action.slug === "disarm" && target) {
-    score += 10;
-    reasons.push(t("ScoreReason.CanPressureEnemyWeapon", "Can pressure enemy weapon or held item."));
-  }
-
-  if (action.slug === "reposition" && target) {
-    score += 12;
-    reasons.push(t("ScoreReason.CanMoveTargetInto", "Can move target into a better square."));
-  }
-
-  if (action.slug === "shove" && target) {
-    score += 12;
-    reasons.push(t("ScoreReason.CanPushTargetOut", "Can push target out of position."));
-  }
-
-  if (action.slug === "feint" && enemyInMelee(context) && !hasCondition(target, "off-guard")) {
-    score += 18;
-    reasons.push(t("ScoreReason.TargetIsInMelee", "Target is in melee and not off-guard."));
-  }
-
-  if (action.slug === "create-a-diversion" && target && !hasCondition(profile, "hidden")) {
-    score += 12;
-    reasons.push(t("ScoreReason.CanCreateAHidden", "Can create a hidden opening."));
-  }
-
-  if (action.slug === "tumble-through" && target && !hasCondition(target, "off-guard")) {
-    score += 14;
-    reasons.push(t("ScoreReason.CanMoveThroughEnemy", "Can move through enemy and set up off-guard pressure."));
-  }
-
-  if (["balance", "climb", "swim"].includes(action.slug)) {
-    score += 6;
-    reasons.push(t("ScoreReason.TerrainMakesThisMovement", "Terrain makes this movement action relevant."));
-  }
-
-  if (action.slug === "force-open") {
-    score += 8;
-    reasons.push(t("ScoreReason.ObstacleOrObjectCan", "Obstacle or object can be forced open."));
-  }
-
-  if (action.slug === "seek") {
-    score += 8;
-    reasons.push(t("ScoreReason.UsefulWhenHiddenEnemies", "Useful when hidden enemies or hazards may matter."));
-  }
-
-  if (action.slug === "sense-motive" && target) {
-    score += 6;
-    reasons.push(t("ScoreReason.UsefulWhenEnemyIntent", "Useful when enemy intent is unclear."));
-  }
-
-  if (action.slug === "recall-knowledge" && target) {
-    score += 16;
-    reasons.push(t("ScoreReason.IdentifyDefenses", "Identify {target} defenses and weaknesses.", { target: target.name }));
-  }
-
-  if (action.slug === "raise-a-shield" && profile.hasShield) {
-    score += hpPercent(profile) < 0.5 ? 24 : 12;
-    reasons.push(t("ScoreReason.ShieldEquipped", "Shield equipped."));
-    if (pressure.inMeleeThreat || pressure.hasOpenEnemyLine) {
-      score += 12;
-      reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
-    }
-  }
-
-  if (action.slug === "take-cover") {
-    score += hpPercent(profile) < 0.5 ? 18 : 10;
-    reasons.push(t("ScoreReason.CoverIsAvailable", "Cover is available."));
-    if (pressure.hasOpenEnemyLine) {
-      score += 18;
-      reasons.push(t("ScoreReason.OpenEnemyLineMakes", "Open enemy line makes cover valuable."));
-    }
-  }
-
-  if (action.slug === "escape") {
-    score += 30;
-    reasons.push(t("ScoreReason.ActorIsGrabbedOr", "Actor is grabbed or restrained."));
-  }
-
-  if (action.slug === "hide") {
-    score += 12;
-    reasons.push(t("ScoreReason.CoverOrConcealmentSupports", "Cover or concealment supports hiding."));
-  }
-
-  if (action.slug === "sneak") {
-    score += 10;
-    reasons.push(t("ScoreReason.CanRepositionWhileHidden", "Can reposition while hidden or covered."));
-  }
-
-  if (action.slug === "steal" && target) {
-    score -= 4;
-    reasons.push(t("ScoreReason.CombatTheftIsSituational", "Combat theft is situational."));
-  }
-
-  if (action.slug === "palm-an-object") {
-    score -= 2;
-    reasons.push(t("ScoreReason.NearbyObjectCanBe", "Nearby object can be palmed, but combat value is situational."));
-  }
-
-  if (action.slug === "command-an-animal") {
-    minionPlan = planMinionSubturn(context, {
-      minionActionBudget: action.activityProfile?.minionActionBudget,
-    });
-    score += 18;
-    reasons.push(t("ScoreReason.CompanionOrMinionCan", "Companion or minion can contribute this turn."));
-    if (minionPlan) {
-      score += minionPlan.scoreDelta;
-      reasons.push(...minionPlan.reasons);
-    }
-  }
-
-  if (action.slug === "administer-first-aid") {
-    const ally = dyingAlly(context) ?? bleedingAlly(context);
-    if (ally) {
-      score += 36;
-      reasons.push(t("ScoreReason.AllyNeedsAid", "{ally} needs immediate aid.", { ally: ally.name }));
-    }
-  }
-
-  if (action.slug === "stabilize") {
-    const ally = dyingAlly(context);
-    if (ally) {
-      score += 40;
-      reasons.push(t("ScoreReason.AllyDying", "{ally} is dying.", { ally: ally.name }));
-    }
-  }
+  const slugAcc = { score, reasons, minionPlan };
+  SLUG_TACTICS[action.slug]?.(slugAcc, { context, action, profile, target, pressure });
+  score = slugAcc.score;
+  minionPlan = slugAcc.minionPlan;
 
   const curatedRoleTactics = scoreCuratedRoleTactics(context, action, {
     role,

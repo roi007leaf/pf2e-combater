@@ -771,35 +771,42 @@ function swashbucklerPlaybook(parts, profile, action, signals, actionSlug) {
   }
 }
 
+// CLASS_TACTICS (index.js) already dispatches per-class base tactics through one object map;
+// this mirrors that for the per-class playbook functions instead of a 28-way if-chain, so adding
+// class #29 means adding one map entry, not remembering to also touch a separate dispatch site.
+const CLASS_PLAYBOOKS = {
+  alchemist: alchemistPlaybook,
+  animist: animistPlaybook,
+  barbarian: barbarianPlaybook,
+  bard: bardPlaybook,
+  champion: championPlaybook,
+  cleric: clericPlaybook,
+  commander: commanderPlaybook,
+  druid: druidPlaybook,
+  exemplar: exemplarPlaybook,
+  fighter: fighterPlaybook,
+  guardian: guardianPlaybook,
+  gunslinger: gunslingerPlaybook,
+  inventor: inventorPlaybook,
+  investigator: investigatorPlaybook,
+  kineticist: kineticistPlaybook,
+  magus: magusPlaybook,
+  monk: monkPlaybook,
+  oracle: oraclePlaybook,
+  psychic: psychicPlaybook,
+  ranger: rangerPlaybook,
+  rogue: roguePlaybook,
+  runesmith: runesmithPlaybook,
+  sorcerer: sorcererPlaybook,
+  summoner: summonerPlaybook,
+  swashbuckler: swashbucklerPlaybook,
+  thaumaturge: thaumaturgePlaybook,
+  witch: witchPlaybook,
+  wizard: wizardPlaybook,
+};
+
 function classPlaybookAdjustment(slug, parts, profile, action, signals, actionSlug) {
-  if (slug === "alchemist") alchemistPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "animist") animistPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "barbarian") barbarianPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "bard") bardPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "champion") championPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "cleric") clericPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "commander") commanderPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "druid") druidPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "exemplar") exemplarPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "fighter") fighterPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "guardian") guardianPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "gunslinger") gunslingerPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "inventor") inventorPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "investigator") investigatorPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "kineticist") kineticistPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "magus") magusPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "monk") monkPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "oracle") oraclePlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "psychic") psychicPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "ranger") rangerPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "rogue") roguePlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "runesmith") runesmithPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "sorcerer") sorcererPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "summoner") summonerPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "swashbuckler") swashbucklerPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "thaumaturge") thaumaturgePlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "witch") witchPlaybook(parts, profile, action, signals, actionSlug);
-  if (slug === "wizard") wizardPlaybook(parts, profile, action, signals, actionSlug);
+  CLASS_PLAYBOOKS[slug]?.(parts, profile, action, signals, actionSlug);
 }
 
 function summarize(label, parts) {
