@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.10]
+
+### Changed
+
+- **Action builder and tactical scoring code are now organized into smaller, focused modules.** The
+  action builder is split into dedicated modules for tab/draft assembly, area/destination
+  projection, and composite-action atomization instead of one large file, and the retch decision
+  dialog now lives alongside the module's other GM dialog helpers. Per-role, per-slug, and
+  per-class tactical scoring now dispatch through lookup tables instead of long sequential checks.
+  These are internal reorganizations verified to produce identical Auto-fill and Browse behavior.
+
 ## [1.1.9]
 
 ### Added
