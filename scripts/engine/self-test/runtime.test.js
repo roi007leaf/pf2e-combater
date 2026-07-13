@@ -19,7 +19,7 @@ import {
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
-} from "../action/builder.js";
+} from "../action/builder/index.js";
 import {
   isSelfCenteredAreaAction,
   isTargetCenteredAreaAction,
@@ -149,7 +149,7 @@ import {
   normalizeIntelLedger,
 } from "../../rules/intel-ledger.js";
 import { planMinionSubturn } from "../../rules/minion-planner.js";
-import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "../../ui/retch-decision.js";
 import { requestRetchDc, requestRetchResult, setSocket, shareDraftPlan } from "../../socket.js";
 import {
   readSustainedSpellEntries,
@@ -208,8 +208,8 @@ const scoringGatesSource = readFileSync(new URL("../scoring/gates.js", import.me
 const scoringSkillsSource = readFileSync(new URL("../scoring/skills.js", import.meta.url), "utf8");
 const scoringSpellsSource = readFileSync(new URL("../scoring/spells.js", import.meta.url), "utf8");
 const scoringTargetsSource = readFileSync(new URL("../scoring/targets.js", import.meta.url), "utf8");
-const actionBuilderSource = readFileSync(new URL("../action/builder.js", import.meta.url), "utf8");
-const actionBuilderProjectionSource = readFileSync(new URL("../action/builder-projection.js", import.meta.url), "utf8");
+const actionBuilderSource = readFileSync(new URL("../action/builder/index.js", import.meta.url), "utf8");
+const actionBuilderProjectionSource = readFileSync(new URL("../action/builder/projection.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("../action/executor.js", import.meta.url), "utf8");
 const actionRevertSource = readFileSync(new URL("../action/revert.js", import.meta.url), "utf8");
 const executionAreaSource = readFileSync(new URL("../execution/area.js", import.meta.url), "utf8");

@@ -6,7 +6,7 @@ import {
   computeAreaMarker,
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
-} from "../../engine/action/builder.js";
+} from "../../engine/action/builder/index.js";
 import { requiresDestinationForAction, requiresTargetForAction } from "../../engine/action/requirements.js";
 import { currentTargetSelection, executeDraftStep, plannedTargetSelection, setTokenTargets } from "../../engine/action/executor.js";
 import { revertDraftStep } from "../../engine/action/revert.js";

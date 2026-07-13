@@ -1,6 +1,6 @@
 import { SETTINGS, settingOrDefault } from "../../settings.js";
 import { collectionValues } from "../../foundry-data.js";
-import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder.js";
+import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder/index.js";
 import { buildCandidates } from "../../engine/candidates.js";
 import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
 import { readActionFavorites } from "../../state/action-favorites.js";

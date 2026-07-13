@@ -1,7 +1,7 @@
 import { clearMovementPreview, showMovementPreview } from "../movement-preview.js";
 import { previewLayer } from "../preview-layer.js";
 import { clearRangeOverlay, showRangeOverlay, spellRangeFeet } from "../range-overlay.js";
-import { computeAreaMarker } from "../../engine/action/builder-projection.js";
+import { computeAreaMarker } from "../../engine/action/builder/projection.js";
 import { areaRegionDistance, areaRegionType, areaRegionWidth } from "../../engine/area/region.js";
 import { canvasDistancePixels as distancePixels, canvasGridSize as gridSize, canvasPoint as point, canvasTokenById, numeric } from "../../rules/canvas-geometry.js";
 

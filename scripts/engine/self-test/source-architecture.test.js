@@ -17,7 +17,7 @@ import {
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
   projectContextForDraftStepOrigin,
-} from "../action/builder.js";
+} from "../action/builder/index.js";
 import {
   isSelfCenteredAreaAction,
   isTargetCenteredAreaAction,
@@ -116,7 +116,7 @@ import { builderActionCategory, groupActionsByBuilderCategory } from "../../ui/a
 import { actionDetailChips, traitChips } from "../../ui/action/details.js";
 import { battlefieldPressure, compareTacticalCenters, threatCountAtCenter } from "../../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue, canUseFullAggro } from "../../rules/aggro.js";
-import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "../../ui/retch-decision.js";
 import { requestRetchDc, requestRetchResult, setSocket, shareDraftPlan } from "../../socket.js";
 import {
   readSustainedSpellEntries,
@@ -177,8 +177,12 @@ const aggroSource = readFileSync(new URL("../../rules/aggro.js", import.meta.url
 const tacticPersonalitySource = readFileSync(new URL("../../rules/tactic-personality.js", import.meta.url), "utf8");
 const intelLedgerSource = readFileSync(new URL("../../rules/intel-ledger.js", import.meta.url), "utf8");
 const minionPlannerSource = readFileSync(new URL("../../rules/minion-planner.js", import.meta.url), "utf8");
-const actionBuilderSource = readFileSync(new URL("../action/builder.js", import.meta.url), "utf8");
-const actionBuilderProjectionSource = readFileSync(new URL("../action/builder-projection.js", import.meta.url), "utf8");
+const actionBuilderSource = readFileSync(new URL("../action/builder/index.js", import.meta.url), "utf8");
+const actionBuilderProjectionSource = readFileSync(new URL("../action/builder/projection.js", import.meta.url), "utf8");
+const actionBuilderSharedSource = readFileSync(new URL("../action/builder/shared.js", import.meta.url), "utf8");
+const actionBuilderAtomizeSource = readFileSync(new URL("../action/builder/atomize.js", import.meta.url), "utf8");
+const actionBuilderMinionSource = readFileSync(new URL("../action/builder/minion.js", import.meta.url), "utf8");
+const actionBuilderModelSource = readFileSync(new URL("../action/builder/model.js", import.meta.url), "utf8");
 const actionExecutorSource = readFileSync(new URL("../action/executor.js", import.meta.url), "utf8");
 const actionRevertSource = readFileSync(new URL("../action/revert.js", import.meta.url), "utf8");
 const executionAreaSource = readFileSync(new URL("../execution/area.js", import.meta.url), "utf8");
@@ -1857,7 +1861,7 @@ assert.ok(
   actionReaderSource.includes('from "../../engine/action/text.js"')
     && spellReaderSource.includes('from "../engine/action/text.js"')
     && actionBudgetSource.includes('from "./text.js"')
-    && actionBuilderSource.includes('from "./text.js"')
+    && actionBuilderAtomizeSource.includes('from "../text.js"')
     && executionSustainSource.includes('from "../action/text.js"')
     && plannerSource.includes('from "./action/text.js"')
     && scoringGatesSource.includes('from "../action/text.js"')
@@ -1867,6 +1871,9 @@ assert.ok(
 for (const [source, label] of [
   [actionBudgetSource, "action budget"],
   [actionBuilderSource, "action builder"],
+  [actionBuilderAtomizeSource, "action builder atomize"],
+  [actionBuilderMinionSource, "action builder minion"],
+  [actionBuilderModelSource, "action builder model"],
   [actionExecutorSource, "action executor"],
   [plannerSource, "planner"],
   [scoringSource, "scoring"],
@@ -1880,8 +1887,8 @@ for (const [source, label] of [
   );
 }
 assert.ok(
-  actionBuilderSource.includes("return slugify(name);"),
-  "action builder should delegate action-name slug parsing to action text",
+  actionBuilderAtomizeSource.includes("return slugify(name);"),
+  "action builder atomize should delegate action-name slug parsing to action text",
 );
 assert.ok(
   actionReaderSource.includes("return parseActionTextValue(value);")
@@ -2292,8 +2299,8 @@ assert.equal(
   "scorer should not import action-reader just to select backing Strikes",
 );
 assert.ok(
-  actionBuilderSource.includes('from "./requirements.js"'),
-  "action builder should read destination/area requirement rules through the action requirements module",
+  actionBuilderModelSource.includes('from "../requirements.js"'),
+  "action builder model should read destination/area requirement rules through the action requirements module",
 );
 assert.ok(
   actionExecutorSource.includes('from "./requirements.js"'),
@@ -2310,12 +2317,12 @@ assert.ok(
   "action requirements module should own destination, target, and area marker decision rules",
 );
 assert.equal(
-  actionBuilderSource.includes('from "./executor.js"'),
+  actionBuilderSource.includes('from "../executor.js"'),
   false,
   "action builder should not depend on execution just to classify area/destination requirements",
 );
 assert.equal(
-  actionExecutorSource.includes('from "./builder.js"'),
+  actionExecutorSource.includes('from "./builder/index.js"'),
   false,
   "action executor should not depend on builder just to classify destination requirements",
 );
@@ -2580,9 +2587,9 @@ assert.ok(
 assert.ok(
   scoringTacticsSource.includes('from "./role-tactics.js"')
     && scoringRoleTacticsSource.includes("export function scoreCuratedRoleTactics")
-    && scoringRoleTacticsSource.includes('role === "area-damage"')
-    && scoringRoleTacticsSource.includes('role === "buff"')
-    && scoringRoleTacticsSource.includes('role === "defense"'),
+    && scoringRoleTacticsSource.includes('"area-damage": areaDamageTactic')
+    && scoringRoleTacticsSource.includes("buff: buffTactic")
+    && scoringRoleTacticsSource.includes("defense: defenseTactic"),
   "scoring role tactics should own curated role score/reason blocks",
 );
 assert.ok(
@@ -2860,7 +2867,7 @@ assert.equal(
   "battlefield analysis should not duplicate token placement rectangle math",
 );
 assert.ok(
-  actionBuilderSource.includes('from "./builder-projection.js"'),
+  actionBuilderSource.includes('from "./projection.js"'),
   "action builder should delegate area marker and draft destination projection to the action builder projection module",
 );
 assert.ok(

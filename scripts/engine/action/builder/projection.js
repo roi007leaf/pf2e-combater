@@ -1,12 +1,12 @@
-import { slugify } from "./text.js";
+import { slugify } from "../text.js";
 import {
   isDestinationActionSlug,
   isSelfCenteredAreaAction,
   requiresAreaMarkerForAction,
   requiresDestinationForAction,
-} from "./requirements.js";
-import { areaMarkerLabel, areaMarkerShape, areaRegionDistance, areaRegionWidth } from "../area/region.js";
-import { footprintPathDistanceFeet } from "../../rules/token-geometry.js";
+} from "../requirements.js";
+import { areaMarkerLabel, areaMarkerShape, areaRegionDistance, areaRegionWidth } from "../../area/region.js";
+import { footprintPathDistanceFeet } from "../../../rules/token-geometry.js";
 
 const ESCAPE_REMOVED_CONDITIONS = ["grabbed", "grappled", "immobilised", "immobilized", "restrained"];
 const RAISE_SHIELD_SLUGS = new Set(["raise-a-shield"]);

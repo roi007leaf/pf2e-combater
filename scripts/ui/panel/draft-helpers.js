@@ -4,7 +4,7 @@ import {
   builderAtomicActionsForStep,
   projectContextForDraftStepOrigin,
   SUSTAIN_A_SPELL_ACTION,
-} from "../../engine/action/builder.js";
+} from "../../engine/action/builder/index.js";
 import { plannedTargetSelection } from "../../engine/action/executor.js";
 import { buildCandidates } from "../../engine/candidates.js";
 import { contextEnemies, contextTargets } from "../../engine/target-pool.js";

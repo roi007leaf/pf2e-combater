@@ -5,7 +5,7 @@ import { executionReadinessForStep } from "../../engine/execution/state.js";
 import { resolveTarget } from "../../engine/execution/targets.js";
 import { revertDraftExecution, revertDraftStep } from "../../engine/action/revert.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
-import { promptRetchDc, promptRetchResult } from "../../rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "../retch-decision.js";
 import { recallKnowledgeAttemptState } from "../../rules/recall-knowledge.js";
 import { requestRecallKnowledgeResolution, requestRetchDc, requestRetchResult } from "../../socket.js";
 import { clearActionPreview } from "../action/preview.js";

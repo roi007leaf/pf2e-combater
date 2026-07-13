@@ -2,7 +2,7 @@ import { MODULE_ID } from "./constants.js";
 import { playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
 import { collectionValues } from "./foundry-data.js";
 import { clearMovementCollisionCache } from "./readers/action/reach.js";
-import { promptRetchDc, promptRetchResult } from "./rules/retch-decision.js";
+import { promptRetchDc, promptRetchResult } from "./ui/retch-decision.js";
 import { setSocket } from "./socket.js";
 import { t } from "./i18n.js";
 import { documentRelevantToContext } from "./state/context-relevance.js";

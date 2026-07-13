@@ -1,4 +1,4 @@
-import { ACTION_BUILDER_TABS } from "../../engine/action/builder.js";
+import { ACTION_BUILDER_TABS } from "../../engine/action/builder/index.js";
 import {
   isSelfCenteredAreaAction,
   isTargetCenteredAreaAction,

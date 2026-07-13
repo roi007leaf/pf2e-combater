@@ -1,6 +1,6 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 import { SETTINGS, playerAccessAllowed, settingOrDefault } from "../settings.js";
-import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder.js";
+import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder/index.js";
 import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { actionBudget } from "../engine/action/budget.js";

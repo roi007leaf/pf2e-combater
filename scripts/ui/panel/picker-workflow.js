@@ -1,5 +1,5 @@
 import { readDraftPlan } from "../../state/draft-plans.js";
-import { projectContextForDraftStepOrigin } from "../../engine/action/builder.js";
+import { projectContextForDraftStepOrigin } from "../../engine/action/builder/index.js";
 import { tokensInAreaMarker } from "../../engine/area/region.js";
 import {
   currentTargetSelection,
