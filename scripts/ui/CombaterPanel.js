@@ -82,6 +82,7 @@ import {
 import { openIntelWindow } from "./intel-window.js";
 import { resetRecallKnowledgeAttemptsForTarget } from "./recall-knowledge.js";
 import { openTacticWindow } from "./tactic-window.js";
+import { isPlannableCombatant } from "../rules/actor-eligibility.js";
 import {
   TACTIC_PERSONALITY_FLAG,
   TACTIC_PERSONALITY_OVERRIDE_FLAG,
@@ -1046,6 +1047,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
 export async function openPanelForCurrentCombatant(activePanel, refreshSource = "manual", options = {}) {
   if (!playerAccessAllowed()) {
+    await activePanel?.close?.();
+    return null;
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(options, "combatant")
+    && options.combatant
+    && !isPlannableCombatant(options.combatant)
+  ) {
     await activePanel?.close?.();
     return null;
   }

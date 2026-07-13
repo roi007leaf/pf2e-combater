@@ -1,6 +1,8 @@
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
+import { contextActorDocument } from "../engine/actor-context.js";
 import { slugify } from "../engine/action/text.js";
 import { canAttackTarget, contextAllies, contextEnemies, contextTargets } from "../engine/target-pool.js";
+import { actorItems, systemValue, traitSlugs } from "../foundry-data.js";
 import {
   isSeekRelevantVisibility,
   isVisionerActive,
@@ -250,8 +252,8 @@ function readGenericActionAvailabilityForAction(action, context) {
     const enemyInReach = targetableTargets.some((target) => (target?.distance ?? Infinity) <= meleeReach(profile));
     if (!enemyInReach) return availability(false, t("Avail.NoEnemyInReach", "No enemy in reach."));
   }
-  if (action.requiresFreeHand && freeHands(profile) < 1) {
-    return availability(false, t("Avail.NoFreeHand", "No free hand to manipulate an object."));
+  if (action.requiresFreeHand && freeHands(profile) < 1 && !freeHandAlternativeAvailable(action, context, actionTargets)) {
+    return availability(false, t("Avail.NoFreeHand", "No free hand available."));
   }
   if (action.requiresNearbyEnemy) {
     const nearbyEnemy = targetableTargets.some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
@@ -333,6 +335,62 @@ function readGenericActionAvailabilityForAction(action, context) {
 function freeHands(profile) {
   const hands = Number(profile?.handsFree);
   return Number.isFinite(hands) ? hands : 0;
+}
+
+function itemHeld(item) {
+  const handsHeld = Number(item?.handsHeld ?? item?.system?.equipped?.handsHeld);
+  const carryType = String(systemValue(item?.system?.equipped?.carryType) ?? "").toLowerCase();
+  return item?.isHeld === true
+    || carryType === "held"
+    || (Number.isFinite(handsHeld) && handsHeld > 0);
+}
+
+function maneuverSourceTraits(source) {
+  const directTraits = Array.isArray(source?.traits)
+    ? source.traits.map((trait) => trait?.slug ?? trait?.name ?? trait)
+    : [];
+  return [...new Set([
+    ...directTraits,
+    ...traitSlugs(source),
+    ...traitSlugs(source?.item),
+  ].filter(Boolean).map((trait) => String(trait).toLowerCase()))];
+}
+
+function heldManeuverTraitAvailable(action, context) {
+  const requiredTraits = Array.isArray(action?.freeHandWeaponTraits) ? action.freeHandWeaponTraits : [];
+  if (!requiredTraits.length) return false;
+
+  const actor = contextActorDocument(context, { allowActorFallback: true });
+  if (!actor) return false;
+  const generatedStrikes = Array.isArray(actor?.system?.actions)
+    ? actor.system.actions.filter((strike) =>
+      strike?.type === "strike"
+        && strike?.visible !== false
+        && strike?.ready !== false
+        && strike?.canAttack !== false)
+    : [];
+  const sources = [...actorItems(actor), ...generatedStrikes];
+
+  return sources.some((source) => {
+    if (!requiredTraits.some((trait) => maneuverSourceTraits(source).includes(trait))) return false;
+    if (source?.type === "strike") return true;
+
+    const item = source?.item ?? source;
+    const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
+    return item?.type === "melee"
+      || category === "unarmed"
+      || traitSlugs(item).includes("unarmed")
+      || itemHeld(item);
+  });
+}
+
+function freeHandAlternativeAvailable(action, context, targets) {
+  if (heldManeuverTraitAvailable(action, context)) return true;
+  const conditions = Array.isArray(action?.freeHandAlternativeTargetConditions)
+    ? action.freeHandAlternativeTargetConditions
+    : [];
+  return conditions.length > 0
+    && targets.some((target) => conditions.some((condition) => hasCondition(target, condition)));
 }
 
 function hasMovementCollisionChecker(context) {

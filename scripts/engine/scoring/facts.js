@@ -118,8 +118,9 @@ export function isMeleeStrikeFallback(action) {
 }
 
 export function maxRange(action) {
-  const max = Number(action?.range?.max);
-  if (Number.isFinite(max) && max > 0) return max;
+  const rawMax = action?.range?.max;
+  const max = rawMax === null || rawMax === undefined || rawMax === "" ? NaN : Number(rawMax);
+  if (Number.isFinite(max) && max >= 0) return max;
 
   const profileMax = Number(action?.targetingProfile?.maxRange ?? action?.targetingProfile?.range);
   if (Number.isFinite(profileMax) && profileMax > 0) return profileMax;

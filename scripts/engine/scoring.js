@@ -89,7 +89,13 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     ? nativeRollContextPreflight(context, action, { target })
     : { available: false, status: "disabled", scoreApplied: false };
 
-  const blocked = blockedCandidateResult(context, action, { role, target, profile, siblingSpells });
+  const blocked = blockedCandidateResult(context, action, {
+    role,
+    target,
+    profile,
+    siblingSpells,
+    backingStrikes,
+  });
   if (blocked) return { ...blocked, preference };
 
   let {

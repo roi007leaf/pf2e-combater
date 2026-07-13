@@ -110,25 +110,26 @@ export function readStrideStrikeActivities(context, readyStrikes) {
   });
 }
 
-function strideMultiattackPlan(context, profile, reach, maxStrides, canStep = false) {
+function strideMultiattackPlan(context, profile, reach, maxStrides, canStep = false, intrinsicStrides = 0) {
   const speed = movementRange(profile);
+  const intrinsicMovement = speed * Math.max(0, Number(intrinsicStrides) || 0);
   for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
     const distance = target?.distance ?? Infinity;
-    if (distance <= reach) continue;
-    if (canStep && distance <= reach + 5) {
-      const attackCenter = bestReachableAttackCenter(context, target, 5, reach);
+    if (distance <= intrinsicMovement + reach) continue;
+    if (canStep && distance <= intrinsicMovement + reach + 5) {
+      const attackCenter = bestReachableAttackCenter(context, target, intrinsicMovement + 5, reach);
       if (attackCenter) return { target, strides: 1, movement: "step", attackCenter };
-      if (canMoveIntoReach(context, target, 5, reach)) return { target, strides: 1, movement: "step" };
+      if (canMoveIntoReach(context, target, intrinsicMovement + 5, reach)) return { target, strides: 1, movement: "step" };
     }
-    if (maxStrides >= 1 && distance <= speed + reach) {
-      const attackCenter = bestReachableAttackCenter(context, target, speed, reach);
+    if (maxStrides >= 1 && distance <= intrinsicMovement + speed + reach) {
+      const attackCenter = bestReachableAttackCenter(context, target, intrinsicMovement + speed, reach);
       if (attackCenter) return { target, strides: 1, attackCenter };
-      if (canMoveIntoReach(context, target, speed, reach)) return { target, strides: 1 };
+      if (canMoveIntoReach(context, target, intrinsicMovement + speed, reach)) return { target, strides: 1 };
     }
-    if (maxStrides >= 2 && distance <= speed * 2 + reach) {
-      const attackCenter = bestReachableAttackCenter(context, target, speed * 2, reach);
+    if (maxStrides >= 2 && distance <= intrinsicMovement + speed * 2 + reach) {
+      const attackCenter = bestReachableAttackCenter(context, target, intrinsicMovement + speed * 2, reach);
       if (attackCenter) return { target, strides: 2, attackCenter };
-      if (canMoveIntoReach(context, target, speed * 2, reach)) return { target, strides: 2 };
+      if (canMoveIntoReach(context, target, intrinsicMovement + speed * 2, reach)) return { target, strides: 2 };
     }
   }
   return null;
@@ -140,19 +141,35 @@ export function readStrideMultiattackActivities(context, generatedActivities) {
   const canStep = !standFirst && !movementBlockingCondition(profile, { slug: "step" });
   if (!standFirst && movementBlockingCondition(profile, { slug: "stride" }) && !canStep) return [];
 
-  const multiattacks = generatedActivities.filter((action) =>
-    action.available !== false
-    && action.activityProfile?.requiresBackingStrike
-    && (action.activityProfile?.includes ?? []).every((part) => part === "strike"));
-  if (!multiattacks.length) return [];
+  const approachActivities = generatedActivities.filter((action) => {
+    const includes = action.activityProfile?.includes ?? [];
+    const stationaryMultiattack = includes.length > 0 && includes.every((part) => part === "strike");
+    const intrinsicMoveAndStrike = action.activityProfile?.includesStrike === true
+      && Number(action.activityProfile?.strideCount) > 0;
+    return action.available !== false
+      && action.activityProfile?.requiresBackingStrike
+      && (stationaryMultiattack || intrinsicMoveAndStrike);
+  });
+  if (!approachActivities.length) return [];
 
   const reach = meleeReach(profile);
-  const plan = strideMultiattackPlan(context, profile, reach, standFirst ? 1 : 2, canStep);
-  if (!plan) return [];
-  const { target, strides, movement = "stride", attackCenter } = plan;
-
-  return multiattacks.flatMap((action) => {
-    const actionCost = strides + action.actionCost + (standFirst ? 1 : 0);
+  return approachActivities.flatMap((action) => {
+    const abilityCost = Number(action.actionCost);
+    const standCost = standFirst ? 1 : 0;
+    const maxPrecedingStrides = Math.max(0, 3 - abilityCost - standCost);
+    if (!Number.isFinite(abilityCost) || maxPrecedingStrides < 1) return [];
+    const intrinsicStrides = Math.max(0, Number(action.activityProfile?.strideCount) || 0);
+    const plan = strideMultiattackPlan(
+      context,
+      profile,
+      reach,
+      maxPrecedingStrides,
+      canStep,
+      intrinsicStrides,
+    );
+    if (!plan) return [];
+    const { target, strides, movement = "stride", attackCenter } = plan;
+    const actionCost = strides + abilityCost + standCost;
     if (actionCost > 3) return [];
 
     const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${movement === "step" ? t("Action.StepArrow", "Step -> ") : t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
@@ -168,13 +185,13 @@ export function readStrideMultiattackActivities(context, generatedActivities) {
       activityProfile: {
         ...action.activityProfile,
         includes: [...(standFirst ? ["stand"] : []), ...Array(strides).fill(movement), ...action.activityProfile.includes],
-        strideCount: strides,
+        strideCount: intrinsicStrides + strides,
         ...(movement === "step" ? { fixedDistance: 5, safeMovement: true } : {}),
         strikeReach: reach,
         attackCenter,
         removesCondition: standFirst ? "prone" : null,
         precedingMoveAtomCount: strides + (standFirst ? 1 : 0),
-        abilityActionCost: action.actionCost,
+        abilityActionCost: abilityCost,
       },
       targetingProfile: {
         ...action.targetingProfile,

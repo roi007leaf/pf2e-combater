@@ -3,6 +3,7 @@ import { readVisionerDetectionState } from "../integrations/visioner.js";
 import { collectionValues } from "../foundry-data.js";
 import { movementActionsSpent } from "./token-refresh.js";
 import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
+import { isPlannableActor } from "../rules/actor-eligibility.js";
 import {
   INTEL_REVEAL_MODES,
   bandedIntelDefenseEntry,
@@ -17,7 +18,6 @@ import {
   readIntelRevealMode,
 } from "../rules/intel-ledger.js";
 
-const NON_TARGETABLE_ACTOR_TYPES = new Set(["hazard", "loot"]);
 const ATTACK_HIDDEN_DETECTION_STATES = new Set(["undetected", "unnoticed"]);
 
 function actorSummary(actor, {
@@ -114,7 +114,7 @@ function actorType(actor) {
 
 function isTargetableCombatToken(token) {
   const actor = tokenActor(token);
-  return Boolean(actor && !NON_TARGETABLE_ACTOR_TYPES.has(actorType(actor)));
+  return isPlannableActor(actor);
 }
 
 function tokenDisposition(token) {
@@ -546,18 +546,37 @@ function combatantInCombat(combat, combatant) {
   );
 }
 
+function explorationCombatantForToken(token) {
+  const actor = tokenActor(token);
+  const document = token?.document ?? token;
+  const tokenId = document?.id ?? token?.id ?? null;
+  if (!isPlannableActor(actor) || !tokenId) return null;
+  return {
+    id: `exploration:${tokenId}`,
+    name: tokenDisplayName(token, actor),
+    actor,
+    tokenId,
+    tokenUuid: document?.uuid ?? token?.uuid ?? null,
+    token: { object: token },
+    exploration: true,
+  };
+}
+
 function selectedEncounterCombatant(options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
   const selectedToken = (globalThis.canvas?.tokens?.controlled ?? [])
-    .find((token) => tokenActor(token));
+    .find((token) => isPlannableActor(tokenActor(token)));
   const selectedCombatant = selectedToken ? combatantForSelectedToken(combat, selectedToken) : null;
   if (selectedCombatant) return selectedCombatant;
+  if (selectedToken && globalThis.game?.user?.isGM === true) {
+    return explorationCombatantForToken(selectedToken);
+  }
 
   if (options.combatant) {
     return combatantInCombat(combat, options.combatant) ? options.combatant : null;
   }
 
-  return combat?.combatant ?? null;
+  return combat?.started ? combat.combatant ?? null : null;
 }
 
 function actorTraitSlugs(actor) {
@@ -634,18 +653,20 @@ function isCommandableMinion(actor, candidate) {
 
 export function readCombatContext(refreshSource = "manual", options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
-  if (!combat?.started) return null;
+  const encounterStarted = combat?.started === true;
+  if (!encounterStarted && globalThis.game?.user?.isGM !== true) return null;
 
   const combatant = selectedEncounterCombatant({ ...options, combat });
   const actor = combatant?.actor ?? null;
-  if (!canReadActor(actor)) return null;
+  if (!isPlannableActor(actor) || !canReadActor(actor)) return null;
 
   const activeToken = tokenForCombatant(combatant, actor);
   const activeDisposition = numericDisposition(activeToken);
   const activeTokenName = tokenDisplayName(activeToken, actor, combatant);
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
-  const combatants = collectionValues(combat.combatants);
+  const encounterCombat = encounterStarted ? combat : null;
+  const combatants = collectionValues(encounterCombat?.combatants);
   const combatantForToken = (token) => combatants.find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
   const tokens = placeables
     .filter((token) => tokenActor(token))
@@ -654,11 +675,11 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   // itself (their actions happen on the master's turn), so they never appear in `combatTokens`.
   // Minion detection has to run against the wider `tokens` pool instead.
   const minionTokens = tokens.filter((token) =>
-    !tokenInCombat(combat, token) && isCommandableMinion(actor, tokenActor(token)));
+    !tokenInCombat(encounterCombat, token) && isCommandableMinion(actor, tokenActor(token)));
   const minions = minionTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
 
   const combatTokens = tokens
-    .filter((token) => tokenInCombat(combat, token))
+    .filter((token) => tokenInCombat(encounterCombat, token))
     .filter((token) => canUseCombatantForPlayerContext(combatantForToken(token)));
   const targetableTokens = combatTokens.filter((token) => isTargetableCombatToken(token));
   const otherTokens = targetableTokens.filter((token) => !tokenMatchesIdentity(token, activeToken));
@@ -681,16 +702,18 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const targets = targetTokens
     .filter(Boolean)
     .map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) }));
-  const movementSpent = movementActionsSpent({ ...combat, combatant });
+  const movementSpent = encounterStarted ? movementActionsSpent({ ...combat, combatant }) : 0;
+  const sceneId = globalThis.canvas?.scene?.id ?? activeToken?.document?.parent?.id ?? "scene";
+  const combatId = encounterStarted ? combat.id : `exploration:${sceneId}`;
 
   return {
     refreshSource,
     isGM: canSeeDefenses,
     combat: {
-      id: combat.id,
-      round: combat.round,
-      turn: combat.turn,
-      started: combat.started,
+      id: combatId,
+      round: encounterStarted ? combat.round : null,
+      turn: encounterStarted ? combat.turn : null,
+      started: encounterStarted,
     },
     combatant: {
       id: combatant.id,

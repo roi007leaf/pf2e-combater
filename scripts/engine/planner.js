@@ -137,6 +137,11 @@ function candidateCategory(candidate) {
   return "other";
 }
 
+function bossAutoFillCandidateAllowed(resolvedTactic, candidate) {
+  if (resolvedTactic?.effectiveRole !== "boss") return true;
+  return candidateCategory(candidate) !== "skill";
+}
+
 function arrayValues(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -188,6 +193,12 @@ function autoFillEligibleCandidate(context, candidate) {
   return true;
 }
 
+function isMajorCriticalFailureAttackSkill(candidate) {
+  return isAttackAction(candidate)
+    && Boolean(candidate?.skill)
+    && String(candidate?.criticalFailureRisk ?? "").toLowerCase() === "major";
+}
+
 function selectPlanningCandidates(sortedCandidates) {
   const selected = [];
   const selectedKeys = new Set();
@@ -227,6 +238,9 @@ function selectPlanningCandidates(sortedCandidates) {
     if (targetConditionDelta !== 0) return targetConditionDelta;
     const previousDelta = Number(requiresPreviousAction(left)) - Number(requiresPreviousAction(right));
     if (previousDelta !== 0) return previousDelta;
+    const criticalFailureRiskDelta = Number(isMajorCriticalFailureAttackSkill(right))
+      - Number(isMajorCriticalFailureAttackSkill(left));
+    if (criticalFailureRiskDelta !== 0) return criticalFailureRiskDelta;
     return selected.indexOf(left) - selected.indexOf(right);
   });
 }
@@ -355,6 +369,7 @@ function setupPriority(step, allSteps) {
   if (step?.slug === "demoralize" && hasOffensiveFollowUp(allSteps)) return 0;
   if (step?.slug === "feint" && hasStrikeFollowUp(allSteps)) return 1;
   if (isOffensiveSetup(step) && hasOffensiveFollowUp(allSteps)) return 1;
+  if (isMajorCriticalFailureAttackSkill(step) && hasOffensiveFollowUp(allSteps)) return 1.5;
   if (isAttackAction(step)) return 2;
   return 3;
 }
@@ -514,6 +529,7 @@ export function buildTurnPlans(context, candidates) {
   // pre-narrowing list around so the coverage backfill below can still reach it.
   const eligibleCandidates = candidates
     .filter((candidate) => autoFillEligibleCandidate(context, candidate))
+    .filter((candidate) => bossAutoFillCandidateAllowed(resolvedTactic, candidate))
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))

@@ -245,6 +245,8 @@
       "Sheathe": "Sheathe {weapon}",
       "Release": "Release {weapon}",
       "Reload": "Reload {weapon}",
+      "SwapItems": "Swap Items",
+      "Swap": "Swap",
       "StandArrow": "Stand -> ",
       "StrideArrow": "Stride -> ",
       "StrideAwayStrike": "Stride Away -> {strike}",
@@ -261,6 +263,7 @@
       "SheatheToStow": "Sheathe {weapon} to stow it.",
       "ReleaseToGround": "Release {weapon}, dropping it to the ground.",
       "ReloadWeapon": "Reload {weapon}.",
+      "SwapItems": "Put away one held item and draw one worn item with the same Interact action.",
       "AlreadyProne": "Already prone.",
       "DropProneCover": "Drop Prone to set up Take Cover's ranged defense bonus.",
       "StandStrideStrike": "Stand, Stride into reach, and Strike {target}.",
@@ -304,6 +307,12 @@
       "SustainSpell": {
         "Title": "Sustain a Spell",
         "Content": "Choose which sustained spell to sustain."
+      },
+      "SwapItems": {
+        "Title": "Swap Items",
+        "Content": "Choose one held item to put away and one worn item to draw.",
+        "PutAway": "Put away",
+        "Draw": "Draw"
       },
       "Retch": {
         "Title": "Retch result",
@@ -380,6 +389,10 @@
       "NoWeaponSheathe": "No weapon to sheathe.",
       "Sheathed": "Sheathed {name}.",
       "CouldNotSheathe": "Could not sheathe the weapon.",
+      "NoSwapItems": "Swap requires one held item and one worn item.",
+      "InvalidSwapItems": "Selected swap items are no longer available.",
+      "CouldNotSwapItems": "Could not swap the selected items.",
+      "SwappedItems": "Put away {held} and drew {draw}.",
       "ReloadReason": "Reload {name} before firing again.",
       "PostedReloadReminder": "Posted reload reminder.",
       "NoActionApi": "PF2e action API is not available.",
@@ -488,7 +501,7 @@
       "NoEnemySelected": "No enemy target selected.",
       "NoTargetWithin": "No target within {range} feet.",
       "NoEnemyInReach": "No enemy in reach.",
-      "NoFreeHand": "No free hand to manipulate an object.",
+      "NoFreeHand": "No free hand available.",
       "NoEnemyClose": "No enemy close enough.",
       "NoHiddenTarget": "No hidden or undetected target detected.",
       "NoDeceptionEffect": "No combat-relevant deception or mental effect detected.",

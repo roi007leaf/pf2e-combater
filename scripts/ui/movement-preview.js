@@ -298,7 +298,7 @@ function recommendedPlacement(context, step, origin, reachable, footprint, gridS
 
 function strikeReach(step) {
   const reach = numeric(step?.activityProfile?.strikeReach ?? step?.range?.max, 5);
-  return reach > 0 ? reach : 5;
+  return reach >= 0 ? reach : 5;
 }
 
 function strikeReachableCenters(context, step, reachable, footprint, gridSize, options = {}) {

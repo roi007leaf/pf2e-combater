@@ -8,7 +8,6 @@ import {
   gridReachDistanceFeet,
   hasAttackCollisionLayer,
   hasMovementCollisionLayer,
-  rectangleDistanceFeet,
 } from "../../rules/canvas-geometry.js";
 import { footprintPathDistanceFeet } from "../../rules/token-geometry.js";
 import { compareTacticalCenters } from "../../rules/battlefield-analysis.js";
@@ -21,7 +20,7 @@ function numeric(value, fallback = 0) {
 export function actionCanReach(action, target) {
   if (!target) return false;
   const max = Number(action?.range?.max ?? action?.targetingProfile?.maxRange ?? action?.range?.increment);
-  return Number.isFinite(max) && max > 0 && (target.distance ?? Infinity) <= max;
+  return Number.isFinite(max) && max >= 0 && (target.distance ?? Infinity) <= max;
 }
 
 export function readyStrikeCanReach(strikes, target) {
@@ -104,11 +103,12 @@ function movementPointKey(point) {
 
 const reachableCentersCache = new Map();
 
-export function movementReachableCenters(origin, distanceFeet, metrics, token = null, context = null) {
+export function movementReachableCenters(origin, distanceFeet, metrics, token = null, context = null, options = {}) {
   const cacheKey = [
     movementPointKey(origin),
     distanceFeet,
     token?.id ?? token?.document?.id ?? "",
+    targetKey(options.allowedOverlapTarget) ?? "",
     (globalThis.canvas?.scene?.regions?.size ?? globalThis.canvas?.regions?.placeables?.length ?? 0),
   ].join("|");
   const cached = reachableCentersCache.get(cacheKey);
@@ -120,6 +120,7 @@ export function movementReachableCenters(origin, distanceFeet, metrics, token = 
     actor: token?.actor ?? null,
     collisionToken: token,
     context,
+    allowedOverlapTarget: options.allowedOverlapTarget ?? null,
     gridDistance: metrics.sceneDistance,
     gridSize: metrics.pixelSize,
     pathBlocked: (from, to) => movementPathBlocked(from, to, token),
@@ -159,7 +160,9 @@ export function reachableAttackCenters(context, target, distanceFeet, reachFeet)
   // gap prices at 15 ft under the real 5-10-5 alternating-diagonal rule, not the 10 ft the
   // approximation reports -- so it could accept an attackCenter that only *looks* in reach.
   // footprintPathDistanceFeet uses the real, footprint-aware measurePath distance instead.
-  const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken, context)
+  const result = movementReachableCenters(origin, distanceFeet, metrics, collisionToken, context, {
+    allowedOverlapTarget: Number(reachFeet) === 0 ? target : null,
+  })
     .filter((center) => {
       const attackerRectangle = tokenPlacementForCenter(center, attackerFootprint, metrics);
       const distance = footprintPathDistanceFeet(center, attackerFootprint, targetCenter, target, metrics.pixelSize);
@@ -212,7 +215,7 @@ export function distanceFromCenterToTarget(context, center, target) {
 
 export function targetThreatReach(target) {
   const reach = Number(target?.reach ?? target?.meleeReach ?? target?.profile?.reach ?? target?.profile?.meleeReach);
-  return Number.isFinite(reach) && reach > 0 ? reach : 5;
+  return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
 export function allyThreatensTarget(ally, target, metrics) {
@@ -234,7 +237,8 @@ export function canStrikeTargetFromCurrentPosition(context, action, target) {
   const attackerRectangle = tokenPlacementForCenter(origin, context?.token, metrics);
   const targetRectangle = tokenPlacementForCenter(targetCenter, target, metrics);
   const range = Number(action?.range?.max ?? action?.range?.increment ?? action?.targetingProfile?.maxRange);
-  if (Number.isFinite(range) && range > 0 && rectangleDistanceFeet(attackerRectangle, targetRectangle, metrics) > range) {
+  const distance = footprintPathDistanceFeet(origin, context?.token, targetCenter, target, metrics.pixelSize);
+  if (Number.isFinite(range) && range >= 0 && (!Number.isFinite(distance) || distance > range)) {
     return false;
   }
 

@@ -13,6 +13,7 @@ import {
   readItemAvailability,
 } from "../item-action-reader.js";
 import { readWeaponActions } from "../weapon-action-reader.js";
+import { readSwapItemActions } from "../swap-action-reader.js";
 import { readPositionalMovementActions } from "../positional/tactic-reader.js";
 import {
   actorHasElementalBlastConfigs,
@@ -107,6 +108,7 @@ export function readActionSources(context, spells = []) {
     ...generatedStrikes,
     ...readElementalBlastActions(actor, context),
     ...readWeaponActions(actor, context, generatedStrikes),
+    ...readSwapItemActions(actor),
     ...readDropProneAction(actor, context),
     ...readPositionalMovementActions(context, generatedStrikes, [...generatedActivities, ...itemActions], spells),
     ...generatedActivities,
@@ -247,7 +249,7 @@ export function actorStrikeOptions(actor, context = null) {
     .map((strike, index) => {
       const slug = slugify(strike.slug ?? strike.item?.slug ?? strike.label ?? strike.name ?? `strike-${index}`);
       const traits = readStrikeTraits(strike);
-      const range = readStrikeRange(strike, traits);
+      const range = readStrikeRange(strike, traits, actor);
       const reload = readStrikeReload(strike, traits);
       const damageProfile = readStrikeDamageProfile(strike);
       const action = {
@@ -390,7 +392,30 @@ function readStrikeTraits(strike) {
   return [...new Set(traitValues.filter(Boolean).map((trait) => String(trait)))];
 }
 
-function readStrikeRange(strike, traits) {
+function nativeStrikeReach(actor, strike) {
+  try {
+    const reach = actor?.getReach?.({ action: "attack", weapon: strike?.item ?? null });
+    if (Number.isFinite(Number(reach)) && Number(reach) >= 0) return Number(reach);
+  } catch (_error) {
+    // Fall through to the prepared item/actor data shapes used by older PF2e releases and tests.
+  }
+
+  const candidates = [
+    strike?.reach,
+    strike?.item?.reach,
+    actor?.system?.attributes?.reach?.base,
+    actor?.system?.attributes?.reach?.value,
+    actor?.system?.attributes?.reach,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined || candidate === "") continue;
+    const reach = Number(systemValue(candidate));
+    if (Number.isFinite(reach) && reach >= 0) return reach;
+  }
+  return null;
+}
+
+function readStrikeRange(strike, traits, actor) {
   const item = strike.item;
   const systemRange = item?.system?.range;
   const increment = Number(systemValue(systemRange?.increment ?? systemRange));
@@ -401,8 +426,10 @@ function readStrikeRange(strike, traits) {
   const traitReach = traits
     .map((trait) => trait.match(/^reach-(\d+)$/)?.[1])
     .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .filter((value) => Number.isFinite(value) && value >= 0);
   if (traitReach.length) return { max: Math.max(...traitReach) };
+  const nativeReach = nativeStrikeReach(actor, strike);
+  if (nativeReach !== null) return { max: nativeReach };
   if (traits.includes("reach")) return { max: 10 };
   return { max: 5 };
 }
@@ -414,7 +441,11 @@ function parseReloadCost(value) {
   if (Number.isFinite(numeric) && numeric >= 0) return numeric;
 
   const text = String(raw ?? "").toLowerCase().trim();
-  if (!text || text === "-" || text === "none") return 0;
+  // PF2e generated Strike data can use "-" as a display placeholder even when the backing
+  // weapon carries a real reload value. Treat placeholders as unknown so readStrikeReload keeps
+  // checking item.system.reload; if no source has a value, its final fallback still returns 0.
+  if (!text || text === "-") return null;
+  if (text === "none") return 0;
 
   const word = text.match(/\b(one|two|three|1|2|3)\b/)?.[1];
   if (!word) return null;

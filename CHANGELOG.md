@@ -1,5 +1,99 @@
 # Changelog
 
+## [1.1.9]
+
+### Added
+
+- **Swap Items is now available in Browse as a single Interact action.** When the actor has both a
+  held physical item and a worn weapon, shield, piece of equipment, or consumable, the player can
+  choose which item to put away and which one to draw. The swap updates both items atomically,
+  restores the original item if drawing fails, and supports Undo without entering Auto-fill.
+
+### Changed
+
+- **Class and subclass tactic definitions are now easier to keep consistent.** Repeated tactical
+  profiles now expand from shared templates for Animist apparitions, Barbarian instincts, Druid
+  orders, Exemplar epithets, Oracle mysteries, Psychic minds, Sorcerer bloodlines, Summoner
+  eidolons, Witch patrons, and Wizard schools while preserving their existing tactical weights.
+  Specialization labels across Alchemist, Barbarian, Bard, Cleric, Druid, Inventor, Investigator,
+  Kineticist, Ranger, Rogue, Swashbuckler, and Thaumaturge were also normalized to cleaner,
+  consistently capitalized names.
+- **Auto-fill performs less repeated tactical work.** Best-target ranking now calculates each
+  target's defense and offensive value once per sort, and automatic NPC tactic-personality
+  inference is reused throughout the same planning context instead of rescanning the actor's kit
+  for every action/target combination.
+- **Boss-role Auto-fill now stays focused on the boss's own combat kit.** Generated Boss plans
+  exclude skill actions such as Demoralize, Recall Knowledge, Seek, Feint, and Athletics maneuvers,
+  favoring owned boss actions, spells, and normal attacks instead. Skill actions remain available
+  in Browse for deliberate manual selection.
+- **Shared planning behavior now comes from common helpers and constants.** Hard-rejection scores,
+  Multiple Attack Penalty values, slug and numeric normalization, minion-step naming, and movement
+  option handling were consolidated so scoring, execution, movement, and minion-plan UI paths use
+  the same rules. Normal-plan and uncounted-action insertion now share the same composite-action
+  atomization path while retaining their separate permissions and action-budget behavior.
+- **Project documentation now describes the current planner in depth.** The README was expanded
+  with current Auto-fill and Shuffle behavior, spell items, composites, favorites, uncounted
+  actions, Recall Knowledge and misinformation, preference learning, roll-context previews, Best
+  target, execution/undo, player/GM workflows, tactic weighting, settings, and worked examples.
+- **Package metadata now matches the project.** The npm package declares the GPL-3.0 license and a
+  concise PF2e Combater description, with its development dependency list normalized.
+
+### Fixed
+
+- **Battle Medicine and Bon Mot now choose only legal tactical targets.** Battle Medicine explicitly
+  targets the actor or an ally, while Bon Mot targets enemies and enforces its 30-foot range when
+  Auto-fill and Best target select a recipient.
+- **Auto-fill no longer double-counts several tactical bonuses.** Sudden Charge uses the shared
+  move-and-Strike scoring path once; debuffs no longer receive a second unconditional target bonus;
+  and buffs or stealth defenses no longer reapply recipient value and already-active penalties that
+  were already included by recipient scoring. This prevents those options from crowding out better
+  plans for inflated reasons.
+- **Undo warnings remain visible on the reset plan step.** If an executed effect needs manual
+  cleanup or a revert operation fails, the warning is stored on the pending step after Undo instead
+  of disappearing when the notification closes; the step can still be executed again.
+- **Player-facing Best target explanations no longer include GM-only aggro reasons.** Aggro role
+  details are now added only when the resolved aggro profile is explicitly GM-only, keeping player
+  explanations limited to information they are allowed to use.
+- **Movement-region coordinate handling is more defensive.** Missing or malformed region points
+  are normalized before geometry checks instead of propagating invalid numeric values into movement
+  cost calculations.
+- **Reload 1 weapons can no longer fire consecutive shots without reloading.** PF2e generated Strike
+  placeholders now defer to the backing weapon's real reload value, so pistols and similar weapons
+  plan and display repeated attacks as Strike, Reload, Strike.
+- **Move-and-Strike activities now account for their own movement before adding separate Strides.**
+  Boar Charge is preserved as two intrinsic Strides followed by its tusk Strike instead of appearing
+  as one Stride or being replaced by standalone movement. Rush and similar activities can gain one
+  preceding Stride when their built-in movement alone cannot reach, while keeping correct action
+  costs and grouped rows.
+- **Twin Takedown now requires two distinct held melee weapons.** Worn unarmed attacks, ranged
+  weapons, and missing second weapons no longer satisfy its requirement, and an unavailable Twin
+  Takedown cannot leave misleading indented fallback actions in the plan.
+- **Free-hand combat maneuvers now respect what the actor is holding.** Disarm, Trip, Grapple,
+  Reposition, and Shove are unavailable when both hands are occupied, including by a two-handed
+  weapon. Valid PF2e alternatives still work, such as a held weapon with the matching maneuver trait
+  or Reposition against an already grabbed or restrained target.
+- **High-risk attack-trait skill actions are now attempted before later attacks.** Disarm, Trip,
+  Grapple, Reposition, and Shove are ordered ahead of ordinary follow-up Strikes so their major
+  critical-failure consequences are not made worse by an unnecessary Multiple Attack Penalty.
+- **Tiny creatures now correctly use 0-foot melee reach.** Explicit zero reach is preserved through
+  actor and Strike reading, scoring, movement planning, previews, and execution; a Tiny attacker can
+  route into and share its target's square instead of being treated as if it had 5-foot reach.
+- **NPC shields now enable Raise a Shield planning.** Held PF2e shield data is recognized for NPCs,
+  allowing Auto-fill to spend a suitable remaining action on Raise a Shield while broken or
+  destroyed shields remain ineligible.
+- **Hazards and loot no longer open or appear in Combater.** Active turns, controlled tokens,
+  player-owned combatant lookup, panel opening, planning contexts, and target pools consistently
+  skip non-plannable actor types.
+- **GMs can now open Combater outside an active encounter.** Selecting a plannable scene token and
+  using the token toolbar or keybind opens a full exploration planning context with zero spent
+  actions and other scene tokens available as tactical targets. Switching controlled tokens updates
+  the open panel, while players remain limited to active encounters.
+- **NPC two-action save abilities now retain their real targeting and remain usable by Auto-fill.**
+  Foundry's `@Check[type:will|dc:...]` syntax is recognized, recharge dice are no longer mistaken for
+  attack damage, and single area templates are preserved. Self-centered emanations such as Funereal
+  Dirge now automatically create the correct actor-centered template without a target or manual
+  template button.
+
 ## [1.1.8]
 
 ### Fixed

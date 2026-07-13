@@ -290,6 +290,10 @@ function atomicStrikeAction(action, targetOverride, costOverride, strikeOccurren
 function positionalStrideAtom(action) {
   const stride = atomicMovementAction("stride");
   const attackCenter = action?.activityProfile?.attackCenter ?? null;
+  const rawStrikeReach = action?.activityProfile?.strikeReach;
+  const strikeReach = rawStrikeReach === null || rawStrikeReach === undefined || rawStrikeReach === ""
+    ? NaN
+    : Number(rawStrikeReach);
   return {
     ...stride,
     preferredTarget: action?.preferredTarget ?? stride.preferredTarget ?? null,
@@ -298,8 +302,11 @@ function positionalStrideAtom(action) {
     activityProfile: {
       ...(stride.activityProfile ?? {}),
       ...(attackCenter ? { attackCenter } : {}),
+      ...(Number.isFinite(strikeReach) ? { strikeReach } : {}),
+      ...(strikeReach === 0 ? { allowTargetOverlap: true } : {}),
       positionalStride: true,
     },
+    targetingProfile: action?.targetingProfile ?? stride.targetingProfile ?? null,
   };
 }
 
@@ -401,7 +408,22 @@ export function builderAtomicActionsForStep(action) {
       const atom = atomicMovementAction(normalized);
       if (!atom) return [];
       if (["step", "stride"].includes(normalized) && partIndex === approachMovementIndex) {
-        return [{ ...atom, destination: attackCenter, activityProfile: { ...atom.activityProfile, attackCenter } }];
+        const rawStrikeReach = action.activityProfile?.strikeReach;
+        const strikeReach = rawStrikeReach === null || rawStrikeReach === undefined || rawStrikeReach === ""
+          ? NaN
+          : Number(rawStrikeReach);
+        return [{
+          ...atom,
+          destination: attackCenter,
+          preferredTarget: action?.preferredTarget ?? atom.preferredTarget ?? null,
+          targetingProfile: action?.targetingProfile ?? atom.targetingProfile ?? null,
+          activityProfile: {
+            ...atom.activityProfile,
+            attackCenter,
+            ...(Number.isFinite(strikeReach) ? { strikeReach } : {}),
+            ...(strikeReach === 0 ? { allowTargetOverlap: true } : {}),
+          },
+        }];
       }
       return [atom];
     }
@@ -429,9 +451,9 @@ export function builderAtomicActionsForStep(action) {
     const groupId = compositeStrikeActionKey(action);
     const groupLabel = String(action.name ?? "").split(" -> ").pop();
     // readStrideMultiattackActivities prepends Stride atom(s) it generated at suggestion time onto
-    // an ability with no movement of its own -- those leading atoms are a genuinely separate PF2e
-    // action from the multiattack, so they keep their own normal cost and stay out of the group,
-    // instead of folding into "1 group, cost on the first atom" like Sudden Charge's intrinsic Stride.
+    // an ability -- those leading atoms are genuinely separate PF2e actions, so they keep their own
+    // normal cost and stay out of the group instead of folding into "1 group, cost on the first
+    // atom" with Rush/Sudden Charge's intrinsic movement and Strike.
     const precedingMoveAtomCount = Number(action.activityProfile?.precedingMoveAtomCount) || 0;
     const leadingAtoms = atoms.slice(0, precedingMoveAtomCount);
     const groupedAtoms = atoms.slice(precedingMoveAtomCount);

@@ -11,6 +11,7 @@ import {
   executeDropWeapon,
   executeReloadWeapon,
   executeSheatheWeapon,
+  executeSwapItems,
 } from "../execution/equipment.js";
 import { executeDropProne, executeRetch, executeStand } from "../execution/conditions.js";
 import { executeNativeAction } from "../execution/native-item.js";
@@ -74,6 +75,8 @@ export async function executeDraftStep({ context, step, action = step?.action ??
     result = await executeDropWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "sheathe-weapon") {
     result = await executeSheatheWeapon({ actor, action: resolvedAction });
+  } else if (resolvedAction?.executable === "swap-items") {
+    result = await executeSwapItems({ actor, choices });
   } else if (resolvedAction?.executable === "reload-weapon") {
     result = await executeReloadWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {

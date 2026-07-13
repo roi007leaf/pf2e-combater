@@ -42,6 +42,24 @@ function pointKey(value) {
   return `${value.x},${value.y}`;
 }
 
+function entityIdentity(value) {
+  return value?.id
+    ?? value?.uuid
+    ?? value?.token?.id
+    ?? value?.token?.uuid
+    ?? value?.document?.id
+    ?? value?.document?.uuid
+    ?? null;
+}
+
+function sameEntity(left, right) {
+  if (!left || !right) return false;
+  if (left === right || left?.token === right || right?.token === left || (left?.token && left.token === right?.token)) return true;
+  const leftId = entityIdentity(left);
+  const rightId = entityIdentity(right);
+  return leftId !== null && rightId !== null && String(leftId) === String(rightId);
+}
+
 function routeGridSize(options = {}) {
   return numeric(options.gridSize ?? options.gridDistance, 5) || 5;
 }
@@ -243,6 +261,7 @@ function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
   const candidatePlacement = movementPlacementForCenter(center, footprint, gridSize);
   const others = [...contextAllies(context), ...contextEnemies(context)];
   return others.some((other) => {
+    if (sameEntity(other, context?.allowedOverlapTarget)) return false;
     const otherCenter = point(other);
     if (!otherCenter) return false;
     const otherPlacement = movementPlacementForCenter(otherCenter, other, gridSize);
@@ -253,6 +272,7 @@ function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
 function centerOccupiedByEnemyToken(context, center, footprint, gridSize) {
   const candidatePlacement = movementPlacementForCenter(center, footprint, gridSize);
   return contextEnemies(context).some((enemy) => {
+    if (sameEntity(enemy, context?.allowedOverlapTarget)) return false;
     const enemyCenter = point(enemy);
     if (!enemyCenter) return false;
     const enemyPlacement = movementPlacementForCenter(enemyCenter, enemy, gridSize);
@@ -263,7 +283,31 @@ function centerOccupiedByEnemyToken(context, center, footprint, gridSize) {
 function destinationOccupied(context, destination, options = {}) {
   if (typeof options.isOccupied === "function") return options.isOccupied(destination, context, options) === true;
   const gridSize = routeGridSize(options);
-  return centerOccupiedByOtherToken(context, destination, movementFootprintForToken(contextToken(context, options)), gridSize);
+  const occupancyContext = options.allowedOverlapTarget
+    ? { ...context, allowedOverlapTarget: options.allowedOverlapTarget }
+    : context;
+  return centerOccupiedByOtherToken(occupancyContext, destination, movementFootprintForToken(contextToken(context, options)), gridSize);
+}
+
+function targetValues(context) {
+  return [
+    ...(context?.battlefield?.targets ?? []),
+    ...(context?.targets ?? []),
+    ...(context?.battlefield?.enemies ?? []),
+    ...(context?.enemies ?? []),
+  ].filter(Boolean);
+}
+
+function overlapTargetForStep(context, step) {
+  if (step?.activityProfile?.allowTargetOverlap !== true) return null;
+  if (step?.preferredTarget) return step.preferredTarget;
+
+  const preferredId = step?.targetingProfile?.preferredTargetId;
+  const preferredName = step?.targetingProfile?.preferredTargetName;
+  return targetValues(context).find((target) =>
+    (preferredId && String(entityIdentity(target)) === String(preferredId))
+      || (preferredName && String(target?.name ?? target?.token?.name ?? "") === String(preferredName)),
+  ) ?? null;
 }
 
 export function movementDestinationForStep(step, options = {}) {
@@ -343,7 +387,10 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
   const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
   const queue = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
   const centers = [];
-  const footprint = options.context ? movementFootprintForToken(contextToken(options.context, options)) : null;
+  const routeContext = options.context && options.allowedOverlapTarget
+    ? { ...options.context, allowedOverlapTarget: options.allowedOverlapTarget }
+    : options.context;
+  const footprint = routeContext ? movementFootprintForToken(contextToken(routeContext, options)) : null;
 
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
@@ -357,7 +404,7 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
         if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
-        if (footprint && centerOccupiedByEnemyToken(options.context, center, footprint, gridSize)) continue;
+        if (footprint && centerOccupiedByEnemyToken(routeContext, center, footprint, gridSize)) continue;
 
         const movement = movementRouteSegmentCost(current.center, center, options, current.diagonalCount);
         const cost = current.cost + movement.cost;
@@ -375,8 +422,8 @@ export function reachableMovementCenters(origin, distanceFeet, options = {}) {
     }
   }
 
-  if (!options.context) return centers;
-  return centers.filter((center) => !centerOccupiedByOtherToken(options.context, center, footprint, gridSize));
+  if (!routeContext) return centers;
+  return centers.filter((center) => !centerOccupiedByOtherToken(routeContext, center, footprint, gridSize));
 }
 
 export function directMovementRouteToCenter(origin, destination, budget, options = {}) {
@@ -386,7 +433,10 @@ export function directMovementRouteToCenter(origin, destination, budget, options
   const destinationKey = pointKey(destination);
   const bestCosts = new Map([[`${pointKey(origin)},0`, 0]]);
   const open = [{ center: origin, cost: 0, route: [], diagonalCount: 0 }];
-  const footprint = options.context ? movementFootprintForToken(contextToken(options.context, options)) : null;
+  const routeContext = options.context && options.allowedOverlapTarget
+    ? { ...options.context, allowedOverlapTarget: options.allowedOverlapTarget }
+    : options.context;
+  const footprint = routeContext ? movementFootprintForToken(contextToken(routeContext, options)) : null;
 
   while (open.length) {
     open.sort((left, right) => routePriority(left, destination, options) - routePriority(right, destination, options));
@@ -403,7 +453,7 @@ export function directMovementRouteToCenter(origin, destination, budget, options
         if (Math.abs(center.x - origin.x) > maxOffset || Math.abs(center.y - origin.y) > maxOffset) continue;
         if (!pointVisible(center, options)) continue;
         if (pathBlocked(current.center, center, options)) continue;
-        if (footprint && centerOccupiedByEnemyToken(options.context, center, footprint, gridSize)) continue;
+        if (footprint && centerOccupiedByEnemyToken(routeContext, center, footprint, gridSize)) continue;
 
         const movement = movementRouteSegmentCost(current.center, center, options, current.diagonalCount);
         const cost = current.cost + movement.cost;
@@ -550,6 +600,8 @@ function movementRouteForDestination(context, origin, destination, maxCost, opti
 
 export function movementRouteForStep(context, step, options = {}) {
   const teleport = step?.activityProfile?.teleport === true || step?.action?.activityProfile?.teleport === true;
+  const allowedOverlapTarget = overlapTargetForStep(context, step);
+  const routeOptions = allowedOverlapTarget ? { ...options, allowedOverlapTarget } : options;
   // A dynamically-slugged action (e.g. Flank's "flank-strike-tentacle") can still be a genuine plain
   // Stride -- requiresDestination is the same canonical signal requiresDestinationForAction() already
   // uses to show the destination-picker button, so a step that gets that button must also get a real
@@ -558,22 +610,22 @@ export function movementRouteForStep(context, step, options = {}) {
   if (!teleport && !MOVEMENT_SLUGS.has(step?.slug) && step?.requiresDestination !== true) return disabledRoute();
 
   const origin = withOriginElevation(
-    movementOriginForContext(context, { ...options, step }),
+    movementOriginForContext(context, { ...routeOptions, step }),
     context,
-    options,
+    routeOptions,
   );
   if (!origin) return disabledRoute();
 
-  const maxCost = movementBudgetForStep(context, step, options);
-  const destination = movementDestinationForStep(step, options);
+  const maxCost = movementBudgetForStep(context, step, routeOptions);
+  const destination = movementDestinationForStep(step, routeOptions);
   if (maxCost <= 0) return disabledRoute();
   if (!destination) return emptyRoute(origin, maxCost);
 
-  if (teleport) return teleportRouteForStep(context, step, origin, destination, maxCost, options);
+  if (teleport) return teleportRouteForStep(context, step, origin, destination, maxCost, routeOptions);
 
-  const waypoints = movementWaypointsForStep(step, destination, options);
+  const waypoints = movementWaypointsForStep(step, destination, routeOptions);
   if (waypoints?.length) {
-    return validateWaypointRoute(context, origin, destination, waypoints, maxCost, options);
+    return validateWaypointRoute(context, origin, destination, waypoints, maxCost, routeOptions);
   }
-  return movementRouteForDestination(context, origin, destination, maxCost, options);
+  return movementRouteForDestination(context, origin, destination, maxCost, routeOptions);
 }

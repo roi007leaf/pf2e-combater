@@ -176,6 +176,7 @@ const scoringTargetsSource = readFileSync(new URL("../scoring/targets.js", impor
 const aggroSource = readFileSync(new URL("../../rules/aggro.js", import.meta.url), "utf8");
 const tacticPersonalitySource = readFileSync(new URL("../../rules/tactic-personality.js", import.meta.url), "utf8");
 const intelLedgerSource = readFileSync(new URL("../../rules/intel-ledger.js", import.meta.url), "utf8");
+const actorEligibilitySource = readFileSync(new URL("../../rules/actor-eligibility.js", import.meta.url), "utf8");
 const minionPlannerSource = readFileSync(new URL("../../rules/minion-planner.js", import.meta.url), "utf8");
 const actionBuilderSource = readFileSync(new URL("../action/builder/index.js", import.meta.url), "utf8");
 const actionBuilderProjectionSource = readFileSync(new URL("../action/builder/projection.js", import.meta.url), "utf8");
@@ -191,6 +192,7 @@ const executionMovementSource = readFileSync(new URL("../execution/movement.js",
 const executionConditionsSource = readFileSync(new URL("../execution/conditions.js", import.meta.url), "utf8");
 const executionDamageSource = readFileSync(new URL("../execution/damage.js", import.meta.url), "utf8");
 const executionEquipmentSource = readFileSync(new URL("../execution/equipment.js", import.meta.url), "utf8");
+const equipmentItemsSource = readFileSync(new URL("../equipment-items.js", import.meta.url), "utf8");
 const executionGuidanceSource = readFileSync(new URL("../execution/guidance.js", import.meta.url), "utf8");
 const executionNativeItemSource = readFileSync(new URL("../execution/native-item.js", import.meta.url), "utf8");
 const executionResultsSource = readFileSync(new URL("../execution/results.js", import.meta.url), "utf8");
@@ -215,6 +217,7 @@ const defenseActionReaderSource = readFileSync(new URL("../../readers/defense-ac
 const genericActionReaderSource = readFileSync(new URL("../../readers/generic-action-reader.js", import.meta.url), "utf8");
 const itemActionReaderSource = readFileSync(new URL("../../readers/item-action-reader.js", import.meta.url), "utf8");
 const weaponActionReaderSource = readFileSync(new URL("../../readers/weapon-action-reader.js", import.meta.url), "utf8");
+const swapActionReaderSource = readFileSync(new URL("../../readers/swap-action-reader.js", import.meta.url), "utf8");
 const positionalTacticReaderSource = readFileSync(new URL("../../readers/positional/tactic-reader.js", import.meta.url), "utf8");
 const positionalTacticHelpersSource = readFileSync(new URL("../../readers/positional/tactic-helpers.js", import.meta.url), "utf8");
 const positionalStrideReaderSource = readFileSync(new URL("../../readers/positional/stride-reader.js", import.meta.url), "utf8");
@@ -482,7 +485,7 @@ assert.ok(combatContextSource.includes("isFamiliarActor")
   && combatContextSource.includes("familiarMasterIds")
   && combatContextSource.includes("isCompanionActor")
   && combatContextSource.includes("isEidolonActor")
-  && combatContextSource.includes("!tokenInCombat(combat, token)")
+  && combatContextSource.includes("!tokenInCombat(encounterCombat, token)")
   && combatContextSource.includes('actorType(actor) !== "character"'),
   "Command an Animal companion detection should follow PF2e familiar master links and character minion companion actors while excluding eidolons and ordinary NPC animals");
 assert.ok(actionReachSource.includes("cost: Number(center.cost)") && scoringActivityTacticsSource.includes("Terrain-aware route costs"),
@@ -491,6 +494,13 @@ assert.ok(mainSource.includes("tacticPersonalityOverride") && mainSource.include
   "token tactic override flag updates should refresh the active panel without requiring token geometry changes");
 assert.equal(panelSource.includes("\u00e2"), false, "panel source should not contain mojibake");
 assert.ok(panelSource.includes("setCombatant(combatant"), "panel should expose explicit combatant selection");
+assert.ok(
+  actorEligibilitySource.includes('new Set(["hazard", "loot"])')
+    && combatContextSource.includes("!isPlannableActor(actor)")
+    && panelSource.includes("!isPlannableCombatant(options.combatant)")
+    && mainSource.includes("isPlannableCombatant(combatant)"),
+  "hazards and loot must be rejected by shared actor-context, automatic-selection, and panel-open gates",
+);
 assert.ok(panelContextWorkflowSource.includes("combatant: panel._selectedCombatant"), "panel context should use selected explicit combatant");
 assert.ok(panelSource.includes("this._onClose = typeof options.onClose === \"function\""), "panel should accept close callback");
 assert.ok(panelSource.includes("this._onClose?.(this);"), "panel close should notify owner");
@@ -1364,8 +1374,16 @@ assert.ok(
   executionEquipmentSource.includes("export async function executeDrawWeapon")
     && executionEquipmentSource.includes("export async function executeDropWeapon")
     && executionEquipmentSource.includes("export async function executeSheatheWeapon")
-    && executionEquipmentSource.includes("export async function executeReloadWeapon"),
-  "equipment execution module should own weapon carry and reload execution entrypoints",
+    && executionEquipmentSource.includes("export async function executeReloadWeapon")
+    && executionEquipmentSource.includes("export async function executeSwapItems")
+    && actionExecutorSource.includes("executeSwapItems"),
+  "equipment execution module should own item carry, reload, and Swap execution entrypoints",
+);
+assert.ok(
+  equipmentItemsSource.includes("export function heldSwapItems")
+    && equipmentItemsSource.includes("export function drawableSwapItems")
+    && executionEquipmentSource.includes('from "../equipment-items.js"'),
+  "Swap reading and execution should share physical-item carry-state selection rules",
 );
 assert.ok(
   executionEquipmentSource.includes('from "./guidance.js"')
@@ -1924,6 +1942,12 @@ for (const pattern of [
 assert.ok(
   actionReaderSource.includes('from "../weapon-action-reader.js"'),
   "action reader should read weapon draw/reload activities through the weapon action reader",
+);
+assert.ok(
+  actionReaderSource.includes('from "../swap-action-reader.js"')
+    && swapActionReaderSource.includes("export function readSwapItemActions")
+    && swapActionReaderSource.includes('from "../engine/equipment-items.js"'),
+  "action reader should obtain Swap Items from its dedicated reader backed by shared carry-state rules",
 );
 assert.ok(
   weaponActionReaderSource.includes("export function readWeaponActions")
