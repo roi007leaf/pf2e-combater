@@ -202,16 +202,20 @@ export function readIntelFalseInformation(actorOrTarget) {
   return normalizeIntelFalseInformation(readFalseInformationFlag(actorOrTarget));
 }
 
+// Shared by saveFactLabel/defenseLabel/falseInformationDisplayLabel below, which each used to
+// format this same "{label}: {band}" string inline wherever a band was found.
+function bandedFactLabel(label, band) {
+  return band?.label ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : null;
+}
+
 function falseInformationDisplayLabel(record, target, revealMode) {
   const label = record.factLabel || titleCase(record.factId) || record.label || record.text;
   if (record.value === null || revealMode !== INTEL_REVEAL_MODES.band) return record.label || record.text;
   if (record.category === "saves" || record.category === "perception") {
-    const band = intelSaveBand(record.value, target);
-    return band ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : (record.label || record.text);
+    return bandedFactLabel(label, intelSaveBand(record.value, target)) ?? (record.label || record.text);
   }
   if (record.category === "weaknesses" || record.category === "resistances") {
-    const band = intelDefenseValueBand(record.value, target);
-    return band ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : (record.label || record.text);
+    return bandedFactLabel(label, intelDefenseValueBand(record.value, target)) ?? (record.label || record.text);
   }
   return record.label || record.text;
 }
@@ -419,9 +423,8 @@ function defenseLabel(entry, { showValue = true, revealMode = INTEL_REVEAL_MODES
   const label = exactDefenseLabel(entry, { showValue: false });
   const value = Number(entry?.value ?? entry?.amount ?? entry?.total ?? entry?.modifier);
   if (showValue && revealMode === INTEL_REVEAL_MODES.band && Number.isFinite(value) && value > 0) {
-    if (entry?.intelBandLabel) return t("Intel.BandedFact", "{label}: {band}", { label, band: entry.intelBandLabel });
-    const band = intelDefenseValueBand(value, target);
-    return band ? t("Intel.BandedFact", "{label}: {band}", { label, band: band.label }) : label;
+    const knownBand = entry?.intelBandLabel ? { label: entry.intelBandLabel } : intelDefenseValueBand(value, target);
+    return bandedFactLabel(label, knownBand) ?? label;
   }
   return exactDefenseLabel(entry, { showValue });
 }
@@ -440,9 +443,8 @@ function fact(id, label, extra = {}) {
 
 function saveFactLabel(label, value, enemy, revealMode, knownBand = null) {
   if (revealMode === INTEL_REVEAL_MODES.band) {
-    if (knownBand?.label) return t("Intel.BandedFact", "{label}: {band}", { label, band: knownBand.label });
-    const band = intelSaveBand(value, enemy);
-    if (band) return t("Intel.BandedFact", "{label}: {band}", { label, band: band.label });
+    const banded = bandedFactLabel(label, knownBand) ?? bandedFactLabel(label, intelSaveBand(value, enemy));
+    if (banded) return banded;
   }
   return t("Intel.SaveDc", "{save} DC {dc}", { save: label, dc: value });
 }
