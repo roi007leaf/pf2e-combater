@@ -631,6 +631,22 @@
   font-weight: 600;
 }
 
+.pf2e-combater .combater-chip-tool.combater-area-placement {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+  color: var(--combater-one);
+  border-color: color-mix(in srgb, var(--combater-one) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-area-placement-value {
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
 .pf2e-combater .combater-chip-tool.combater-movement-cycle {
   display: inline-flex;
   align-items: center;
@@ -653,6 +669,22 @@
 }
 
 .pf2e-combater .combater-route-value {
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
+.pf2e-combater .combater-chip-tool.combater-destination-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+  color: var(--combater-one);
+  border-color: color-mix(in srgb, var(--combater-one) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf2e-combater .combater-destination-value {
   font-size: 0.78em;
   font-weight: 600;
 }
@@ -1058,6 +1090,102 @@
   outline: none;
 }
 
+.pf2e-combater .combater-header-intent {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid #59616d;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #22262c;
+  color: #c4c9d1;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-intent.is-active {
+  border-color: #5682b2;
+  background: #1e2b39;
+  color: #9fc8ef;
+}
+
+.pf2e-combater .combater-header-intent:hover,
+.pf2e-combater .combater-header-intent:focus-visible {
+  border-color: currentcolor;
+  color: var(--combater-ink);
+  outline: none;
+}
+
+.pf2e-combater .combater-header-loadout {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid #635b48;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #27251f;
+  color: #c9bd96;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-loadout.is-active {
+  border-color: #b58a45;
+  background: #332a1d;
+  color: #efc97d;
+}
+
+.pf2e-combater .combater-header-loadout:hover,
+.pf2e-combater .combater-header-loadout:focus-visible {
+  border-color: currentcolor;
+  color: var(--combater-ink);
+  outline: none;
+}
+
+.pf2e-combater .combater-header-clock {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid #4e6268;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #20282b;
+  color: #a9c5ca;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-header-clock.is-active {
+  border-color: #548a93;
+  background: #1d3135;
+  color: #9edce5;
+}
+
+.pf2e-combater .combater-header-clock.is-urgent {
+  border-color: #b56e45;
+  background: #35241d;
+  color: #f1b27e;
+}
+
+.pf2e-combater .combater-header-clock:hover,
+.pf2e-combater .combater-header-clock:focus-visible {
+  border-color: currentcolor;
+  color: var(--combater-ink);
+  outline: none;
+}
+
 .pf2e-combater .combater-header-tactic {
   display: inline-flex;
   flex: 0 1 auto;
@@ -1159,7 +1287,10 @@
 }
 
 .pf2e-combater.pf2e-combater-tactic-window,
-.pf2e-combater.pf2e-combater-intel-window {
+.pf2e-combater.pf2e-combater-intel-window,
+.pf2e-combater.pf2e-combater-turn-intent-window,
+.pf2e-combater.pf2e-combater-loadout-window,
+.pf2e-combater.pf2e-combater-effect-clock-window {
   --combater-bg: #17191d;
   --combater-ink: #f0eee8;
   --combater-muted: #b7aea0;
@@ -1177,7 +1308,10 @@
 }
 
 .pf2e-combater-tactic-window .window-content,
-.pf2e-combater-intel-window .window-content {
+.pf2e-combater-intel-window .window-content,
+.pf2e-combater-turn-intent-window .window-content,
+.pf2e-combater-loadout-window .window-content,
+.pf2e-combater-effect-clock-window .window-content {
   max-height: calc(100vh - 96px);
   overflow: auto;
   padding: 0;
@@ -2308,6 +2442,530 @@
   font-variant-numeric: tabular-nums;
 }
 
+.combater-turn-intent-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  color: var(--combater-ink);
+}
+
+.combater-turn-intent-help {
+  margin: 0 0 2px;
+  color: var(--combater-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.combater-turn-intent-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combater-turn-intent-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid var(--combater-line);
+  border-radius: 7px;
+  padding: 9px;
+  background: var(--combater-surface);
+  cursor: pointer;
+}
+
+.combater-turn-intent-option input {
+  margin: 2px 0 0;
+}
+
+.combater-turn-intent-option strong,
+.combater-turn-intent-option small {
+  display: block;
+}
+
+.combater-turn-intent-option strong {
+  font-size: 13px;
+}
+
+.combater-turn-intent-option small {
+  margin-top: 2px;
+  color: var(--combater-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.combater-turn-intent-option:has(input:checked) {
+  border-color: var(--combater-focus);
+  background: rgb(121 174 232 / 12%);
+}
+
+.combater-turn-intent-option.is-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.combater-turn-intent-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: var(--combater-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.combater-turn-intent-field select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #4b5360;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--combater-surface);
+  color: var(--combater-ink);
+}
+
+.combater-turn-intent-actions {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--combater-line);
+  padding-top: 10px;
+}
+
+.combater-turn-intent-actions button {
+  min-height: 30px;
+}
+
+.combater-turn-intent-actions .is-primary {
+  border-color: #4f9e70;
+  background: #214d34;
+  color: #eaf7ef;
+}
+
+.combater-loadout-shell {
+  overflow: hidden;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+}
+
+.combater-loadout-hero {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--combater-line);
+  padding: 12px;
+  background: #1d2228;
+}
+
+.combater-loadout-hero-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(239 201 125 / 42%);
+  border-radius: 8px;
+  background: rgb(239 201 125 / 10%);
+  color: #efc97d;
+  font-size: 17px;
+}
+
+.combater-loadout-hero h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.combater-loadout-hero p {
+  margin: 4px 0 0;
+  color: var(--combater-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.combater-loadout-body {
+  display: grid;
+  gap: 9px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding: 10px;
+  scrollbar-width: thin;
+}
+
+.combater-loadout-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: center;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--combater-surface);
+}
+
+.combater-loadout-card.is-best {
+  border-color: #8f713f;
+  background: #29251e;
+}
+
+.combater-loadout-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #343a43;
+  color: var(--combater-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.combater-loadout-card.is-best .combater-loadout-rank {
+  background: #6b512a;
+  color: #ffe0a0;
+}
+
+.combater-loadout-swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.combater-loadout-swap > i {
+  color: var(--combater-muted);
+  font-size: 11px;
+}
+
+.combater-loadout-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.combater-loadout-item:not(:has(img)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.combater-loadout-item img {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #4e555f;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.combater-loadout-item small,
+.combater-loadout-item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combater-loadout-item small {
+  color: var(--combater-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.combater-loadout-item strong {
+  font-size: 12px;
+}
+
+.combater-loadout-score {
+  border: 1px solid #6b5736;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #30291d;
+  color: #efc97d;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.combater-loadout-score:focus-visible {
+  outline: 2px solid var(--combater-focus);
+  outline-offset: 2px;
+}
+
+.combater-loadout-reasons {
+  grid-column: 2 / -1;
+  margin: 0;
+  padding-left: 17px;
+  color: var(--combater-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.combater-loadout-add {
+  grid-column: 2 / -1;
+  justify-self: end;
+  min-height: 28px;
+  border-color: #6b5736;
+  background: #30291d;
+  color: #efc97d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.combater-loadout-empty {
+  margin: 0;
+  padding: 18px;
+  color: #86c99e;
+  text-align: center;
+}
+
+.combater-loadout-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--combater-line);
+  padding: 9px 10px;
+  background: #191c20;
+}
+
+.combater-effect-clock-shell {
+  overflow: hidden;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%);
+}
+
+.combater-effect-clock-hero {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--combater-line);
+  padding: 12px;
+  background: #1d2228;
+}
+
+.combater-effect-clock-hero-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(158 220 229 / 42%);
+  border-radius: 8px;
+  background: rgb(158 220 229 / 10%);
+  color: #9edce5;
+  font-size: 17px;
+}
+
+.combater-effect-clock-hero h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.combater-effect-clock-hero p {
+  margin: 4px 0;
+  color: var(--combater-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.combater-effect-clock-hero strong {
+  color: #9edce5;
+  font-size: 11px;
+}
+
+.combater-effect-clock-body {
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  padding: 10px;
+  scrollbar-width: thin;
+}
+
+.combater-effect-clock-group {
+  display: grid;
+  gap: 6px;
+}
+
+.combater-effect-clock-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #9edce5;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.combater-effect-clock-group h3 span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 999px;
+  background: #29383c;
+  font-size: 9px;
+}
+
+.combater-effect-clock-group.is-attention h3 {
+  color: #f1b27e;
+}
+
+.combater-effect-clock-group.is-attention h3 span {
+  background: #432b20;
+}
+
+.combater-effect-clock-group.is-handled h3 {
+  color: #86c99e;
+}
+
+.combater-effect-clock-entry {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(120px, auto) auto;
+  gap: 9px;
+  align-items: center;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--combater-surface);
+}
+
+.combater-effect-clock-group.is-attention .combater-effect-clock-entry {
+  border-color: #72513e;
+  background: #29221f;
+}
+
+.combater-effect-clock-group.is-handled .combater-effect-clock-entry {
+  border-color: #3f6650;
+  background: #1e2923;
+}
+
+.combater-effect-clock-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid #4e555f;
+  border-radius: 6px;
+  color: #9edce5;
+}
+
+.combater-effect-clock-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.combater-effect-clock-copy,
+.combater-effect-clock-timing {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.combater-effect-clock-copy strong,
+.combater-effect-clock-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combater-effect-clock-copy strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.combater-effect-clock-copy span,
+.combater-effect-clock-timing span {
+  color: var(--combater-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.combater-effect-clock-timing {
+  text-align: right;
+}
+
+.combater-effect-clock-timing strong {
+  color: #9edce5;
+  font-size: 10px;
+}
+
+.combater-effect-clock-group.is-attention .combater-effect-clock-timing strong {
+  color: #f1b27e;
+}
+
+.combater-effect-clock-group.is-handled .combater-effect-clock-timing strong {
+  color: #86c99e;
+}
+
+.combater-effect-clock-actions {
+  display: flex;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.combater-effect-clock-actions button {
+  min-height: 28px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.combater-effect-clock-actions .is-primary {
+  border-color: #4f8170;
+  background: #203d35;
+  color: #b7e5d0;
+}
+
+.combater-effect-clock-empty {
+  margin: 0;
+  padding: 18px;
+  color: #86c99e;
+  text-align: center;
+}
+
+.combater-effect-clock-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--combater-line);
+  padding: 9px 10px;
+  background: #191c20;
+}
+
+@media (max-width: 500px) {
+  .combater-turn-intent-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .combater-loadout-card {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .combater-loadout-score,
+  .combater-loadout-reasons,
+  .combater-loadout-add {
+    grid-column: 2;
+  }
+
+  .combater-effect-clock-entry {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .combater-effect-clock-timing,
+  .combater-effect-clock-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
 .pf2e-combater .combater-detail-chip.is-swap-items {
   gap: 4px;
   border-color: rgb(134 201 158 / 38%);
@@ -2955,6 +3613,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pf2e-combater button.combater-sustained-name {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pf2e-combater button.combater-sustained-name:hover,
+.pf2e-combater button.combater-sustained-name:focus-visible {
+  color: var(--combater-ink, #f1e5d0);
+  text-decoration: underline;
+  outline: none;
 }
 
 .pf2e-combater .combater-action-section p,

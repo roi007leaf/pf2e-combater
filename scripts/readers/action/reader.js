@@ -237,7 +237,7 @@ function readStrikeAverageDamage(strike) {
   return readStrikeDamageProfile(strike)?.average ?? null;
 }
 
-export function actorStrikeOptions(actor, context = null) {
+export function actorStrikeOptions(actor, context = null, { includeUnready = false } = {}) {
   const strikes = pf2eRuntime.readActor(actor).actions;
   return strikes
     .filter((strike, index) => {
@@ -245,7 +245,7 @@ export function actorStrikeOptions(actor, context = null) {
       return strike?.type === "strike" || (strike?.type === undefined && !findCustomAction(slug) && !classifySystemAction(strike, readGeneratedActionCost(strike)));
     })
     .filter((strike) => strike?.visible !== false)
-    .filter((strike) => strike?.ready !== false)
+    .filter((strike) => includeUnready || strike?.ready !== false)
     .filter((strike) => strike?.canAttack !== false)
     .map((strike, index) => {
       const slug = slugify(strike.slug ?? strike.item?.slug ?? strike.label ?? strike.name ?? `strike-${index}`);

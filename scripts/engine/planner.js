@@ -54,6 +54,14 @@ import {
   resolveTacticPersonality,
   tacticPersonalityPlanAdjustment,
 } from "../rules/tactic-personality.js";
+import {
+  activeTurnIntentCount,
+  applyTurnIntentToPlan,
+  requiredTurnIntentCandidate,
+  turnIntentActionBudget,
+  turnIntentCandidateAllowed,
+  turnIntentPlanAllowed,
+} from "./planner/turn-intent.js";
 
 export { isAttackAction } from "./planner/rules.js";
 
@@ -451,7 +459,7 @@ function planScore(context, steps, sortedCandidates, budget) {
 }
 
 function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null) {
-  const orderedSteps = orderPlanSteps(steps);
+  const orderedSteps = applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps));
   const evaluation = evaluatePlan(context, orderedSteps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
@@ -489,6 +497,10 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null)
     confidence: combineConfidence(orderedSteps.map((step) => step.confidence)),
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",
+    turnIntent: {
+      activeCount: activeTurnIntentCount(context?.turnIntent),
+      constrained: activeTurnIntentCount(context?.turnIntent) > 0,
+    },
   };
 }
 
@@ -603,8 +615,8 @@ function diversifyPlanOrder(sortedPlans, budget) {
   return [...ordered, ...tail];
 }
 
-export function buildTurnPlans(context, candidates, { reservedSteps = [] } = {}) {
-  const budget = actionBudget(context);
+export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true } = {}) {
+  const budget = turnIntentActionBudget(context?.turnIntent, actionBudget(context));
   const initialPlanState = createPlanState(context, { steps: reservedSteps });
   const resolvedTactic = resolveTacticPersonality(context);
   // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
@@ -617,16 +629,21 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [] } = {})
   const eligibleCandidates = candidates
     .filter((candidate) => autoFillEligibleCandidate(context, candidate))
     .filter((candidate) => bossAutoFillCandidateAllowed(resolvedTactic, candidate))
+    .filter((candidate) => turnIntentCandidateAllowed(context?.turnIntent, candidate))
     .filter((candidate) => Number.isFinite(candidate.actionCost))
     .filter((candidate) => candidate.actionCost >= 0 && candidate.actionCost <= budget.totalActions)
     .filter((candidate) => Number.isFinite(candidate.score))
     .filter((candidate) => candidate.score > HARD_BLOCK_SCORE)
     .toSorted((left, right) => right.score - left.score);
-  const sortedCandidates = withLingeringCompositionCandidates(
+  let sortedCandidates = withLingeringCompositionCandidates(
     withProjectedFollowUpStrikeCandidates(
       withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
     ),
   );
+  const requiredCandidate = requiredTurnIntentCandidate(context?.turnIntent, eligibleCandidates);
+  if (requiredCandidate && !sortedCandidates.some((candidate) => actionKey(candidate) === actionKey(requiredCandidate))) {
+    sortedCandidates = [requiredCandidate, ...sortedCandidates];
+  }
 
   const plans = [];
   const seenPlans = new Set();
@@ -658,7 +675,12 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [] } = {})
     search.bestByState.set(stateKey, stateValue);
     const projectedContext = projectContextFromPlanState(context, planState);
 
-    if (steps.length && planReloadsAreUseful(steps) && planSpellshapesAreUseful(orderPlanSteps(steps))) {
+    if (
+      steps.length
+      && turnIntentPlanAllowed(context?.turnIntent, steps)
+      && planReloadsAreUseful(steps)
+      && planSpellshapesAreUseful(orderPlanSteps(steps))
+    ) {
       const key = steps.map(actionKey).join("|");
         if (!seen.has(key)) {
           seen.add(key);
@@ -806,8 +828,10 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [] } = {})
       }
     }
   }
-  backfillCoverage(sortedCandidates);
-  backfillCoverage(eligibleCandidates);
+  if (includeCoverage) {
+    backfillCoverage(sortedCandidates);
+    backfillCoverage(eligibleCandidates);
+  }
 
   if (!plans.length) return [emptyPlan(context)];
 

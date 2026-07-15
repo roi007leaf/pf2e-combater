@@ -51,6 +51,13 @@ assert.ok(tailPlan, "candidate outside primary search pool should remain reachab
 assert.equal(tailPlan.totalCost, 3, "coverage backfill should build a complete turn, not a single-step stub");
 assert.ok(widePlans[0].searchDiagnostics.statesExpanded > 0);
 assert.equal(widePlans[0].searchDiagnostics.searchedCandidates <= 12, true);
+const boundedWidePlans = buildTurnPlans(fighterContext, widePool, { includeCoverage: false });
+assert.equal(
+  boundedWidePlans.some((plan) => plan.steps.some((step) => step.id === "wide-15")),
+  false,
+  "bounded interactive searches should skip exhaustive tail-candidate coverage",
+);
+assert.equal(boundedWidePlans[0].steps.length, 3, "bounded search should still produce a complete best plan");
 
 const diversityPlans = buildTurnPlans(fighterContext, [
   {

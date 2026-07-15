@@ -1,7 +1,7 @@
 import { contextActorDocument } from "../actor-context.js";
 import { revertCondition } from "../execution/conditions.js";
 import { resetDraftExecution } from "../execution/state.js";
-import { revertChat, revertRegion } from "../revert/documents.js";
+import { revertChat, revertEffect, revertRegion } from "../revert/documents.js";
 import { revertCarryType, revertConsumable, revertFrequency, revertReload } from "../revert/item-resources.js";
 import { revertMovement } from "../revert/movement.js";
 import { revertSlot } from "../revert/spell-slot.js";
@@ -15,6 +15,8 @@ async function applyRevertOp(op, scope) {
       return revertCondition(op, scope);
     case "region":
       return revertRegion(op);
+    case "effect":
+      return revertEffect(op);
     case "carry-type":
       return revertCarryType(op, scope);
     case "consumable":

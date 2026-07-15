@@ -84,7 +84,14 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   } else if (slug === "seek" || resolvedAction?.executable === "pf2e-action") {
     result = await executeSystemAction({ actor, step, action: resolvedAction, event, choices });
   } else {
-    result = await executeNativeAction({ actor, action: resolvedAction, event, target, patch });
+    result = await executeNativeAction({
+      actor,
+      action: resolvedAction,
+      event,
+      target,
+      patch,
+      trackSustainedSpell: !regionOp?.effectUuid,
+    });
   }
 
   return attachRevertOp(result, regionOp);

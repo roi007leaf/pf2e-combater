@@ -707,6 +707,10 @@ assert.ok(
   /Hooks\.on\("updateActor", \(actor, changes\) => \{[\s\S]*?isSharedDraftPlanEcho\(changes\)[\s\S]*?"shared-draft-sync"[\s\S]*?"actor-update"/.test(mainSource),
   "updateActor should route a player's own shared-draft echo to a refresh source that does not reset the pinned Auto-fill plan",
 );
+assert.ok(
+  /Hooks\.on\("updateActor"[\s\S]*?consumeSharedDraftPlanRefreshSuppression\(actor\)[\s\S]*?return/.test(mainSource),
+  "panel-owned shared-draft writes should consume their local updateActor echo instead of rebuilding twice",
+);
 assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution plan should be cleared when its turn ends");
 assert.ok(
   /Hooks\.on\("deleteCombat"[\s\S]*?clearCombatDraftPlans\(combat\)/.test(mainSource),
@@ -894,6 +898,14 @@ assert.ok(
   "sustained spell section should render above action-cost tabs",
 );
 assert.ok(panelTemplateSource.includes("data-add-sustain-spell"), "sustained spell section should add a chosen Sustain a Spell step");
+assert.ok(
+  panelTemplateSource.includes('data-open-sustained-spell="{{spellUuid}}"')
+    && panelEventBindingsSource.includes("[data-open-sustained-spell]")
+    && panelEventBindingsSource.includes("_openSustainedSpellDetails")
+    && panelSource.includes("async _openSustainedSpellDetails")
+    && panelSource.includes("return renderSheetFromUuid(uuid)"),
+  "clicking a sustained spell name should open that spell document",
+);
 assert.ok(panelSource.includes("_chooseSustainedSpellForStep"), "generic Sustain a Spell execution should ask which spell to sustain");
 // Draft steps are tagged with their multiple-attack-penalty position so strikes roll the right MAP
 // variant; uncounted attacks continue the plan's running attack count.
@@ -911,6 +923,26 @@ assert.ok(/movementAction/.test(panelDraftWorkflowSource), "a pinned movement ty
 assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel template should expose a movement-type control on Strides");
 assert.ok(panelSource.includes("_cycleStepRoute"), "the panel should let the player cycle a Stride's tactical route");
 assert.ok(panelTemplateSource.includes("data-cycle-route"), "the panel template should expose a tactical-route control on Strides");
+assert.ok(panelSource.includes("_cycleStepDestination"), "the panel should let the player cycle ranked Stride destinations");
+assert.ok(panelTemplateSource.includes("data-cycle-destination"), "the panel template should expose a recommended-destination control on Strides");
+assert.ok(
+  panelDraftWorkflowSource.includes("recommendedMovementOptionsForStep")
+    && panelDraftWorkflowSource.includes("movementAlternatives")
+    && panelViewModelSource.includes("movementAlternativeToolLabel"),
+  "Auto-fill should store three ranked Stride landings and expose their current position",
+);
+{
+  const workflowLines = panelDraftWorkflowSource.split(/\r?\n/);
+  const redundantSyncs = [];
+  for (let index = 0; index < workflowLines.length; index += 1) {
+    if (!workflowLines[index].includes("_persistActiveDraftStep(")) continue;
+    let end = index;
+    while (end < workflowLines.length && !workflowLines[end].trimEnd().endsWith(");")) end += 1;
+    const nextLine = workflowLines.slice(end + 1).find((line) => line.trim().length > 0) ?? "";
+    if (nextLine.includes("_syncDraftToGM()")) redundantSyncs.push(index + 1);
+  }
+  assert.deepEqual(redundantSyncs, [], "draft controls should not sync again after _persistActiveDraftStep already synced");
+}
 // actorMovementOptions enumerates the actor's Stride speeds: walking first, then only the non-walking
 // speeds the actor actually has, mapping the "land" speed key to the "walk" movement action.
 {
@@ -1052,10 +1084,10 @@ assert.ok(panelSource.includes("_cycleAutoFillDraft"), "panel should cycle throu
 assert.ok(panelEventBindingsSource.includes("contextmenu"), "shuffle right-click should cycle backward instead of opening the browser menu");
 assert.ok(
   panelAutoFillContextSource.includes("export function contextWithCurrentAutoFillTargets")
-    && panelContextWorkflowSource.includes("const autoFillContext = contextWithCurrentAutoFillTargets(context)")
+    && panelContextWorkflowSource.includes("const autoFillContext = contextWithCurrentAutoFillTargets(intentContext")
     && panelContextWorkflowSource.includes("buildTurnPlans(autoFillContext")
-    && panelSource.includes("contextWithCurrentAutoFillTargets(this._context)")
-    && panelDraftWorkflowSource.includes("contextWithCurrentAutoFillTargets(context)"),
+    && panelSource.includes("contextWithCurrentAutoFillTargets(intentContext")
+    && /cyclePanelAutoFillDraft\(panel[\s\S]*?const plans = panel\._activeAutoFillPlans\(\)[\s\S]*?preparedPlans: plans/.test(panelDraftWorkflowSource),
   "render, shuffle, and fill-gap Auto-fill plan lists should share selected-target focusing so the shuffle counter does not jump between broad and target-scoped cycles",
 );
 assert.equal(
@@ -1182,6 +1214,10 @@ assert.ok(panelSource.includes("showActionPreview"), "plan hover should preview 
 assert.ok(panelSource.includes("clearActionPreview"), "plan hover cleanup should clear all action preview overlays");
 assert.ok(panelPickerWorkflowSource.includes("export async function pickAreaTemplate"), "picker workflow should let the user pick which template to place");
 assert.ok(panelPickerWorkflowSource.includes("targetingProfile?.templates"), "picker workflow should read the parsed multi-template list");
+assert.ok(panelPickerWorkflowSource.includes("export async function choosePanelRecommendedArea"), "picker workflow should apply a scored recommended area placement");
+assert.ok(panelEventBindingsSource.includes("data-choose-recommended-area"), "panel events should bind the recommended-area chooser");
+assert.ok(panelTemplateSource.includes("data-choose-recommended-area"), "area steps should expose the recommended-area chooser");
+assert.ok(panelViewModelSource.includes("recommendedAreaPlacementView"), "panel view model should label the active recommended placement");
 assert.ok(panelSource.includes("_removeAreaTemplate"), "panel should let the user remove a placed template");
 assert.ok(panelTemplateSource.includes("hasAreaMarker"), "remove-template button should only show when a template is set");
 assert.ok(actionPreviewSource.includes("plannedTargetTokens"), "action preview should resolve planned target tokens");
@@ -1547,9 +1583,10 @@ assert.ok(
 );
 assert.ok(
   revertDocumentsSource.includes("export async function revertRegion")
+    && revertDocumentsSource.includes("export async function revertEffect")
     && revertDocumentsSource.includes("export async function revertChat")
-    && revertDocumentsSource.includes("function deleteLinkedAreaEffect"),
-  "document revert module should own Region cleanup, linked area effect cleanup, and chat deletion",
+    && revertDocumentsSource.includes("function deleteEffect"),
+  "document revert module should own Region cleanup, standalone/linked effect cleanup, and chat deletion",
 );
 assert.equal(
   actionRevertSource.includes("findSpellcastingEntry"),
@@ -3313,16 +3350,16 @@ assert.ok(
   "duplicating a step should clone it with a fresh instanceId and persist through the same manual-draft write path as remove/move",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*panel\._writeActiveDraftPlan\(/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false, preparedPlans = null \} = \{\}\)[\s\S]*source: "auto-fill"[\s\S]*panel\._writeActiveDraftPlan\(/.test(panelDraftWorkflowSource),
   "auto-fill should sync updated player plan to GM",
 );
 assert.ok(
-  panelDraftWorkflowSource.includes("const contextualPlan = refreshedPlanForStaleSelection(plan, refreshedPlans)")
-    && panelDraftWorkflowSource.includes(": bestAutoFillPlan(refreshedPlans.length ? refreshedPlans : panel._autoFillPlans)"),
-  "pressing Auto-fill should load the best fresh plan even after cycling alternatives",
+  panelDraftWorkflowSource.includes("const contextualPlan = refreshedPlanForStaleSelection(plan, currentPlans)")
+    && panelDraftWorkflowSource.includes(": bestAutoFillPlan(currentPlans)"),
+  "pressing Auto-fill should load the best currently displayed plan even after cycling alternatives",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\) \{[\s\S]*if \(panel\._autoFillInFlight\) return;[\s\S]*panel\._autoFillInFlight = true;[\s\S]*\} finally \{[\s\S]*panel\._autoFillInFlight = false;/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false, preparedPlans = null \} = \{\}\) \{[\s\S]*if \(panel\._autoFillInFlight\) return;[\s\S]*panel\._autoFillInFlight = true;[\s\S]*\} finally \{[\s\S]*panel\._autoFillInFlight = false;/.test(panelDraftWorkflowSource),
   "a second Auto-fill invocation while one is already running must be a no-op -- two overlapping runs previously corrupted the resulting draft (e.g. a Stride wrongly warning the actor is prone)",
 );
 assert.ok(
@@ -3330,7 +3367,7 @@ assert.ok(
   "re-matching a draft step to its live candidate must not fall back to an item.uuid comparison when the step has no item at all -- an unguarded === there matched undefined against undefined, mis-keying any generic item-less action (Stride, Demoralize, ...) to whichever OTHER item-less candidate happened to sort first that pass",
 );
 assert.ok(
-  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false \} = \{\}\)[\s\S]*if \(!plan\) panel\._pinnedPlanId = null/.test(panelDraftWorkflowSource),
+  /autoFillPanelDraft\(panel, \{ plan = null, forceFull = false, preparedPlans = null \} = \{\}\)[\s\S]*if \(!plan\) panel\._pinnedPlanId = null/.test(panelDraftWorkflowSource),
   "pressing Auto-fill should reset the alternative-plan cursor",
 );
 assert.ok(
@@ -3399,6 +3436,65 @@ assert.ok(
 assert.ok(
   panelDraftWorkflowSource.includes("silent: !notify"),
   "automatic player plan sync should mark socket payloads silent",
+);
+const autoFillDraftWorkflowSource = panelDraftWorkflowSource.match(
+  /export async function autoFillPanelDraft[\s\S]*?(?=\nexport async function fillPanelDraftGap)/,
+)?.[0] ?? "";
+const cycleAutoFillWorkflowSource = panelDraftWorkflowSource.match(
+  /export async function cyclePanelAutoFillDraft[\s\S]*?(?=\nexport async function syncPanelDraftToGM)/,
+)?.[0] ?? "";
+assert.equal(
+  autoFillDraftWorkflowSource.includes("refreshPanelAutoFillContext"),
+  false,
+  "Auto-fill should use plans already prepared for the visible panel instead of rebuilding them on click",
+);
+assert.equal(
+  cycleAutoFillWorkflowSource.includes("refreshPanelAutoFillContext"),
+  false,
+  "cycling Auto-fill should reuse the visible plan list instead of rebuilding it before selecting the next plan",
+);
+assert.ok(
+  panelSource.includes("this._fillGapPlanCache")
+    && panelSource.includes("this._fillGapPlanCacheKey === cacheKey")
+    && /_fillGapPlans\(\)[\s\S]*?includeCoverage: false/.test(panelSource)
+    && !/preparePanelContext\(panel\)[\s\S]{0,220}panel\._fillGapPlanCache = null/.test(panelContextWorkflowSource),
+  "remaining-budget Auto-fill plans should survive unrelated renders and skip exhaustive coverage work",
+);
+assert.ok(
+  panelSource.includes("this._autoFillPreparationCache = null")
+    && /async refresh\(refreshSource = "manual"\)[\s\S]*?this\._autoFillPreparationCache = null/.test(panelSource)
+    && panelContextWorkflowSource.includes("const baseBuild = preparationCache?.baseBuild")
+    && panelContextWorkflowSource.includes("panel._autoFillPreparationCache = {"),
+  "draft-only renders should reuse the unchanged full-turn candidate/plan search while every external refresh invalidates it",
+);
+assert.equal(
+  panelContextWorkflowSource.includes("buildTurnPlans(planningContext"),
+  false,
+  "panel render should not run a second projected planner search after its authoritative Auto-fill plan list is already built",
+);
+assert.ok(
+  /const autoFillPlans[\s\S]*?buildTurnPlans\(autoFillContext,[\s\S]*?includeCoverage: false/.test(panelContextWorkflowSource)
+    && /rebuildPanelAutoFillContext\(panel[\s\S]*?buildTurnPlans\(focusedContext, candidateBuild\.candidates, \{ includeCoverage: false \}\)/.test(panelDraftWorkflowSource),
+  "interactive panel planning should keep exhaustive legal-action coverage in Browse instead of blocking refresh and target-change buttons",
+);
+assert.ok(
+  panelContextWorkflowSource.includes("const needsProjectedCandidates = Boolean(panel._browser)")
+    && panelContextWorkflowSource.includes("needsProjectedCandidates ? buildCandidates(planningContext) : baseBuild"),
+  "main panel should defer projected Browse candidate generation until debug/browser UI needs it",
+);
+assert.ok(
+  panelContextWorkflowSource.includes("const draftStepActions = needsProjectedCandidates")
+    && panelContextWorkflowSource.includes("? projectedDraftStepActions(context, activeDraft)")
+    && panelContextWorkflowSource.includes(": null;"),
+  "main panel should defer per-step projected candidate scans until debug/browser UI needs their diagnostics",
+);
+assert.ok(
+  /return steps\.filter\(\(step, index\) => \{[\s\S]*?if \(!isStrikeLikeAutoFillStep\(panel, step\)\) return true;[\s\S]*?findProjectedDraftAction/.test(panelDraftWorkflowSource),
+  "Auto-fill reachability cleanup should not rebuild all candidates for non-Strike steps",
+);
+assert.ok(
+  /syncPanelAutoFillTargets\(panel, draft = null\)[\s\S]*?targetKey === panel\._autoFillTargetKey\) return null;[\s\S]*?rebuildPanelAutoFillContext/.test(panelDraftWorkflowSource),
+  "Auto-fill clicks should run only a target-id comparison unless the live target changed since render",
 );
 assert.ok(
   /if \(!payload\??\.silent\)/.test(mainSource),

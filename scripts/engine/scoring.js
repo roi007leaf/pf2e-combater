@@ -109,6 +109,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     areaHitCount,
     areaPlacementCenter,
     areaPlacementAimPoint,
+    areaPlacementOptions,
     minionPlan,
   } = scoreRoleTactics(context, action, { role, profile, target });
 
@@ -213,6 +214,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
       ...action.activityProfile,
       areaPlacementCenter,
       areaPlacementAimPoint,
+      areaPlacementOptions,
       ...(distinctTargets ? { distinctTargets } : {}),
       ...(backingStrike ? { backingStrike } : {}),
       ...(backingStrikes ? { backingStrikes } : {}),

@@ -1,5 +1,6 @@
 import { systemValue } from "../../foundry-data.js";
 import { t } from "../../i18n.js";
+import { buildSustainedSpellEffectData, parseSpellDuration } from "../area/duration.js";
 import { chatActionRevert } from "./chat-revert.js";
 import { flushPendingChat, rollActionDamageMessages } from "./damage.js";
 import { createGuidance } from "./guidance.js";
@@ -273,6 +274,30 @@ async function consumeFrequencyIfUnspent(before) {
   return { kind: "frequency", itemUuid: before.itemUuid, valueBefore: before.valueBefore, expectedAfter: { value: valueNow - 1 } };
 }
 
+function sustainedSpellDuration(action) {
+  const sustained = action?.activityProfile?.sustained === true
+    || action?.item?.system?.duration?.sustained === true;
+  if (!sustained) return null;
+  const raw = action?.activityProfile?.duration ?? action?.item?.system?.duration?.value ?? "";
+  return parseSpellDuration(raw, { sustained: true });
+}
+
+async function createSustainedSpellEffect(actor, action) {
+  const duration = sustainedSpellDuration(action);
+  if (!duration || typeof actor?.createEmbeddedDocuments !== "function") return null;
+  const worldTime = numeric(globalThis.game?.time?.worldTime, null);
+  const initiative = numeric(globalThis.game?.combat?.combatant?.initiative, null);
+  const data = buildSustainedSpellEffectData({ action, duration, worldTime, initiative });
+  if (!data) return null;
+  try {
+    const created = await actor.createEmbeddedDocuments("Item", [data]);
+    const effect = Array.isArray(created) ? created[0] : created;
+    return effect?.uuid ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
   const entry = findSpellcastingEntry(actor, action);
@@ -350,7 +375,7 @@ export async function executeOpenItem({ actor, action, event }) {
   return { guidance: true };
 }
 
-export async function executeNativeAction({ actor, action, event, target = null, patch = {} }) {
+export async function executeNativeAction({ actor, action, event, target = null, patch = {}, trackSustainedSpell = true }) {
   if (target?.token) setTarget(target.token);
   const slotBefore = spellSlotRevertOp(actor, action);
   const nativeResult = await executeOpenItem({ actor, action, event });
@@ -364,6 +389,10 @@ export async function executeNativeAction({ actor, action, event, target = null,
       nativeResult,
     };
   }
+
+  const sustainedEffectUuid = nativeResult?.spellCast === true && trackSustainedSpell
+    ? await createSustainedSpellEffect(actor, action)
+    : null;
 
   await flushPendingChat();
   const cardTimestamp = Number(nativeResult?.message?.timestamp);
@@ -384,5 +413,5 @@ export async function executeNativeAction({ actor, action, event, target = null,
   for (const damageMessageId of [...damageMessageIds].reverse()) {
     result = attachRevertOp(result, { kind: "chat", messageId: damageMessageId });
   }
-  return result;
+  return attachRevertOp(result, sustainedEffectUuid ? { kind: "effect", effectUuid: sustainedEffectUuid } : null);
 }

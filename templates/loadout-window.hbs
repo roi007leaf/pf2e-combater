@@ -1,0 +1,43 @@
+<div class="combater-loadout-shell">
+  <header class="combater-loadout-hero">
+    <span class="combater-loadout-hero-icon"><i class="fa-solid fa-shield-halved"></i></span>
+    <div>
+      <h2>{{title}}</h2>
+      <p>{{help}}</p>
+    </div>
+  </header>
+
+  <div class="combater-loadout-body">
+    {{#if hasRecommendations}}
+      {{#each recommendations}}
+        <article class="combater-loadout-card {{#if best}}is-best{{/if}}">
+          <div class="combater-loadout-rank">{{rank}}</div>
+          <div class="combater-loadout-swap">
+            <span class="combater-loadout-item">
+              {{#if heldItemImg}}<img src="{{heldItemImg}}" alt="">{{/if}}
+              <span><small>Put away</small><strong>{{heldItemName}}</strong></span>
+            </span>
+            <i class="fa-solid fa-arrow-right"></i>
+            <span class="combater-loadout-item">
+              {{#if drawItemImg}}<img src="{{drawItemImg}}" alt="">{{/if}}
+              <span><small>Draw</small><strong>{{drawItemName}}</strong></span>
+            </span>
+          </div>
+          <span class="combater-loadout-score" data-tooltip="{{fitTooltip}}" aria-label="{{fitTooltip}}" tabindex="0">{{scoreLabel}}</span>
+          <ul class="combater-loadout-reasons">
+            {{#each reasons}}<li>{{this}}</li>{{/each}}
+          </ul>
+          <button type="button" class="combater-loadout-add" data-apply-loadout="{{id}}">
+            <i class="fa-solid fa-plus"></i> Add Swap Items to plan
+          </button>
+        </article>
+      {{/each}}
+    {{else}}
+      <p class="combater-loadout-empty"><i class="fa-solid fa-circle-check"></i> {{empty}}</p>
+    {{/if}}
+  </div>
+
+  <footer class="combater-loadout-footer">
+    <button type="button" data-loadout-close>Close</button>
+  </footer>
+</div>

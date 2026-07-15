@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.2.0]
+
+### Added
+
+- **Area Placement 2.0 now offers up to three ranked tactical placements.** Bursts search legal grid
+  centers within casting range, while cones and lines sweep their possible directions. Placement
+  scoring respects walls, creature footprints, friendly fire, visible targets, and disclosed PF2e
+  defenses and damage adjustments. An `AOE 1/3` control cycles the offered locations directly on the
+  plan row, while manual placement remains available.
+- **Movement steps now offer up to three recommended landing locations.** Recommendations use the
+  selected tactical route goal and include any required corner waypoints. The destination control
+  cycles forward on click and backward on right-click without reopening the canvas picker.
+- **Turn Intent controls now constrain Auto-fill and Shuffle for the current turn.** Players can lock
+  selected targets, require a specific action, forbid ranked spell slots, stay at range, end in cover,
+  or preserve their final action. Intent is displayed in the panel header and resets automatically
+  when the combatant, round, or turn changes.
+- **Loadout Advisor now recommends battlefield-aware equipment swaps.** It compares currently held
+  weapons and shields with drawable gear using target distance, known defenses and damage responses,
+  expected weapon damage, reload, occupied hands, nearby threats, and current HP. Each recommendation
+  explains its fit score on hover and can add the exact legal Swap Items choice to the plan.
+- **Effect Clock now collects PF2e timing events in one turn-aware view.** Finite and encounter-long
+  effects are grouped by urgency using PF2e's native remaining duration, while persistent damage and
+  Frightened expose their normal turn-end events. The header reports urgent events, effect names open
+  their native sheets, and player views omit hidden effect information.
+
+### Changed
+
+- **Sustained spells and Effect Clock now have separate responsibilities.** The existing Sustained
+  spells section remains the single place to see active sustained casts and add Sustain a Spell,
+  while Effect Clock focuses on timed effects, conditions, and turn-boundary reminders. Sustained
+  spell names are now clickable and open their native PF2e spell sheets.
+- **Interactive panel planning now avoids repeated exhaustive searches.** Auto-fill alternatives and
+  remaining-budget continuations are cached for the current target, intent, resource horizon, and
+  projected plan state. Interactive refreshes skip Browse-only coverage backfills and redundant
+  projected searches, while Browse still retains exhaustive legal-action coverage.
+
+### Fixed
+
+- **Non-area sustained spells now create a native PF2e tracking effect when successfully cast.**
+  Summons such as Phantasmal Minion retain their exact spell identity, appear in the Sustained spells
+  section on later turns, avoid duplicate trackers when an area already created one, and remove the
+  created effect through Safe Undo.
+- **Auto-fill, Shuffle, Remove, target, route, and equipment controls no longer stall on duplicate
+  planner work.** Local draft writes suppress their own actor-update echo, panel-only renders reuse
+  prepared candidates and plans, and gap filling recalculates only when its real tactical inputs
+  change.
+- **A single recommended area placement no longer hides the AOE control.** Rows with one valid
+  recommendation show `AOE 1/1`, allowing the preferred placement to be restored after manual edits.
+- **Effect Clock no longer repeats valued condition names.** Frightened now displays once as, for
+  example, `Frightened 1` instead of `Frightened 1 1`.
+
 ## [1.1.11]
 
 ### Added

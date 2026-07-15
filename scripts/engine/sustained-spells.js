@@ -60,7 +60,11 @@ function effectDocuments(actor) {
 
 function effectSummary(entry) {
   const effect = entry?.effect ?? entry;
-  const sourceId = effect?.sourceId
+  const trackedSpell = documentFlag(effect, MODULE_ID, "sustainedSpell")
+    ?? documentFlag(effect, "pf2e-combater", "sustainedSpell")
+    ?? null;
+  const sourceId = trackedSpell?.spellUuid
+    ?? effect?.sourceId
     ?? systemValue(effect?.system?.source)
     ?? effect?.system?.source?.id
     ?? effect?.origin

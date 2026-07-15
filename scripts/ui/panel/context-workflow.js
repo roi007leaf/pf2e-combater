@@ -2,7 +2,14 @@ import { SETTINGS, settingOrDefault } from "../../settings.js";
 import { collectionValues } from "../../foundry-data.js";
 import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder/index.js";
 import { buildCandidates } from "../../engine/candidates.js";
-import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
+import { buildTurnPlans } from "../../engine/planner.js";
+import { buildLoadoutAdvice } from "../../engine/loadout-advisor.js";
+import { buildEffectClock } from "../../engine/effect-clock.js";
+import {
+  activeTurnIntentCount,
+  normalizeTurnIntent,
+  withTurnIntent,
+} from "../../engine/planner/turn-intent.js";
 import { readActionFavorites } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
 import { deterministicPlanPreferenceAdjustment } from "../../state/preference-profile.js";
@@ -22,7 +29,7 @@ import {
   withResourceHorizon,
 } from "../../rules/resource-horizon.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
-import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
+import { contextWithCurrentAutoFillTargets, currentAutoFillTargetKey } from "./auto-fill-context.js";
 import { autoFillCyclePlans, selectDisplayPlan } from "../plan-selection.js";
 import {
   debugAction,
@@ -121,6 +128,10 @@ export function viewPanelContext(panel, context) {
   const draftSteps = panel._builder?.draft?.steps ?? [];
   const planPreference = deterministicPlanPreferenceAdjustment(context, panel._builder?.draft);
   const resourceHorizon = resourceHorizonView(panel.resourceHorizon);
+  const turnIntent = normalizeTurnIntent(panel._turnIntent);
+  const turnIntentCount = activeTurnIntentCount(turnIntent);
+  const loadoutCount = panel._loadoutAdvice?.length ?? 0;
+  const effectClock = panel._effectClock ?? { urgentCount: 0, totalCount: 0 };
 
   return {
     actor: context?.actor ?? null,
@@ -140,6 +151,40 @@ export function viewPanelContext(panel, context) {
     resourceHorizon: {
       ...resourceHorizon,
       visible: Boolean(context && panel._builder && showAutoFill && panel._builder.readonly !== true),
+    },
+    turnIntent: {
+      visible: Boolean(context && panel._builder && showAutoFill && panel._builder.readonly !== true),
+      active: turnIntentCount > 0,
+      count: turnIntentCount,
+      label: turnIntentCount > 0
+        ? t("TurnIntent.ActiveLabel", "Intent {count}", { count: turnIntentCount })
+        : t("TurnIntent.Label", "Intent"),
+      tooltip: turnIntentCount > 0
+        ? t("TurnIntent.ActiveTooltip", "{count} turn intent controls active. Click to edit.", { count: turnIntentCount })
+        : t("TurnIntent.Tooltip", "Set temporary Auto-fill constraints for this turn."),
+    },
+    loadoutAdvisor: {
+      visible: Boolean(context && panel._builder && showAutoFill && panel._builder.readonly !== true),
+      active: loadoutCount > 0,
+      count: loadoutCount,
+      label: loadoutCount > 0
+        ? t("Loadout.ActiveLabel", "Loadout {count}", { count: loadoutCount })
+        : t("Loadout.Label", "Loadout"),
+      tooltip: loadoutCount > 0
+        ? t("Loadout.ActiveTooltip", "{count} battlefield-aware loadout swaps available.", { count: loadoutCount })
+        : t("Loadout.Tooltip", "Review held gear against current battlefield conditions."),
+    },
+    effectClock: {
+      visible: Boolean(context && panel._builder && showAutoFill),
+      active: effectClock.totalCount > 0,
+      urgent: effectClock.urgentCount > 0,
+      count: effectClock.urgentCount,
+      label: effectClock.urgentCount > 0
+        ? t("EffectClock.ActiveLabel", "Clock {count}", { count: effectClock.urgentCount })
+        : t("EffectClock.Label", "Clock"),
+      tooltip: effectClock.urgentCount > 0
+        ? t("EffectClock.ActiveTooltip", "{count} effect events need attention this turn.", { count: effectClock.urgentCount })
+        : t("EffectClock.Tooltip", "{count} timed effect events tracked.", { count: effectClock.totalCount }),
     },
     intelLedger: panelIntelLedgerView(context),
     showDebug,
@@ -171,6 +216,12 @@ export function clearPanelPreparedContext(panel) {
   panel._detected = [];
   panel._plans = [];
   panel._autoFillPlans = [];
+  panel._autoFillTargetKey = null;
+  panel._autoFillPreparationCache = null;
+  panel._fillGapPlanCache = null;
+  panel._fillGapPlanCacheKey = null;
+  panel._loadoutAdvice = [];
+  panel._effectClock = { entries: [], groups: [], urgentCount: 0, totalCount: 0, hasEntries: false };
   panel._plan = null;
   panel._builder = null;
   panel._planningContext = null;
@@ -185,6 +236,7 @@ export function preparePanelContext(panel) {
     panel.resourceHorizon,
   );
   panel._context = context;
+  panel._syncTurnIntentContext?.(context);
 
   if (!context) {
     clearPanelPreparedContext(panel);
@@ -222,12 +274,24 @@ export function preparePanelContext(panel) {
       : draft;
   panel._sharedDraftSeed = panel._gmExecuteMode ? activeDraft : null;
 
-  const baseBuild = buildCandidates(context);
-  const autoFillContext = contextWithCurrentAutoFillTargets(context);
-  const autoFillBuild = autoFillContext === context ? baseBuild : buildCandidates(autoFillContext);
-  const planningContext = projectContextForDraftDestination(context, activeDraft);
+  const intentContext = withTurnIntent(context, panel._turnIntent);
+  const autoFillTargetKey = currentAutoFillTargetKey(panel._turnIntent?.lockedTargetIds ?? []);
+  const preparationCache = panel._autoFillPreparationCache?.targetKey === autoFillTargetKey
+    && panel._autoFillPreparationCache?.contextKey === panel._turnIntentContextKey
+    ? panel._autoFillPreparationCache
+    : null;
+  panel._autoFillTargetKey = autoFillTargetKey;
+  const baseBuild = preparationCache?.baseBuild ?? buildCandidates(context);
+  const autoFillContext = contextWithCurrentAutoFillTargets(intentContext, panel._turnIntent?.lockedTargetIds ?? []);
+  const autoFillBuild = preparationCache?.autoFillBuild
+    ?? (autoFillContext === context ? baseBuild : buildCandidates(autoFillContext));
+  const planningContext = withTurnIntent(projectContextForDraftDestination(context, activeDraft), panel._turnIntent);
   panel._planningContext = planningContext;
-  const candidateBuild = planningContext === context ? baseBuild : buildCandidates(planningContext);
+  const needsProjectedCandidates = Boolean(panel._browser)
+    || Boolean(game?.user?.isGM && settingOrDefault(SETTINGS.showDebugTab, false));
+  const candidateBuild = planningContext === context
+    ? baseBuild
+    : needsProjectedCandidates ? buildCandidates(planningContext) : baseBuild;
   const { candidates, rejected, detected } = candidateBuild;
   const baseBuilderCandidates = baseBuild.candidates.map(withBuilderActionFields);
   const builderCandidates = candidates.map(withBuilderActionFields);
@@ -235,13 +299,32 @@ export function preparePanelContext(panel) {
     ...entry,
     action: withBuilderActionFields(entry?.action),
   }));
-  const draftStepActions = projectedDraftStepActions(context, activeDraft);
-  const autoFillPlans = buildTurnPlans(autoFillContext, autoFillBuild.candidates.map(withBuilderActionFields));
-  const plans = buildTurnPlans(planningContext, builderCandidates);
+  const draftStepActions = needsProjectedCandidates
+    ? projectedDraftStepActions(context, activeDraft)
+    : null;
+  const autoFillPlans = preparationCache?.autoFillPlans
+    // The panel cycle is for strong tactical alternatives. Exhaustive action coverage belongs in
+    // Browse; forcing every low-ranked legal action into a plan made every real context refresh
+    // rebuild dozens of irrelevant alternatives before any button could repaint.
+    ?? buildTurnPlans(autoFillContext, autoFillBuild.candidates.map(withBuilderActionFields), {
+      includeCoverage: false,
+    });
+  // Auto-fill/fill-gap own every displayed/cycled recommendation. A second planner search against
+  // the draft-projected context only populated the builder's unused fallback plan and cost over a
+  // second on real actors. Reuse the authoritative full-turn list; projected candidates still
+  // resolve draft warnings and Browse availability.
+  const plans = autoFillPlans;
+  panel._autoFillPreparationCache = {
+    targetKey: autoFillTargetKey,
+    contextKey: panel._turnIntentContextKey,
+    baseBuild,
+    autoFillBuild,
+    autoFillPlans,
+  };
   if (panel._pinnedPlanId && !autoFillPlans.some((candidatePlan) => candidatePlan?.id === panel._pinnedPlanId)) {
     panel._pinnedPlanId = null;
   }
-  const plan = selectDisplayPlan(plans, panel._pinnedPlanId) ?? bestTurnPlan(planningContext, builderCandidates);
+  const plan = selectDisplayPlan(plans, panel._pinnedPlanId) ?? plans[0] ?? null;
   const favorites = readActionFavorites(context);
 
   panel._candidates = builderCandidates;
@@ -249,6 +332,7 @@ export function preparePanelContext(panel) {
   panel._detected = detected;
   panel._plans = plans;
   panel._autoFillPlans = autoFillPlans;
+  panel._loadoutAdvice = buildLoadoutAdvice(autoFillContext);
   panel._plan = plan;
   const builderModel = buildActionBuilderModel({
     context: planningContext,
@@ -261,6 +345,7 @@ export function preparePanelContext(panel) {
     favorites,
   });
   const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
+  panel._effectClock = buildEffectClock(context, { draft: builderModel.draft, sustainedEntries: sustainedSpells });
   panel._movementOptions = actorMovementOptions(panel._actorForMovement(context));
   panel._weaponOptions = actorStrikeOptions(panel._actorForMovement(context), context);
   panel._builder = decorateBuilder(builderModel, panel.activeTab, panel.searchQuery, {

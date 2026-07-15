@@ -166,6 +166,17 @@ const approachPreview = movementPreviewForStep(movementContext, {
   slug: "stride",
   routeMode: "approach",
 }, { gridSize: 5 });
+assert.equal(approachPreview.recommendedCenters.length, 3, "Stride should retain three ranked tactical landing options");
+assert.deepEqual(
+  approachPreview.recommendedCenters[0],
+  approachPreview.recommendedCenter,
+  "first ranked landing should remain the default recommendation",
+);
+assert.equal(
+  new Set(approachPreview.recommendedCenters.map((center) => `${center.x},${center.y}`)).size,
+  3,
+  "recommended Stride landings should be unique",
+);
 const safePreview = movementPreviewForStep(movementContext, {
   slug: "stride",
   routeMode: "safe",

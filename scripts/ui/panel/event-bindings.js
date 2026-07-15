@@ -16,6 +16,12 @@ export function activatePanelRenderBindings(panel, element) {
     ?.addEventListener("click", () => panel._configureTacticPersonality());
   element.querySelector("[data-configure-intel]")
     ?.addEventListener("click", () => panel._configureIntelLedger());
+  element.querySelector("[data-configure-turn-intent]")
+    ?.addEventListener("click", () => panel._configureTurnIntent());
+  element.querySelector("[data-open-loadout-advisor]")
+    ?.addEventListener("click", () => panel._openLoadoutAdvisor());
+  element.querySelector("[data-open-effect-clock]")
+    ?.addEventListener("click", () => panel._openEffectClock());
   const resourceHorizon = element.querySelector("[data-cycle-resource-horizon]");
   resourceHorizon?.addEventListener("click", () => panel._cycleResourceHorizon());
   resourceHorizon?.addEventListener("contextmenu", (event) => {
@@ -28,6 +34,9 @@ export function activatePanelRenderBindings(panel, element) {
   // browser window now (see CombaterBrowser); the panel only wires plan-side controls.
   for (const button of element.querySelectorAll("[data-add-sustain-spell]")) {
     button.addEventListener("click", () => panel._addSustainSpell(button.dataset.addSustainSpell));
+  }
+  for (const button of element.querySelectorAll("[data-open-sustained-spell]")) {
+    button.addEventListener("click", () => panel._openSustainedSpellDetails(button.dataset.openSustainedSpell));
   }
 
   for (const button of element.querySelectorAll("[data-remove-draft-step]")) {
@@ -55,6 +64,17 @@ export function activatePanelRenderBindings(panel, element) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       panel._cycleStepRoute(button.dataset.cycleRoute);
+    });
+  }
+  for (const button of element.querySelectorAll("[data-cycle-destination]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      panel._cycleStepDestination(button.dataset.cycleDestination, 1);
+    });
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panel._cycleStepDestination(button.dataset.cycleDestination, -1);
     });
   }
   for (const button of element.querySelectorAll("[data-cycle-weapon]")) {
@@ -198,6 +218,10 @@ export function activatePanelRenderBindings(panel, element) {
 
   for (const button of element.querySelectorAll("[data-choose-area]")) {
     button.addEventListener("click", () => panel._chooseArea(button.dataset.chooseArea));
+  }
+
+  for (const button of element.querySelectorAll("[data-choose-recommended-area]")) {
+    button.addEventListener("click", () => panel._chooseRecommendedArea(button.dataset.chooseRecommendedArea));
   }
 
   for (const button of element.querySelectorAll("[data-remove-area]")) {

@@ -1,6 +1,7 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 
 export const SHARED_DRAFTS_FLAG = "sharedDraftPlans";
+const suppressedSharedDraftRefreshActors = new WeakMap();
 
 function storage() {
   return globalThis.localStorage ?? null;
@@ -152,17 +153,39 @@ export function writeSharedDraftPlan(context, draft) {
   return drafts[sharedDraftPlanKey(context)];
 }
 
-export async function writeSharedDraftPlanActorFlag(context, draft) {
+export function consumeSharedDraftPlanRefreshSuppression(actor) {
+  const tokens = actor ? suppressedSharedDraftRefreshActors.get(actor) : null;
+  if (!tokens?.size) return false;
+  tokens.delete(tokens.values().next().value);
+  if (!tokens.size) suppressedSharedDraftRefreshActors.delete(actor);
+  return true;
+}
+
+export async function writeSharedDraftPlanActorFlag(context, draft, { suppressRefresh = false } = {}) {
   const actor = actorDocument(context);
   if (typeof actor?.setFlag !== "function") return false;
 
   const key = sharedDraftPlanKey(context);
   const drafts = readActorSharedDrafts(context);
-  await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, {
-    ...drafts,
-    [key]: normalizeSharedDraft(draft),
-  });
-  return true;
+  const suppressionToken = suppressRefresh ? {} : null;
+  if (suppressionToken) {
+    const tokens = suppressedSharedDraftRefreshActors.get(actor) ?? new Set();
+    tokens.add(suppressionToken);
+    suppressedSharedDraftRefreshActors.set(actor, tokens);
+  }
+  try {
+    await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, {
+      ...drafts,
+      [key]: normalizeSharedDraft(draft),
+    });
+    return true;
+  } finally {
+    if (suppressionToken) {
+      const tokens = suppressedSharedDraftRefreshActors.get(actor);
+      tokens?.delete(suppressionToken);
+      if (!tokens?.size) suppressedSharedDraftRefreshActors.delete(actor);
+    }
+  }
 }
 
 // Foundry's updateActor hook fires for every client watching this actor, including the one that

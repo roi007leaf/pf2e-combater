@@ -277,16 +277,16 @@ function reachableMarkers(origin, centers, recommendation, gridSize) {
     .map((center) => markerForCenter(center, gridSize));
 }
 
-function recommendedPlacement(context, step, origin, reachable, footprint, gridSize, options = {}) {
+function recommendedPlacements(context, step, origin, reachable, footprint, gridSize, options = {}, limit = 3) {
   const { preferShortestRoute = false } = options;
   const target = previewTarget(context, step);
   const targetCenter = point(target);
-  if (!reachable.length) return null;
+  if (!reachable.length) return [];
 
   const fallbackMode = preferShortestRoute ? "shortest" : "approach";
   const routeMode = tacticalRouteModeForStep(step, fallbackMode);
   const explicitRouteMode = Boolean(step?.routeMode ?? step?.action?.routeMode);
-  if (!targetCenter && routeMode === "approach") return null;
+  if (!targetCenter && routeMode === "approach") return [];
 
   const movingCenters = explicitRouteMode
     ? reachable.filter((center) => center.x !== origin.x || center.y !== origin.y)
@@ -317,7 +317,11 @@ function recommendedPlacement(context, step, origin, reachable, footprint, gridS
     }
     return Math.hypot(origin.x - left.center.x, origin.y - left.center.y)
       - Math.hypot(origin.x - right.center.x, origin.y - right.center.y);
-  })[0] ?? null;
+  }).slice(0, Math.max(1, limit));
+}
+
+function recommendedPlacement(context, step, origin, reachable, footprint, gridSize, options = {}) {
+  return recommendedPlacements(context, step, origin, reachable, footprint, gridSize, options, 1)[0] ?? null;
 }
 
 function strikeReach(step) {
@@ -706,7 +710,8 @@ export function movementPreviewForStep(context, step, options = {}) {
   const color = AVAILABLE_COLOR;
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
   const placements = centers.map((center) => placementForCenter(center, footprint, gridSize));
-  const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize, movementOptions);
+  const recommendations = recommendedPlacements(context, step, origin, centers, footprint, gridSize, movementOptions);
+  const recommendation = recommendations[0] ?? null;
   const markers = reachableMarkers(origin, centers, recommendation, gridSize);
   const recommendedMarker = xMarkerForPlacement(recommendation);
   const bareReachablePreview = {
@@ -722,7 +727,9 @@ export function movementPreviewForStep(context, step, options = {}) {
     reachableMarkers: markers,
     reachableMarkerColor: color,
     recommendedCenter: recommendation?.center ?? null,
+    recommendedCenters: recommendations.map((placement) => placement.center),
     recommendedPlacement: recommendation,
+    recommendedPlacements: recommendations,
     recommendedMarker,
     movementColor: color,
   };
@@ -1351,17 +1358,24 @@ export function movementRouteToPoint(context, step, destinationPoint) {
   };
 }
 
-// Recommended landing (and corner waypoints, when the route bends) for a movement step, in
-// canvas pixel coords. Reuses the hover-preview computation so coordinate handling lives in
-// one place. Returns null when there is no recommendation.
-export function recommendedMovementForStep(context, step) {
+// Ranked recommended landings (and corner waypoints, when routes bend) for a movement step, in
+// canvas pixel coords. Reuses the hover-preview computation so coordinate handling lives in one
+// place. Returns up to three options, best first.
+export function recommendedMovementOptionsForStep(context, step) {
   const { preview, scale } = computeMovementPreview(context, step);
-  if (!preview?.enabled) return null;
-  const recommended = preview.recommendedCenter ?? preview.destinationCenter ?? null;
-  if (!recommended) return null;
-  const destination = { x: recommended.x * scale, y: recommended.y * scale };
-  const waypoints = engineRouteCornerWaypoints(preview.origin, recommended.route, scale);
-  return { destination, ...(waypoints.length ? { waypoints } : {}) };
+  if (!preview?.enabled) return [];
+  const recommendations = Array.isArray(preview.recommendedCenters) && preview.recommendedCenters.length
+    ? preview.recommendedCenters
+    : [preview.recommendedCenter ?? preview.destinationCenter].filter(Boolean);
+  return recommendations.slice(0, 3).map((recommended) => {
+    const destination = { x: recommended.x * scale, y: recommended.y * scale };
+    const waypoints = engineRouteCornerWaypoints(preview.origin, recommended.route, scale);
+    return { destination, ...(waypoints.length ? { waypoints } : {}) };
+  });
+}
+
+export function recommendedMovementForStep(context, step) {
+  return recommendedMovementOptionsForStep(context, step)[0] ?? null;
 }
 
 export function showMovementPreview(context, step) {

@@ -13,6 +13,7 @@ import { revertDraftStep } from "../../engine/action/revert.js";
 import { executionPatch } from "../../engine/execution/results.js";
 import { buildCandidates } from "../../engine/candidates.js";
 import { bestTurnPlan, buildTurnPlans } from "../../engine/planner.js";
+import { withTurnIntent } from "../../engine/planner/turn-intent.js";
 import { swapDraftSteps } from "../../engine/draft-reorder.js";
 import { reorderActionFavorite, toggleActionFavorite } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
@@ -31,10 +32,10 @@ import { actorStrikeOptions, bestReadyStrike } from "../../readers/action/reader
 import { actorMovementOptions, readActorSpeed } from "../../readers/actor-profile.js";
 import { shareDraftPlan } from "../../socket.js";
 import { clearActionPreview, showActionPreview } from "../action/preview.js";
-import { showHoverGhost, showMovementPreview, recommendedMovementForStep } from "../movement-preview.js";
+import { showHoverGhost, showMovementPreview, recommendedMovementOptionsForStep } from "../movement-preview.js";
 import { chooseDestination } from "../destination-picker.js";
 import { bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "../plan-selection.js";
-import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
+import { contextWithCurrentAutoFillTargets, currentAutoFillTargetKey } from "./auto-fill-context.js";
 import { cancelPanelPickers } from "./picker-workflow.js";
 import {
   autoFillAppliesProne,
@@ -63,7 +64,7 @@ import {
   uniqueMinionStepNames,
 } from "./minion-step-helpers.js";
 import { t } from "../../i18n.js";
-import { nextTacticalRouteMode } from "../../rules/tactical-routes.js";
+import { nextTacticalRouteMode, tacticalRouteModeForStep } from "../../rules/tactical-routes.js";
 import { withResourceHorizon } from "../../rules/resource-horizon.js";
 
 // Reads/writes route to the shared draft when the GM is editing or executing a player plan;
@@ -102,7 +103,7 @@ export async function writePanelActiveDraftPlan(panel, draft) {
 export async function writePanelActiveSharedDraft(panel, draft) {
   const sharedDraft = writeSharedDraftPlan(panel._context, draft);
   panel._sharedDraftSeed = sharedDraft;
-  await writeSharedDraftPlanActorFlag(panel._context, sharedDraft);
+  await writeSharedDraftPlanActorFlag(panel._context, sharedDraft, { suppressRefresh: true });
 }
 
 function minionPlanDraftFields(action) {
@@ -359,7 +360,6 @@ export async function choosePanelMinionTarget(panel, instanceId) {
     return;
   }
   await panel._persistActiveDraftStep(stepWithMinionPlan(step, minionPlanWithTarget(minionPlan, selection)));
-  await panel._syncDraftToGM();
   await panel.render({ force: true });
 }
 
@@ -810,7 +810,6 @@ export async function cyclePanelMinionPlanStep(panel, instanceId, stepIndex, dir
   const nextPlan = cycleMinionPlanStep(minionPlan, stepIndex, direction);
   if (!step || !minionPlan || nextPlan === minionPlan) return;
   await panel._persistActiveDraftStep(stepWithMinionPlan(step, nextPlan));
-  await panel._syncDraftToGM();
   await panel.render({ force: true });
 }
 
@@ -820,6 +819,51 @@ export async function addPanelAction(panel, actionKey) {
     canEdit: (activePanel) => activePanel._canEditDraft(),
     checkBudgetAndMinion: true,
   });
+}
+
+export async function addPanelLoadoutAdvice(panel, advice) {
+  if (!panel._canEditDraft() || !panel._context || !advice) return false;
+  const action = panel._findBuilderAction(advice.actionKey ?? "swap-items");
+  if (!action) {
+    globalThis.ui?.notifications?.warn?.(t("Loadout.SwapUnavailable", "Swap Items is no longer available."));
+    return false;
+  }
+  if (action.overBudget) {
+    globalThis.ui?.notifications?.warn?.(action.disabledReason || t("Notify.NotEnoughActions", "Not enough actions remaining."));
+    return false;
+  }
+
+  const heldIds = new Set((action?.activityProfile?.heldItemIds ?? []).map(String));
+  const drawIds = new Set((action?.activityProfile?.drawableItemIds ?? []).map(String));
+  if (!heldIds.has(String(advice.heldItemId)) || !drawIds.has(String(advice.drawItemId))) {
+    globalThis.ui?.notifications?.warn?.(t("Loadout.ItemsChanged", "Loadout changed; refresh advisor recommendations."));
+    return false;
+  }
+
+  const draft = panel._readActiveDraftPlan();
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    steps: [
+      ...(draft.steps ?? []),
+      {
+        instanceId: draftStepId(),
+        actionKey: action.key,
+        name: action.name,
+        actionCost: action.actionCost ?? action.cost ?? 1,
+        requiresDestination: false,
+        requiresTarget: false,
+        swapHeldItemId: advice.heldItemId,
+        swapDrawItemId: advice.drawItemId,
+        swapHeldItemName: advice.heldItemName,
+        swapDrawItemName: advice.drawItemName,
+        loadoutAdviceScore: advice.score,
+        loadoutAdviceReasons: advice.reasons,
+      },
+    ],
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+  return true;
 }
 
 // Uncounted adds run alongside the plan but off-budget. Allowed for the plan owner and
@@ -897,12 +941,12 @@ async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit,
 }
 
 export async function addPanelSustainSpell(panel, spellId) {
-  if (!panel._canEditDraft()) return;
+  if (!panel._canEditDraft()) return false;
   const spell = panel._findSustainedSpell(spellId);
   const action = panel._findSustainAction();
   if (!panel._context || !spell || !action || action.disabled) {
     globalThis.ui?.notifications?.warn?.(action?.disabledReason ?? t("Notify.SustainUnavailable", "Sustain a Spell is not available."));
-    return;
+    return false;
   }
 
   const draft = panel._readActiveDraftPlan();
@@ -922,6 +966,7 @@ export async function addPanelSustainSpell(panel, spellId) {
   }));
   clearActionPreview();
   await panel.render({ force: true });
+  return true;
 }
 
 export async function removePanelDraftStep(panel, instanceId) {
@@ -982,7 +1027,6 @@ export async function cyclePanelStepMap(panel, instanceId) {
   const current = Number.isFinite(step.mapOverride) ? step.mapOverride : null;
   const next = current == null ? 0 : current >= 2 ? null : current + 1;
   await panel._persistActiveDraftStep({ ...step, mapOverride: next });
-  await panel._syncDraftToGM();
   await panel.render({ force: true });
 }
 
@@ -1018,12 +1062,73 @@ export async function cyclePanelStepMovement(panel, instanceId) {
   const current = stepMovementAction(step);
   const index = Math.max(0, options.findIndex((option) => option.action === current));
   const next = options[(index + 1) % options.length].action;
-  await panel._persistActiveDraftStep({
+  let updated = {
     ...step,
     movementAction: next,
     action: step.action ? { ...step.action, movementAction: next } : step.action,
-  });
-  await panel._syncDraftToGM();
+  };
+  if (Array.isArray(step.movementAlternatives) && step.movementAlternatives.length) {
+    updated = recommendedMovementStep(panel, instanceId, updated);
+  }
+  await panel._persistActiveDraftStep(updated);
+  await panel.render({ force: true });
+}
+
+function movementStepWithAlternatives(step, alternatives, index = 0) {
+  const available = (Array.isArray(alternatives) ? alternatives : [])
+    .filter((option) => option?.destination)
+    .slice(0, 3);
+  if (!available.length) {
+    return {
+      ...step,
+      destination: undefined,
+      movementPlan: undefined,
+      movementAlternatives: [],
+      movementAlternativeIndex: null,
+    };
+  }
+  const selectedIndex = Math.max(0, Math.min(Math.trunc(index), available.length - 1));
+  const selected = available[selectedIndex];
+  return {
+    ...step,
+    destination: selected.destination,
+    movementPlan: {
+      native: false,
+      routeMode: tacticalRouteModeForStep(step),
+      waypoints: selected.waypoints?.length ? selected.waypoints : [selected.destination],
+    },
+    movementAlternatives: available,
+    movementAlternativeIndex: selectedIndex,
+  };
+}
+
+function recommendedMovementStep(panel, instanceId, step) {
+  const query = {
+    ...step,
+    destination: undefined,
+    movementPlan: undefined,
+    movementAlternatives: undefined,
+    movementAlternativeIndex: undefined,
+  };
+  const movementContext = panel._contextForDraftStep?.(instanceId) ?? panel._context;
+  return movementStepWithAlternatives(step, recommendedMovementOptionsForStep(movementContext, query));
+}
+
+export async function cyclePanelStepDestination(panel, instanceId, direction = 1) {
+  if (!panel._canExecuteDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step) return;
+  const alternatives = Array.isArray(step.movementAlternatives)
+    ? step.movementAlternatives.filter((option) => option?.destination).slice(0, 3)
+    : [];
+  if (alternatives.length <= 1) return;
+  const current = Number.isFinite(step.movementAlternativeIndex)
+    ? Math.trunc(step.movementAlternativeIndex)
+    : 0;
+  const delta = direction < 0 ? -1 : 1;
+  const next = (current + delta + alternatives.length) % alternatives.length;
+  await panel._persistActiveDraftStep(movementStepWithAlternatives(step, alternatives, next));
   await panel.render({ force: true });
 }
 
@@ -1038,22 +1143,8 @@ export async function cyclePanelStepRoute(panel, instanceId) {
     routeMode,
     action: step.action ? { ...step.action, routeMode } : step.action,
   };
-  const query = { ...updated, destination: undefined, movementPlan: undefined };
-  const movementContext = panel._contextForDraftStep?.(instanceId) ?? panel._context;
-  const movement = recommendedMovementForStep(movementContext, query);
-  if (movement?.destination) {
-    updated = {
-      ...updated,
-      destination: movement.destination,
-      movementPlan: {
-        native: false,
-        routeMode,
-        waypoints: movement.waypoints ?? [],
-      },
-    };
-  }
+  updated = recommendedMovementStep(panel, instanceId, updated);
   await panel._persistActiveDraftStep(updated);
-  await panel._syncDraftToGM();
   await panel.render({ force: true });
 }
 
@@ -1076,7 +1167,6 @@ export async function cyclePanelStepWeapon(panel, instanceId) {
     ...step,
     weaponId: next.id,
   });
-  await panel._syncDraftToGM();
   await panel.render({ force: true });
 }
 
@@ -1129,20 +1219,35 @@ export function actionKeyForPanelStep(panel, step) {
   return key;
 }
 
-function refreshPanelAutoFillContext(panel, draft = null) {
+function rebuildPanelAutoFillContext(panel, draft = null, targetKey = "") {
   const context = withResourceHorizon(
     readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant }),
     panel.resourceHorizon,
   );
   if (!context) return null;
-  const focusedContext = contextWithCurrentAutoFillTargets(context);
+  panel._syncTurnIntentContext?.(context);
+  const intentContext = withTurnIntent(context, panel._turnIntent);
+  const focusedContext = contextWithCurrentAutoFillTargets(intentContext, panel._turnIntent?.lockedTargetIds ?? []);
 
   panel._context = focusedContext;
   panel._planningContext = draft ? projectContextForDraftDestination(focusedContext, draft) : focusedContext;
+  panel._autoFillPreparationCache = null;
+  panel._fillGapPlanCache = null;
+  panel._fillGapPlanCacheKey = null;
+  panel._autoFillTargetKey = targetKey;
   const candidateBuild = buildCandidates(focusedContext);
-  const plans = buildTurnPlans(focusedContext, candidateBuild.candidates);
+  const plans = buildTurnPlans(focusedContext, candidateBuild.candidates, { includeCoverage: false });
   panel._autoFillPlans = plans;
   return { context: focusedContext, candidateBuild, plans };
+}
+
+// Target hooks normally render before a button can be pressed, but a very fast target-then-click
+// can beat that render. Preserve that race correctly without rebuilding plans on every click:
+// comparing a few ids is cheap; the planner runs only when the live target snapshot changed.
+function syncPanelAutoFillTargets(panel, draft = null) {
+  const targetKey = currentAutoFillTargetKey(panel._turnIntent?.lockedTargetIds ?? []);
+  if (targetKey === panel._autoFillTargetKey) return null;
+  return rebuildPanelAutoFillContext(panel, draft, targetKey);
 }
 
 function planStepSignature(plan) {
@@ -1213,7 +1318,7 @@ function refreshedPlanForStaleSelection(plan, plans) {
   return plans.find((candidate) => planStepSignature(candidate) === signature) ?? null;
 }
 
-export async function autoFillPanelDraft(panel, { plan = null, forceFull = false } = {}) {
+export async function autoFillPanelDraft(panel, { plan = null, forceFull = false, preparedPlans = null } = {}) {
   // A fast double-click fired two overlapping runs of this function, and their interleaved
   // async steps (each racing on panel._context/panel._autoFillPlans as they awaited in turn)
   // produced a corrupted draft -- e.g. a Stride warning "Actor is Prone" for an actor who was
@@ -1229,24 +1334,35 @@ export async function autoFillPanelDraft(panel, { plan = null, forceFull = false
     const draft = panel._readActiveDraftPlan();
     const replacingDraft = (draft.steps?.length ?? 0) > 0;
     const replacingManualDraft = !forceFull && replacingDraft && draft.source !== "auto-fill" && hasLockedDraftSteps(draft);
-    const refreshed = refreshPanelAutoFillContext(panel, replacingManualDraft ? draftForAutoFillGap(draft) : (forceFull ? null : draft));
+    const targetRefresh = syncPanelAutoFillTargets(
+      panel,
+      replacingManualDraft ? draftForAutoFillGap(draft) : (forceFull ? null : draft),
+    );
+    // The visible panel already prepared the exact plan list for its current actor, targets,
+    // intent, and draft budget. Rebuilding that same list here made every click pay another full
+    // planner search before doing any work; Shuffle paid it twice. A normal context-changing hook
+    // renders the panel first, so these plans are the authoritative click snapshot.
+    const currentPlans = Array.isArray(preparedPlans) && !targetRefresh
+      ? preparedPlans
+      : replacingManualDraft
+        ? panel._activeAutoFillPlans()
+        : targetRefresh?.plans ?? panel._autoFillPlans;
     // Manual steps are already in the draft -- fill the remaining budget around them instead of
     // discarding what the player chose (see _fillDraftGap).
     if (replacingManualDraft) {
-      await panel._fillDraftGap({ plan, draft });
+      await panel._fillDraftGap({ plan, draft, plans: currentPlans });
       return;
     }
     const fallbackAutoFill = () => {
-      const candidateBuild = refreshed?.candidateBuild ?? buildCandidates(panel._context);
+      const candidateBuild = buildCandidates(panel._context);
       return bestTurnPlan(panel._context, candidateBuild.candidates);
     };
     if (forceFull) panel._pinnedFillPlanId = null;
     if (!plan) panel._pinnedPlanId = null;
-    const refreshedPlans = refreshed?.plans ?? [];
-    const contextualPlan = refreshedPlanForStaleSelection(plan, refreshedPlans);
+    const contextualPlan = refreshedPlanForStaleSelection(plan, currentPlans);
     const autoFill = plan
-      ? (contextualPlan ?? bestAutoFillPlan(refreshedPlans) ?? (refreshed ? null : plan))
-      : bestAutoFillPlan(refreshedPlans.length ? refreshedPlans : panel._autoFillPlans)
+      ? (contextualPlan ?? bestAutoFillPlan(currentPlans) ?? plan)
+      : bestAutoFillPlan(currentPlans)
       ?? panel._builder?.autoFill
       ?? panel._plan
       ?? fallbackAutoFill();
@@ -1270,8 +1386,8 @@ export async function autoFillPanelDraft(panel, { plan = null, forceFull = false
 
 // Appends a fill plan's steps after the draft's existing (manual) steps rather than replacing
 // the draft -- the manual steps are never touched, so there is nothing to confirm/undo here.
-export async function fillPanelDraftGap(panel, { plan, draft }) {
-  const fillPlans = panel._fillGapPlans();
+export async function fillPanelDraftGap(panel, { plan, draft, plans = null }) {
+  const fillPlans = Array.isArray(plans) ? plans : panel._fillGapPlans();
   if (!fillPlans.length) return;
   if (!plan) panel._pinnedFillPlanId = null;
   const lockedDraft = draftForAutoFillGap(draft);
@@ -1367,7 +1483,8 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
 
     if (draftStep.requiresDestination && !draftStep.destination) {
       const movementStep = strideStepTowardPlannedTarget(step, atomicSteps, index);
-      const movement = recommendedMovementForStep(mc, movementStep);
+      const movementAlternatives = recommendedMovementOptionsForStep(mc, movementStep);
+      const movement = movementAlternatives[0] ?? null;
       // Drop a target-aimed basic Stride/Step that can't improve position toward the planned
       // target (blocked path = the "Stride to the same place" the GM sees). A real closing move is
       // kept. Deliberate kiting (melee, then Stride away, then ranged) is a manual play.
@@ -1390,6 +1507,8 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
           // destination as a one-point path so the distance label still renders, the same fix
           // as the interactive destination picker's single-click case.
           movementPlan: { native: false, waypoints: movement.waypoints?.length ? movement.waypoints : [movement.destination] },
+          movementAlternatives,
+          movementAlternativeIndex: 0,
         };
         mc = {
           ...mc,
@@ -1408,6 +1527,7 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
   // the new steps in isolation.
   const reachDraft = { steps: [...prefixSteps, ...steps] };
   return steps.filter((step, index) => {
+    if (!isStrikeLikeAutoFillStep(panel, step)) return true;
     const hasEarlierMove = [...prefixSteps, ...steps.slice(0, index)]
       .some((earlier) => earlier.requiresDestination === true);
     const projected = findProjectedDraftAction(panel._context, reachDraft, step);
@@ -1415,10 +1535,17 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
   });
 }
 
+function isStrikeLikeAutoFillStep(panel, step) {
+  const action = panel._findBuilderAction?.(step?.actionKey) ?? step?.action ?? step;
+  return action?.source === "strike"
+    || action?.attackTrait === true
+    || action?.activityProfile?.includesStrike === true;
+}
+
 export async function cyclePanelAutoFillDraft(panel, direction = 1) {
   const draft = panel._readActiveDraftPlan?.() ?? null;
   const useFillGap = draft?.source !== "auto-fill" && hasLockedDraftSteps(draft);
-  refreshPanelAutoFillContext(panel, useFillGap ? draftForAutoFillGap(draft) : draft);
+  syncPanelAutoFillTargets(panel, useFillGap ? draftForAutoFillGap(draft) : draft);
   const plans = panel._activeAutoFillPlans();
   const pinnedId = panel._activePinnedPlanId();
   const current = selectDisplayPlan(plans, pinnedId);
@@ -1429,7 +1556,7 @@ export async function cyclePanelAutoFillDraft(panel, direction = 1) {
   if (!next) return;
   if (panel._hasManualDraftContent()) panel._pinnedFillPlanId = next.id ?? null;
   else panel._pinnedPlanId = next.id ?? null;
-  await panel._autoFillDraft({ plan: next });
+  await panel._autoFillDraft({ plan: next, preparedPlans: plans });
 }
 
 export async function syncPanelDraftToGM(panel, { notify = false } = {}) {
@@ -1443,7 +1570,7 @@ export async function syncPanelDraftToGM(panel, { notify = false } = {}) {
       userName: globalThis.game?.user?.name ?? "",
     });
     try {
-      await writeSharedDraftPlanActorFlag(panel._context, sharedDraft);
+      await writeSharedDraftPlanActorFlag(panel._context, sharedDraft, { suppressRefresh: true });
     } catch (error) {
       console.warn(`${MODULE_ID} | Actor-flag plan sync failed`, error);
     }

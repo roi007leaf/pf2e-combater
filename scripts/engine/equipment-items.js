@@ -1,4 +1,4 @@
-import { actorItems, systemValue } from "../foundry-data.js";
+import { actorItems, systemValue, traitSlugs } from "../foundry-data.js";
 
 const SWAPPABLE_ITEM_TYPES = new Set(["weapon", "equipment", "consumable"]);
 
@@ -31,11 +31,25 @@ function hasHeldUsage(item) {
   return usageValue(item).startsWith("held-") || usageHands(item) > 0;
 }
 
+export function isShieldItem(item) {
+  const type = String(item?.type ?? "").toLowerCase();
+  const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
+  return type === "shield"
+    || (type === "armor" && category === "shield")
+    || (type === "weapon" && traitSlugs(item).includes("shield"));
+}
+
+export function isWeaponItem(item) {
+  const type = String(item?.type ?? "").toLowerCase();
+  const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
+  return type === "weapon" && category !== "unarmed";
+}
+
 function isSwappablePhysicalItem(item) {
   const type = String(item?.type ?? "").toLowerCase();
   const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
   if (category === "unarmed") return false;
-  return SWAPPABLE_ITEM_TYPES.has(type) || (type === "armor" && category === "shield");
+  return SWAPPABLE_ITEM_TYPES.has(type) || isShieldItem(item);
 }
 
 function swapItems(actor) {

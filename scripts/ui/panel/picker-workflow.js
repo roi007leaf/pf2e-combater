@@ -1,5 +1,5 @@
 import { readDraftPlan } from "../../state/draft-plans.js";
-import { projectContextForDraftStepOrigin } from "../../engine/action/builder/index.js";
+import { computeAreaMarker, projectContextForDraftStepOrigin } from "../../engine/action/builder/index.js";
 import { tokensInAreaMarker } from "../../engine/area/region.js";
 import {
   currentTargetSelection,
@@ -146,6 +146,8 @@ export function choosePanelDestination(panel, instanceId) {
       await panel._persistActiveDraftStep(stepWithRetryReset(current, {
         destination,
         ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}),
+        movementAlternatives: [],
+        movementAlternativeIndex: null,
       }));
       panel._destinationPicker = null;
       clearActionPreview();
@@ -242,6 +244,61 @@ export async function pickAreaTemplate(templates) {
   return templates[Number(choice)] ?? null;
 }
 
+function recommendedAreaOptions(action) {
+  return (Array.isArray(action?.activityProfile?.areaPlacementOptions)
+    ? action.activityProfile.areaPlacementOptions
+    : [])
+    .filter((option) => option?.areaPlacementCenter || option?.areaPlacementAimPoint)
+    .slice(0, 3);
+}
+
+function nextRecommendedAreaPlacement(options, currentIndex = 0) {
+  const values = Array.isArray(options) ? options.slice(0, 3) : [];
+  if (!values.length) return null;
+  const normalizedCurrent = Number.isInteger(Number(currentIndex)) ? Number(currentIndex) : 0;
+  const index = (Math.max(-1, normalizedCurrent) + 1) % values.length;
+  return { option: values[index], index };
+}
+
+export async function choosePanelRecommendedArea(panel, instanceId) {
+  if (!panel._canExecuteDraft() || !panel._context) return;
+  const step = panel._findDraftStep(instanceId);
+  if (!step) return;
+  const action = step.action ?? step;
+  const options = recommendedAreaOptions(action);
+  if (options.length < 1) return;
+
+  const selected = nextRecommendedAreaPlacement(options, Number(step?.areaPlacementIndex ?? 0));
+  if (!selected) return;
+  const placementAction = {
+    ...action,
+    activityProfile: {
+      ...(action.activityProfile ?? {}),
+      areaPlacementCenter: selected.option.areaPlacementCenter ?? null,
+      areaPlacementAimPoint: selected.option.areaPlacementAimPoint ?? null,
+    },
+  };
+  const context = contextForDraftStep(panel, instanceId);
+  const areaMarker = computeAreaMarker(context, placementAction);
+  if (!areaMarker) {
+    globalThis.ui?.notifications?.warn?.(t("Notify.NoRecommendedArea", "Recommended area placement is unavailable."));
+    return;
+  }
+
+  cancelPanelPickers(panel);
+  const inside = tokensInAreaMarker({ context, action: placementAction, marker: areaMarker });
+  setTokenTargets(inside);
+  const targetTokenIds = inside.map((token) => targetTokenId(token)).filter(Boolean);
+  const current = panel._findActiveStep(instanceId) ?? step;
+  await panel._persistActiveDraftStep(stepWithRetryReset(current, {
+    areaMarker,
+    areaPlacementIndex: selected.index,
+    targetTokenIds,
+  }));
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
 export async function choosePanelArea(panel, instanceId) {
   if (!panel._canExecuteDraft()) {
     globalThis.ui?.notifications?.warn?.(t("Notify.ReadOnly", "This draft is read-only."));
@@ -297,7 +354,7 @@ export async function choosePanelArea(panel, instanceId) {
       setTokenTargets(inside);
       const targetTokenIds = inside.map((token) => targetTokenId(token)).filter(Boolean);
       await panel._persistActiveDraftStep(
-        stepWithRetryReset(current, { areaMarker, ...(targetTokenIds.length ? { targetTokenIds } : {}) }),
+        stepWithRetryReset(current, { areaMarker, areaPlacementIndex: -1, targetTokenIds }),
       );
       panel._areaPicker = null;
       clearRangeOverlay();

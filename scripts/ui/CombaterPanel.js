@@ -5,6 +5,13 @@ import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { actionBudget } from "../engine/action/budget.js";
 import { buildTurnPlans } from "../engine/planner.js";
+import { createPlanState, planStateSignature } from "../engine/plan-state.js";
+import {
+  emptyTurnIntent,
+  normalizeTurnIntent,
+  turnIntentContextKey,
+  withTurnIntent,
+} from "../engine/planner/turn-intent.js";
 import { clearActionPreview, showActionPreview } from "./action/preview.js";
 import { CombaterBrowser } from "./CombaterBrowser.js";
 import { selectDisplayPlan } from "./plan-selection.js";
@@ -12,6 +19,7 @@ import {
   actionKeyForPanelStep,
   actorForPanelMovement,
   addPanelAction,
+  addPanelLoadoutAdvice,
   addPanelSustainSpell,
   addPanelUncountedAction,
   atomizePanelAutoFillSteps,
@@ -22,6 +30,7 @@ import {
   cyclePanelMinionPlanMovement,
   cyclePanelMinionPlanStep,
   cyclePanelStepMap,
+  cyclePanelStepDestination,
   cyclePanelStepMovement,
   cyclePanelStepRoute,
   cyclePanelStepWeapon,
@@ -51,6 +60,7 @@ import {
   cancelPanelPickers,
   choosePanelArea,
   choosePanelDestination,
+  choosePanelRecommendedArea,
   choosePanelTarget,
   clearActionPreviewUnlessPicking,
   contextForDraftStep,
@@ -84,6 +94,9 @@ import {
 import { openIntelWindow } from "./intel-window.js";
 import { resetRecallKnowledgeAttemptsForTarget } from "./recall-knowledge.js";
 import { openTacticWindow } from "./tactic-window.js";
+import { openTurnIntentWindow, turnIntentWindowView } from "./turn-intent-window.js";
+import { loadoutWindowView, openLoadoutWindow } from "./loadout-window.js";
+import { effectClockWindowView, openEffectClockWindow } from "./effect-clock-window.js";
 import { isPlannableCombatant } from "../rules/actor-eligibility.js";
 import {
   TACTIC_PERSONALITY_FLAG,
@@ -236,6 +249,8 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this.activeTab = TABS.has(state.activeTab) ? state.activeTab : DEFAULT_TAB;
     this.searchQuery = typeof state.searchQuery === "string" ? state.searchQuery : "";
     this.resourceHorizon = normalizeResourceHorizon(state.resourceHorizon);
+    this._turnIntent = emptyTurnIntent();
+    this._turnIntentContextKey = null;
     this._context = null;
     this._planningContext = null;
     this._candidates = [];
@@ -243,6 +258,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this._detected = [];
     this._plans = [];
     this._autoFillPlans = [];
+    this._autoFillTargetKey = null;
+    this._autoFillPreparationCache = null;
+    this._fillGapPlanCache = null;
+    this._fillGapPlanCacheKey = null;
+    this._loadoutAdvice = [];
+    this._effectClock = { entries: [], groups: [], urgentCount: 0, totalCount: 0, hasEntries: false };
     this._plan = null;
     this._builder = null;
     this._gmExecuteMode = false;
@@ -283,6 +304,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async refresh(refreshSource = "manual") {
     this.refreshSource = refreshSource;
+    // Foundry/context refreshes may change actor resources, targets, battlefield geometry, or the
+    // combat budget. Only direct local renders (draft edits, search/UI state) may reuse preparation.
+    this._autoFillPreparationCache = null;
+    this._fillGapPlanCache = null;
+    this._fillGapPlanCacheKey = null;
     // A canvas picker is in progress (destination/template placement). Token/refresh hooks
     // fire constantly while the cursor moves over tokens; if that refresh cancelled the picker
     // it would kill the destination grid / region tools mid-selection. Re-render only and leave
@@ -339,12 +365,27 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   _fillGapPlans() {
     if (!this._context) return [];
     const lockedDraft = draftForAutoFillGap(this._builder?.draft ?? {});
-    const focusedContext = contextWithCurrentAutoFillTargets(this._context);
+    const intentContext = withTurnIntent(this._context, this._turnIntent);
+    const focusedContext = contextWithCurrentAutoFillTargets(intentContext, this._turnIntent?.lockedTargetIds ?? []);
     const context = projectContextForDraftDestination(focusedContext, lockedDraft);
-    const remainingTotal = Math.max(0, actionBudget(context).normalActions - draftNormalActionCost(lockedDraft));
-    if (remainingTotal <= 0) return [];
-    const planningBudget = actionBudget(context);
     const usedNormal = draftNormalActionCost(lockedDraft);
+    const cacheKey = [
+      this._turnIntentContextKey,
+      this._autoFillTargetKey,
+      this.resourceHorizon,
+      JSON.stringify(this._turnIntent),
+      usedNormal,
+      planStateSignature(createPlanState(focusedContext, { steps: lockedDraft.steps })),
+    ].join("|");
+    if (this._fillGapPlanCacheKey === cacheKey && Array.isArray(this._fillGapPlanCache)) {
+      return this._fillGapPlanCache;
+    }
+    const remainingTotal = Math.max(0, actionBudget(context).normalActions - usedNormal);
+    if (remainingTotal <= 0) {
+      this._fillGapPlanCache = [];
+      this._fillGapPlanCacheKey = cacheKey;
+      return this._fillGapPlanCache;
+    }
     const remainingContext = usedNormal > 0
       ? {
         ...context,
@@ -356,11 +397,16 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       }
       : context;
     const candidateBuild = buildCandidates(remainingContext);
-    return buildTurnPlans(
+    this._fillGapPlanCache = buildTurnPlans(
       remainingContext,
       candidateBuild.candidates.map(withBuilderActionFields),
-      { reservedSteps: lockedDraft.steps },
+      // Gap filling only needs the best tactical continuations. The exhaustive coverage backfill
+      // exists so a fresh-turn cycle can expose every legal action, but repeating that work after
+      // every draft edit made Remove, reorder, target, route, and equipment buttons block the UI.
+      { reservedSteps: lockedDraft.steps, includeCoverage: false },
     );
+    this._fillGapPlanCacheKey = cacheKey;
+    return this._fillGapPlanCache;
   }
 
   _onRender(context, options) {
@@ -630,6 +676,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return this._builder?.sustainedSpells?.entries?.find((entry) => normalizedSlug(entry.id) === id) ?? null;
   }
 
+  async _openSustainedSpellDetails(uuid) {
+    return renderSheetFromUuid(uuid);
+  }
+
   _findDraftStep(instanceId) {
     return this._builder?.draft?.steps?.find((step) => step.instanceId === instanceId)
       ?? this._builder?.uncounted?.entries?.find((step) => step.instanceId === instanceId)
@@ -727,8 +777,58 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return cyclePanelStepRoute(this, instanceId);
   }
 
+  async _cycleStepDestination(instanceId, direction = 1) {
+    return cyclePanelStepDestination(this, instanceId, direction);
+  }
+
   async _cycleStepWeapon(instanceId) {
     return cyclePanelStepWeapon(this, instanceId);
+  }
+
+  _syncTurnIntentContext(context) {
+    const key = context ? turnIntentContextKey(context) : null;
+    if (key === this._turnIntentContextKey) return;
+    this._turnIntentContextKey = key;
+    this._turnIntent = emptyTurnIntent();
+    this._pinnedPlanId = null;
+    this._pinnedFillPlanId = null;
+  }
+
+  async _configureTurnIntent() {
+    if (!this._context || this._builder?.readonly === true) return;
+    const view = turnIntentWindowView(this._context, this._turnIntent, this._candidates);
+    await openTurnIntentWindow(view, {
+      onSave: async (intent) => {
+        this._turnIntent = normalizeTurnIntent(intent);
+        this._pinnedPlanId = null;
+        this._pinnedFillPlanId = null;
+        await this.refresh("turn-intent-update");
+      },
+    });
+  }
+
+  async _openLoadoutAdvisor() {
+    if (!this._context || this._builder?.readonly === true) return;
+    await openLoadoutWindow(loadoutWindowView(this._loadoutAdvice), {
+      onChoose: (adviceId) => this._applyLoadoutAdvice(adviceId),
+    });
+  }
+
+  async _applyLoadoutAdvice(adviceId) {
+    const advice = this._loadoutAdvice.find((entry) => entry.id === adviceId);
+    if (!advice) return false;
+    return addPanelLoadoutAdvice(this, advice);
+  }
+
+  async _openEffectClock() {
+    if (!this._context) return;
+    await openEffectClockWindow(effectClockWindowView(this._effectClock), {
+      onOpen: (uuid) => this._openEffectClockDocument(uuid),
+    });
+  }
+
+  async _openEffectClockDocument(uuid) {
+    return renderSheetFromUuid(uuid);
   }
 
   async _cycleResourceHorizon(direction = 1) {
@@ -789,12 +889,12 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return actionKeyForPanelStep(this, step);
   }
 
-  async _autoFillDraft({ plan = null, forceFull = false } = {}) {
-    return autoFillPanelDraft(this, { plan, forceFull });
+  async _autoFillDraft({ plan = null, forceFull = false, preparedPlans = null } = {}) {
+    return autoFillPanelDraft(this, { plan, forceFull, preparedPlans });
   }
 
-  async _fillDraftGap({ plan, draft }) {
-    return fillPanelDraftGap(this, { plan, draft });
+  async _fillDraftGap({ plan, draft, plans = null }) {
+    return fillPanelDraftGap(this, { plan, draft, plans });
   }
 
   _atomizeAutoFillSteps(autoFill, movementContext, prefixSteps = []) {
@@ -859,6 +959,10 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _chooseArea(instanceId) {
     return choosePanelArea(this, instanceId);
+  }
+
+  async _chooseRecommendedArea(instanceId) {
+    return choosePanelRecommendedArea(this, instanceId);
   }
 
   async _openBuilderAction(actionKey) {

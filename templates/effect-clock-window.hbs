@@ -1,0 +1,50 @@
+<div class="combater-effect-clock-shell">
+  <header class="combater-effect-clock-hero">
+    <span class="combater-effect-clock-hero-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+    <div>
+      <h2>{{title}}</h2>
+      <p>{{help}}</p>
+      <strong>{{summary}}</strong>
+    </div>
+  </header>
+
+  <div class="combater-effect-clock-body">
+    {{#if hasEntries}}
+      {{#each groups}}
+        {{#if hasEntries}}
+          <section class="combater-effect-clock-group is-{{id}}">
+            <h3>{{label}} <span>{{entries.length}}</span></h3>
+            {{#each entries}}
+              <article class="combater-effect-clock-entry is-{{kind}}">
+                <span class="combater-effect-clock-icon">
+                  {{#if img}}<img src="{{img}}" alt="">{{else}}<i class="fa-solid fa-hourglass-half"></i>{{/if}}
+                </span>
+                <div class="combater-effect-clock-copy">
+                  <strong>{{name}}</strong>
+                  <span>{{detail}}</span>
+                </div>
+                <div class="combater-effect-clock-timing">
+                  <strong>{{statusLabel}}</strong>
+                  <span>{{timingLabel}}</span>
+                </div>
+                <div class="combater-effect-clock-actions">
+                  {{#if canOpen}}
+                    <button type="button" data-effect-clock-open="{{documentUuid}}" data-tooltip="Open details" aria-label="Open {{name}} details">
+                      <i class="fa-solid fa-book-open"></i>
+                    </button>
+                  {{/if}}
+                </div>
+              </article>
+            {{/each}}
+          </section>
+        {{/if}}
+      {{/each}}
+    {{else}}
+      <p class="combater-effect-clock-empty"><i class="fa-solid fa-circle-check"></i> {{empty}}</p>
+    {{/if}}
+  </div>
+
+  <footer class="combater-effect-clock-footer">
+    <button type="button" data-effect-clock-close>Close</button>
+  </footer>
+</div>

@@ -69,6 +69,11 @@
                     <i class="fa-solid fa-draw-polygon"></i>
                   </button>
                 {{/if}}
+                {{#if canChooseRecommendedArea}}
+                  <button type="button" class="combater-chip-tool combater-area-placement" data-choose-recommended-area="{{instanceId}}" data-tooltip="{{areaPlacementToolTip}}" aria-label="{{areaPlacementToolTip}}">
+                    <i class="fa-solid fa-bullseye"></i><span class="combater-area-placement-value">{{areaPlacementToolLabel}}</span>
+                  </button>
+                {{/if}}
                 {{#if canChooseSwapItems}}
                   <button type="button" class="combater-chip-tool" data-choose-swap-items="{{instanceId}}" data-tooltip="{{swapItemsTooltip}}" aria-label="{{swapItemsTooltip}}">
                     <i class="fa-solid fa-right-left"></i>
@@ -87,6 +92,11 @@
                 {{#if canCycleRoute}}
                   <button type="button" class="combater-chip-tool combater-route-cycle" data-cycle-route="{{instanceId}}" data-tooltip="{{routeModeToolTip}}" aria-label="{{routeModeToolTip}}">
                     <i class="fa-solid fa-route"></i><span class="combater-route-value">{{routeModeLabel}}</span>
+                  </button>
+                {{/if}}
+                {{#if canCycleDestination}}
+                  <button type="button" class="combater-chip-tool combater-destination-cycle" data-cycle-destination="{{instanceId}}" data-tooltip="{{movementAlternativeToolTip}}" aria-label="{{movementAlternativeToolTip}}">
+                    <i class="fa-solid fa-location-crosshairs"></i><span class="combater-destination-value">{{movementAlternativeToolLabel}}</span>
                   </button>
                 {{/if}}
                 {{#if canCycleWeapon}}
@@ -363,6 +373,24 @@
             <span>{{resourceHorizon.label}}</span>
           </button>
         {{/if}}
+        {{#if turnIntent.visible}}
+          <button type="button" class="combater-header-intent {{#if turnIntent.active}}is-active{{/if}}" data-configure-turn-intent data-tooltip="{{turnIntent.tooltip}}" aria-label="{{turnIntent.tooltip}}" aria-pressed="{{#if turnIntent.active}}true{{else}}false{{/if}}">
+            <i class="fa-solid fa-bullseye"></i>
+            <span>{{turnIntent.label}}</span>
+          </button>
+        {{/if}}
+        {{#if loadoutAdvisor.visible}}
+          <button type="button" class="combater-header-loadout {{#if loadoutAdvisor.active}}is-active{{/if}}" data-open-loadout-advisor data-tooltip="{{loadoutAdvisor.tooltip}}" aria-label="{{loadoutAdvisor.tooltip}}">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>{{loadoutAdvisor.label}}</span>
+          </button>
+        {{/if}}
+        {{#if effectClock.visible}}
+          <button type="button" class="combater-header-clock {{#if effectClock.active}}is-active{{/if}} {{#if effectClock.urgent}}is-urgent{{/if}}" data-open-effect-clock data-tooltip="{{effectClock.tooltip}}" aria-label="{{effectClock.tooltip}}">
+            <i class="fa-solid fa-hourglass-half"></i>
+            <span>{{effectClock.label}}</span>
+          </button>
+        {{/if}}
         {{#if builder}}
           {{#unless builder.readonly}}
             {{#if showAutoFill}}
@@ -413,7 +441,13 @@
                   </span>
                   <div class="combater-alt-step-body">
                     <h4>
-                      <span class="combater-sustained-name">{{name}}</span>
+                      {{#if spellUuid}}
+                        <button type="button" class="combater-sustained-name" data-open-sustained-spell="{{spellUuid}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.OpenDetails"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ActionDetailsAria"}}: {{name}}">
+                          {{name}}
+                        </button>
+                      {{else}}
+                        <span class="combater-sustained-name">{{name}}</span>
+                      {{/if}}
                     </h4>
                     <span class="combater-target" data-tooltip="{{statusLabel}}{{#if detailLabel}} - {{detailLabel}}{{/if}}">
                       {{statusLabel}}{{#if detailLabel}} - {{detailLabel}}{{/if}}
@@ -473,6 +507,9 @@
                     {{#if canChooseArea}}
                       <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.PlaceTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.PlaceTemplateAria" name=name}}"><i class="fa-solid fa-draw-polygon"></i></button>
                     {{/if}}
+                    {{#if canChooseRecommendedArea}}
+                      <button type="button" class="combater-chip-tool combater-area-placement" data-choose-recommended-area="{{instanceId}}" data-tooltip="{{areaPlacementToolTip}}" aria-label="{{areaPlacementToolTip}}"><i class="fa-solid fa-bullseye"></i><span class="combater-area-placement-value">{{areaPlacementToolLabel}}</span></button>
+                    {{/if}}
                     {{#if hasAreaMarker}}
                       <button type="button" class="combater-chip-tool" data-remove-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveTemplate"}}"><i class="fa-solid fa-eraser"></i></button>
                     {{/if}}
@@ -484,6 +521,9 @@
                     {{/if}}
                     {{#if canCycleRoute}}
                       <button type="button" class="combater-chip-tool combater-route-cycle" data-cycle-route="{{instanceId}}" data-tooltip="{{routeModeToolTip}}" aria-label="{{routeModeToolTip}}"><i class="fa-solid fa-route"></i><span class="combater-route-value">{{routeModeLabel}}</span></button>
+                    {{/if}}
+                    {{#if canCycleDestination}}
+                      <button type="button" class="combater-chip-tool combater-destination-cycle" data-cycle-destination="{{instanceId}}" data-tooltip="{{movementAlternativeToolTip}}" aria-label="{{movementAlternativeToolTip}}"><i class="fa-solid fa-location-crosshairs"></i><span class="combater-destination-value">{{movementAlternativeToolLabel}}</span></button>
                     {{/if}}
                     {{#if canDragStep}}
                       <span class="combater-chip-tool combater-step-drag" data-drag-draft-step="{{instanceId}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}"><i class="fa-solid fa-grip-vertical"></i></span>

@@ -142,6 +142,7 @@ function areaDamageTactic(acc, { context, action, profile }) {
   acc.areaHitCount = enemiesInArea.length;
   acc.areaPlacementCenter = placement.areaPlacementCenter;
   acc.areaPlacementAimPoint = placement.areaPlacementAimPoint;
+  acc.areaPlacementOptions = placement.areaPlacementOptions;
   if (enemiesInArea.length > 0) {
     acc.score += enemiesInArea.length === 1
       ? 14
@@ -155,7 +156,7 @@ function areaDamageTactic(acc, { context, action, profile }) {
   if (alliesInArea.length > 0) {
     acc.score -= alliesInArea.length * 18;
     acc.reasons.push(t(alliesInArea.length === 1 ? "ScoreReason.AlliesInAreaOne" : "ScoreReason.AlliesInAreaMany", alliesInArea.length === 1 ? "{count} ally may be in the area." : "{count} allies may be in the area.", { count: alliesInArea.length }));
-  } else if (enemiesInArea.length > 1 && placement.centerTarget) {
+  } else if (enemiesInArea.length > 1 && placement.areaPlacementCenter) {
     acc.score += 8;
     acc.reasons.push(t("ScoreReason.BestAreaPlacementAvoids", "Best area placement avoids allies."));
   }
@@ -226,6 +227,7 @@ function controlOrDebuffTactic(acc, { context, action, profile, target, targetSa
     acc.areaHitCount = enemiesInArea.length;
     acc.areaPlacementCenter = placement.areaPlacementCenter;
     acc.areaPlacementAimPoint = placement.areaPlacementAimPoint;
+    acc.areaPlacementOptions = placement.areaPlacementOptions;
 
     if (!enemiesInArea.length) {
       acc.score -= 24;
@@ -417,6 +419,7 @@ export function scoreCuratedRoleTactics(context, action, {
     areaHitCount: null,
     areaPlacementCenter: null,
     areaPlacementAimPoint: null,
+    areaPlacementOptions: [],
   };
   const deps = { context, action, profile, target, targetDamageAdjustment, targetSaveScore, pressure, role };
 
@@ -461,5 +464,6 @@ export function scoreCuratedRoleTactics(context, action, {
     areaHitCount: acc.areaHitCount,
     areaPlacementCenter: acc.areaPlacementCenter,
     areaPlacementAimPoint: acc.areaPlacementAimPoint,
+    areaPlacementOptions: acc.areaPlacementOptions,
   };
 }

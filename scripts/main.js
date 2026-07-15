@@ -13,7 +13,14 @@ import {
   markMovementActionSpent,
   tokenUpdateAffectsCombatGeometry,
 } from "./state/token-refresh.js";
-import { clearCombatDraftPlans, clearDraftPlan, clearSharedDraftPlan, isSharedDraftPlanEcho, writeSharedDraftPlanPayload } from "./state/draft-plans.js";
+import {
+  clearCombatDraftPlans,
+  clearDraftPlan,
+  clearSharedDraftPlan,
+  consumeSharedDraftPlanRefreshSuppression,
+  isSharedDraftPlanEcho,
+  writeSharedDraftPlanPayload,
+} from "./state/draft-plans.js";
 import { clearMovementPreview } from "./ui/movement-preview.js";
 import { openPanelForCurrentCombatant, togglePanelForCurrentCombatant } from "./ui/CombaterPanel.js";
 import { registerCombatTrackerIntel } from "./ui/combat-tracker-intel.js";
@@ -566,7 +573,9 @@ Hooks.on("updateActor", (actor, changes) => {
   // own client. Treating that self-inflicted echo as an ordinary actor-update would immediately
   // reset their just-chosen pinned Auto-fill plan back to the default -- refresh under a source
   // that isn't in CombaterPanel.js's RESET_PIN_REFRESH_SOURCES instead.
-  scheduleDocumentRefresh(actor, isSharedDraftPlanEcho(changes) ? "shared-draft-sync" : "actor-update");
+  const sharedDraftEcho = isSharedDraftPlanEcho(changes);
+  if (sharedDraftEcho && consumeSharedDraftPlanRefreshSuppression(actor)) return;
+  scheduleDocumentRefresh(actor, sharedDraftEcho ? "shared-draft-sync" : "actor-update");
   if (actorUpdateChangesIntelLedger(changes)) ui?.combat?.render?.(true);
 });
 

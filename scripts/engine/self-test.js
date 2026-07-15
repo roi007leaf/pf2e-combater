@@ -12,5 +12,8 @@ await import("./self-test/planner-resource-budget.test.js");
 await import("./self-test/plan-state.test.js");
 await import("./self-test/tactical-routes.test.js");
 await import("./self-test/resource-horizon.test.js");
+await import("./self-test/turn-intent.test.js");
+await import("./self-test/loadout-advisor.test.js");
+await import("./self-test/effect-clock.test.js");
 await import("./self-test/transaction-revert.test.js");
 await import("./self-test/runtime.test.js");

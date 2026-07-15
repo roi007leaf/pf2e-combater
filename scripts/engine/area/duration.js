@@ -44,9 +44,8 @@ export function parseSpellDuration(durationString, { sustained = false } = {}) {
   return timerFromSeconds(value * UNIT_SECONDS[unit], unit, value, false);
 }
 
-// PF2e Effect item data for the visible countdown badge, linked back to its region.
-export function buildAreaTimerEffectData({ action, regionId, sceneId, duration, worldTime = null, initiative = null }) {
-  if (!duration || !regionId) return null;
+function buildSpellTimerEffectData({ action, duration, worldTime = null, initiative = null, flags = {} }) {
+  if (!duration) return null;
   const name = action?.name ?? action?.item?.name ?? "Area effect";
   const img = action?.item?.img ?? action?.img ?? "icons/svg/aura.svg";
   const level = Number(action?.castRank ?? action?.rank ?? action?.item?.system?.level?.value) || 1;
@@ -62,8 +61,39 @@ export function buildAreaTimerEffectData({ action, regionId, sceneId, duration, 
       slug: null,
       rules: [],
     },
-    flags: { "pf2e-combater": { areaRegion: { regionId, sceneId: sceneId ?? null } } },
+    flags: { "pf2e-combater": flags },
   };
+}
+
+// PF2e Effect item data for the visible countdown badge, linked back to its region.
+export function buildAreaTimerEffectData({ action, regionId, sceneId, duration, worldTime = null, initiative = null }) {
+  if (!duration || !regionId) return null;
+  return buildSpellTimerEffectData({
+    action,
+    duration,
+    worldTime,
+    initiative,
+    flags: { areaRegion: { regionId, sceneId: sceneId ?? null } },
+  });
+}
+
+// Non-area sustained spells still need one native PF2e Effect so Effect Clock and the
+// next-turn Sustain workflow can identify the active cast. Area spells use the region-linked
+// timer above instead.
+export function buildSustainedSpellEffectData({ action, duration, worldTime = null, initiative = null }) {
+  if (!duration?.sustained) return null;
+  return buildSpellTimerEffectData({
+    action,
+    duration,
+    worldTime,
+    initiative,
+    flags: {
+      sustainedSpell: {
+        spellUuid: action?.item?.uuid ?? action?.uuid ?? null,
+        spellSlug: action?.slug ?? action?.item?.slug ?? action?.item?.system?.slug ?? null,
+      },
+    },
+  });
 }
 
 // Plain, serializable expiry stamped on the region — the backbone of removal. Works even

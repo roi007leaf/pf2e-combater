@@ -304,6 +304,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
   let areaHitCount = null;
   let areaPlacementCenter = null;
   let areaPlacementAimPoint = null;
+  let areaPlacementOptions = [];
   let minionPlan = null;
   let score = baseScore(action);
 
@@ -426,6 +427,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
   areaHitCount = curatedRoleTactics.areaHitCount;
   areaPlacementCenter = curatedRoleTactics.areaPlacementCenter;
   areaPlacementAimPoint = curatedRoleTactics.areaPlacementAimPoint;
+  areaPlacementOptions = curatedRoleTactics.areaPlacementOptions;
 
   if (action.slug === "rage" && !hasCondition(profile, "rage") && !hasCondition(profile, "raging")) {
     score += 46;
@@ -462,6 +464,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
     areaHitCount,
     areaPlacementCenter,
     areaPlacementAimPoint,
+    areaPlacementOptions,
     minionPlan,
   };
 }

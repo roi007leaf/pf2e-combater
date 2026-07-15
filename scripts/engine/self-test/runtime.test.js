@@ -94,6 +94,7 @@ import {
   writeSharedDraftPlan,
   writeSharedDraftPlanActorFlag,
   isSharedDraftPlanEcho,
+  consumeSharedDraftPlanRefreshSuppression,
   writeSharedDraftPlanPayload,
   upsertDraftStep,
   removeDraftStep,
@@ -124,7 +125,7 @@ import { clearActionPreview, showActionPreview } from "../../ui/action/preview.j
 import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } from "../../ui/panel/draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
 import { gmPlayerPlanAccess, panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
-import { choosePanelTarget } from "../../ui/panel/picker-workflow.js";
+import { choosePanelRecommendedArea, choosePanelTarget } from "../../ui/panel/picker-workflow.js";
 import { choosePanelSwapItems } from "../../ui/panel/execution-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
@@ -997,6 +998,48 @@ try {
   assert.deepEqual(saveCantripResult.patch.targetTokenIds, ["target-token"]);
   assert.equal(targetCalls.some((call) => call.selected === true), true, "single-target save cantrip execution should target the planned token before casting");
   assert.equal(spellCastCalls.at(-1)?.targets?.[0]?.name, "Goblin", "PF2e spell cast should see the same target as the plan row");
+
+  const effectsBeforePhantasmalMinion = effectCreates.length;
+  const phantasmalMinionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "phantasmal-minion-step" },
+    action: {
+      name: "Phantasmal Minion",
+      slug: "phantasmal-minion",
+      source: "spell",
+      spellcastingEntryId: "arcane-entry",
+      item: {
+        id: "phantasmal-minion",
+        uuid: "Actor.valeros.Item.phantasmal-minion",
+        type: "spell",
+        name: "Phantasmal Minion",
+        img: "icons/magic/control/silhouette-hold-change-blue.webp",
+        system: { duration: { value: "", sustained: true } },
+      },
+      activityProfile: { spell: true, sustained: true, duration: "" },
+    },
+  });
+  assert.equal(phantasmalMinionResult.status, "done", "Phantasmal Minion should cast successfully");
+  assert.equal(effectCreates.length, effectsBeforePhantasmalMinion + 1,
+    "a successful non-area sustained spell should create one PF2e tracking effect");
+  assert.deepEqual(effectCreates.at(-1)?.document?.system?.duration,
+    { value: 1, unit: "minutes", expiry: null, sustained: true },
+    "the tracking effect should use PF2e sustained-duration data");
+  assert.deepEqual(effectCreates.at(-1)?.document?.flags?.["pf2e-combater"]?.sustainedSpell, {
+    spellUuid: "Actor.valeros.Item.phantasmal-minion",
+    spellSlug: "phantasmal-minion",
+  }, "the tracking effect should preserve exact spell identity for next-turn lookup");
+  const phantasmalMinionEffectOp = phantasmalMinionResult.patch.execution.revert.ops
+    .find((op) => op.kind === "effect" && op.effectUuid);
+  assert.ok(phantasmalMinionEffectOp, "safe undo should record the created sustained-spell effect");
+  const effectDeletesBeforePhantasmalUndo = effectDeletes.length;
+  const phantasmalMinionUndo = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "phantasmal-minion-step", execution: phantasmalMinionResult.patch.execution },
+  });
+  assert.equal(phantasmalMinionUndo.status, "reverted");
+  assert.deepEqual(effectDeletes.slice(effectDeletesBeforePhantasmalUndo), [phantasmalMinionEffectOp.effectUuid],
+    "safe undo should delete the sustained-spell tracking effect");
 
   // Multi-variant skill actions must pass a variant or PF2e's use() throws.
   const diversionResult = await executeDraftStep({
@@ -3333,6 +3376,46 @@ try {
   );
   assert.equal(isSharedDraftPlanEcho(null), false, "a missing changes object should not crash and should not be treated as an echo");
   assert.equal(isSharedDraftPlanEcho(undefined), false, "an undefined changes object should not crash and should not be treated as an echo");
+
+  let localEchoSuppressed = false;
+  const suppressingActor = {
+    uuid: "Actor.suppress-shared-draft-echo",
+    getFlag: () => ({}),
+    setFlag: async () => {
+      localEchoSuppressed = consumeSharedDraftPlanRefreshSuppression(suppressingActor);
+      return true;
+    },
+  };
+  await writeSharedDraftPlanActorFlag({
+    ...actorFlagContext,
+    actor: { document: suppressingActor },
+    combatant: { ...actorFlagContext.combatant, actor: suppressingActor },
+  }, { steps: [], userId: "user-1" }, { suppressRefresh: true });
+  assert.equal(localEchoSuppressed, true, "panel-owned shared-draft flag write should suppress its duplicate local refresh once");
+  assert.equal(
+    consumeSharedDraftPlanRefreshSuppression(suppressingActor),
+    false,
+    "shared-draft refresh suppression should be consumed so later remote updates still refresh",
+  );
+
+  const pendingWrites = [];
+  const concurrentActor = {
+    uuid: "Actor.concurrent-shared-draft-writes",
+    getFlag: () => ({}),
+    setFlag: () => new Promise((resolve) => pendingWrites.push(resolve)),
+  };
+  const concurrentContext = {
+    ...actorFlagContext,
+    actor: { document: concurrentActor },
+    combatant: { ...actorFlagContext.combatant, actor: concurrentActor },
+  };
+  const firstWrite = writeSharedDraftPlanActorFlag(concurrentContext, { steps: [], userId: "user-1" }, { suppressRefresh: true });
+  const secondWrite = writeSharedDraftPlanActorFlag(concurrentContext, { steps: [], userId: "user-1" }, { suppressRefresh: true });
+  assert.equal(consumeSharedDraftPlanRefreshSuppression(concurrentActor), true, "first concurrent write should own one suppression token");
+  assert.equal(consumeSharedDraftPlanRefreshSuppression(concurrentActor), true, "second concurrent write should own a separate suppression token");
+  assert.equal(consumeSharedDraftPlanRefreshSuppression(concurrentActor), false, "concurrent suppression tokens should each be consumed exactly once");
+  pendingWrites.forEach((resolve) => resolve(true));
+  await Promise.all([firstWrite, secondWrite]);
 
   // End-of-turn reset: clearEndedTurnDraft() runs clearDraftPlan (the acting player's local plan)
   // and clearSharedDraftPlan (the GM-visible shared store + actor flag). After a turn ends neither
@@ -6280,9 +6363,9 @@ assert.ok(!panelSource.includes("canUseFullAggro"), "auto-fill's target/destinat
 assert.ok(panelDraftWorkflowSource.includes("plannedTargetSelection"), "auto-fill should consult planned target selection");
 assert.ok(/autoFillPanelDraft\([\s\S]*targetSelection: "manual"/.test(panelDraftWorkflowSource),
   "auto-fill should store the planned target as a manual selection, for any actor using auto-fill");
-assert.ok(panelDraftWorkflowSource.includes("recommendedMovementForStep"), "auto-fill should recommend a stride destination");
-assert.ok(/autoFillPanelDraft\([\s\S]*recommendedMovementForStep[\s\S]*movementPlan/.test(panelDraftWorkflowSource),
-  "auto-fill should store the recommended destination and waypoints for any actor");
+assert.ok(panelDraftWorkflowSource.includes("recommendedMovementOptionsForStep"), "auto-fill should recommend ranked stride destinations");
+assert.ok(/autoFillPanelDraft\([\s\S]*recommendedMovementOptionsForStep[\s\S]*movementPlan/.test(panelDraftWorkflowSource),
+  "auto-fill should store the recommended destinations and waypoints for any actor");
 assert.ok(
   /movementPlan: \{ native: false, waypoints: movement\.waypoints\?\.length \? movement\.waypoints : \[movement\.destination\] \}/.test(panelDraftWorkflowSource),
   "a direct auto-filled Stride (no corner routing) must still fall back to a one-point movementPlan using the destination itself, or the distance label never renders for the common case",
@@ -15066,6 +15149,145 @@ const lineDamageScored = scoreCandidate({
 }, lineDamageCandidate);
 assert.equal(lineDamageScored.activityProfile.areaPlacementCenter, null);
 assert.deepEqual(lineDamageScored.activityProfile.areaPlacementAimPoint, { x: 0, y: 75 });
+
+const previousScoredAreaCanvas = globalThis.canvas;
+globalThis.canvas = {
+  grid: { size: 100, distance: 5 },
+  scene: { grid: { size: 100, distance: 5 } },
+  walls: { placeables: [] },
+};
+try {
+  const offsetEnemies = [
+    { id: "north-enemy", name: "North Enemy", distance: 20, center: { x: 350, y: 50 } },
+    { id: "south-enemy", name: "South Enemy", distance: 20, center: { x: 350, y: 250 } },
+  ];
+  const offsetAlly = { id: "nearby-ally", name: "Nearby Ally", distance: 10, center: { x: 200, y: 150 } };
+  const offsetBurstScored = scoreCandidate({
+    ...fighterContext,
+    token: { center: { x: 50, y: 150 } },
+    targets: offsetEnemies,
+    battlefield: { enemies: offsetEnemies, targets: offsetEnemies, allies: [offsetAlly] },
+  }, {
+    ...areaDamageCandidate,
+    targetingProfile: { type: "burst", distance: 10, maxRange: 60, enemy: true },
+  });
+  assert.deepEqual(
+    offsetBurstScored.activityProfile.areaPlacementCenter,
+    { x: 450, y: 150 },
+    "burst placement should search offset grid centers to hit both enemies without including the ally",
+  );
+  assert.ok(
+    offsetBurstScored.activityProfile.areaPlacementOptions.length >= 2
+      && offsetBurstScored.activityProfile.areaPlacementOptions.length <= 3,
+    "area scoring should expose up to three tactically distinct placements",
+  );
+  assert.deepEqual(
+    offsetBurstScored.activityProfile.areaPlacementOptions[0],
+    {
+      index: 0,
+      score: 200,
+      enemyCount: 2,
+      allyCount: 0,
+      areaPlacementCenter: { x: 450, y: 150 },
+      areaPlacementAimPoint: null,
+    },
+    "the first exposed placement should be the automatically selected best placement",
+  );
+
+  const previousAreaChoiceFoundry = globalThis.foundry;
+  const areaChoiceTokens = [
+    ...offsetEnemies.map((enemy) => ({ id: enemy.id, center: enemy.center })),
+    { id: offsetAlly.id, center: offsetAlly.center },
+  ];
+  let persistedAreaChoice = null;
+  let areaChoiceDialogOpened = false;
+  globalThis.foundry = {
+    applications: { api: { DialogV2: { wait: async () => { areaChoiceDialogOpened = true; return "1"; } } } },
+  };
+  globalThis.canvas.tokens = { placeables: areaChoiceTokens, setTargets: () => {} };
+  const areaChoiceContext = {
+    ...fighterContext,
+    token: { center: { x: 50, y: 150 } },
+    targets: offsetEnemies,
+    battlefield: { enemies: offsetEnemies, targets: offsetEnemies, allies: [offsetAlly] },
+  };
+  const areaChoiceStep = {
+    instanceId: "area-choice-step",
+    actionKey: offsetBurstScored.key ?? offsetBurstScored.id,
+    action: offsetBurstScored,
+    areaMarker: computeAreaMarker(areaChoiceContext, offsetBurstScored),
+    areaPlacementIndex: 0,
+    execution: { status: "pending" },
+  };
+  await choosePanelRecommendedArea({
+    _context: areaChoiceContext,
+    _builder: { draft: { steps: [areaChoiceStep], uncounted: [] } },
+    _canExecuteDraft: () => true,
+    _findDraftStep: () => areaChoiceStep,
+    _findActiveStep: () => areaChoiceStep,
+    _persistActiveDraftStep: async (step) => { persistedAreaChoice = step; },
+    render: async () => {},
+  }, areaChoiceStep.instanceId);
+  globalThis.foundry = previousAreaChoiceFoundry;
+  assert.equal(areaChoiceDialogOpened, false, "recommended-area button should cycle directly without opening a dialog");
+  assert.equal(persistedAreaChoice?.areaPlacementIndex, 1);
+  assert.deepEqual(
+    persistedAreaChoice?.areaMarker?.center,
+    offsetBurstScored.activityProfile.areaPlacementOptions[1].areaPlacementCenter,
+    "choosing a recommended placement should persist its computed area marker",
+  );
+
+  const singlePlacementAction = {
+    ...offsetBurstScored,
+    activityProfile: {
+      ...offsetBurstScored.activityProfile,
+      areaPlacementOptions: [offsetBurstScored.activityProfile.areaPlacementOptions[0]],
+    },
+  };
+  const singlePlacementStep = {
+    instanceId: "single-area-choice-step",
+    actionKey: actionBuilderKey(singlePlacementAction),
+    areaMarker: computeAreaMarker(areaChoiceContext, singlePlacementAction),
+    areaPlacementIndex: 0,
+  };
+  const singlePlacementView = decorateBuilder(buildActionBuilderModel({
+    context: areaChoiceContext,
+    candidates: [singlePlacementAction],
+    rejected: [],
+    plans: [],
+    draft: { steps: [singlePlacementStep], uncounted: [] },
+  }), "one");
+  assert.equal(
+    singlePlacementView.draft.steps[0].canChooseRecommendedArea,
+    true,
+    "a single recommended area should still expose the AOE control",
+  );
+  assert.equal(singlePlacementView.draft.steps[0].areaPlacementToolLabel, "AOE 1/1");
+
+  const splitConeEnemies = [
+    { id: "north-east-enemy", name: "North-east Enemy", distance: 20, center: { x: 350, y: -150 } },
+    { id: "south-east-enemy", name: "South-east Enemy", distance: 20, center: { x: 350, y: 250 } },
+  ];
+  const splitConeScored = scoreCandidate({
+    ...fighterContext,
+    token: { center: { x: 50, y: 50 } },
+    targets: splitConeEnemies,
+    battlefield: { enemies: splitConeEnemies, targets: splitConeEnemies, allies: [] },
+  }, {
+    ...lineDamageCandidate,
+    id: "wide-cone",
+    name: "Wide Cone",
+    slug: "wide-cone",
+    targetingProfile: { type: "cone", distance: 30, maxRange: 30, angle: 90, enemy: true },
+  });
+  assert.deepEqual(
+    splitConeScored.activityProfile.areaPlacementAimPoint,
+    { x: 350, y: 50 },
+    "cone placement should aim between separated enemies when neither enemy-centered angle hits both",
+  );
+} finally {
+  globalThis.canvas = previousScoredAreaCanvas;
+}
 
 const burstMarkerAction = {
   id: "overwhelming-blast",

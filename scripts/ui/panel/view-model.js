@@ -569,6 +569,63 @@ function swapItemsView(step, action) {
   };
 }
 
+function pointsMatch(left, right) {
+  const leftX = Number(left?.x);
+  const leftY = Number(left?.y);
+  const rightX = Number(right?.x);
+  const rightY = Number(right?.y);
+  return [leftX, leftY, rightX, rightY].every(Number.isFinite)
+    && Math.hypot(leftX - rightX, leftY - rightY) < 0.5;
+}
+
+function normalizedRotation(value) {
+  const degrees = Number(value);
+  return Number.isFinite(degrees) ? ((Math.round(degrees) % 360) + 360) % 360 : null;
+}
+
+function optionRotation(option, context) {
+  const origin = context?.token?.center;
+  const aimPoint = option?.areaPlacementAimPoint;
+  if (!origin || !aimPoint) return null;
+  return normalizedRotation((Math.atan2(aimPoint.y - origin.y, aimPoint.x - origin.x) * 180) / Math.PI);
+}
+
+function markerMatchesAreaOption(marker, option, context) {
+  if (!marker || !option) return false;
+  if (option.areaPlacementCenter) return pointsMatch(marker.center, option.areaPlacementCenter);
+  const markerRotation = normalizedRotation(marker.rotation);
+  const recommendedRotation = optionRotation(option, context);
+  return markerRotation !== null && recommendedRotation !== null && markerRotation === recommendedRotation;
+}
+
+function recommendedAreaPlacementView(step, action, context, { canRunStep, isExecutionDone } = {}) {
+  const options = (Array.isArray(action?.activityProfile?.areaPlacementOptions)
+    ? action.activityProfile.areaPlacementOptions
+    : Array.isArray(step?.activityProfile?.areaPlacementOptions)
+      ? step.activityProfile.areaPlacementOptions
+      : [])
+    .filter((option) => option?.areaPlacementCenter || option?.areaPlacementAimPoint)
+    .slice(0, 3);
+  if (options.length < 1) return { canChoose: false, label: "", tooltip: "" };
+
+  const selectedIndex = options.findIndex((option) => markerMatchesAreaOption(step?.areaMarker, option, context));
+  const selected = selectedIndex >= 0 ? options[selectedIndex] : null;
+  const label = selected
+    ? t("Panel.AreaPlacementOrdinal", "AOE {current}/{total}", { current: selectedIndex + 1, total: options.length })
+    : t("Panel.AreaPlacementCustom", "AOE Custom");
+  const counts = selected
+    ? t("Panel.AreaPlacementCounts", "{enemies} enemies, {allies} allies", {
+      enemies: selected.enemyCount ?? 0,
+      allies: selected.allyCount ?? 0,
+    })
+    : t("Panel.AreaPlacementCustomDetail", "Custom canvas placement");
+  return {
+    canChoose: canRunStep && !isExecutionDone,
+    label,
+    tooltip: t("Panel.AreaPlacementChoose", "Recommended area placement. Click to cycle. Current: {counts}.", { counts }),
+  };
+}
+
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
@@ -612,6 +669,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
   const canChooseDestination = requiresDestination && canRunStep && !isExecutionDone;
   const canChooseArea = requiresManualArea && canRunStep && !isExecutionDone;
+  const recommendedAreaPlacement = recommendedAreaPlacementView(step, action ?? step, context, { canRunStep, isExecutionDone });
   const swapItems = swapItemsView(step, action ?? step);
   const canChooseSwapItems = swapItems.visible && canRunStep && !isExecutionDone;
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
@@ -638,6 +696,24 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     && !isExecutionDone
     && availableTacticalRouteModes(context, step).length > 1;
   const routeModeToolTip = t("Panel.RouteCycle", "Tactical route: {label}. Click to change.", { label: routeModeLabel });
+  const movementAlternatives = (Array.isArray(step?.movementAlternatives) ? step.movementAlternatives : [])
+    .filter((option) => option?.destination)
+    .slice(0, 3);
+  const movementAlternativeIndex = Math.max(
+    0,
+    Math.min(Number.isFinite(step?.movementAlternativeIndex) ? Math.trunc(step.movementAlternativeIndex) : 0, movementAlternatives.length - 1),
+  );
+  const movementAlternativeToolLabel = t("Panel.MovementAlternativeValue", "SPOT {current}/{total}", {
+    current: movementAlternativeIndex + 1,
+    total: movementAlternatives.length,
+  });
+  const movementAlternativeToolTip = t(
+    "Panel.MovementAlternativeCycle",
+    "Recommended Stride landing {current} of {total}. Click for next; right-click for previous.",
+    { current: movementAlternativeIndex + 1, total: movementAlternatives.length },
+  );
+  const canCycleDestination = isSpeedBasedMovementStep(action ?? step)
+    && canRunStep && !isExecutionDone && movementAlternatives.length > 1;
   const weaponToolLabel = action?.item?.name ?? t("Panel.WeaponDefault", "Default");
   const isStrikeAtom = action?.executable === "strike" || action?.source === "strike";
   const canCycleWeapon = Boolean(step?.groupId) && isStrikeAtom && canRunStep && !isExecutionDone && weaponOptions.length > 1;
@@ -668,6 +744,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canChooseTarget,
     canChooseDestination,
     canChooseArea,
+    canChooseRecommendedArea: recommendedAreaPlacement.canChoose,
+    areaPlacementToolLabel: recommendedAreaPlacement.label,
+    areaPlacementToolTip: recommendedAreaPlacement.tooltip,
     canChooseSwapItems,
     swapItemsLabel: swapItems.label,
     swapItemsTooltip: swapItems.tooltip,
@@ -701,6 +780,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     routeMode,
     routeModeLabel,
     routeModeToolTip,
+    canCycleDestination,
+    movementAlternativeToolLabel,
+    movementAlternativeToolTip,
     canCycleWeapon,
     weaponToolLabel,
     weaponToolTip,

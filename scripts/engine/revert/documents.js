@@ -2,7 +2,7 @@ function confirmedRemoved(collection, id) {
   return Boolean(collection?.get) && id != null && !collection.get(id);
 }
 
-async function deleteLinkedAreaEffect(effectUuid) {
+async function deleteEffect(effectUuid) {
   if (!effectUuid || typeof globalThis.fromUuid !== "function") return;
   try {
     const effect = await globalThis.fromUuid(effectUuid);
@@ -14,8 +14,12 @@ async function deleteLinkedAreaEffect(effectUuid) {
   }
 }
 
+export async function revertEffect(op) {
+  await deleteEffect(op?.effectUuid);
+}
+
 export async function revertRegion(op) {
-  await deleteLinkedAreaEffect(op?.effectUuid);
+  await deleteEffect(op?.effectUuid);
 
   const scene = (op?.sceneId && globalThis.game?.scenes?.get?.(op.sceneId))
     ?? globalThis.canvas?.scene

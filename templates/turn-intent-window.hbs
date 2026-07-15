@@ -1,0 +1,47 @@
+<form class="combater-turn-intent-form" data-turn-intent-form>
+  <p class="combater-turn-intent-help">{{help}}</p>
+
+  <label class="combater-turn-intent-option {{#unless canLockTarget}}is-disabled{{/unless}}">
+    <input type="checkbox" name="lockTarget" {{#if lockTarget}}checked{{/if}} {{#unless canLockTarget}}disabled{{/unless}}>
+    <span>
+      <strong>Lock target</strong>
+      <small>{{targetLabel}}</small>
+    </span>
+  </label>
+
+  <label class="combater-turn-intent-field">
+    <span>Require action</span>
+    <select name="requiredActionKey">
+      <option value="">Any action</option>
+      {{#each actionOptions}}
+        <option value="{{key}}" {{#if selected}}selected{{/if}}>{{name}}</option>
+      {{/each}}
+    </select>
+  </label>
+
+  <div class="combater-turn-intent-grid">
+    <label class="combater-turn-intent-option">
+      <input type="checkbox" name="noSpellSlots" {{#if intent.noSpellSlots}}checked{{/if}}>
+      <span><strong>No spell slots</strong><small>Cantrips and focus spells remain available.</small></span>
+    </label>
+    <label class="combater-turn-intent-option">
+      <input type="checkbox" name="stayRanged" {{#if intent.stayRanged}}checked{{/if}}>
+      <span><strong>Stay ranged</strong><small>Exclude melee attacks and maneuvers.</small></span>
+    </label>
+    <label class="combater-turn-intent-option">
+      <input type="checkbox" name="endInCover" {{#if intent.endInCover}}checked{{/if}}>
+      <span><strong>End in cover</strong><small>Require movement and route it toward cover.</small></span>
+    </label>
+    <label class="combater-turn-intent-option">
+      <input type="checkbox" name="preserveFinalAction" {{#if intent.preserveFinalAction}}checked{{/if}}>
+      <span><strong>Preserve final action</strong><small>Auto-fill spends one fewer normal action.</small></span>
+    </label>
+  </div>
+
+  <footer class="combater-turn-intent-actions">
+    <button type="button" data-turn-intent-clear><i class="fa-solid fa-eraser"></i> Clear</button>
+    <span></span>
+    <button type="button" data-turn-intent-cancel>Cancel</button>
+    <button type="button" class="is-primary" data-turn-intent-save><i class="fa-solid fa-check"></i> Apply</button>
+  </footer>
+</form>
