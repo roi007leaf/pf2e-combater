@@ -16,13 +16,13 @@ async function applyRevertOp(op, scope) {
     case "region":
       return revertRegion(op);
     case "carry-type":
-      return revertCarryType(op);
+      return revertCarryType(op, scope);
     case "consumable":
       return revertConsumable(op, scope);
     case "reload":
-      return revertReload(op);
+      return revertReload(op, scope);
     case "frequency":
-      return revertFrequency(op);
+      return revertFrequency(op, scope);
     case "chat":
       return revertChat(op);
     case "slot":

@@ -31,7 +31,7 @@
       },
       "NativeRollContextPreflight": {
         "Name": "Show PF2e check previews to players",
-        "Hint": "Allow players to see PF2e check-preview chips using only target Intel revealed to them. GMs always see previews. Disabled by default and does not change Auto-fill ranking."
+        "Hint": "Allow players to see PF2e check-preview chips and use disclosed odds in Auto-fill ranking. Only target Intel revealed to that player is used. GMs always use native previews."
       },
       "ShowDebugTab": {
         "Name": "Show GM debug tab",
@@ -43,7 +43,28 @@
       }
     },
     "Preflight": {
-      "TooltipTitle": "PF2e check preview"
+      "TooltipTitle": "PF2e check preview",
+      "RankingImproves": "PF2e degree outcomes improve Auto-fill ranking (+{delta}).",
+      "RankingReduces": "PF2e degree outcomes reduce Auto-fill ranking ({delta}).",
+      "RankingNeutral": "PF2e degree outcomes leave Auto-fill ranking unchanged.",
+      "IncapacitationRaisesTarget": "Incapacitation raises the target's result by one degree.",
+      "IncapacitationLowersCheck": "Incapacitation lowers the acting check's result by one degree."
+    },
+    "ResourceHorizon": {
+      "Conserve": "Conserve",
+      "Normal": "Normal",
+      "Burst": "Burst",
+      "Aria": "Change resource horizon",
+      "ConserveTooltip": "Conserve favors renewable actions and protects scarce resources. Left-click next; right-click previous.",
+      "NormalTooltip": "Normal keeps standard tactical resource scoring. Left-click next; right-click previous.",
+      "BurstTooltip": "Burst favors spending slots, consumables, and limited uses now. Left-click next; right-click previous.",
+      "Cantrip": "cantrip",
+      "FocusPoint": "focus point",
+      "SpellSlot": "ranked spell slot",
+      "Consumable": "consumable",
+      "InnateUse": "innate spell use",
+      "EncounterUse": "encounter use",
+      "LimitedUse": "limited use"
     },
     "Panel": {
       "PlannedSequenceAria": "Planned action sequence",
@@ -104,8 +125,12 @@
       "MapAuto": "MAP auto ({label}). Click to pin a value.",
       "MovementCycle": "Stride on {label} Speed. Click to change.",
       "MovementLabel": "Stride on {label} Speed.",
+      "RouteCycle": "Tactical route: {label}. Click to change.",
       "WeaponCycle": "Attacking with {label}. Click to change.",
       "WeaponDefault": "Default",
+      "ChooseSwapItems": "Choose which held item to put away and which worn item to draw.",
+      "SwapSelection": "Put away {held} -> Draw {draw}",
+      "SwapSelectionRequired": "Choose items to swap",
       "RangeIncrement": "Range increment {value} ft",
       "Range": "Range {value} ft",
       "Ranged": "Ranged"
@@ -218,6 +243,14 @@
       "Swim": "Swim",
       "Climb": "Climb"
     },
+    "Route": {
+      "Approach": "Approach",
+      "Shortest": "Shortest",
+      "Safe": "Safest",
+      "Cover": "Seek Cover",
+      "Flank": "Flank",
+      "Escape": "Escape"
+    },
     "Move": {
       "NotVisible": "Destination is not visible.",
       "NoPath": "No collision-free movement path to destination.",
@@ -232,6 +265,7 @@
       "SlotManual": "Spell slot could not be auto-restored - restore it manually.",
       "SlotApiFailed": "Spell slot API restore failed: {error}",
       "PreparedSlotApiFailed": "Prepared spell slot API restore failed: {error}",
+      "StateChanged": "Skipped undo for {label}: state changed after execution.",
       "CouldNotClear": "could not clear {slug}",
       "CouldNotRestoreCond": "could not restore {slug}",
       "CouldNotRestoreConsumable": "could not restore the consumed item"
@@ -358,14 +392,17 @@
     "Choice": {
       "destination": "destination",
       "target": "target",
-      "area": "area"
+      "area": "area",
+      "swap-items": "items to swap"
     },
     "Exec": {
       "ChooseAtExec": "Choose {choices} at execution.",
+      "ChooseSwapItems": "Choose items to swap.",
       "DestinationUnavailable": "Destination is unavailable.",
       "MoveOnlyOnTurn": "Token can only move on its turn.",
       "MovementStale": "Planned movement is stale. Choose destination again.",
       "MovementPrevented": "Movement was prevented.",
+      "MovementStopped": "Movement stopped before the destination.",
       "NoTokenDocument": "Token document is not available.",
       "StartedMovement": "Started planned movement.",
       "MovedToken": "Moved token.",
@@ -580,6 +617,10 @@
       "CantripConservesSpellSlots": "Cantrip conserves spell slots.",
       "FocusSpellIsRecoverable": "Focus spell is recoverable after combat.",
       "UsesARankedSpell": "Uses a ranked spell slot.",
+      "ResourceConserveRenewable": "Conserve mode favors renewable actions.",
+      "ResourceConserveScarce": "Conserve mode protects this {resource} for later rounds.",
+      "ResourceBurstRenewable": "Burst mode deprioritizes renewable actions while stronger resources are available.",
+      "ResourceBurstSpend": "Burst mode favors spending this {resource} while encounter pressure is high.",
       "SustainedSpellCanKeep": "Sustained spell can keep affecting the fight.",
       "SustainingMayCostLater": "Sustaining may cost later actions.",
       "DurationCanPersistBeyond": "Duration can persist beyond this turn.",

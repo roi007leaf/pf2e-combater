@@ -7,6 +7,7 @@ import { hasEnemyWithinRange } from "../engine/target-pool.js";
 import { bestReadyStrikeAverageDamage } from "./action/reader.js";
 import { collectionValues, systemValue } from "../foundry-data.js";
 import { t } from "../i18n.js";
+import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 
 function titleCase(value) {
   return String(value ?? "")
@@ -128,7 +129,7 @@ function consumableUses(item) {
 // instead of just a boolean, so the candidate can report a real spellcasting entry's DC/tradition.
 function bestConsumableCastingEntry(actor, spell, item) {
   let best = null;
-  for (const entry of collectionValues(actor?.spellcasting)) {
+  for (const entry of pf2eRuntime.readActor(actor).spellcasting) {
     if (!entry?.statistic || typeof entry.canCast !== "function") continue;
     if (!entry.canCast(spell, { origin: item })) continue;
     const dc = Number(entry.statistic?.dc?.value);
@@ -182,6 +183,7 @@ export function readConsumableSpellActions(context) {
       : (parsedTime.actionCosts ?? [parsedTime.actionCost]);
     const bestEntry = bestConsumableCastingEntry(actor, embeddedSpell, item);
     const availability = readConsumableSpellAvailability(item, bestEntry);
+    const itemUses = consumableUses(item);
     const variantGroup = `consumable-spell-${item.id ?? item._id ?? slug}`;
 
     return actionCosts.map((actionCost) => ({
@@ -224,7 +226,13 @@ export function readConsumableSpellActions(context) {
       spellcastingEntryType: null,
       spellcastingEntryLabel: bestEntry ? readSpellcastingEntryLabel(bestEntry) : "",
       spellcastingEntryTradition: bestEntry ? readSpellcastingEntryTradition(bestEntry) : "",
-      spellResource: { type: "item", label: countLabel(t("SpellRes.Uses", "Uses"), consumableUses(item).value, consumableUses(item).max), tooltip: "" },
+      spellResource: {
+        type: "item",
+        label: countLabel(t("SpellRes.Uses", "Uses"), itemUses.value, itemUses.max),
+        tooltip: "",
+        remaining: itemUses.value,
+        max: itemUses.max,
+      },
       location: null,
       time: systemValue(embeddedSpell.system?.time) ?? "2",
       consumableItem: item,
@@ -438,6 +446,9 @@ function readSpellAvailability(actor, item, entry = findSpellcastingEntry(actor,
   }
 
   if (preparedType === "prepared") {
+    if (isFlexibleSpellcastingEntry(entry) && !isCantrip(item)) {
+      return slotAvailable(entry, castRank);
+    }
     return preparedSpellAvailable(entry, item, isCantrip(item) ? null : castRank);
   }
 
@@ -565,6 +576,10 @@ function isFocusSpell(spell, entry) {
   return traits.includes("focus") || prepared === "focus";
 }
 
+function isFlexibleSpellcastingEntry(entry) {
+  return entry?.isFlexible === true || systemValue(entry?.system?.prepared?.flexible) === true;
+}
+
 function spellRank(spell) {
   return spellBaseRank(spell);
 }
@@ -613,7 +628,11 @@ function readSpellCastRanks(spell, entry) {
 
   const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
   if (preparedType === "focus" || isFocusSpell(spell, entry)) return [rank];
-  if (preparedType === "prepared") return preparedCastRanks(entry, spell, rank);
+  if (preparedType === "prepared") {
+    return isFlexibleSpellcastingEntry(entry)
+      ? spontaneousCastRanks(entry, spell, rank)
+      : preparedCastRanks(entry, spell, rank);
+  }
   if (preparedType === "spontaneous") return spontaneousCastRanks(entry, spell, rank);
   return [rank];
 }
@@ -791,7 +810,12 @@ function readSpellResource(actor, spell, entry, castRank = spellRank(spell)) {
     return { type: "cantrip", rank, label: t("SpellRes.NoSlot", "No slot"), tooltip: t("SpellRes.CantripTooltip", "Cantrip does not spend a spell slot.") };
   }
   if (preparedType === "focus" || isFocusSpell(spell, entry)) return readFocusSpellResource(actor);
-  if (preparedType === "prepared") return readPreparedSpellResource(entry, spell, rank, castRank);
+  if (preparedType === "prepared") {
+    if (isFlexibleSpellcastingEntry(entry)) {
+      return { ...readSlotSpellResource(entry, castRank), type: "flexible" };
+    }
+    return readPreparedSpellResource(entry, spell, rank, castRank);
+  }
   if (preparedType === "spontaneous") return readSlotSpellResource(entry, castRank);
   if (preparedType === "innate") return readUseSpellResource(spell, "innate");
   if (preparedType === "items") return readUseSpellResource(spell, "item");

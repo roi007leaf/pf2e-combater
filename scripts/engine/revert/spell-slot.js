@@ -1,5 +1,7 @@
 import { t } from "../../i18n.js";
 import { findSpellcastingEntry } from "../execution/native-item.js";
+import { canRestoreSnapshot } from "./transaction.js";
+import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 
 function numeric(value) {
   const number = Number(value);
@@ -134,7 +136,7 @@ function findPreparedSlot(entry, op) {
   return expendedRows.length === 1 ? expendedRows[0] : null;
 }
 
-async function restorePreparedSlot(entry, op, apiErrors = []) {
+async function restorePreparedSlot(entry, op, warnings, apiErrors = []) {
   let slotKey = op?.slotKey ?? slotKeyForRank(op?.rank);
   let preparedIndex = Number.isInteger(op?.preparedIndex) ? op.preparedIndex : null;
   let prepared = slotKey ? entry?.system?.slots?.[slotKey]?.prepared : null;
@@ -150,12 +152,19 @@ async function restorePreparedSlot(entry, op, apiErrors = []) {
   }
 
   if (!Array.isArray(prepared) || !preparedSpell || preparedIndex === null) return false;
+  if (!canRestoreSnapshot({
+    current: { preparedExpended: preparedExpendedValue(preparedSpell) },
+    expectedAfter: op?.expectedAfter?.preparedExpended === undefined
+      ? null
+      : { preparedExpended: op.expectedAfter.preparedExpended },
+    warnings,
+    label: "prepared spell slot",
+  })) return "conflict";
   const expended = op.preparedExpendedBefore === true;
 
-  if (typeof entry.setSlotExpendedState === "function" && op?.rank != null) {
+  if (op?.rank != null) {
     try {
-      await entry.setSlotExpendedState(op.rank, preparedIndex, expended);
-      return true;
+      if (await pf2eRuntime.setSlotExpended(entry, op.rank, preparedIndex, expended)) return true;
     } catch (error) {
       apiErrors.push(error);
     }
@@ -164,14 +173,21 @@ async function restorePreparedSlot(entry, op, apiErrors = []) {
   return updateEntryPath(entry, preparedExpendedPath(slotKey, preparedIndex, preparedSpell), expended);
 }
 
-async function restoreSlotPool(entry, op) {
+async function restoreSlotPool(entry, op, warnings) {
   if (!op?.slotKey) return false;
   const updates = [];
   const valueBefore = numeric(op.valueBefore);
   const remainingBefore = numeric(op.remainingBefore);
-  if (valueBefore !== null) updates.push([`system.slots.${op.slotKey}.value`, valueBefore]);
-  if (remainingBefore !== null) updates.push([`system.slots.${op.slotKey}.remaining`, remainingBefore]);
+  if (valueBefore !== null) updates.push([`system.slots.${op.slotKey}.value`, valueBefore, numeric(entry?.system?.slots?.[op.slotKey]?.value), "value"]);
+  if (remainingBefore !== null) updates.push([`system.slots.${op.slotKey}.remaining`, remainingBefore, numeric(entry?.system?.slots?.[op.slotKey]?.remaining), "remaining"]);
   if (!updates.length) return false;
+
+  const expectedAfter = op?.expectedAfter ?? null;
+  const current = Object.fromEntries(updates.map(([, , value, key]) => [key, value]));
+  const expected = expectedAfter
+    ? Object.fromEntries(updates.filter(([, , , key]) => expectedAfter[key] !== undefined).map(([, , , key]) => [key, expectedAfter[key]]))
+    : null;
+  if (!canRestoreSnapshot({ current, expectedAfter: expected, warnings, label: "spell slot" })) return "conflict";
 
   for (const [path, value] of updates) {
     const updated = await updateEntryPath(entry, path, value);
@@ -191,19 +207,20 @@ export async function revertSlot(op, { actor, warnings }) {
   }
 
   const preparedApiErrors = [];
-  if (await restorePreparedSlot(entry, op, preparedApiErrors)) return;
+  const preparedResult = await restorePreparedSlot(entry, op, warnings, preparedApiErrors);
+  if (preparedResult) return;
 
   let apiError = null;
-  if (op?.slotIdExplicit !== false && typeof entry.setSlotExpendedState === "function" && op?.slotId != null && op?.rank != null) {
+  if (op?.slotIdExplicit !== false && op?.slotId != null && op?.rank != null) {
     try {
-      await entry.setSlotExpendedState(op.rank, op.slotId, false);
-      return;
+      if (await pf2eRuntime.setSlotExpended(entry, op.rank, op.slotId, false)) return;
     } catch (error) {
       apiError = error;
     }
   }
 
-  if (await restoreSlotPool(entry, op)) return;
+  const poolResult = await restoreSlotPool(entry, op, warnings);
+  if (poolResult) return;
 
   if (apiError) {
     warnings.push(t("Revert.SlotApiFailed", "Spell slot API restore failed: {error}", { error: apiError?.message ?? apiError }));

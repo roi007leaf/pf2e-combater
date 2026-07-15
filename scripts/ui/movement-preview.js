@@ -25,6 +25,7 @@ import {
   reachableMovementCenters as engineReachableMovementCenters,
   routeCornerWaypoints as engineRouteCornerWaypoints,
 } from "../engine/movement-route.js";
+import { compareTacticalRouteCenters, tacticalRouteModeForStep } from "../rules/tactical-routes.js";
 import { t } from "../i18n.js";
 
 const MOVEMENT_SLUGS = new Set(["crawl", "stride", "step", "stand-stride"]);
@@ -276,21 +277,44 @@ function reachableMarkers(origin, centers, recommendation, gridSize) {
     .map((center) => markerForCenter(center, gridSize));
 }
 
-function recommendedPlacement(context, step, origin, reachable, footprint, gridSize, { preferShortestRoute = false } = {}) {
+function recommendedPlacement(context, step, origin, reachable, footprint, gridSize, options = {}) {
+  const { preferShortestRoute = false } = options;
   const target = previewTarget(context, step);
   const targetCenter = point(target);
-  if (!targetCenter || !reachable.length) return null;
+  if (!reachable.length) return null;
 
-  const targetPlacement = placementForCenter(targetCenter, tokenFootprint(target), gridSize);
-  return reachable.map((center) => placementForCenter(center, footprint, gridSize)).toSorted((left, right) => {
-    if (preferShortestRoute) {
-      const leftCost = numeric(left.center.cost, Infinity);
-      const rightCost = numeric(right.center.cost, Infinity);
-      if (leftCost !== rightCost) return leftCost - rightCost;
+  const fallbackMode = preferShortestRoute ? "shortest" : "approach";
+  const routeMode = tacticalRouteModeForStep(step, fallbackMode);
+  const explicitRouteMode = Boolean(step?.routeMode ?? step?.action?.routeMode);
+  if (!targetCenter && routeMode === "approach") return null;
+
+  const movingCenters = explicitRouteMode
+    ? reachable.filter((center) => center.x !== origin.x || center.y !== origin.y)
+    : reachable;
+  const routeCenters = movingCenters.length ? movingCenters : reachable;
+
+  const targetPlacement = targetCenter
+    ? placementForCenter(targetCenter, tokenFootprint(target), gridSize)
+    : null;
+  const metricsCache = new WeakMap();
+  return routeCenters.map((center) => placementForCenter(center, footprint, gridSize)).toSorted((left, right) => {
+    if (routeMode !== "approach") {
+      const tactical = compareTacticalRouteCenters(context, step, left.center, right.center, {
+        fallbackMode,
+        costFirst: preferShortestRoute && !explicitRouteMode,
+        gridSize,
+        metricsCache,
+        origin,
+        target,
+        lineBlocked: (from, to) => attackPathBlocked(from, to, options),
+      });
+      if (tactical !== 0) return tactical;
     }
-    const leftDistance = rectangleDistance(left, targetPlacement);
-    const rightDistance = rectangleDistance(right, targetPlacement);
-    if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+    if (targetPlacement) {
+      const leftDistance = rectangleDistance(left, targetPlacement);
+      const rightDistance = rectangleDistance(right, targetPlacement);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+    }
     return Math.hypot(origin.x - left.center.x, origin.y - left.center.y)
       - Math.hypot(origin.x - right.center.x, origin.y - right.center.y);
   })[0] ?? null;
@@ -372,6 +396,7 @@ function retreatStrideStrikePath(context, step, gridSize, options = {}) {
   const destination = fixedAttackCenter
     ? placementForCenter(fixedAttackCenter, footprint, gridSize)
     : recommendedPlacement(context, step, origin, attackCenters, footprint, gridSize, {
+      ...options,
       preferShortestRoute: true,
     });
   if (!destination) return null;
@@ -427,7 +452,10 @@ function strideStrikePath(context, step, gridSize, options = {}) {
     : strikeReachableCenters(context, step, movementCenters, footprint, gridSize, options);
   const destination = fixedAttackCenter
     ? placementForCenter(fixedAttackCenter, footprint, gridSize)
-    : recommendedPlacement(context, step, origin, centers, footprint, gridSize, { preferShortestRoute: true });
+    : recommendedPlacement(context, step, origin, centers, footprint, gridSize, {
+      ...options,
+      preferShortestRoute: true,
+    });
   if (!destination) return null;
 
   const destCenter = destination.center;
@@ -678,7 +706,7 @@ export function movementPreviewForStep(context, step, options = {}) {
   const color = AVAILABLE_COLOR;
   const centers = reachableMovementCenters(origin, distanceFeet, gridSize, movementOptions);
   const placements = centers.map((center) => placementForCenter(center, footprint, gridSize));
-  const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize);
+  const recommendation = recommendedPlacement(context, step, origin, centers, footprint, gridSize, movementOptions);
   const markers = reachableMarkers(origin, centers, recommendation, gridSize);
   const recommendedMarker = xMarkerForPlacement(recommendation);
   const bareReachablePreview = {

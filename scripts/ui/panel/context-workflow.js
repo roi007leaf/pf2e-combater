@@ -17,6 +17,10 @@ import { actorStrikeOptions } from "../../readers/action/reader.js";
 import { readSustainedSpellEntries } from "../../engine/sustained-spells.js";
 import { intelLedgerView, isNpcIntelTarget } from "../../rules/intel-ledger.js";
 import { tacticPersonalityView } from "../../rules/tactic-personality.js";
+import {
+  resourceHorizonView,
+  withResourceHorizon,
+} from "../../rules/resource-horizon.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
 import { contextWithCurrentAutoFillTargets } from "./auto-fill-context.js";
 import { autoFillCyclePlans, selectDisplayPlan } from "../plan-selection.js";
@@ -116,6 +120,7 @@ export function viewPanelContext(panel, context) {
   const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
   const draftSteps = panel._builder?.draft?.steps ?? [];
   const planPreference = deterministicPlanPreferenceAdjustment(context, panel._builder?.draft);
+  const resourceHorizon = resourceHorizonView(panel.resourceHorizon);
 
   return {
     actor: context?.actor ?? null,
@@ -132,6 +137,10 @@ export function viewPanelContext(panel, context) {
     activeTab: panel.activeTab,
     browserOpen: Boolean(panel._browser),
     tacticPersonality: tacticPersonalityView(context),
+    resourceHorizon: {
+      ...resourceHorizon,
+      visible: Boolean(context && panel._builder && showAutoFill && panel._builder.readonly !== true),
+    },
     intelLedger: panelIntelLedgerView(context),
     showDebug,
     showAutoFill,
@@ -171,7 +180,10 @@ export function clearPanelPreparedContext(panel) {
 }
 
 export function preparePanelContext(panel) {
-  const context = readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant });
+  const context = withResourceHorizon(
+    readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant }),
+    panel.resourceHorizon,
+  );
   panel._context = context;
 
   if (!context) {

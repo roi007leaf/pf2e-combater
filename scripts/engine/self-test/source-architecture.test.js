@@ -147,10 +147,12 @@ const combatTrackerIntelSource = readFileSync(new URL("../../ui/combat-tracker-i
 const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../../settings.js", import.meta.url), "utf8");
 const foundryDataSource = readFileSync(new URL("../../foundry-data.js", import.meta.url), "utf8");
+const pf2eRuntimeSource = readFileSync(new URL("../../runtime/pf2e-runtime.js", import.meta.url), "utf8");
 const plannerSource = readFileSync(new URL("../planner.js", import.meta.url), "utf8");
 const plannerRulesSource = readFileSync(new URL("../planner/rules.js", import.meta.url), "utf8");
 const plannerProjectionsSource = readFileSync(new URL("../planner/projections.js", import.meta.url), "utf8");
 const plannerConflictsSource = readFileSync(new URL("../planner/conflicts.js", import.meta.url), "utf8");
+const planStateSource = readFileSync(new URL("../plan-state.js", import.meta.url), "utf8");
 const actionTextSource = readFileSync(new URL("../action/text.js", import.meta.url), "utf8");
 const actionBudgetSource = readFileSync(new URL("../action/budget.js", import.meta.url), "utf8");
 const actorContextSource = readFileSync(new URL("../actor-context.js", import.meta.url), "utf8");
@@ -907,6 +909,8 @@ assert.ok(/groupId\s*&&\s*!perStrikeMap/.test(panelViewModelSource), "the shared
 assert.ok(panelSource.includes("_cycleStepMovement"), "the panel should let the player cycle a Stride's movement type");
 assert.ok(/movementAction/.test(panelDraftWorkflowSource), "a pinned movement type should ride on the draft step");
 assert.ok(panelTemplateSource.includes("data-cycle-movement"), "the panel template should expose a movement-type control on Strides");
+assert.ok(panelSource.includes("_cycleStepRoute"), "the panel should let the player cycle a Stride's tactical route");
+assert.ok(panelTemplateSource.includes("data-cycle-route"), "the panel template should expose a tactical-route control on Strides");
 // actorMovementOptions enumerates the actor's Stride speeds: walking first, then only the non-walking
 // speeds the actor actually has, mapping the "land" speed key to the "walk" movement action.
 {
@@ -1437,9 +1441,11 @@ assert.ok(
 assert.ok(
   executionSystemActionSource.includes("export async function usePf2eAction")
     && executionSystemActionSource.includes("export async function executeSystemAction")
-    && executionSystemActionSource.includes("function pf2eActionBySlug")
-    && executionSystemActionSource.includes("function resolveActionVariant"),
-  "system action execution module should own PF2e action lookup, target application, result shaping, legacy action fallback, variants, and MAP options",
+    && executionSystemActionSource.includes("pf2eRuntime.useAction")
+    && pf2eRuntimeSource.includes("export function createPf2eRuntime")
+    && pf2eRuntimeSource.includes("export function createFoundryPf2eAdapter")
+    && pf2eRuntimeSource.includes("export function createFixturePf2eAdapter"),
+  "system action execution should cross the PF2e runtime Module seam, backed by production and fixture Adapters",
 );
 assert.ok(
   actionExecutorSource.includes('from "../execution/strike.js"'),
@@ -2898,8 +2904,8 @@ assert.ok(
   actionBuilderProjectionSource.includes("export function computeAreaMarker")
     && actionBuilderProjectionSource.includes("export function projectContextForDraftDestination")
     && actionBuilderProjectionSource.includes("export function projectContextForDraftStepOrigin")
-    && actionBuilderProjectionSource.includes("footprintPathDistanceFeet"),
-  "action builder projection should own area markers, draft destination origins, and shared footprint-distance projection",
+    && actionBuilderProjectionSource.includes('from "../../plan-state.js"'),
+  "action builder projection should own area markers and delegate draft state projection to plan state",
 );
 for (const pattern of [
   "computeAreaMarker",
@@ -2916,8 +2922,14 @@ for (const pattern of [
   );
 }
 assert.ok(
-  actionBuilderProjectionSource.includes("footprintPathDistanceFeet"),
-  "action builder projection should use shared token footprint path-distance helper for projected distances",
+  planStateSource.includes("export function createPlanState")
+    && planStateSource.includes("export function advancePlanState")
+    && planStateSource.includes("export function projectContextFromPlanState")
+    && planStateSource.includes("export function planStateSignature")
+    && planStateSource.includes("export function evaluatePlan")
+    && planStateSource.includes("footprintPathDistanceFeet")
+    && plannerSource.includes('from "./plan-state.js"'),
+  "planner and action builder should share one deep plan-state simulator and footprint-aware projection",
 );
 assert.equal(
   /function footprintCentersAt\s*\(/.test(actionBuilderSource),
@@ -2962,13 +2974,17 @@ assert.ok(
 );
 assert.equal(
   executionMovementSource.includes("movementBudgetForStep"),
-  false,
-  "movement execution should not read movement budget directly when movementRouteForStep owns validation",
+  true,
+  "movement execution should compare Foundry/PF2e's native measured cost with the action's movement budget",
+);
+assert.ok(
+  executionMovementSource.includes("measureMovementPath"),
+  "movement execution should use the live PF2e token as its final movement-cost oracle",
 );
 assert.equal(
   executionMovementSource.includes("const maxCost = movementBudgetForStep"),
   false,
-  "movement execution should not precompute route budget when movementRouteForStep owns the verdict",
+  "movement execution should not duplicate the route module's old maxCost flow",
 );
 assert.equal(
   /actor:\s*\{\s*\.\.\.\(context\?\.actor/.test(executionMovementSource),

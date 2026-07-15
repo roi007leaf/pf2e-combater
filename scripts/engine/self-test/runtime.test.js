@@ -125,6 +125,7 @@ import { draftForAutoFillGap, draftNormalActionCost, findProjectedDraftAction } 
 import { contextWithCurrentAutoFillTargets } from "../../ui/panel/auto-fill-context.js";
 import { gmPlayerPlanAccess, panelIntelLedgerView } from "../../ui/panel/context-workflow.js";
 import { choosePanelTarget } from "../../ui/panel/picker-workflow.js";
+import { choosePanelSwapItems } from "../../ui/panel/execution-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../../ui/range-overlay.js";
@@ -663,6 +664,8 @@ try {
   const raiseShieldCalls = [];
   const tokenUpdates = [];
   const tokenMoves = [];
+  const movementReverts = [];
+  const recordedMovementOrigins = new Map();
   const movementStarts = [];
   const conditionUpdates = [];
   const conditionIncreases = [];
@@ -699,6 +702,10 @@ try {
     },
     changeCarryType: async (item, options = {}) => {
       carryChanges.push({ item: item?.id ?? item?.name, carryType: options.carryType, handsHeld: options.handsHeld ?? 0 });
+      if (item?.system?.equipped) {
+        item.system.equipped.carryType = options.carryType;
+        item.system.equipped.handsHeld = options.handsHeld ?? 0;
+      }
     },
     createEmbeddedDocuments: async (type, documents) => {
       return documents.map((document, index) => {
@@ -717,11 +724,39 @@ try {
       id: "actor-token",
       width: 1,
       height: 1,
+      x: -2.5,
+      y: -2.5,
+      elevation: 0,
+      _source: { _movementHistory: [] },
       update: async (data) => {
         tokenUpdates.push(data);
+        Object.assign(actorToken.document, data);
       },
-      move: async (waypoint, options = {}) => {
-        tokenMoves.push({ waypoint, options });
+      move: async (waypointOrWaypoints, options = {}) => {
+        tokenMoves.push({ waypoint: waypointOrWaypoints, options });
+        const waypoints = Array.isArray(waypointOrWaypoints) ? waypointOrWaypoints : [waypointOrWaypoints];
+        const last = waypoints.at(-1);
+        const id = options.id;
+        recordedMovementOrigins.set(id, {
+          x: actorToken.document.x,
+          y: actorToken.document.y,
+          elevation: actorToken.document.elevation,
+        });
+        actorToken.document._source._movementHistory.unshift({ movementId: id });
+        Object.assign(actorToken.document, {
+          x: last.x,
+          y: last.y,
+          ...(last.elevation === undefined ? {} : { elevation: last.elevation }),
+        });
+        return true;
+      },
+      revertRecordedMovement: async (id) => {
+        if (actorToken.document._source._movementHistory[0]?.movementId !== id) return false;
+        const origin = recordedMovementOrigins.get(id);
+        if (!origin) return false;
+        movementReverts.push(id);
+        Object.assign(actorToken.document, origin);
+        actorToken.document._source._movementHistory.shift();
         return true;
       },
       movement: { state: "completed", id: null },
@@ -1135,14 +1170,15 @@ try {
   const delayedChatListeners = new Map();
   let delayedHookId = 0;
   const delayedChatOrder = [];
-  const emitDelayedSpellCard = () => {
+  const emitDelayedSpellCard = ({ id, originUuid, label }) => {
     const message = {
-      id: "spell-card-delayed",
+      id,
       documentName: "ChatMessage",
       speaker: { actor: "wizard-delayed" },
       timestamp: 100,
+      flags: { pf2e: { origin: { uuid: originUuid } } },
     };
-    delayedChatOrder.push("spell-card");
+    delayedChatOrder.push(label);
     for (const listener of delayedChatListeners.get("createChatMessage")?.values() ?? []) listener(message);
   };
   globalThis.Hooks = {
@@ -1172,7 +1208,18 @@ try {
       id: "entry-delayed-card",
       system: { prepared: { value: "spontaneous" }, slots: { slot1: { value: 1 } } },
       cast: async () => {
-        setTimeout(() => { setTimeout(emitDelayedSpellCard, 0); }, 0);
+        setTimeout(() => {
+          emitDelayedSpellCard({
+            id: "unrelated-same-actor-card",
+            originUuid: "Actor.wizard-delayed.Item.unrelated",
+            label: "unrelated-card",
+          });
+          setTimeout(() => emitDelayedSpellCard({
+            id: "spell-card-delayed",
+            originUuid: "Actor.wizard-delayed.Item.breath-fire",
+            label: "spell-card",
+          }), 0);
+        }, 0);
         return undefined;
       },
     };
@@ -1188,7 +1235,7 @@ try {
         executable: "open-item",
         spellcastingEntryId: "entry-delayed-card",
         castRank: 1,
-        item: { id: "breath-fire", type: "spell", name: "Breath Fire" },
+        item: { id: "breath-fire", uuid: "Actor.wizard-delayed.Item.breath-fire", type: "spell", name: "Breath Fire" },
         activityProfile: { spell: true },
         damageProfile: { formula: "2d6", type: "fire" },
       },
@@ -1196,7 +1243,11 @@ try {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     assert.equal(delayedCastResult.status, "done", "delayed spell-card cast should still complete");
-    assert.deepEqual(delayedChatOrder, ["spell-card", "damage"], "auto damage must wait for the spell chat card");
+    assert.deepEqual(
+      delayedChatOrder,
+      ["unrelated-card", "spell-card", "damage"],
+      "auto damage must ignore another same-actor card and wait for the matching spell origin",
+    );
     assert.ok(
       delayedCastResult.patch.execution.revert.ops.some((op) => op.kind === "chat" && op.messageId === "spell-card-delayed"),
       "delayed spell card should stay revertible after being captured from the chat hook",
@@ -1334,10 +1385,9 @@ try {
     action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
   });
   assert.equal(movementResult.status, "done");
-  assert.deepEqual(tokenMoves.at(-1), {
-    waypoint: { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
-    options: { method: "api", showRuler: true },
-  });
+  assert.deepEqual(tokenMoves.at(-1).waypoint, { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true });
+  assert.match(tokenMoves.at(-1).options.id, /^[A-Za-z0-9]{16}$/);
+  assert.deepEqual({ ...tokenMoves.at(-1).options, id: undefined }, { id: undefined, method: "api", showRuler: true });
   assert.deepEqual(tokenUpdates, [], "execution movement should use Foundry movement API instead of raw document update");
 
   // A flying Stride to a chosen elevation moves with the fly movement action and applies the
@@ -1348,10 +1398,7 @@ try {
     action: { name: "Stride", slug: "stride", movementAction: "fly", executable: "chat-guidance", requiresDestination: true },
   });
   assert.equal(flyMovementResult.status, "done");
-  assert.deepEqual(tokenMoves.at(-1), {
-    waypoint: { x: 2.5, y: -2.5, action: "fly", elevation: 15, explicit: true, checkpoint: true, snapped: true },
-    options: { method: "api", showRuler: true },
-  }, "a fly Stride should move with the fly movement action and apply the chosen elevation");
+  assert.deepEqual(tokenMoves.at(-1).waypoint, { x: 2.5, y: -2.5, action: "fly", elevation: 15, explicit: true, checkpoint: true, snapped: true }, "a fly Stride should move with the fly movement action and apply the chosen elevation");
 
   // A multi-waypoint flight applies each leg's own elevation, so the token can climb to one height
   // then settle at another along the path.
@@ -1366,14 +1413,14 @@ try {
   });
   assert.equal(flyMultiResult.status, "done");
   assert.deepEqual(
-    tokenMoves.slice(-2).map((entry) => ({
-      x: entry.waypoint.x, y: entry.waypoint.y, elevation: entry.waypoint.elevation, action: entry.waypoint.action,
+    tokenMoves.at(-1).waypoint.map((entry) => ({
+      x: entry.x, y: entry.y, elevation: entry.elevation, action: entry.action,
     })),
     [
       { x: 2.5, y: -2.5, elevation: 5, action: "fly" },
       { x: 7.5, y: -2.5, elevation: 10, action: "fly" },
     ],
-    "each waypoint of a flight should move to its own elevation",
+    "one native movement transaction should preserve each flight waypoint elevation",
   );
 
   const stepMovementResult = await executeDraftStep({
@@ -1382,10 +1429,7 @@ try {
     action: { name: "Step", slug: "step", executable: "chat-guidance" },
   });
   assert.equal(stepMovementResult.status, "done");
-  assert.deepEqual(tokenMoves.at(-1), {
-    waypoint: { x: -2.5, y: 2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
-    options: { method: "api", showRuler: true },
-  }, "executing a planned Step should move with Foundry's walk movement mode to the selected adjacent square");
+  assert.deepEqual(tokenMoves.at(-1).waypoint, { x: -2.5, y: 2.5, action: "walk", explicit: true, checkpoint: true, snapped: true }, "executing a planned Step should move with Foundry's walk movement mode to the selected adjacent square");
 
   const sparseStepMovementResult = await executeDraftStep({
     context: executionContext,
@@ -1398,10 +1442,7 @@ try {
     action: { name: "Step", executable: "chat-guidance" },
   });
   assert.equal(sparseStepMovementResult.status, "done");
-  assert.deepEqual(tokenMoves.at(-1), {
-    waypoint: { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
-    options: { method: "api", showRuler: true },
-  }, "Step execution should use the stored draft destination with Foundry's walk movement mode even when the resolved action lacks a slug");
+  assert.deepEqual(tokenMoves.at(-1).waypoint, { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true }, "Step execution should use the stored draft destination with Foundry's walk movement mode even when the resolved action lacks a slug");
 
   const beforeWaypointFailureMoveCount = tokenMoves.length;
   const waypointPathFailure = await executeDraftStep({
@@ -1420,6 +1461,38 @@ try {
   assert.equal(waypointPathFailure.error, "Waypoint path is beyond movement range.");
   assert.equal(tokenMoves.length, beforeWaypointFailureMoveCount, "over-budget custom waypoint path should not move the token");
 
+  const nativeMeasurements = [];
+  actorToken.measureMovementPath = (waypoints) => {
+    nativeMeasurements.push(waypoints);
+    return { cost: 5, waypoints };
+  };
+  const nativeOracleResult = await executeDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "native-oracle-waypoint-step",
+      destination: { x: 0, y: 20 },
+      movementPlan: {
+        native: false,
+        waypoints: [{ x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }],
+      },
+    },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(nativeOracleResult.status, "done", "Foundry/PF2e native measurement should be the final range oracle");
+  assert.equal(nativeMeasurements.length > 0, true);
+  assert.equal(Array.isArray(tokenMoves.at(-1).waypoint), true, "the natively measured route should stay one movement transaction");
+
+  actorToken.measureMovementPath = (waypoints) => ({ cost: 100, waypoints });
+  const beforeNativeRangeFailure = tokenMoves.length;
+  const nativeRangeFailure = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "native-range-failure", destination: { x: 5, y: 0 } },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  assert.equal(nativeRangeFailure.status, "failed");
+  assert.equal(tokenMoves.length, beforeNativeRangeFailure, "native PF2e cost beyond Speed must block execution");
+  delete actorToken.measureMovementPath;
+
   const waypointPathResult = await executeDraftStep({
     context: executionContext,
     step: {
@@ -1434,12 +1507,12 @@ try {
   });
   assert.equal(waypointPathResult.status, "done");
   assert.deepEqual(
-    tokenMoves.slice(-2).map((entry) => entry.waypoint),
+    tokenMoves.at(-1).waypoint,
     [
       { x: 2.5, y: -2.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
       { x: 7.5, y: 7.5, action: "walk", explicit: true, checkpoint: true, snapped: true },
     ],
-    "custom waypoint execution should move through stored waypoints without native movement plan side effects",
+    "custom waypoint execution should use one native multi-waypoint movement",
   );
 
   globalThis.canvas.grid.size = 100;
@@ -1783,6 +1856,27 @@ try {
   assert.equal(healingPotionQuantity, 2, "reverting should restore the potion's quantity");
   assert.deepEqual(consumableUpdates.at(-1), { item: "healing-potion", data: { "system.quantity.value": 2 } }, "revert should write the quantity back via item.update");
 
+  const conflictedPotionResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "conflicted-potion-step" },
+    action: { name: "Healing Potion", slug: "healing-potion", executable: "open-item", item: healingPotion },
+  });
+  assert.deepEqual(
+    conflictedPotionResult.patch.execution.revert.ops.find((op) => op.kind === "consumable")?.expectedAfter,
+    { quantity: 1 },
+    "consumable transaction should record the state it produced",
+  );
+  healingPotionQuantity = 0;
+  healingPotion.system.quantity.value = 0;
+  const consumableUpdatesBeforeConflict = consumableUpdates.length;
+  const conflictedPotionRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "conflicted-potion-step", execution: conflictedPotionResult.patch.execution },
+  });
+  assert.equal(healingPotionQuantity, 0, "Undo must not overwrite a later consumable quantity change");
+  assert.equal(consumableUpdates.length, consumableUpdatesBeforeConflict);
+  assert.ok(conflictedPotionRevert.warnings.some((warning) => warning.includes("state changed")));
+
   const lastPotionRevert = await revertDraftStep({ context: executionContext, step: { instanceId: "last-potion-step", execution: lastPotionResult.patch.execution } });
   assert.equal(lastPotionRevert.status, "reverted");
   assert.equal(effectCreates.at(-1)?.type, "Item", "reverting a fully-consumed item should recreate it via createEmbeddedDocuments");
@@ -1912,6 +2006,22 @@ try {
   });
   assert.equal(quickenedCastingRevert.status, "reverted");
   assert.equal(quickenedCastingFrequency, 3, "reverting should restore the spent Frequency use");
+
+  const conflictedFrequencyResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "conflicted-frequency-step" },
+    action: { name: "Quickened Casting", slug: "quickened-casting", executable: "open-item", item: quickenedCastingItem },
+  });
+  quickenedCastingFrequency = 1;
+  quickenedCastingItem.system.frequency.value = 1;
+  const frequencyUpdatesBeforeConflict = consumableUpdates.length;
+  const conflictedFrequencyRevert = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "conflicted-frequency-step", execution: conflictedFrequencyResult.patch.execution },
+  });
+  assert.equal(quickenedCastingFrequency, 1, "Undo must not overwrite a later Frequency change");
+  assert.equal(consumableUpdates.length, frequencyUpdatesBeforeConflict);
+  assert.ok(conflictedFrequencyRevert.warnings.some((warning) => warning.includes("state changed")));
 
   // A feat/action with no .use()/.consume()/.cast() (e.g. Quick Alchemy) must route through
   // game.pf2e.rollItemMacro -- the same public entry point real hotbar "Use" macros call -- instead
@@ -2277,27 +2387,76 @@ try {
   globalThis.canvas.tokens.placeables = previousAreaPlaceables;
 
   // --- Revert execution ---------------------------------------------------
+  const regularMove = actorToken.document.move;
+  try {
+    actorToken.document.move = async (waypointOrWaypoints, options = {}) => {
+      tokenMoves.push({ waypoint: waypointOrWaypoints, options });
+      const waypoints = Array.isArray(waypointOrWaypoints) ? waypointOrWaypoints : [waypointOrWaypoints];
+      const last = waypoints.at(-1);
+      recordedMovementOrigins.set(options.id, {
+        x: actorToken.document.x,
+        y: actorToken.document.y,
+        elevation: actorToken.document.elevation,
+      });
+      actorToken.document._source._movementHistory.unshift({ movementId: options.id });
+      actorToken.document.x = (actorToken.document.x + last.x) / 2;
+      actorToken.document.y = (actorToken.document.y + last.y) / 2;
+      return false;
+    };
+    const partialMovement = await executeDraftStep({
+      context: executionContext,
+      step: { instanceId: "partial-native-move-step", destination: { x: 5, y: 0 } },
+      action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+    });
+    assert.equal(partialMovement.status, "done", "a region-stopped partial move still spends the movement action");
+    assert.equal(partialMovement.patch.execution.result, "Movement stopped before the destination.");
+    const partialOp = partialMovement.patch.execution.revert.ops.find((op) => op.kind === "movement");
+    assert.equal(partialOp.movementId, tokenMoves.at(-1).options.id, "partial movement should retain its native history ID");
+    const partialRevert = await revertDraftStep({
+      context: executionContext,
+      step: { instanceId: "partial-native-move-step", execution: partialMovement.patch.execution },
+    });
+    assert.equal(partialRevert.warnings.length, 0, "native partial movement should remain safely revertible");
+  } finally {
+    actorToken.document.move = regularMove;
+  }
+
+  const nativeUndoMovement = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "native-undo-move-step", destination: { x: 5, y: 0 } },
+    action: { name: "Stride", slug: "stride", executable: "chat-guidance", requiresDestination: true },
+  });
+  const nativeUndoOp = nativeUndoMovement.patch.execution.revert.ops.find((op) => op.kind === "movement");
+  assert.match(nativeUndoOp.movementId, /^[A-Za-z0-9]{16}$/, "movement undo should store the exact Foundry movement id");
+  assert.deepEqual(nativeUndoOp.expectedAfter, { x: 2.5, y: -2.5 });
+  const nativeUndoResult = await revertDraftStep({
+    context: executionContext,
+    step: { instanceId: "native-undo-move-step", execution: nativeUndoMovement.patch.execution },
+  });
+  assert.equal(nativeUndoResult.warnings.length, 0);
+  assert.equal(movementReverts.at(-1), nativeUndoOp.movementId, "movement undo should use Foundry's recorded-movement API");
+
+  // An older plan movement must not erase later movement. Its expected-after snapshot no longer
+  // matches, so Undo warns and leaves the token/history untouched.
+  const movementRevertsBeforeConflict = movementReverts.length;
   const moveRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "move-step", execution: movementResult.patch.execution },
   });
   assert.equal(moveRevert.status, "reverted");
   assert.equal(moveRevert.patch.execution.status, "pending", "revert should reset the step to pending");
-  assert.deepEqual(tokenUpdates.at(-1), { x: -2.5, y: -2.5 }, "reverting a move should reposition the token to its captured origin");
+  assert.equal(movementReverts.length, movementRevertsBeforeConflict, "conflicted movement undo must not touch Foundry movement history");
+  assert.ok(moveRevert.warnings.some((warning) => warning.includes("state changed")), "conflicted movement undo should explain why it was skipped");
 
-  // Reverting a multi-waypoint Stride retraces the path in reverse (skipping the current spot,
-  // ending at the origin) rather than cutting a straight line back.
+  // Same conflict guard applies to an older multi-waypoint transaction.
   const tokenUpdatesBeforeWaypointRevert = tokenUpdates.length;
   const waypointRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "waypoint-move-step", execution: waypointPathResult.patch.execution },
   });
   assert.equal(waypointRevert.status, "reverted");
-  assert.deepEqual(
-    tokenUpdates.slice(tokenUpdatesBeforeWaypointRevert),
-    [{ x: 2.5, y: -2.5 }, { x: -2.5, y: -2.5 }],
-    "reverting a waypoint stride should retrace the waypoints in reverse, not cut a straight line",
-  );
+  assert.equal(tokenUpdates.length, tokenUpdatesBeforeWaypointRevert);
+  assert.ok(waypointRevert.warnings.some((warning) => warning.includes("state changed")));
 
   const standRevert = await revertDraftStep({
     context: executionContext,
@@ -2467,6 +2626,7 @@ try {
   const preparedSlotOp = preparedSpellResult.patch.execution.revert?.ops?.find((op) => op.kind === "slot");
   assert.equal(preparedSlotOp.slotKey, "slot1", "prepared spell revert should record the prepared slot key");
   assert.equal(preparedSlotOp.preparedIndex, 0, "prepared spell revert should record the prepared slot index");
+  assert.deepEqual(preparedSlotOp.expectedAfter, { preparedExpended: true });
   const preparedSpellRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "prepared-spell-step", execution: preparedSpellResult.patch.execution },
@@ -2478,6 +2638,16 @@ try {
     { "system.slots.slot1.prepared.0.expended": false },
     "prepared spell revert should update the exact prepared spell slot",
   );
+  const preparedUpdatesBeforeConflict = preparedSpellSlotUpdates.length;
+  const preparedSlotConflict = await revertDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "prepared-spell-conflict-step",
+      execution: { status: "done", revert: { ops: [preparedSlotOp], manualWarnings: [] } },
+    },
+  });
+  assert.equal(preparedSpellSlotUpdates.length, preparedUpdatesBeforeConflict, "Undo must not re-write a slot already changed after casting");
+  assert.ok(preparedSlotConflict.warnings.some((warning) => warning.includes("state changed")));
 
   const preparedApiSlot = { id: "prepared-api-spell", expended: true };
   const preparedApiCalls = [];
@@ -2622,6 +2792,7 @@ try {
   const spontaneousSlotOp = spontaneousSpellResult.patch.execution.revert?.ops?.find((op) => op.kind === "slot");
   assert.equal(spontaneousSlotOp.slotKey, "slot2", "spontaneous spell revert should record the rank slot key");
   assert.equal(spontaneousSlotOp.valueBefore, 1, "spontaneous spell revert should record the pre-cast slot count");
+  assert.deepEqual(spontaneousSlotOp.expectedAfter, { value: 0 });
   const spontaneousSpellRevert = await revertDraftStep({
     context: executionContext,
     step: { instanceId: "spontaneous-spell-step", execution: spontaneousSpellResult.patch.execution },
@@ -2633,6 +2804,18 @@ try {
     { "system.slots.slot2.value": 1 },
     "spontaneous spell revert should update the rank's remaining slot count",
   );
+  spontaneousEntry.system.slots.slot2.value = 2;
+  const spontaneousUpdatesBeforeConflict = spontaneousSlotUpdates.length;
+  const spontaneousSlotConflict = await revertDraftStep({
+    context: executionContext,
+    step: {
+      instanceId: "spontaneous-spell-conflict-step",
+      execution: { status: "done", revert: { ops: [spontaneousSlotOp], manualWarnings: [] } },
+    },
+  });
+  assert.equal(spontaneousEntry.system.slots.slot2.value, 2, "Undo must not overwrite a later spontaneous-slot change");
+  assert.equal(spontaneousSlotUpdates.length, spontaneousUpdatesBeforeConflict);
+  assert.ok(spontaneousSlotConflict.warnings.some((warning) => warning.includes("state changed")));
 
   const increasesBeforeRevertAll = conditionIncreases.length;
   const revertAll = await revertDraftExecution({
@@ -3329,6 +3512,140 @@ assert.equal(builderModel.draft.steps[0].warning, "");
 assert.equal(builderModel.tabs.free.all[0].key, "wayfinder");
 assert.equal(builderModel.tabs.reaction.all[0].key, "reactive-shield");
 assert.equal(builderModel.autoFill.summary, "Shield -> Fireball");
+
+const swapItemsChoiceAction = {
+  id: "swap-items",
+  key: "swap-items",
+  slug: "swap-items",
+  name: "Swap Items",
+  actionCost: 1,
+  executable: "swap-items",
+  activityProfile: {
+    swapsItems: true,
+    heldItems: [
+      { id: "held-dagger", name: "Dagger" },
+      { id: "held-shield", name: "Shield" },
+    ],
+    drawableItems: [
+      { id: "worn-mace", name: "Mace" },
+      { id: "worn-bow", name: "Shortbow" },
+    ],
+  },
+};
+const unresolvedSwapReadiness = executionReadinessForStep(
+  { instanceId: "swap-items-draft-1", actionKey: "swap-items" },
+  swapItemsChoiceAction,
+);
+assert.deepEqual(
+  unresolvedSwapReadiness.choices,
+  ["swap-items"],
+  "Swap Items with multiple valid pairs should require a visible draft choice before execution",
+);
+assert.equal(
+  executionReadinessForStep({
+    instanceId: "swap-items-draft-1",
+    actionKey: "swap-items",
+    swapHeldItemId: "held-shield",
+    swapDrawItemId: "worn-bow",
+  }, swapItemsChoiceAction).status,
+  "ready",
+  "a valid persisted Swap Items pair should unblock execution",
+);
+const swapItemsDraftModel = decorateBuilder(buildActionBuilderModel({
+  context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
+  candidates: [swapItemsChoiceAction],
+  plans: [],
+  draft: { steps: [{ instanceId: "swap-items-draft-1", actionKey: "swap-items", actionCost: 1 }] },
+  favorites: new Set(),
+}), "one");
+assert.equal(
+  swapItemsDraftModel.draft.steps[0].canChooseSwapItems,
+  true,
+  "Swap Items draft rows should expose an item-pair selector",
+);
+assert.equal(
+  swapItemsDraftModel.draft.steps[0].canExecuteStep,
+  false,
+  "Swap Items should stay blocked until held and drawable items are selected",
+);
+assert.ok(
+  panelTemplateSource.includes("data-choose-swap-items"),
+  "panel template should render the Swap Items selector control",
+);
+const swapPickerHeld = {
+  id: "held-dagger",
+  name: "Dagger",
+  type: "weapon",
+  system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } },
+};
+const swapPickerDraw = {
+  id: "worn-mace",
+  name: "Mace",
+  type: "weapon",
+  system: { equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 1 } },
+};
+const swapPickerHeldShield = {
+  id: "held-shield",
+  name: "Shield",
+  type: "equipment",
+  system: { equipped: { carryType: "held", handsHeld: 1 }, usage: { hands: 1 } },
+};
+const swapPickerDrawBow = {
+  id: "worn-bow",
+  name: "Shortbow",
+  type: "weapon",
+  system: { equipped: { carryType: "worn", handsHeld: 0 }, usage: { hands: 2 } },
+};
+const swapPickerContext = {
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [swapPickerHeld, swapPickerDraw, swapPickerDrawBow],
+        equipment: [swapPickerHeldShield],
+      },
+    },
+  },
+};
+let persistedSwapPickerStep = null;
+let swapPickerDialogContent = "";
+const previousFoundryForSwapPicker = globalThis.foundry;
+globalThis.foundry = {
+  applications: {
+    api: {
+      DialogV2: {
+        wait: async (config) => {
+          swapPickerDialogContent = config.content;
+          return { swapHeldItemId: "held-shield", swapDrawItemId: "worn-bow" };
+        },
+      },
+    },
+  },
+};
+const swapPickerStep = {
+  instanceId: "swap-items-draft-1",
+  actionKey: "swap-items",
+  action: swapItemsChoiceAction,
+  execution: { status: "pending" },
+};
+await choosePanelSwapItems({
+  _context: swapPickerContext,
+  _canExecuteDraft: () => true,
+  _findActiveStep: () => swapPickerStep,
+  _findDraftStep: () => swapPickerStep,
+  _contextForDraftStep: () => swapPickerContext,
+  _stepWithRetryReset: (step, fields) => ({ ...step, ...fields, execution: { status: "pending" } }),
+  _persistActiveDraftStep: async (step) => { persistedSwapPickerStep = step; },
+  render: async () => {},
+}, swapPickerStep.instanceId);
+globalThis.foundry = previousFoundryForSwapPicker;
+assert.match(swapPickerDialogContent, /Dagger/);
+assert.match(swapPickerDialogContent, /Shield/);
+assert.match(swapPickerDialogContent, /Mace/);
+assert.match(swapPickerDialogContent, /Shortbow/);
+assert.equal(persistedSwapPickerStep?.swapHeldItemId, "held-shield");
+assert.equal(persistedSwapPickerStep?.swapDrawItemId, "worn-bow");
+assert.equal(persistedSwapPickerStep?.swapHeldItemName, "Shield");
+assert.equal(persistedSwapPickerStep?.swapDrawItemName, "Shortbow");
 
 const staleRecallKnowledgeDraftModel = decorateBuilder(buildActionBuilderModel({
   context: { combat: { id: "combat-1", round: 1 }, combatant: { id: "c1" }, actor: { uuid: "Actor.a1" } },
@@ -7138,9 +7455,9 @@ assert.equal(
 // The live candidate's slug is the action id ("generic-drop-prone") with no appliesConditions —
 // match the real shape so the conflict can't regress on the exact-slug assumption.
 const dropProneStridePlans = buildTurnPlans(fighterContext, [
-  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", allowLowConfidenceAutoFill: true, reason: "Cover." },
   { id: "stride", name: "Stride", slug: "stride", source: "generic", actionCost: 1, score: 55, confidence: "medium", reason: "Move." },
-  { id: "crawl", name: "Crawl", slug: "crawl", source: "generic", actionCost: 1, score: 20, confidence: "low", reason: "Crawl." },
+  { id: "crawl", name: "Crawl", slug: "crawl", source: "generic", actionCost: 1, score: 20, confidence: "medium", reason: "Crawl." },
 ]);
 assert.equal(
   dropProneStridePlans.some((plan) =>
@@ -7157,7 +7474,7 @@ assert.ok(
 // The Stride can be baked into a move-and-strike composite (e.g. "stride-away-strike-dart",
 // strideCount > 0) whose slug is NOT a bare move slug. Drop Prone must still conflict with it.
 const dropProneMoveStrikePlans = buildTurnPlans(fighterContext, [
-  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", allowLowConfidenceAutoFill: true, reason: "Cover." },
   { id: "stride-away-strike-dart", name: "Stride + Dart", slug: "stride-away-strike-dart", source: "strike", actionCost: 2, score: 80, confidence: "medium", reason: "Kite.", activityProfile: { includesStrike: true, strideCount: 1 } },
 ]);
 assert.equal(
@@ -7183,7 +7500,7 @@ assert.equal(
   "standing removes prone, so the same plan must not also Crawl or use prone-only Take Cover",
 );
 const dropProneTakeCoverPlan = bestTurnPlan({ ...fighterContext, actionsSpent: { normal: 1, total: 1 } }, [
-  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", reason: "Cover." },
+  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", allowLowConfidenceAutoFill: true, reason: "Cover." },
 ]);
 assert.equal(
   dropProneTakeCoverPlan.summary,
@@ -7193,9 +7510,9 @@ assert.equal(
 
 const fullBudgetPreferencePlans = buildTurnPlans(fighterContext, [
   { id: "two-action-burst", name: "Two Action Burst", slug: "two-action-burst", source: "system-inferred", actionCost: 2, score: 100, confidence: "high", reason: "Strong two-action option." },
-  { id: "minor-one", name: "Minor One", slug: "minor-one", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
-  { id: "minor-two", name: "Minor Two", slug: "minor-two", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
-  { id: "minor-three", name: "Minor Three", slug: "minor-three", source: "system-inferred", actionCost: 1, score: 30, confidence: "low", reason: "Legal spare-action option." },
+  { id: "minor-one", name: "Minor One", slug: "minor-one", source: "system-inferred", actionCost: 1, score: 30, confidence: "medium", reason: "Legal spare-action option." },
+  { id: "minor-two", name: "Minor Two", slug: "minor-two", source: "system-inferred", actionCost: 1, score: 30, confidence: "medium", reason: "Legal spare-action option." },
+  { id: "minor-three", name: "Minor Three", slug: "minor-three", source: "system-inferred", actionCost: 1, score: 30, confidence: "medium", reason: "Legal spare-action option." },
 ]);
 assert.equal(
   fullBudgetPreferencePlans[0].totalCost,
@@ -12330,6 +12647,8 @@ assert.equal(swapItemsAction.executable, "swap-items");
 assert.equal(swapItemsAction.combatUse, "browse-only", "Swap Items must stay player-selected instead of entering Auto-fill");
 assert.deepEqual(swapItemsAction.activityProfile.heldItemIds, ["w-held"]);
 assert.deepEqual(swapItemsAction.activityProfile.drawableItemIds, ["w-sheathed"]);
+assert.deepEqual(swapItemsAction.activityProfile.heldItems, [{ id: "w-held", name: "Dagger" }]);
+assert.deepEqual(swapItemsAction.activityProfile.drawableItems, [{ id: "w-sheathed", name: "Longsword" }]);
 const noHeldSwapSources = readActionSources({
   ...weaponActionsContext,
   actor: {
@@ -12364,6 +12683,73 @@ const nonWeaponSwapSources = readActionSources({
 const nonWeaponSwap = nonWeaponSwapSources.find((action) => action.slug === "swap-items");
 assert.deepEqual(nonWeaponSwap?.activityProfile?.heldItemIds, ["held-tool"], "Swap held choices should include physical equipment, not only weapons");
 assert.deepEqual(nonWeaponSwap?.activityProfile?.drawableItemIds, ["worn-potion"], "Swap draw choices should include worn consumables, not only weapons");
+const heldUsageOnlySwapSources = readActionSources({
+  actor: {
+    document: {
+      itemTypes: {
+        weapon: [{
+          id: "held-sword",
+          name: "Sword",
+          type: "weapon",
+          system: {
+            equipped: { carryType: "held", handsHeld: 1 },
+            usage: { value: "held-in-one-hand", type: "held", hands: 1 },
+          },
+        }],
+        equipment: [
+          {
+            id: "worn-clothing",
+            name: "Clothing",
+            type: "equipment",
+            system: {
+              equipped: { carryType: "worn", handsHeld: 0 },
+              usage: { value: "wornclothing", type: "worn" },
+            },
+          },
+          {
+            id: "worn-hook",
+            name: "Grappling Hook",
+            type: "equipment",
+            system: {
+              equipped: { carryType: "worn", handsHeld: 0 },
+              usage: { value: "held-in-one-hand", type: "held", hands: 1 },
+            },
+          },
+          {
+            id: "worn-ring",
+            name: "Ring",
+            type: "equipment",
+            system: {
+              equipped: { carryType: "worn", handsHeld: 0 },
+              usage: { value: "wornring", type: "worn" },
+            },
+          },
+        ],
+        consumable: [{
+          id: "worn-antidote",
+          name: "Antidote",
+          type: "consumable",
+          system: {
+            equipped: { carryType: "worn", handsHeld: 0 },
+            usage: { value: "held-in-one-hand", type: "held", hands: 1 },
+          },
+        }],
+        action: [],
+        feat: [],
+        feature: [],
+      },
+      items: [],
+    },
+  },
+  profile: {},
+  targets: [],
+});
+const heldUsageOnlySwap = heldUsageOnlySwapSources.find((action) => action.slug === "swap-items");
+assert.deepEqual(
+  heldUsageOnlySwap?.activityProfile?.drawableItemIds,
+  ["worn-antidote", "worn-hook"],
+  "Swap draw choices should include only worn items whose PF2e usage is held",
+);
 const ownTurnDropProne = weaponSources.find((action) => action.slug === "drop-prone");
 assert.ok(ownTurnDropProne, "Drop Prone should be offered when the actor lacks its own");
 assert.equal(ownTurnDropProne.actionCost, 1);
@@ -25150,6 +25536,8 @@ try {
   };
   const movedUpdates = [];
   const minionMoves = [];
+  const minionMovementReverts = [];
+  const minionMovementOrigins = new Map();
   const movingMinionToken = {
     id: "familiar-token",
     name: "Familiar",
@@ -25160,6 +25548,7 @@ try {
       y: -25,
       width: 1,
       height: 1,
+      _source: { _movementHistory: [] },
       update: async (update) => {
         movedUpdates.push(update);
         movingMinionToken.document.x = update.x;
@@ -25168,9 +25557,22 @@ try {
       },
       move: async (waypoint, options = {}) => {
         minionMoves.push({ waypoint, options });
+        minionMovementOrigins.set(options.id, { x: movingMinionToken.document.x, y: movingMinionToken.document.y });
+        movingMinionToken.document._source._movementHistory.unshift({ movementId: options.id });
         movingMinionToken.document.x = waypoint.x;
         movingMinionToken.document.y = waypoint.y;
         movingMinionToken.center = { x: waypoint.x + 25, y: waypoint.y + 25 };
+        return true;
+      },
+      revertRecordedMovement: async (id) => {
+        if (movingMinionToken.document._source._movementHistory[0]?.movementId !== id) return false;
+        const origin = minionMovementOrigins.get(id);
+        if (!origin) return false;
+        minionMovementReverts.push(id);
+        movingMinionToken.document._source._movementHistory.shift();
+        movingMinionToken.document.x = origin.x;
+        movingMinionToken.document.y = origin.y;
+        movingMinionToken.center = { x: origin.x + 25, y: origin.y + 25 };
         return true;
       },
       movement: { state: "completed", id: null },
@@ -25200,10 +25602,8 @@ try {
     },
   };
   await executePanelMinionPlanStep(targetPanel, "command-step", 0);
-  assert.deepEqual(minionMoves[0], {
-    waypoint: { x: 225, y: -25, action: "walk", explicit: true, checkpoint: true, snapped: true },
-    options: { method: "api", showRuler: true },
-  }, "minion Stride play should move the companion to its selected destination without using the combat tracker");
+  assert.deepEqual(minionMoves[0].waypoint, { x: 225, y: -25, action: "walk", explicit: true, checkpoint: true, snapped: true }, "minion Stride play should move the companion to its selected destination without using the combat tracker");
+  assert.match(minionMoves[0].options.id, /^[A-Za-z0-9]{16}$/);
   assert.equal(targetDraftStep.activityProfile.minionPlan.stepStates[0].execution.status, "done");
   const executedMinionCommandView = decorateBuilder(buildActionBuilderModel({
     context: fighterContext,
@@ -25214,7 +25614,8 @@ try {
   assert.equal(executedMinionCommandView.draft.steps[0].minionPlan.steps[0].canExecute, false);
   assert.equal(executedMinionCommandView.draft.steps[0].minionPlan.steps[0].canRevertStep, true);
   await revertPanelMinionPlanStep(targetPanel, "command-step", 0);
-  assert.deepEqual(movedUpdates.at(-1), { x: -25, y: -25 }, "minion Stride revert should restore the companion token origin");
+  assert.equal(minionMovementReverts.at(-1), minionMoves[0].options.id, "minion Stride revert should use Foundry movement history");
+  assert.deepEqual({ x: movingMinionToken.document.x, y: movingMinionToken.document.y }, { x: -25, y: -25 });
   assert.equal(targetDraftStep.activityProfile.minionPlan.stepStates[0].execution.status, "pending");
 
   targetDraftStep = {

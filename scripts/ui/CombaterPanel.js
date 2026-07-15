@@ -23,6 +23,7 @@ import {
   cyclePanelMinionPlanStep,
   cyclePanelStepMap,
   cyclePanelStepMovement,
+  cyclePanelStepRoute,
   cyclePanelStepWeapon,
   duplicatePanelDraftStep,
   executePanelMinionPlanStep,
@@ -63,6 +64,7 @@ import {
 } from "./panel/picker-workflow.js";
 import {
   applyPanelExecutionResult,
+  choosePanelSwapItems,
   chooseSustainedSpellForStep,
   confirmPanelRetchResult,
   executePanelDraftStep,
@@ -99,6 +101,10 @@ import {
 import { readCombatContext } from "../state/combat-context.js";
 import { setPlanPreferenceFeedback } from "../state/preference-profile.js";
 import {
+  nextResourceHorizon,
+  normalizeResourceHorizon,
+} from "../rules/resource-horizon.js";
+import {
   debugAction,
   DEFAULT_TAB,
   explicitTargetFields,
@@ -119,6 +125,7 @@ const RESET_PIN_REFRESH_SOURCES = new Set([
   "item-delete",
   "item-update",
   "intel-update",
+  "resource-horizon",
   "target-change",
   "tactic-update",
   "token-refresh",
@@ -228,6 +235,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       : !settingOrDefault(SETTINGS.compactDefault, true);
     this.activeTab = TABS.has(state.activeTab) ? state.activeTab : DEFAULT_TAB;
     this.searchQuery = typeof state.searchQuery === "string" ? state.searchQuery : "";
+    this.resourceHorizon = normalizeResourceHorizon(state.resourceHorizon);
     this._context = null;
     this._planningContext = null;
     this._candidates = [];
@@ -348,7 +356,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       }
       : context;
     const candidateBuild = buildCandidates(remainingContext);
-    return buildTurnPlans(remainingContext, candidateBuild.candidates.map(withBuilderActionFields));
+    return buildTurnPlans(
+      remainingContext,
+      candidateBuild.candidates.map(withBuilderActionFields),
+      { reservedSteps: lockedDraft.steps },
+    );
   }
 
   _onRender(context, options) {
@@ -711,8 +723,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return cyclePanelStepMovement(this, instanceId);
   }
 
+  async _cycleStepRoute(instanceId) {
+    return cyclePanelStepRoute(this, instanceId);
+  }
+
   async _cycleStepWeapon(instanceId) {
     return cyclePanelStepWeapon(this, instanceId);
+  }
+
+  async _cycleResourceHorizon(direction = 1) {
+    this.resourceHorizon = nextResourceHorizon(this.resourceHorizon, direction);
+    writePanelState({ resourceHorizon: this.resourceHorizon });
+    await this.refresh("resource-horizon");
+  }
+
+  async _chooseSwapItems(instanceId) {
+    return choosePanelSwapItems(this, instanceId);
   }
 
   async _cycleMinionPlanStep(instanceId, stepIndex, direction = 1) {

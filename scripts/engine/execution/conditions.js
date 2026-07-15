@@ -1,11 +1,47 @@
 import { t } from "../../i18n.js";
+import { collectionValues } from "../../foundry-data.js";
 import { executionPatch, revertEnvelope } from "./results.js";
+import { canRestoreSnapshot } from "../revert/transaction.js";
 
 const SUCCESS_DEGREES = new Set(["success", "criticalSuccess", "critical-success", "critical success", 2, 3]);
 
 function numeric(value, fallback = null) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function conditionSlug(condition) {
+  return String(
+    condition?.slug
+      ?? condition?.system?.slug?.value
+      ?? condition?.system?.slug
+      ?? condition?.name
+      ?? "",
+  ).trim().toLowerCase();
+}
+
+function actorConditionValue(actor, slug) {
+  const collection = actor?.itemTypes?.condition;
+  if (collection === undefined || collection === null) return null;
+  const condition = collectionValues(collection).find((entry) => conditionSlug(entry) === slug);
+  if (!condition) return 0;
+  return numeric(
+    condition?.system?.value?.value
+      ?? condition?.system?.value
+      ?? condition?.system?.badge?.value
+      ?? condition?.value,
+    1,
+  );
+}
+
+function conditionRevertOp(actor, slug, options = {}) {
+  const conditionValue = actorConditionValue(actor, slug);
+  return {
+    kind: "condition",
+    slug,
+    ...options,
+    ...(conditionValue === null ? {} : { expectedAfter: { conditionValue } }),
+  };
 }
 
 export async function decreaseCondition(actor, slug, options = {}) {
@@ -32,7 +68,14 @@ export async function increaseCondition(actor, slug, options = {}) {
   return false;
 }
 
-export async function revertCondition(op, { actor }) {
+export async function revertCondition(op, { actor, warnings }) {
+  const currentValue = actorConditionValue(actor, op?.slug);
+  if (currentValue !== null && !canRestoreSnapshot({
+    current: { conditionValue: currentValue },
+    expectedAfter: op?.expectedAfter,
+    warnings,
+    label: op?.slug ?? "condition",
+  })) return;
   if (op?.remove === true) {
     const cleared = await decreaseCondition(actor, op?.slug, { forceRemove: true });
     if (!cleared) throw new Error(t("Revert.CouldNotClear", "could not clear {slug}", { slug: op?.slug ?? "condition" }));
@@ -45,7 +88,7 @@ export async function revertCondition(op, { actor }) {
 export async function executeStand(actor) {
   const removed = await decreaseCondition(actor, "prone", { forceRemove: true });
   return removed
-    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.RemovedProne", "Removed prone."), revert: revertEnvelope([{ kind: "condition", slug: "prone" }]) }) }
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.RemovedProne", "Removed prone."), revert: revertEnvelope([conditionRevertOp(actor, "prone")]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotRemoveProne", "Could not remove prone.") }), error: t("Exec.CouldNotRemoveProne", "Could not remove prone.") };
 }
 
@@ -96,11 +139,16 @@ async function applyRetchResult(actor, succeeded, critical) {
   if (removed <= 0) {
     return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotReduceSickened", "Could not reduce sickened.") }), error: t("Exec.CouldNotReduceSickened", "Could not reduce sickened.") };
   }
+  const currentValue = actorConditionValue(actor, "sickened");
   return {
     status: "done",
     patch: executionPatch({}, "done", {
       result: removed >= 2 ? t("Exec.ReducedSickened2", "Reduced sickened by 2.") : t("Exec.ReducedSickened", "Reduced sickened."),
-      revert: revertEnvelope(Array.from({ length: removed }, () => ({ kind: "condition", slug: "sickened" }))),
+      revert: revertEnvelope(Array.from({ length: removed }, (_value, index) => ({
+        kind: "condition",
+        slug: "sickened",
+        ...(currentValue === null ? {} : { expectedAfter: { conditionValue: currentValue + index } }),
+      }))),
     }),
   };
 }
@@ -137,6 +185,6 @@ export async function executeRetch({ actor, action, event, choices }) {
 export async function executeDropProne(actor) {
   const added = await increaseCondition(actor, "prone");
   return added
-    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedProne", "Dropped prone."), revert: revertEnvelope([{ kind: "condition", slug: "prone", remove: true }]) }) }
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedProne", "Dropped prone."), revert: revertEnvelope([conditionRevertOp(actor, "prone", { remove: true })]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDropProne", "Could not drop prone.") }), error: t("Exec.CouldNotDropProne", "Could not drop prone.") };
 }

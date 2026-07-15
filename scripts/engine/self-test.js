@@ -1,6 +1,16 @@
 import "./self-test/source-architecture.test.js";
+import "./self-test/action-facts.test.js";
 import "./self-test/roll-preflight.test.js";
 import "./self-test/preference-learning.test.js";
 
 await import("./self-test/recall-knowledge.test.js");
+await import("./self-test/pf2e-runtime.test.js");
+await import("./self-test/live-engine-matrix.test.js");
+await import("./self-test/planner-search.test.js");
+await import("./self-test/planner-quality.test.js");
+await import("./self-test/planner-resource-budget.test.js");
+await import("./self-test/plan-state.test.js");
+await import("./self-test/tactical-routes.test.js");
+await import("./self-test/resource-horizon.test.js");
+await import("./self-test/transaction-revert.test.js");
 await import("./self-test/runtime.test.js");

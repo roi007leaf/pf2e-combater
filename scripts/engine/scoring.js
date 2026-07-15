@@ -2,6 +2,7 @@ import { classTacticAdjustment } from "../rules/class-tactics.js";
 import { canUseIntelCategory } from "../rules/intel-ledger.js";
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
+import { resourceHorizonAdjustment } from "../rules/resource-horizon.js";
 import { backingStrikeForAction, backingStrikesForAction } from "./backing-strike.js";
 import {
   actionTraitSlugs,
@@ -20,6 +21,7 @@ import {
 } from "./scoring/skills.js";
 import { spellTacticalAdjustment } from "./scoring/spells.js";
 import { nativeRollContextPreflight } from "./scoring/roll-preflight.js";
+import { nativeOutcomeRanking } from "./scoring/probability.js";
 import { blockedCandidateResult } from "./scoring/gates.js";
 import {
   bestTargetForAction,
@@ -82,12 +84,15 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   const skillCheck = canUseTargetSave(context, target, skillDcSlug) ? skillCheckScore(profile, target, action) : null;
   const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
   const spellAdjustment = spellTacticalAdjustment(action, role, context);
+  const resourceAdjustment = resourceHorizonAdjustment(context, action);
   const preflightAllowed = context?.isGM === true
     || (typeof context?.isGM !== "boolean" && globalThis.game?.user?.isGM === true)
     || settingOrDefault(SETTINGS.nativeRollContextPreflight, false);
-  const nativePreflight = preflightAllowed
+  const rawNativePreflight = preflightAllowed
     ? nativeRollContextPreflight(context, action, { target })
     : { available: false, status: "disabled", scoreApplied: false };
+  const nativeOutcome = nativeOutcomeRanking(action, rawNativePreflight);
+  const nativePreflight = nativeOutcome.preflight;
 
   const blocked = blockedCandidateResult(context, action, {
     role,
@@ -144,6 +149,11 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(...spellAdjustment.reasons);
   }
 
+  if (resourceAdjustment.scoreDelta) {
+    score += resourceAdjustment.scoreDelta;
+    reasons.push(...resourceAdjustment.reasons);
+  }
+
   // A multi-action offensive action commits several actions to one effect (a
   // 2-action nuke, or a Stride -> Stride -> Strike that closes a gap and attacks).
   // The planner sums per-step scores, so without this it is out-summed by the cheap
@@ -174,6 +184,11 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     const targetDependentGain = Math.max(0, score - baseScore(action));
     score -= targetDependentGain * HIDDEN_TARGET_FLAT_CHECK_DISCOUNT;
     reasons.push(t("ScoreReason.HiddenTargetFlatCheck", "{target} is hidden; a flat check is needed before this can affect them.", { target: target.name }));
+  }
+
+  if (nativeOutcome.scoreDelta) {
+    score += nativeOutcome.scoreDelta;
+    reasons.push(nativePreflight.rankingReason);
   }
 
   if (preference.scoreDelta) {

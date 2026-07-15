@@ -47,6 +47,15 @@ export async function requestRecallKnowledgeResolution(args = {}) {
   }
 }
 
+export async function requestLiveEngineMatrixPing(args = {}) {
+  if (!socket) return null;
+  try {
+    return await socket.executeAsGM("liveEngineMatrixPing", args);
+  } catch (_error) {
+    return null;
+  }
+}
+
 export function shareDraftPlan(payload) {
   if (!socket) return false;
   try {

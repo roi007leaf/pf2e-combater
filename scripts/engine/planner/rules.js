@@ -1,9 +1,9 @@
 import { slugify as normalizeSlug } from "../action/text.js";
+import { normalizedActionFacts } from "../action/facts.js";
 import { contextEnemies, contextTargets } from "../target-pool.js";
 import { contextTriggerEvents } from "../../rules/event-context.js";
 import { scoreCandidate } from "../scoring.js";
 
-const GENERIC_ATTACK_SLUGS = new Set(["trip", "grapple", "disarm", "shove", "reposition"]);
 const TARGET_CONDITION_CHAIN_BONUS = 36;
 const GRAB_RIDER_CHAIN_BONUS = 24;
 
@@ -13,32 +13,22 @@ export function actionKey(candidate) {
 
 
 export function candidateTraitSlugs(candidate) {
-  const values = [
-    ...(Array.isArray(candidate?.traits) ? candidate.traits : []),
-    ...(Array.isArray(candidate?.weaponTraits) ? candidate.weaponTraits : []),
-    ...(Array.isArray(candidate?.item?.system?.traits?.value) ? candidate.item.system.traits.value : []),
-  ];
-  return values.map((trait) => String(trait?.slug ?? trait?.name ?? trait ?? "").toLowerCase()).filter(Boolean);
+  return [...normalizedActionFacts(candidate).traits];
 }
 
 
 export function isAttackAction(candidate) {
-  return candidate.source === "strike"
-    || candidate.activityProfile?.includesStrike === true
-    || candidate.attackTrait === true
-    || candidate.attack === true
-    || GENERIC_ATTACK_SLUGS.has(candidate.slug)
-    || (Array.isArray(candidate.traits) && candidate.traits.includes("attack"));
+  return normalizedActionFacts(candidate).resolution.attack;
 }
 
 
 export function isStrikeAction(candidate) {
-  return candidate.source === "strike";
+  return normalizedActionFacts(candidate).resolution.strike;
 }
 
 
 export function isSpellAction(candidate) {
-  return String(candidate?.source ?? "").startsWith("spell");
+  return normalizedActionFacts(candidate).resolution.spell;
 }
 
 
@@ -48,27 +38,12 @@ export function isActionDiscountCandidate(candidate) {
 
 
 export function isStrikeLikeCandidate(candidate) {
-  return isStrikeAction(candidate)
-    || candidate?.activityProfile?.includesStrike === true
-    || candidate?.activityProfile?.drawsWeapon === true;
-}
-
-
-export function conditionValues(value) {
-  if (Array.isArray(value)) return value;
-  if (value instanceof Set) return Array.from(value);
-  return value === undefined || value === null ? [] : [value];
+  return normalizedActionFacts(candidate).resolution.strikeLike;
 }
 
 
 export function targetConditionRequirementOptions(candidate) {
-  const profile = candidate?.activityProfile ?? {};
-  const any = conditionValues(profile.requiresAnyTargetCondition).map(normalizeSlug).filter(Boolean);
-  if (any.length) return [any];
-  return conditionValues(profile.requiresTargetCondition)
-    .map(normalizeSlug)
-    .filter(Boolean)
-    .map((condition) => [condition]);
+  return normalizedActionFacts(candidate).effects.requiredTargetConditions.map((group) => [...group]);
 }
 
 
@@ -84,16 +59,7 @@ export function conditionSatisfies(requirement, condition) {
 
 
 export function candidateAppliedConditions(candidate) {
-  const profile = candidate?.activityProfile ?? {};
-  const conditions = [
-    ...conditionValues(profile.appliesCondition),
-    ...conditionValues(profile.appliesConditions),
-    ...conditionValues(profile.appliedCondition),
-    ...conditionValues(profile.conditions),
-    ...conditionValues(candidate?.appliesConditions),
-  ].map(normalizeSlug).filter(Boolean);
-  if (profile.includesGrab === true || candidate?.slug === "grapple") conditions.push("grabbed");
-  return new Set(conditions);
+  return new Set(normalizedActionFacts(candidate).effects.appliedConditions);
 }
 
 
@@ -107,11 +73,7 @@ export function stepSatisfiesTargetConditionRequirement(step, optionGroup) {
 
 
 export function isGrabRider(candidate) {
-  return candidate?.activityProfile?.npcFamily === "grab-rider"
-    || (candidate?.activityProfile?.includesGrab === true
-      && previousActionRequirements(candidate).some((requirement) =>
-        ["strike", "after-strike"].includes(normalizeSlug(requirement)),
-      ));
+  return normalizedActionFacts(candidate).sequencing.grabRider;
 }
 
 
@@ -123,17 +85,7 @@ export function values(value) {
 
 
 export function previousActionRequirements(candidate) {
-  const eventTriggers = values(candidate?.gatingProfile?.eventTriggers).map(normalizeSlug);
-  const explicit = [
-    ...values(candidate?.activityProfile?.previousActionRequirements),
-    ...values(candidate?.gatingProfile?.previousActionRequirements),
-  ].map(normalizeSlug);
-  if (candidate?.activityProfile?.requiresPreviousStrike === true
-    || candidate?.gatingProfile?.requiresPreviousStrike === true) {
-    explicit.push("after-strike");
-  }
-  if (explicit.length) return [...new Set(explicit)];
-  return eventTriggers.includes("previous-action") ? ["previous-action"] : [];
+  return [...normalizedActionFacts(candidate).sequencing.previousActionRequirements];
 }
 
 
@@ -143,10 +95,7 @@ export function requiresPreviousAction(candidate) {
 
 
 export function isNonCantripSpell(candidate) {
-  if (!isSpellAction(candidate)) return false;
-  if (candidate?.isCantrip === true) return false;
-  const rank = Number(candidate?.castRank ?? candidate?.rank);
-  return Number.isFinite(rank) ? rank > 0 : candidate?.isCantrip === false;
+  return normalizedActionFacts(candidate).resolution.nonCantripSpell;
 }
 
 

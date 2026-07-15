@@ -5,8 +5,8 @@ PF2e Combater plans Pathfinder 2e turns in Foundry VTT by reading actor options,
 ## Language
 
 **Movement route**:
-Plain-data description of where a token can move, what path it takes, what it costs, and whether that destination is legal under PF2e movement, elevation, collision, visibility, and token-footprint rules. It never mutates tokens; execution applies movement and owns revert data.
-_Avoid_: movement preview result, destination picker data, route helper, PIXI marker, placement shape
+Plain-data description of where a token can move, what path it takes, what it costs, and whether that destination is legal under PF2e movement, elevation, collision, visibility, and token-footprint rules. Tactical comparisons integrate melee threats and open enemy lines over each segment's PF2e movement cost instead of counting stored route points. It never mutates tokens; execution applies movement and owns revert data.
+_Avoid_: movement preview result, destination picker data, route helper, route-node danger count, PIXI marker, placement shape
 
 **Token movement action**:
 PF2e movement mode passed to Foundry token movement and movement-cost logic, such as `walk`, `crawl`, `fly`, or `burrow`. A Step keeps its 5-foot action budget, but uses `walk` as the token movement action.
@@ -21,8 +21,12 @@ Plain-data math and lookup for Foundry canvas points, grid metrics, feet-to-pixe
 _Avoid_: preview collision, reader wall helper, battlefield line helper, local gridSize helper, local distancePixels helper, local canvasTokenById helper
 
 **Action requirement**:
-Plain-data decision about whether a planned step needs a destination, target, or area marker before it can execute. It is shared by the panel, builder, scorer, and executor; execution performs the action but does not own these choice rules.
+Plain-data decision about whether a planned step needs a destination, target, or area marker before it can execute. It projects Action facts for the panel, builder, scorer, and executor; execution performs the action but does not own these choice rules.
 _Avoid_: builder destination rule, executor target rule, panel choice rule
+
+**Action facts**:
+Immutable versioned intermediate representation created from every reader/classifier candidate through `normalizedActionFacts(candidate)`. Its small interface owns identity, source/confidence, Auto-fill safety, category, traits, action/resource cost, attack/check/save resolution, four-degree metadata, target/range/area requirements, damage/healing/conditions, movement/duration, and previous-action/setup chains. Action requirements, scoring, native preflight, resource policy, and planner rules consume this representation instead of interpreting raw candidate fields independently.
+_Avoid_: planner attack classifier, scorer spell detector, requirement-local target inference, duplicated condition extraction, direct resource parsing outside Action facts, attaching a stale facts snapshot to mutable candidates
 
 **Execution target**:
 Foundry target selection for executing a draft step. It resolves manual stored targets, ignores stale plan-phase recommendation targets, reads the current user's canvas targets, and applies token targets before PF2e actions or area effects roll.
@@ -88,6 +92,22 @@ _Avoid_: executor damage helper, local DamageRoll wrapper, inline damage-message
 PF2e system action API dispatch for generic actions such as Grapple, Trip, Create a Diversion, Raise a Shield, and Take Cover. It owns target choice/application, slug-to-action lookup, legacy camelCase action fallback, variant choice/defaulting, target actor forwarding, skill/DC/trait options, non-strike MAP penalties, result patching, and chat revert data.
 _Avoid_: executor pf2e action lookup, local action variant helper, local system-action target wrapper, local system-action MAP option
 
+**PF2e runtime**:
+Deep module for version-sensitive PF2e actor, action, spell, slot, and item-macro shapes. Production and fixture adapters meet its small interface; readers and executors never inspect `game.pf2e` directly.
+_Avoid_: reader game.pf2e access, executor PF2e version branch, local system-action compatibility helper
+
+**Installed runtime contract**:
+Read-only smoke report over the actually installed Foundry and PF2e manifests and source artifacts. It owns compatibility-range checks and detection of every native movement/PF2e interface consumed by PF2e runtime; authenticated in-world behavior tests remain a separate matrix.
+_Avoid_: package-script source grep, duplicated version comparison, claiming artifact inspection executes live movement or sockets
+
+**Live engine matrix**:
+Authenticated in-world diagnostic behind `runLiveEngineMatrix(options)`. It owns ready-world and PF2e-action checks, a socketlib GM ping, and GM-only opt-in multi-waypoint movement measurement, hook/history/region observation, recorded Undo, and emergency origin restoration. Production and fixture adapters meet the same small interface.
+_Avoid_: ad-hoc console movement test, source inspection presented as live behavior, automatic token mutation, live test without guaranteed cleanup
+
+**Native outcome ranking**:
+Pure bounded Auto-fill score adjustment derived from Native Roll-Context Preflight's disclosure-safe four-degree distribution. Its one interface selects the PF2e outcome model for attacks, skill checks, risky critical failures, basic saves, and other save effects; computes expected value; applies exact/approximate confidence weight; and owns explanation metadata. Unknown odds preserve existing heuristics.
+_Avoid_: planner expected-value formula, binary success-only ranking, direct hidden target-statistic scoring, duplicate tooltip ranking copy
+
 **Strike execution**:
 PF2e Strike dispatch for attack steps. It owns target selection, MAP variant choice, PF2e Strike roll invocation, failed Strike API reporting, and chat revert data for the posted attack card.
 _Avoid_: executor strike helper, local MAP variant helper, local strike roll wrapper
@@ -140,6 +160,14 @@ _Avoid_: scoring skillEntry helper, local skill DC slug switch, local trained-sk
 Spell-action valuation used by scoring. It owns cantrip/focus/ranked spell resource adjustments, sustained/lasting spell value, terrain-control spell value, range-buff setup detection, and reach-spell need checks; scoring consumes its score deltas and setup gate.
 _Avoid_: scoring spellTacticalAdjustment helper, local rangeBuffIsNeeded helper, duplicated Reach Spell target reach check, inline spell resource penalty
 
+**Action resources**:
+Normalized in-process resource facts shared by scoring and planning. It owns PF2e spell-resource, spellcasting-entry, physical-item quantity/use, frequency-period, pool-identity, and remaining-count interpretation. Resource horizon consumes kind/count facts; planner resource budget consumes pool identity/count facts.
+_Avoid_: scoring spell-resource parser, planner slot-key builder, duplicate consumable stack math, direct PF2e frequency parsing outside readers and this module
+
+**Resource horizon**:
+Client-selected Conserve, Normal, or Burst policy applied to Auto-fill scoring. It owns mode normalization/cycling, encounter-pressure forecasting, bounded score adjustments, localized reasons, and the compact header-chip view. Normal is exactly neutral; scoring and UI consume this module while Action resources owns document-shape interpretation.
+_Avoid_: panel-local resource weights, scoring frequency parser, duplicate consumable/slot scarcity math, persisted actor/world resource-mode flags
+
 **Scoring targets**:
 Target selection used by scoring. It owns attackable enemy pooling, target affectability checks, best target selection, distinct multi-target selection, and kineticist Extract Element target compatibility; scoring consumes its selected target(s) and keeps final score/reason composition.
 _Avoid_: scoring target pool helper, local bestTargetForAction helper, local kineticist element profile, duplicated Extract Element compatibility check
@@ -165,16 +193,28 @@ Plain-text parsing for action names, slugs, and PF2e action-count phrases. It is
 _Avoid_: action-reader slug helper, spell-reader text parser, local action-count text parser, scorer slug helper, executor slug helper
 
 **Action builder projection**:
-Pure builder-side projection for drafted destinations and computed area markers. It owns area-marker shaping from scored placement, draft destination origin projection, projected target distances, draft condition changes, and projected Raise a Shield/Shield spell combat state; the action builder only decorates tabs and draft rows.
-_Avoid_: action-builder computeAreaMarker helper, local projectContextForDraftDestination helper, local draft condition projection, local area marker projection, duplicated projected target distance math
+Pure builder-side projection for computed area markers and selection of the counted/uncounted draft prefix being inspected. It delegates position, condition, shield, target, and resource projection to Plan state; the action builder only decorates tabs and draft rows.
+_Avoid_: action-builder computeAreaMarker helper, local projectContextForDraftDestination helper, local draft condition/shield simulation, local area marker projection, duplicated projected target distance math
+
+**Plan state**:
+Pure turn-state simulator shared by planner search and draft projection. Its small interface creates or advances one state, projects that state back onto a combat context, emits a deterministic dominance signature, and evaluates a complete plan. It owns actor-versus-target condition placement, position and target-distance projection, MAP and Strike counts, last-action continuity, raised-shield state, shared resource reservations, effect durations, and serializable projected-state evidence. Manual draft prefixes seed this same state before gap-fill search.
+_Avoid_: planner-local MAP prefix counters, action-builder condition projection, target effects applied to the actor, resource reservations outside plan state, dominance keys that omit conditions or shields
 
 **Planner rules**:
-Turn-planning prerequisite and target-link rules used before DFS plan enumeration accepts a step. It owns attack action facts, current attack range, previous-action requirements, target identity/condition matching, target inheritance, NPC grab-rider validation, and target-condition plan score bonuses; Planner projections owns projected sibling generation and projected movement scoring, Planner conflicts owns pair-legality checks, while planner owns candidate pool selection, DFS enumeration, and final plan ordering.
-_Avoid_: planner previous-action helper, planner targetForCandidate helper, planner currentAttackRange helper, planner targetConditionChainBonus helper, local attack fact helper
+Turn-planning prerequisite and target-link rules used before DFS plan enumeration accepts a step. It consumes Action facts and owns current attack range, previous-action satisfaction, target identity/condition matching, target inheritance, NPC grab-rider validation, and target-condition plan score bonuses; Planner projections owns projected sibling generation and projected movement scoring, Planner conflicts owns pair-legality checks, while planner owns candidate pool selection, DFS enumeration, and final plan ordering.
+_Avoid_: planner previous-action helper, planner targetForCandidate helper, planner currentAttackRange helper, planner targetConditionChainBonus helper, planner-local action classification
+
+**Planner quality lab**:
+Fixture-driven evaluation of complete planner behavior through `runPlannerQualityLab(scenarios)`. It owns deterministic reruns, ranked/any/excluded/resource expectations, candidate coverage, complete-plan rate, alternative diversity, search diagnostics, stable reports, and CI failure output. Scenario data describes tactical intent; it does not reproduce planner implementation details.
+_Avoid_: scattered golden-plan runner, UI snapshot benchmark, live-world mutation test, planner-internal state assertion
 
 **Planner conflicts**:
 Turn-planning pair-legality rules for DFS plan enumeration. It owns basic movement repeatability, repeated Stride allowances, stand/crawl/prone-cover exclusivity, prone-plus-attack and prone-plus-movement conflicts, move-and-strike plus generic movement conflicts, retreat-before-melee conflicts, Lingering Composition plain-cantrip exclusion, already-in-range movement waste checks, and Sudden Charge/Tumble Through pairing rules.
 _Avoid_: planner hasPlanConflict helper, planner reachesCurrentTarget helper, planner targetNeedsRepeatedStride helper, local prone movement conflict helper, inline melee-after-retreat conflict
+
+**Planner resource budget**:
+Pure reservation primitive for resource-backed plan steps. Its interface reserves one normalized action resource or seeds reservations from existing draft steps; it rejects only pool overspend. Plan state consumes it alongside position, MAP, conditions, shields, and durations; planner dominance consumes the resulting unified signature.
+_Avoid_: planner spell-slot branches, used-action counts treated as resource counts, UI-side resource filtering, mutable shared reservation state
 
 **Planner projections**:
 Turn-planning candidate expansion and projected-position scoring. It owns follow-up Strike candidate synthesis after move-and-strike actions, Take Cover after Drop Prone synthesis, Quickened Casting spell discount siblings, Lingering Composition extension siblings, projected follow-up reach checks, projected Volley penalties, and prone/move-and-strike facts used by those projections.

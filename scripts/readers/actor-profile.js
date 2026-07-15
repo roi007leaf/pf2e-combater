@@ -1,6 +1,7 @@
 import { readCombatState } from "../rules/combat-state.js";
 import { KNOWN_SUBCLASS_SLUGS, SUBCLASS_TAGS } from "../rules/class-tactics-data/index.js";
 import { actorItems, collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
+import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 
 const ABILITY_SLUGS = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -168,7 +169,7 @@ function readReach(actor) {
     numericValue(explicitReach?.base, null),
     numericValue(explicitReach?.value, null),
     numericValue(explicitReach, null),
-    ...collectionValues(actor?.system?.actions)
+    ...pf2eRuntime.readActor(actor).actions
       .filter((strike) => strike?.type === "strike" || strike?.canAttack)
       .map(strikeReach),
     ...collectionValues(actor?.itemTypes?.melee).map(itemReach),

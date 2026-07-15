@@ -1,10 +1,11 @@
-import { collectionValues, systemValue } from "../../foundry-data.js";
+import { systemValue } from "../../foundry-data.js";
 import { t } from "../../i18n.js";
 import { chatActionRevert } from "./chat-revert.js";
 import { flushPendingChat, rollActionDamageMessages } from "./damage.js";
 import { createGuidance } from "./guidance.js";
 import { attachRevertOp, executionPatch } from "./results.js";
 import { setTarget } from "./targets.js";
+import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 
 function numeric(value, fallback = null) {
   const number = Number(value);
@@ -71,11 +72,34 @@ function slotSnapshot(slot) {
   };
 }
 
+function preparedExpendedValue(preparedSpell) {
+  if (typeof preparedSpell?.expended === "boolean") return preparedSpell.expended;
+  if (typeof preparedSpell?.expended?.value === "boolean") return preparedSpell.expended.value;
+  if (typeof preparedSpell?.system?.expended === "boolean") return preparedSpell.system.expended;
+  if (typeof preparedSpell?.system?.expended?.value === "boolean") return preparedSpell.system.expended.value;
+  return false;
+}
+
+function expectedSlotSnapshot(entry, op) {
+  const expectedAfter = {};
+  const slot = op?.slotKey ? entry?.system?.slots?.[op.slotKey] : null;
+  const snapshot = slotSnapshot(slot);
+  if (snapshot.valueBefore !== undefined) expectedAfter.value = snapshot.valueBefore;
+  if (snapshot.remainingBefore !== undefined) expectedAfter.remaining = snapshot.remainingBefore;
+  if (Number.isInteger(op?.preparedIndex)) {
+    const preparedSpell = slot?.prepared?.[op.preparedIndex];
+    if (preparedSpell) {
+      expectedAfter.preparedExpended = preparedExpendedValue(preparedSpell);
+    }
+  }
+  return expectedAfter;
+}
+
 export function findSpellcastingEntry(actor, action) {
   const id = action?.spellcastingEntryId;
   const uuid = action?.spellcastingEntryUuid;
   if (!id && !uuid) return null;
-  return collectionValues(actor?.itemTypes?.spellcastingEntry).find((entry) =>
+  return pf2eRuntime.readActor(actor).spellcasting.find((entry) =>
     entry?.id === id
     || entry?._id === id
     || entry?.uuid === uuid,
@@ -112,16 +136,49 @@ export function spellSlotRevertOp(actor, action) {
     op.preparedIndex = preparedMatch.preparedIndex;
     op.preparedId = preparedMatch.preparedSpell?.id ?? preparedMatch.preparedSpell?._id ?? null;
     op.preparedUuid = preparedMatch.preparedSpell?.uuid ?? preparedMatch.preparedSpell?.spell?.uuid ?? null;
-    op.preparedExpendedBefore = preparedMatch.preparedSpell?.expended === true;
+    op.preparedExpendedBefore = preparedExpendedValue(preparedMatch.preparedSpell);
   }
 
   return op;
+}
+
+export function finalizeSpellSlotRevertOp(actor, op) {
+  if (!op) return null;
+  const entry = findSpellcastingEntry(actor, {
+    spellcastingEntryId: op.entryId,
+    spellcastingEntryUuid: op.entryUuid,
+  });
+  if (!entry) return op;
+  const expectedAfter = expectedSlotSnapshot(entry, op);
+  return Object.keys(expectedAfter).length ? { ...op, expectedAfter } : op;
 }
 
 function isCantripSpell(item) {
   if (item?.isCantrip === true) return true;
   const traits = item?.system?.traits?.value;
   return Array.isArray(traits) && traits.includes("cantrip");
+}
+
+function messageMatchesCast(message, actor, item) {
+  const actorId = String(actor?.id ?? actor?._id ?? "");
+  const messageActorId = String(message?.speaker?.actor ?? "");
+  if (actorId && messageActorId && messageActorId !== actorId) return false;
+
+  const itemIds = new Set([
+    item?.id,
+    item?._id,
+    item?.uuid,
+  ].filter(Boolean).map(String));
+  const origin = message?.flags?.pf2e?.origin ?? {};
+  const originIds = [
+    origin.uuid,
+    origin.item,
+    origin.itemId,
+    message?.item?.id,
+    message?.item?.uuid,
+  ].filter(Boolean).map(String);
+  if (!originIds.length || !itemIds.size) return true;
+  return originIds.some((id) => itemIds.has(id));
 }
 
 // Whether the spell's casting resource is available before casting. Returns true (castable),
@@ -177,13 +234,29 @@ async function consumableRevertOpAfterUse(before, actor) {
   const stillExists = typeof globalThis.fromUuid === "function" ? await globalThis.fromUuid(before.itemUuid) : null;
   if (!stillExists) {
     return before.sourceData && actor?.uuid
-      ? { kind: "consumable", deleted: true, actorUuid: actor.uuid, sourceData: before.sourceData }
+      ? {
+        kind: "consumable",
+        deleted: true,
+        actorUuid: actor.uuid,
+        itemUuid: before.itemUuid,
+        sourceData: before.sourceData,
+        expectedAfter: { deleted: true },
+      }
       : null;
   }
   const quantityNow = numeric(systemValue(stillExists.system?.quantity), null);
   const usesNow = numeric(systemValue(stillExists.system?.uses), null);
   if (quantityNow === before.quantityBefore && usesNow === before.usesValueBefore) return null;
-  return { kind: "consumable", itemUuid: before.itemUuid, quantityBefore: before.quantityBefore, usesValueBefore: before.usesValueBefore };
+  return {
+    kind: "consumable",
+    itemUuid: before.itemUuid,
+    quantityBefore: before.quantityBefore,
+    usesValueBefore: before.usesValueBefore,
+    expectedAfter: {
+      ...(quantityNow === null ? {} : { quantity: quantityNow }),
+      ...(usesNow === null ? {} : { uses: usesNow }),
+    },
+  };
 }
 
 function frequencySnapshot(item) {
@@ -197,7 +270,7 @@ async function consumeFrequencyIfUnspent(before) {
   const valueNow = numeric(systemValue(item?.system?.frequency?.value), null);
   if (valueNow === null || valueNow !== before.valueBefore || valueNow <= 0 || typeof item?.update !== "function") return null;
   await item.update({ "system.frequency.value": valueNow - 1 });
-  return { kind: "frequency", itemUuid: before.itemUuid, valueBefore: before.valueBefore };
+  return { kind: "frequency", itemUuid: before.itemUuid, valueBefore: before.valueBefore, expectedAfter: { value: valueNow - 1 } };
 }
 
 async function executeNativeItem({ actor, action, event }) {
@@ -205,19 +278,17 @@ async function executeNativeItem({ actor, action, event }) {
   const entry = findSpellcastingEntry(actor, action);
   if (typeof entry?.cast === "function") {
     const resourceOk = spellCastResourceSufficient(actor, entry, item, action);
-    const actorId = actor?.id ?? actor?._id ?? null;
     let castMessage = null;
     let resolveCastMessage = null;
     const castMessagePromise = new Promise((resolve) => { resolveCastMessage = resolve; });
     const onCreate = (message) => {
       if (castMessage) return;
-      const messageActorId = message?.speaker?.actor ?? null;
-      if (!actorId || !messageActorId || messageActorId === actorId) castMessage = message;
+      if (messageMatchesCast(message, actor, item)) castMessage = message;
       if (castMessage) resolveCastMessage?.(castMessage);
     };
     const hookId = globalThis.Hooks?.on?.("createChatMessage", onCreate) ?? null;
     try {
-      const returned = await entry.cast(item, {
+      const returned = await pf2eRuntime.castSpell(entry, item, {
         event,
         rank: action?.castRank ?? action?.rank,
         slotId: action?.slotId ?? action?.location,
@@ -243,8 +314,8 @@ async function executeNativeItem({ actor, action, event }) {
     return consumableRevertOp ? { consumableRevertOp } : null;
   }
   if (typeof item?.cast === "function") return item.cast({ event, rank: action?.castRank ?? action?.rank });
-  if (item?.isOfType?.("action", "feat") && typeof globalThis.game?.pf2e?.rollItemMacro === "function" && item.uuid) {
-    const macroResult = await globalThis.game.pf2e.rollItemMacro(item.uuid, event);
+  if (item?.isOfType?.("action", "feat") && item.uuid) {
+    const macroResult = await pf2eRuntime.rollItem(item, event);
     if (macroResult) return macroResult;
   }
   if (typeof item?.toMessage === "function") return item.toMessage({}, { rollMode: globalThis.game?.settings?.get?.("core", "rollMode") });
@@ -281,8 +352,9 @@ export async function executeOpenItem({ actor, action, event }) {
 
 export async function executeNativeAction({ actor, action, event, target = null, patch = {} }) {
   if (target?.token) setTarget(target.token);
-  const slotOp = spellSlotRevertOp(actor, action);
+  const slotBefore = spellSlotRevertOp(actor, action);
   const nativeResult = await executeOpenItem({ actor, action, event });
+  const slotOp = finalizeSpellSlotRevertOp(actor, slotBefore);
   if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {
     const reason = action?.unavailableReason || t("Exec.SpellNoSlot", "Spell could not be cast (no slot available).");
     return {

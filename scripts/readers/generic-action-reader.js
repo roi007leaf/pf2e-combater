@@ -3,6 +3,7 @@ import { contextActorDocument } from "../engine/actor-context.js";
 import { slugify } from "../engine/action/text.js";
 import { canAttackTarget, contextAllies, contextEnemies, contextTargets } from "../engine/target-pool.js";
 import { actorItems, systemValue, traitSlugs } from "../foundry-data.js";
+import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 import {
   isSeekRelevantVisibility,
   isVisionerActive,
@@ -362,13 +363,11 @@ function heldManeuverTraitAvailable(action, context) {
 
   const actor = contextActorDocument(context, { allowActorFallback: true });
   if (!actor) return false;
-  const generatedStrikes = Array.isArray(actor?.system?.actions)
-    ? actor.system.actions.filter((strike) =>
-      strike?.type === "strike"
-        && strike?.visible !== false
-        && strike?.ready !== false
-        && strike?.canAttack !== false)
-    : [];
+  const generatedStrikes = pf2eRuntime.readActor(actor).actions.filter((strike) =>
+    strike?.type === "strike"
+      && strike?.visible !== false
+      && strike?.ready !== false
+      && strike?.canAttack !== false);
   const sources = [...actorItems(actor), ...generatedStrikes];
 
   return sources.some((source) => {

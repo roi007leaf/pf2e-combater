@@ -15,6 +15,8 @@ import {
 } from "../recall-knowledge.js";
 import { isSustainAction, sustainedSpellDraftFields } from "./view-model.js";
 import { t } from "../../i18n.js";
+import { drawableSwapItems, heldSwapItems, swapItemById } from "../../engine/equipment-items.js";
+import { promptSwapSelection } from "../../engine/execution/equipment.js";
 
 function escapeHtml(value) {
   return foundry?.utils?.escapeHTML
@@ -64,6 +66,35 @@ export async function chooseSustainedSpellForStep(panel, step) {
   };
 }
 
+export async function choosePanelSwapItems(panel, instanceId) {
+  if (!panel._context || !instanceId || !panel._canExecuteDraft()) return null;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step) return null;
+  const context = panel._contextForDraftStep(instanceId) ?? panel._context;
+  const actor = contextActorDocument(context, { allowActorFallback: true });
+  const heldItems = heldSwapItems(actor);
+  const drawableItems = drawableSwapItems(actor);
+  if (!heldItems.length || !drawableItems.length) {
+    globalThis.ui?.notifications?.warn?.(t("Exec.NoSwapItems", "Swap requires one held item and one worn item."));
+    return null;
+  }
+  const selected = await promptSwapSelection(heldItems, drawableItems, step);
+  if (!selected) return null;
+  const heldItem = swapItemById(heldItems, selected.swapHeldItemId);
+  const drawItem = swapItemById(drawableItems, selected.swapDrawItemId);
+  if (!heldItem || !drawItem) return null;
+  const current = panel._findActiveStep(instanceId) ?? step;
+  const nextStep = panel._stepWithRetryReset(current, {
+    swapHeldItemId: heldItem.id ?? heldItem._id ?? heldItem.uuid,
+    swapDrawItemId: drawItem.id ?? drawItem._id ?? drawItem.uuid,
+    swapHeldItemName: heldItem.name ?? "",
+    swapDrawItemName: drawItem.name ?? "",
+  });
+  await panel._persistActiveDraftStep(nextStep);
+  await panel.render({ force: true });
+  return nextStep;
+}
+
 export async function executePanelDraftStep(panel, instanceId, event) {
   try {
     if (!panel._canExecuteDraft()) return;
@@ -93,6 +124,10 @@ export async function executePanelDraftStep(panel, instanceId, event) {
       step,
       action,
       event,
+      choices: {
+        swapHeldItemId: step.swapHeldItemId,
+        swapDrawItemId: step.swapDrawItemId,
+      },
     });
     await applyPanelExecutionResult(panel, step, result, event);
   } catch (error) {

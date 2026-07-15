@@ -16,17 +16,37 @@ export function executionAction(step, action) {
   return merged;
 }
 
+function swapChoiceIds(action, rowsKey, idsKey) {
+  const profile = action?.activityProfile ?? {};
+  const rows = Array.isArray(profile[rowsKey]) ? profile[rowsKey] : [];
+  const ids = rows.map((row) => row?.id ?? row).filter(Boolean);
+  if (ids.length) return ids.map(String);
+  return (Array.isArray(profile[idsKey]) ? profile[idsKey] : []).filter(Boolean).map(String);
+}
+
+function needsSwapItemsChoice(step, action) {
+  if (action?.executable !== "swap-items" && action?.activityProfile?.swapsItems !== true) return false;
+  const heldIds = swapChoiceIds(action, "heldItems", "heldItemIds");
+  const drawIds = swapChoiceIds(action, "drawableItems", "drawableItemIds");
+  if (heldIds.length <= 1 && drawIds.length <= 1) return false;
+  return !heldIds.includes(String(step?.swapHeldItemId ?? ""))
+    || !drawIds.includes(String(step?.swapDrawItemId ?? ""));
+}
+
 export function executionReadinessForStep(step, action = step?.action ?? step) {
   const resolvedAction = executionAction(step, action);
   const choices = [];
   if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");
   if (requiresTargetForAction(resolvedAction) && !resolveTarget(step, resolvedAction)) choices.push("target");
   if (needsAreaChoiceForExecution(step, resolvedAction)) choices.push("area");
+  if (needsSwapItemsChoice(step, resolvedAction)) choices.push("swap-items");
   const choiceLabels = choices.map((choice) => t(`Choice.${choice}`, choice));
   return {
     status: choices.length ? "needs-choice" : "ready",
     choices,
-    warning: choices.length ? t("Exec.ChooseAtExec", "Choose {choices} at execution.", { choices: choiceLabels.join(", ") }) : "",
+    warning: choices.length === 1 && choices[0] === "swap-items"
+      ? t("Exec.ChooseSwapItems", "Choose items to swap.")
+      : choices.length ? t("Exec.ChooseAtExec", "Choose {choices} at execution.", { choices: choiceLabels.join(", ") }) : "",
   };
 }
 

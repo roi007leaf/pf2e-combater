@@ -3,6 +3,7 @@ import { t } from "../../i18n.js";
 import { recallKnowledgeQuestion, recallKnowledgeSkillOptions } from "../../rules/recall-knowledge.js";
 import { chatActionRevert, chatMessageIdFromResult } from "./chat-revert.js";
 import { executionPatch } from "./results.js";
+import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 
 function targetActor(target) {
   return target?.actor?.document ?? target?.actor ?? target?.document?.actor ?? target ?? null;
@@ -152,7 +153,7 @@ function targetMarkRollOptions(actor, target) {
     ?? target
     ?? null;
   const uuid = token?.uuid;
-  const marks = uuid ? actor?.synthetics?.tokenMarks?.get?.(uuid) : null;
+  const marks = uuid ? pf2eRuntime.readActor(actor).tokenMarks?.get?.(uuid) : null;
   return Array.from(marks ?? []).map((mark) => `target:mark:${mark}`);
 }
 

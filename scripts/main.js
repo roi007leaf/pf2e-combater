@@ -23,6 +23,7 @@ import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
 import { INTEL_LEDGER_FLAG, INTEL_REVEAL_MODE_FLAG } from "./rules/intel-ledger.js";
 import { registerRecallKnowledgeChatHooks, resolveRecallKnowledgeRequest } from "./ui/recall-knowledge.js";
 import { isPlannableActor, isPlannableCombatant } from "./rules/actor-eligibility.js";
+import { respondLiveEngineMatrixPing, runLiveEngineMatrix } from "./runtime/live-engine-matrix.js";
 
 let activePanel = null;
 let refreshTimer = null;
@@ -286,6 +287,13 @@ function actorUpdateChangesIntelLedger(changed) {
 }
 
 Hooks.once("init", () => {
+  const module = game.modules?.get?.(MODULE_ID);
+  if (module) {
+    module.api = Object.freeze({
+      ...(module.api ?? {}),
+      runLiveEngineMatrix,
+    });
+  }
   registerSettings();
   registerCombatTrackerIntel();
   registerRecallKnowledgeChatHooks();
@@ -363,6 +371,7 @@ Hooks.once("socketlib.ready", () => {
   socket.register("promptRetchResult", promptRetchResult);
   socket.register("resolveRecallKnowledge", resolveRecallKnowledgeRequest);
   socket.register("receiveSharedDraft", receiveSharedDraft);
+  socket.register("liveEngineMatrixPing", respondLiveEngineMatrixPing);
   setSocket(socket);
 });
 

@@ -1,5 +1,6 @@
 import { actorItems } from "../foundry-data.js";
 import { slugify as normalize } from "../engine/action/text.js";
+import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 
 function itemSlug(item) {
   return normalize(
@@ -159,7 +160,7 @@ function activeStances(actor) {
 }
 
 function tokenMarkUuids(actor, patterns) {
-  const marks = actor?.synthetics?.tokenMarks;
+  const marks = pf2eRuntime.readActor(actor).tokenMarks;
   const entries = marks instanceof Map
     ? Array.from(marks.entries())
     : marks && typeof marks === "object"

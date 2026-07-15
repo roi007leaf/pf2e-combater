@@ -31,7 +31,7 @@ export async function executeDrawWeapon({ actor, action }) {
   const hands = Number(item?.system?.usage?.hands) || 1;
   const changed = await changeItemCarry(actor, item, { carryType: "held", handsHeld: hands });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Drew", "Drew {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Drew", "Drew {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld, expectedAfter: { carryType: "held", handsHeld: hands } }]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDraw", "Could not draw the weapon.") }), error: t("Exec.CouldNotDraw", "Could not draw the weapon.") };
 }
 
@@ -41,7 +41,7 @@ export async function executeDropWeapon({ actor, action }) {
   const prior = itemCarryState(item);
   const changed = await changeItemCarry(actor, item, { carryType: "dropped", handsHeld: 0 });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedWeapon", "Dropped {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.DroppedWeapon", "Dropped {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld, expectedAfter: { carryType: "dropped", handsHeld: 0 } }]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotDropWeapon", "Could not drop the weapon.") }), error: t("Exec.CouldNotDropWeapon", "Could not drop the weapon.") };
 }
 
@@ -51,7 +51,7 @@ export async function executeSheatheWeapon({ actor, action }) {
   const prior = itemCarryState(item);
   const changed = await changeItemCarry(actor, item, { carryType: "worn", handsHeld: 0 });
   return changed
-    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Sheathed", "Sheathed {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld }]) }) }
+    ? { status: "done", patch: executionPatch({}, "done", { result: t("Exec.Sheathed", "Sheathed {name}.", { name: item.name ?? t("Exec.Weapon", "weapon") }), revert: revertEnvelope([{ kind: "carry-type", itemUuid: item.uuid ?? null, carryType: prior.carryType, handsHeld: prior.handsHeld, expectedAfter: { carryType: "worn", handsHeld: 0 } }]) }) }
     : { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") }), error: t("Exec.CouldNotSheathe", "Could not sheathe the weapon.") };
 }
 
@@ -66,14 +66,15 @@ function selectValue(button, name) {
   return String(field?.value ?? "");
 }
 
-function itemOptions(items) {
+function itemOptions(items, selectedId = null) {
   return items.map((item) => {
     const id = item?.id ?? item?._id ?? item?.uuid ?? "";
-    return `<option value="${escapeHtml(id)}">${escapeHtml(item?.name ?? id)}</option>`;
+    const selected = String(id) === String(selectedId ?? "") ? " selected" : "";
+    return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(item?.name ?? id)}</option>`;
   }).join("");
 }
 
-async function promptSwapSelection(heldItems, drawableItems) {
+export async function promptSwapSelection(heldItems, drawableItems, selected = {}) {
   if (heldItems.length === 1 && drawableItems.length === 1) {
     return {
       swapHeldItemId: heldItems[0].id ?? heldItems[0]._id ?? heldItems[0].uuid,
@@ -86,8 +87,8 @@ async function promptSwapSelection(heldItems, drawableItems) {
   return await dialog.wait({
     window: { title: t("Dialog.SwapItems.Title", "Swap Items") },
     content: `<p>${escapeHtml(t("Dialog.SwapItems.Content", "Choose one held item to put away and one worn item to draw."))}</p>`
-      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.PutAway", "Put away"))}</label><select name="swapHeldItemId">${itemOptions(heldItems)}</select></div>`
-      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.Draw", "Draw"))}</label><select name="swapDrawItemId">${itemOptions(drawableItems)}</select></div>`,
+      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.PutAway", "Put away"))}</label><select name="swapHeldItemId">${itemOptions(heldItems, selected.swapHeldItemId)}</select></div>`
+      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.Draw", "Draw"))}</label><select name="swapDrawItemId">${itemOptions(drawableItems, selected.swapDrawItemId)}</select></div>`,
     buttons: [
       {
         action: "swap",
@@ -160,8 +161,8 @@ export async function executeSwapItems({ actor, choices = {} } = {}) {
     }, "done", {
       result: t("Exec.SwappedItems", "Put away {held} and drew {draw}.", { held: heldItem.name, draw: drawItem.name }),
       revert: revertEnvelope([
-        { kind: "carry-type", itemUuid: drawItem.uuid ?? null, carryType: drawPrior.carryType, handsHeld: drawPrior.handsHeld },
-        { kind: "carry-type", itemUuid: heldItem.uuid ?? null, carryType: heldPrior.carryType, handsHeld: heldPrior.handsHeld },
+        { kind: "carry-type", itemUuid: drawItem.uuid ?? null, carryType: drawPrior.carryType, handsHeld: drawPrior.handsHeld, expectedAfter: { carryType: "held", handsHeld: itemHandsRequired(drawItem) } },
+        { kind: "carry-type", itemUuid: heldItem.uuid ?? null, carryType: heldPrior.carryType, handsHeld: heldPrior.handsHeld, expectedAfter: { carryType: "worn", handsHeld: 0 } },
       ]),
     }),
   };
@@ -202,7 +203,13 @@ async function reloadRevertOpAfterAttach(weaponUuid, before) {
     if (grown) return;
     const quantityBefore = before.get(item.id) ?? 0;
     const quantityNow = Number(item.quantity ?? item.system?.quantity ?? 0);
-    if (quantityNow > quantityBefore) grown = { kind: "reload", weaponUuid, subitemId: item.id, addedQuantity: quantityNow - quantityBefore };
+    if (quantityNow > quantityBefore) grown = {
+      kind: "reload",
+      weaponUuid,
+      subitemId: item.id,
+      addedQuantity: quantityNow - quantityBefore,
+      expectedAfter: { quantity: quantityNow },
+    };
   });
   return grown;
 }

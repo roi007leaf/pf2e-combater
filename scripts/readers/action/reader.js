@@ -2,6 +2,7 @@ import { findCustomAction } from "../../catalog/custom-actions.js";
 import { collectionValues, systemValue, traitSlugs } from "../../foundry-data.js";
 import { parseActionText as parseActionTextValue, slugify as slugifyText } from "../../engine/action/text.js";
 import { contextActorDocument } from "../../engine/actor-context.js";
+import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 import { classifySystemAction } from "../../engine/action/classifier.js";
 import { canAttackTarget, contextEnemies, contextTargets } from "../../engine/target-pool.js";
 import {
@@ -237,7 +238,7 @@ function readStrikeAverageDamage(strike) {
 }
 
 export function actorStrikeOptions(actor, context = null) {
-  const strikes = Array.isArray(actor?.system?.actions) ? actor.system.actions : [];
+  const strikes = pf2eRuntime.readActor(actor).actions;
   return strikes
     .filter((strike, index) => {
       const slug = slugify(strike?.slug ?? strike?.item?.slug ?? strike?.label ?? strike?.name ?? `strike-${index}`);
@@ -304,7 +305,7 @@ export function bestReadyStrikeAverageDamage(actor, context) {
 }
 
 function readGeneratedActivities(actor, context) {
-  const actions = Array.isArray(actor?.system?.actions) ? actor.system.actions : [];
+  const actions = pf2eRuntime.readActor(actor).actions;
   return actions
     .filter((action, index) => {
       const slug = slugify(action?.slug ?? action?.item?.slug ?? action?.label ?? action?.name ?? `action-${index}`);
@@ -511,6 +512,7 @@ function readDropProneAction(actor, context) {
     actionType: "action",
     source: "system-inferred",
     confidence: "low",
+    allowLowConfidenceAutoFill: true,
     executable: "drop-prone",
     detected: true,
     available: !prone,

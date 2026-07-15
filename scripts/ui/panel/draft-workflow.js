@@ -63,6 +63,8 @@ import {
   uniqueMinionStepNames,
 } from "./minion-step-helpers.js";
 import { t } from "../../i18n.js";
+import { nextTacticalRouteMode } from "../../rules/tactical-routes.js";
+import { withResourceHorizon } from "../../rules/resource-horizon.js";
 
 // Reads/writes route to the shared draft when the GM is editing or executing a player plan;
 // otherwise they use the local per-user draft.
@@ -1025,6 +1027,36 @@ export async function cyclePanelStepMovement(panel, instanceId) {
   await panel.render({ force: true });
 }
 
+export async function cyclePanelStepRoute(panel, instanceId) {
+  if (!panel._canExecuteDraft()) return;
+  if (!panel._context || !instanceId) return;
+  const step = panel._findActiveStep(instanceId) ?? panel._findDraftStep(instanceId);
+  if (!step) return;
+  const routeMode = nextTacticalRouteMode(panel._context, step);
+  let updated = {
+    ...step,
+    routeMode,
+    action: step.action ? { ...step.action, routeMode } : step.action,
+  };
+  const query = { ...updated, destination: undefined, movementPlan: undefined };
+  const movementContext = panel._contextForDraftStep?.(instanceId) ?? panel._context;
+  const movement = recommendedMovementForStep(movementContext, query);
+  if (movement?.destination) {
+    updated = {
+      ...updated,
+      destination: movement.destination,
+      movementPlan: {
+        native: false,
+        routeMode,
+        waypoints: movement.waypoints ?? [],
+      },
+    };
+  }
+  await panel._persistActiveDraftStep(updated);
+  await panel._syncDraftToGM();
+  await panel.render({ force: true });
+}
+
 // Cycle which of the actor's ready Strikes backs one atom of a distinct-target multiattack
 // (e.g. Arm -> Tentacle -> Arm for a Kraken's Double Attack). Unlike movement, this doesn't
 // need a manual step.action merge -- findProjectedDraftAction re-derives the atom (and applies
@@ -1098,7 +1130,10 @@ export function actionKeyForPanelStep(panel, step) {
 }
 
 function refreshPanelAutoFillContext(panel, draft = null) {
-  const context = readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant });
+  const context = withResourceHorizon(
+    readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant }),
+    panel.resourceHorizon,
+  );
   if (!context) return null;
   const focusedContext = contextWithCurrentAutoFillTargets(context);
 

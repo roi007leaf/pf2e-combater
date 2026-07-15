@@ -16,6 +16,12 @@ export function activatePanelRenderBindings(panel, element) {
     ?.addEventListener("click", () => panel._configureTacticPersonality());
   element.querySelector("[data-configure-intel]")
     ?.addEventListener("click", () => panel._configureIntelLedger());
+  const resourceHorizon = element.querySelector("[data-cycle-resource-horizon]");
+  resourceHorizon?.addEventListener("click", () => panel._cycleResourceHorizon());
+  resourceHorizon?.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    panel._cycleResourceHorizon(-1);
+  });
   activateMinionPlanStepBindings(panel, element);
 
   // Cost tabs, search, and the action add/favorite/open controls live in the detached
@@ -45,10 +51,22 @@ export function activatePanelRenderBindings(panel, element) {
       panel._cycleStepMovement(button.dataset.cycleMovement);
     });
   }
+  for (const button of element.querySelectorAll("[data-cycle-route]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      panel._cycleStepRoute(button.dataset.cycleRoute);
+    });
+  }
   for (const button of element.querySelectorAll("[data-cycle-weapon]")) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       panel._cycleStepWeapon(button.dataset.cycleWeapon);
+    });
+  }
+  for (const button of element.querySelectorAll("[data-choose-swap-items]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      panel._chooseSwapItems(button.dataset.chooseSwapItems);
     });
   }
   activateDraftDragBindings(panel, element);

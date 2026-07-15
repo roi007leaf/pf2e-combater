@@ -20,6 +20,11 @@ import {
 } from "./minion-step-helpers.js";
 import { actorMovementOptions } from "../../readers/actor-profile.js";
 import { intelTargetKey, isNpcIntelTarget } from "../../rules/intel-ledger.js";
+import {
+  availableTacticalRouteModes,
+  tacticalRouteModeForStep,
+  tacticalRouteModeLabel,
+} from "../../rules/tactical-routes.js";
 import { groupActionsByBuilderCategory } from "../action/categories.js";
 import { actionDetailChips, traitChips } from "../action/details.js";
 import { displayStepEntries } from "../display-steps.js";
@@ -530,6 +535,40 @@ function isSpeedBasedMovementStep(action) {
   return slug !== "step" && slug !== "crawl";
 }
 
+function swapChoiceRows(action, rowsKey, idsKey) {
+  const profile = action?.activityProfile ?? {};
+  const rows = Array.isArray(profile[rowsKey]) ? profile[rowsKey] : [];
+  if (rows.length) {
+    return rows.map((row) => ({
+      id: String(row?.id ?? row ?? ""),
+      name: String(row?.name ?? row?.id ?? row ?? ""),
+    })).filter((row) => row.id);
+  }
+  return (Array.isArray(profile[idsKey]) ? profile[idsKey] : [])
+    .filter(Boolean)
+    .map((id) => ({ id: String(id), name: String(id) }));
+}
+
+function swapItemsView(step, action) {
+  const visible = action?.executable === "swap-items" || action?.activityProfile?.swapsItems === true;
+  if (!visible) return { visible: false, label: "", tooltip: "" };
+  const heldItems = swapChoiceRows(action, "heldItems", "heldItemIds");
+  const drawableItems = swapChoiceRows(action, "drawableItems", "drawableItemIds");
+  const heldId = String(step?.swapHeldItemId ?? (heldItems.length === 1 ? heldItems[0].id : ""));
+  const drawId = String(step?.swapDrawItemId ?? (drawableItems.length === 1 ? drawableItems[0].id : ""));
+  const held = heldItems.find((item) => item.id === heldId);
+  const draw = drawableItems.find((item) => item.id === drawId);
+  const heldName = String(step?.swapHeldItemName ?? held?.name ?? "");
+  const drawName = String(step?.swapDrawItemName ?? draw?.name ?? "");
+  return {
+    visible: true,
+    label: heldName && drawName
+      ? t("Panel.SwapSelection", "Put away {held} -> Draw {draw}", { held: heldName, draw: drawName })
+      : t("Panel.SwapSelectionRequired", "Choose items to swap"),
+    tooltip: t("Panel.ChooseSwapItems", "Choose which held item to put away and which worn item to draw."),
+  };
+}
+
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
@@ -573,6 +612,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
   const canChooseDestination = requiresDestination && canRunStep && !isExecutionDone;
   const canChooseArea = requiresManualArea && canRunStep && !isExecutionDone;
+  const swapItems = swapItemsView(step, action ?? step);
+  const canChooseSwapItems = swapItems.visible && canRunStep && !isExecutionDone;
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
   const canDuplicateStep = readonly !== true && !step?.groupId && !minionPlanAsChildren;
   const canRemoveDraftStep = readonly !== true && !minionPlanAsChildren;
@@ -590,6 +631,13 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const canCycleMovement = isSpeedBasedMovementStep(action ?? step)
     && canRunStep && !isExecutionDone && movementOptions.length > 1;
   const movementToolTip = t("Panel.MovementCycle", "Stride on {label} Speed. Click to change.", { label: movementToolLabel });
+  const routeMode = tacticalRouteModeForStep(step);
+  const routeModeLabel = tacticalRouteModeLabel(routeMode);
+  const canCycleRoute = isSpeedBasedMovementStep(action ?? step)
+    && canRunStep
+    && !isExecutionDone
+    && availableTacticalRouteModes(context, step).length > 1;
+  const routeModeToolTip = t("Panel.RouteCycle", "Tactical route: {label}. Click to change.", { label: routeModeLabel });
   const weaponToolLabel = action?.item?.name ?? t("Panel.WeaponDefault", "Default");
   const isStrikeAtom = action?.executable === "strike" || action?.source === "strike";
   const canCycleWeapon = Boolean(step?.groupId) && isStrikeAtom && canRunStep && !isExecutionDone && weaponOptions.length > 1;
@@ -620,6 +668,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canChooseTarget,
     canChooseDestination,
     canChooseArea,
+    canChooseSwapItems,
+    swapItemsLabel: swapItems.label,
+    swapItemsTooltip: swapItems.tooltip,
     areaLabel: stepAreaLabel,
     hasAreaMarker: Boolean(step?.areaMarker),
     executionStatus: status,
@@ -646,6 +697,10 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canCycleMovement,
     movementToolLabel,
     movementToolTip,
+    canCycleRoute,
+    routeMode,
+    routeModeLabel,
+    routeModeToolTip,
     canCycleWeapon,
     weaponToolLabel,
     weaponToolTip,
@@ -654,7 +709,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     warning,
     traitChips: stepTraitChips,
     hasTraitChips: stepTraitChips.length > 0,
-    hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
+    hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || swapItems.label || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
   };
 }
 

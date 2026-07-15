@@ -9,6 +9,7 @@ import {
   isNpcIntelTarget,
 } from "../../rules/intel-ledger.js";
 import { slugify as slugText } from "../action/text.js";
+import { normalizedActionFacts } from "../action/facts.js";
 import { contextActorDocument as contextActorDocumentFromContext } from "../actor-context.js";
 
 export function valueSlugs(value) {
@@ -87,15 +88,7 @@ export function hasSpellcastingCapability(context) {
 }
 
 export function actionTraitSlugs(action) {
-  const values = [
-    ...(Array.isArray(action?.traits) ? action.traits : []),
-    ...(Array.isArray(action?.weaponTraits) ? action.weaponTraits : []),
-    ...(Array.isArray(action?.range?.traits) ? action.range.traits : []),
-    ...(Array.isArray(action?.item?.system?.traits?.value) ? action.item.system.traits.value : []),
-  ];
-  return [...new Set(values
-    .map((trait) => String(trait?.slug ?? trait?.name ?? trait ?? "").toLowerCase())
-    .filter(Boolean))];
+  return [...normalizedActionFacts(action).traits];
 }
 
 export function isRangedStrike(action) {
@@ -149,7 +142,7 @@ export function volleyRange(action) {
 }
 
 export function isSpellAction(action) {
-  return String(action?.source ?? "").startsWith("spell");
+  return normalizedActionFacts(action).resolution.spell;
 }
 
 export function isOffensiveRole(role) {
@@ -157,66 +150,30 @@ export function isOffensiveRole(role) {
 }
 
 export function isAttackLikeAction(action, role) {
-  return action?.source === "strike"
-    || action?.activityProfile?.includesStrike === true
-    || action?.attackTrait === true
+  return normalizedActionFacts(action).resolution.attackLike
     || ["mobility-attack", "multiattack"].includes(role)
     || isOffensiveRole(role);
 }
 
 export function makesAttackRoll(action) {
-  return action?.source === "strike"
-    || action?.attackTrait === true
-    || action?.activityProfile?.includesStrike === true
-    || action?.activityProfile?.spellAttack === true
-    || actionTraitSlugs(action).includes("attack");
+  return normalizedActionFacts(action).resolution.makesAttackRoll;
 }
 
 export function isAreaAction(action, role) {
-  const type = String(action?.targetingProfile?.type ?? "").toLowerCase();
-  return role === "area-damage"
-    || action?.targetingProfile?.area === true
-    || ["burst", "cone", "line", "emanation"].includes(type);
+  return role === "area-damage" || normalizedActionFacts(action).targeting.area;
 }
 
 export function requiresTargetableEnemy(action, role) {
   if (isAreaAction(action, role)) return false;
-  return action?.source === "strike"
-    || isAttackLikeAction(action, role)
-    || action?.targetingProfile?.enemy === true
-    || action?.requiresTarget === true
-    || action?.requiresEnemyInReach === true
-    || action?.requiresNearbyEnemy === true
-    || action?.requiresTumbleThroughOpportunity === true
-    || Boolean(action?.targetSave)
-    || Boolean(action?.targetDefense);
+  return normalizedActionFacts(action).targeting.requiresTargetableEnemy || isOffensiveRole(role);
 }
 
 export function damageAverage(action) {
-  const values = [
-    action?.damageProfile?.average,
-    action?.activityProfile?.averageDamage,
-    action?.averageDamage,
-  ];
-  for (const value of values) {
-    const number = Number(value);
-    if (Number.isFinite(number) && number > 0) {
-      const multiplier = action?.activityProfile?.damageScalesWithActions
-        ? Math.max(1, Number(action?.actionCost) || 1)
-        : 1;
-      return number * multiplier;
-    }
-  }
-  return null;
+  return normalizedActionFacts(action).effects.damageAverage;
 }
 
 export function damageTypes(action) {
-  const values = [
-    ...(Array.isArray(action?.damageProfile?.types) ? action.damageProfile.types : []),
-    action?.damageProfile?.type,
-    ...(Array.isArray(action?.activityProfile?.damageTypes) ? action.activityProfile.damageTypes : []),
-  ];
-  return [...new Set(values.filter(Boolean).map((value) => String(value).toLowerCase()))];
+  return [...normalizedActionFacts(action).effects.damageTypes];
 }
 
 function defenseEntries(value) {

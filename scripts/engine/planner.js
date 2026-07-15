@@ -1,6 +1,7 @@
 import { actionBudget } from "./action/budget.js";
 import { slugify as normalizeSlug } from "./action/text.js";
 import { combineConfidence } from "./confidence.js";
+import { normalizedActionFacts } from "./action/facts.js";
 import {
   actionKey,
   inheritPlannedTarget,
@@ -29,6 +30,13 @@ import {
 } from "./planner/projections.js";
 import { planSignature } from "./planner/plan-signature.js";
 import {
+  advancePlanState,
+  createPlanState,
+  evaluatePlan,
+  planStateSignature,
+  projectContextFromPlanState,
+} from "./plan-state.js";
+import {
   BASIC_MOVE_SLUGS,
   hasAttackPathAvailable,
   hasPlanConflict,
@@ -54,25 +62,16 @@ const PRIMARY_CANDIDATES = 8;
 const CONDITION_SETUP_CANDIDATES = 4;
 const MAX_FREE_STEPS = 1;
 const MAX_PLANS = 256;
+const MAX_SEARCH_STATES = 1024;
+const MAX_COVERAGE_SEARCH_STATES = 48;
+const MAX_COVERAGE_PLANS = 8;
+const DIVERSITY_SCORE_WINDOW = 6;
+const DIVERSITY_LOOKAHEAD = 12;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const MAP_SCORE_WEIGHT = 3;
 // Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
 const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride"]);
-const SKILL_ACTION_SLUGS = new Set([
-  "demoralize",
-  "recall-knowledge",
-  "create-a-diversion",
-  "feint",
-  "trip",
-  "grapple",
-  "disarm",
-  "shove",
-  "reposition",
-  "tumble-through",
-  "seek",
-  "sense-motive",
-]);
 const DIVERSE_CANDIDATE_CATEGORIES = [
   "strike",
   "class",
@@ -108,8 +107,7 @@ function emptyPlan(context) {
 }
 
 function hasAgileTrait(candidate) {
-  const traits = candidate.traits ?? candidate.weaponTraits ?? candidate.item?.system?.traits?.value ?? [];
-  return Array.isArray(traits) && traits.includes("agile");
+  return normalizedActionFacts(candidate).traits.includes("agile");
 }
 
 // Where the actor stands after the prior plan steps: a move-and-strike composite's attack square,
@@ -119,22 +117,8 @@ function hasAgileTrait(candidate) {
 // base score did NOT already include is added here, so scoring's base-position penalty isn't doubled.
 // Matches the granting ability's own wording: "an arcane spontaneous spell." Rank caps ("8th level
 // or lower") aren't enforced -- see the design doc for why this is an accepted simplification.
-function isItemCandidate(candidate) {
-  return candidate?.item?.type === "consumable"
-    || candidate?.type === "consumable"
-    || Number(candidate?.interactDrawCost) > 0;
-}
-
 function candidateCategory(candidate) {
-  if (["healing", "defense", "buff", "stealth-defense", "self-healing"].includes(candidate?.role)) return "support";
-  if (isStrikeLikeCandidate(candidate)) return "strike";
-  if (isSpellAction(candidate)) return "spell";
-  if (candidate?.activityProfile?.impulse === true) return "class";
-  if (BASIC_MOVE_SLUGS.has(candidate?.slug) || candidate?.role === "mobility") return "movement";
-  if (isItemCandidate(candidate)) return "item";
-  if (candidate?.skill || SKILL_ACTION_SLUGS.has(candidate?.slug)) return "skill";
-  if (["custom-curated", "system-inferred"].includes(candidate?.source)) return "class";
-  return "other";
+  return normalizedActionFacts(candidate).category;
 }
 
 function bossAutoFillCandidateAllowed(resolvedTactic, candidate) {
@@ -182,21 +166,20 @@ function contextAutoFillMatches(context, candidate) {
 }
 
 function autoFillEligibleCandidate(context, candidate) {
-  const combatUse = String(candidate?.combatUse ?? candidate?.activityProfile?.combatUse ?? "auto").toLowerCase();
-  const role = String(candidate?.role ?? "").toLowerCase();
-  const utilitySubtype = String(candidate?.activityProfile?.utilitySubtype ?? "").toLowerCase();
-  const confidence = String(candidate?.confidence ?? "").toLowerCase();
+  const facts = normalizedActionFacts(candidate);
+  const { combatUse, role, utilitySubtype } = facts;
   if (combatUse === "context-only" && contextAutoFillMatches(context, candidate)) return true;
   if (PLANNER_EXCLUDED_COMBAT_USE.has(combatUse)) return false;
   if (PLANNER_EXCLUDED_UTILITY_ROLES.has(role) || PLANNER_EXCLUDED_UTILITY_ROLES.has(utilitySubtype)) return false;
-  if (["utility", "combat-utility"].includes(role) && confidence === "low") return false;
+  if (!facts.automation.confidenceAllowsAutoFill) return false;
   return true;
 }
 
 function isMajorCriticalFailureAttackSkill(candidate) {
-  return isAttackAction(candidate)
-    && Boolean(candidate?.skill)
-    && String(candidate?.criticalFailureRisk ?? "").toLowerCase() === "major";
+  const facts = normalizedActionFacts(candidate);
+  return facts.resolution.attack
+    && Boolean(facts.resolution.skill)
+    && facts.resolution.criticalFailureRisk === "major";
 }
 
 function selectPlanningCandidates(sortedCandidates) {
@@ -260,7 +243,10 @@ function hasOffensiveFollowUp(steps) {
 }
 
 function hasStrikeFollowUp(steps) {
-  return steps.some((step) => isStrikeAction(step) || step.activityProfile?.includesStrike === true);
+  return steps.some((step) => {
+    const { resolution } = normalizedActionFacts(step);
+    return resolution.strike || resolution.includesStrike;
+  });
 }
 
 function weaponIdentityValues(action) {
@@ -466,6 +452,7 @@ function planScore(context, steps, sortedCandidates, budget) {
 
 function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null) {
   const orderedSteps = orderPlanSteps(steps);
+  const evaluation = evaluatePlan(context, orderedSteps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
   const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget);
@@ -493,6 +480,12 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null)
       scoreDelta: preferenceScoreDelta,
       queueDemoted: preferenceQueueDemoted,
     },
+    evaluation: {
+      score: evaluation.score,
+      legal: evaluation.legal,
+      projectedState: evaluation.projectedState,
+      reasons: evaluation.reasons,
+    },
     confidence: combineConfidence(orderedSteps.map((step) => step.confidence)),
     summary: orderedSteps.map((step) => step.name).join(" -> "),
     reason: orderedSteps[0]?.reason ?? "",
@@ -517,8 +510,102 @@ function planUsesFullBudget(plan, budget) {
   return !hasNegativeStep && Number(plan?.totalCost) >= Number(budget?.totalActions);
 }
 
-export function buildTurnPlans(context, candidates) {
+function comparePlanQuality(left, right, budget) {
+  const leftDemoted = left.preference?.queueDemoted === true;
+  const rightDemoted = right.preference?.queueDemoted === true;
+  if (leftDemoted !== rightDemoted) return leftDemoted ? 1 : -1;
+  const leftFull = planUsesFullBudget(left, budget);
+  const rightFull = planUsesFullBudget(right, budget);
+  if (leftFull !== rightFull) return rightFull ? 1 : -1;
+  if (right.score !== left.score) return right.score - left.score;
+  return right.totalCost - left.totalCost;
+}
+
+function offerPlan(plans, plan, cap, budget) {
+  if (plans.length < cap) {
+    plans.push(plan);
+    return;
+  }
+  let worstIndex = 0;
+  for (let index = 1; index < plans.length; index += 1) {
+    if (comparePlanQuality(plans[index], plans[worstIndex], budget) > 0) worstIndex = index;
+  }
+  if (comparePlanQuality(plan, plans[worstIndex], budget) < 0) plans[worstIndex] = plan;
+}
+
+function plannerStateKey({ startIndex, normalCost, quickenedEligibleActions, freeSteps, usedActions, planState }) {
+  const uses = [...usedActions.entries()]
+    .toSorted(([left], [right]) => String(left).localeCompare(String(right)))
+    .map(([key, count]) => `${key}:${count}`)
+    .join(",");
+  return [
+    startIndex,
+    normalCost,
+    quickenedEligibleActions,
+    freeSteps,
+    uses,
+    planStateSignature(planState),
+  ].join("|");
+}
+
+function partialPlanValue(steps) {
+  return steps.reduce((total, step) => total + (Number(step?.score) || 0), 0);
+}
+
+function createSearch(maxStates) {
+  return { maxStates, expanded: 0, pruned: 0, limitHit: false, bestByState: new Map() };
+}
+
+function planFeatureKeys(plan) {
+  return new Set((plan?.steps ?? []).flatMap((step) => [
+    `action:${actionKey(step)}`,
+    `category:${candidateCategory(step)}`,
+    step?.suggestedTarget?.id ? `target:${step.suggestedTarget.id}` : null,
+    step?.destination ? `destination:${step.destination.x},${step.destination.y},${step.destination.elevation ?? ""}` : null,
+    step?.routeMode ? `route:${step.routeMode}` : null,
+  ].filter(Boolean)));
+}
+
+function planSimilarity(left, right) {
+  const leftFeatures = planFeatureKeys(left);
+  const rightFeatures = planFeatureKeys(right);
+  const union = new Set([...leftFeatures, ...rightFeatures]);
+  if (!union.size) return 0;
+  let intersection = 0;
+  for (const feature of leftFeatures) if (rightFeatures.has(feature)) intersection += 1;
+  return intersection / union.size;
+}
+
+function diversifyPlanOrder(sortedPlans, budget) {
+  if (sortedPlans.length < 3) return sortedPlans;
+  const ordered = [sortedPlans[0]];
+  const remaining = sortedPlans.slice(1, DIVERSITY_LOOKAHEAD);
+  const tail = sortedPlans.slice(DIVERSITY_LOOKAHEAD);
+  while (remaining.length) {
+    const anchor = remaining[0];
+    const anchorFull = planUsesFullBudget(anchor, budget);
+    const anchorDemoted = anchor.preference?.queueDemoted === true;
+    const candidates = remaining
+      .slice(0, DIVERSITY_LOOKAHEAD)
+      .filter((plan) => planUsesFullBudget(plan, budget) === anchorFull)
+      .filter((plan) => (plan.preference?.queueDemoted === true) === anchorDemoted)
+      .filter((plan) => Number(anchor.score) - Number(plan.score) <= DIVERSITY_SCORE_WINDOW);
+    const pool = candidates.length ? candidates : [anchor];
+    const chosen = pool.toSorted((left, right) => {
+      const leftSimilarity = Math.max(...ordered.map((plan) => planSimilarity(left, plan)));
+      const rightSimilarity = Math.max(...ordered.map((plan) => planSimilarity(right, plan)));
+      if (leftSimilarity !== rightSimilarity) return leftSimilarity - rightSimilarity;
+      return comparePlanQuality(left, right, budget);
+    })[0];
+    ordered.push(chosen);
+    remaining.splice(remaining.indexOf(chosen), 1);
+  }
+  return [...ordered, ...tail];
+}
+
+export function buildTurnPlans(context, candidates, { reservedSteps = [] } = {}) {
   const budget = actionBudget(context);
+  const initialPlanState = createPlanState(context, { steps: reservedSteps });
   const resolvedTactic = resolveTacticPersonality(context);
   // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
   // search below runs, for performance — a real actor can easily have 20-40+ legal candidates
@@ -543,34 +630,60 @@ export function buildTurnPlans(context, candidates) {
 
   const plans = [];
   const seenPlans = new Set();
-  const attackPathAvailable = hasAttackPathAvailable(context, sortedCandidates);
+  const initialProjectedContext = projectContextFromPlanState(context, initialPlanState);
+  const attackPathAvailable = hasAttackPathAvailable(initialProjectedContext, sortedCandidates);
 
-  function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, attackCount, strikeCount, usedActions, targetPlans = plans, cap = MAX_PLANS, candidatePool = sortedCandidates) {
-    if (targetPlans.length >= cap) return;
+  const mainSearch = createSearch(MAX_SEARCH_STATES);
+
+  function visit(startIndex, steps, normalCost, quickenedEligibleActions, freeSteps, usedActions, planState, targetPlans = plans, cap = MAX_PLANS, candidatePool = sortedCandidates, search = mainSearch, seen = seenPlans) {
+    if (search.expanded >= search.maxStates) {
+      search.limitHit = true;
+      return;
+    }
+    search.expanded += 1;
+    const stateKey = plannerStateKey({
+      startIndex,
+      normalCost,
+      quickenedEligibleActions,
+      freeSteps,
+      usedActions,
+      planState,
+    });
+    const stateValue = partialPlanValue(steps);
+    const previousStateValue = search.bestByState.get(stateKey);
+    if (previousStateValue !== undefined && previousStateValue >= stateValue) {
+      search.pruned += 1;
+      return;
+    }
+    search.bestByState.set(stateKey, stateValue);
+    const projectedContext = projectContextFromPlanState(context, planState);
 
     if (steps.length && planReloadsAreUseful(steps) && planSpellshapesAreUseful(orderPlanSteps(steps))) {
       const key = steps.map(actionKey).join("|");
-      if (!seenPlans.has(key)) {
-        seenPlans.add(key);
-        targetPlans.push(toPlan(context, [...steps], sortedCandidates, budget, resolvedTactic));
+        if (!seen.has(key)) {
+          seen.add(key);
+        offerPlan(targetPlans, toPlan(context, [...steps], sortedCandidates, budget, resolvedTactic), cap, budget);
       }
     }
 
     for (let index = startIndex; index < candidatePool.length; index += 1) {
       const candidate = candidatePool[index];
-      const linkedCandidate = inheritPlannedTarget(context, candidate, steps);
+      const prerequisiteSteps = steps.length || !planState.lastStep ? steps : [planState.lastStep];
+      const linkedCandidate = inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps);
       const key = actionKey(candidate);
       const attackAction = isAttackAction(linkedCandidate);
       const strikeAction = isStrikeAction(linkedCandidate);
       const currentUses = usedActions.get(key) ?? 0;
-      const repeatableAction = isRepeatablePlanningAction(context, linkedCandidate, attackPathAvailable);
+      const repeatableAction = isRepeatablePlanningAction(projectedContext, linkedCandidate, attackPathAvailable);
       if (currentUses > 0 && !repeatableAction) continue;
       if (currentUses >= 3) continue;
-      if (strikeAction && strikeCount >= MAX_STRIKE_STEPS) continue;
+      if (strikeAction && planState.strikeCount >= MAX_STRIKE_STEPS) continue;
       if (!projectedFollowUpSatisfied(context, linkedCandidate, steps)) continue;
-      if (!previousActionSatisfied(context, linkedCandidate, steps)) continue;
-      if (!targetConditionSatisfied(context, linkedCandidate, steps)) continue;
-      if (hasPlanConflict(context, linkedCandidate, steps, attackPathAvailable)) continue;
+      if (!previousActionSatisfied(projectedContext, linkedCandidate, prerequisiteSteps)) continue;
+      if (!targetConditionSatisfied(projectedContext, linkedCandidate, steps)) continue;
+      if (hasPlanConflict(projectedContext, linkedCandidate, steps, attackPathAvailable)) continue;
+      const nextPlanState = advancePlanState(context, planState, linkedCandidate);
+      if (!nextPlanState.resourceLegal) continue;
 
       const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(linkedCandidate) : 0;
       const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost;
@@ -590,7 +703,7 @@ export function buildTurnPlans(context, candidates) {
         continue;
       }
 
-      const penalty = mapPenalty(linkedCandidate, attackCount);
+      const penalty = mapPenalty(linkedCandidate, planState.attackCount);
       const projectedVolley = attackAction ? projectedVolleyPenalty(linkedCandidate, steps) : 0;
       const plannedCandidate = attackAction
         ? {
@@ -607,7 +720,7 @@ export function buildTurnPlans(context, candidates) {
             }
             : linkedCandidate.activityProfile,
           mapPenalty: penalty,
-          attackIndex: attackCount + 1,
+          attackIndex: planState.attackCount + 1,
           score: linkedCandidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
           reason: [
             repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
@@ -628,12 +741,13 @@ export function buildTurnPlans(context, candidates) {
         nextNormalCost,
         nextQuickenedEligibleActions,
         nextFreeSteps,
-        attackAction ? attackCount + attacksTowardMap(candidate) : attackCount,
-        strikeAction ? strikeCount + 1 : strikeCount,
         usedActions,
+        nextPlanState,
         targetPlans,
         cap,
         candidatePool,
+        search,
+        seen,
       );
       steps.pop();
       if (currentUses) usedActions.set(key, currentUses);
@@ -641,7 +755,7 @@ export function buildTurnPlans(context, candidates) {
     }
   }
 
-  visit(0, [], 0, 0, 0, 0, 0, new Map());
+  visit(0, [], 0, 0, 0, new Map(), initialPlanState);
 
   // Two ways a fully legal candidate can end up in zero generated plans, both silently, no matter
   // how many alt-plan cycle slots exist:
@@ -652,8 +766,8 @@ export function buildTurnPlans(context, candidates) {
   //    MAX_CANDIDATES (12) before the DFS runs, and a candidate outside the top 12 only gets in
   //    via a "one per category" diversity slot, which a higher-ranked same-category candidate
   //    (e.g. another spell) can already claim.
-  // Backfill a minimal single-step plan for each still-uncovered candidate from each pool so every
-  // currently available action is reachable somewhere in the cycle.
+  // Run a bounded coverage search with each still-uncovered candidate promoted to the front, so
+  // every available action remains reachable in a complete legal turn somewhere in the cycle.
   const coveredKeys = new Set(plans.flatMap((plan) => plan.steps.map(actionKey)));
   function backfillCoverage(pool) {
     for (let index = 0; index < pool.length; index += 1) {
@@ -667,8 +781,25 @@ export function buildTurnPlans(context, candidates) {
       // steps once applied, showing an empty draft. Only backfill candidates worth showing at all.
       if (Number(candidate.score) < 0) continue;
       const coverageAttempt = [];
-      visit(index, [], 0, 0, 0, 0, 0, new Map(), coverageAttempt, 1, pool);
-      const coveragePlan = coverageAttempt[0];
+      const coveragePool = [candidate, ...pool.filter((entry) => entry !== candidate)];
+      const coverageSearch = createSearch(MAX_COVERAGE_SEARCH_STATES);
+      visit(
+        0,
+        [],
+        0,
+        0,
+        0,
+        new Map(),
+        initialPlanState,
+        coverageAttempt,
+        MAX_COVERAGE_PLANS,
+        coveragePool,
+        coverageSearch,
+        new Set(),
+      );
+      const coveragePlan = coverageAttempt
+        .filter((plan) => plan.steps.some((step) => actionKey(step) === key))
+        .toSorted((left, right) => comparePlanQuality(left, right, budget))[0];
       if (coveragePlan?.steps.some((step) => actionKey(step) === key)) {
         plans.push(coveragePlan);
         coveredKeys.add(key);
@@ -680,16 +811,17 @@ export function buildTurnPlans(context, candidates) {
 
   if (!plans.length) return [emptyPlan(context)];
 
-  return dedupePlans(plans.toSorted((left, right) => {
-    const leftDemoted = left.preference?.queueDemoted === true;
-    const rightDemoted = right.preference?.queueDemoted === true;
-    if (leftDemoted !== rightDemoted) return leftDemoted ? 1 : -1;
-    const leftFull = planUsesFullBudget(left, budget);
-    const rightFull = planUsesFullBudget(right, budget);
-    if (leftFull !== rightFull) return rightFull ? 1 : -1;
-    if (right.score !== left.score) return right.score - left.score;
-    return right.totalCost - left.totalCost;
-  }));
+  const sortedPlans = dedupePlans(plans.toSorted((left, right) => comparePlanQuality(left, right, budget)));
+  const diagnostics = {
+    eligibleCandidates: eligibleCandidates.length,
+    searchedCandidates: sortedCandidates.length,
+    statesExpanded: mainSearch.expanded,
+    statesPruned: mainSearch.pruned,
+    searchLimitHit: mainSearch.limitHit,
+    planCap: MAX_PLANS,
+  };
+  for (const plan of sortedPlans) plan.searchDiagnostics = diagnostics;
+  return diversifyPlanOrder(sortedPlans, budget);
 }
 
 export function bestTurnPlan(context, candidates) {

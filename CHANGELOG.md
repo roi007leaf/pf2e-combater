@@ -1,5 +1,75 @@
 # Changelog
 
+## [1.1.11]
+
+### Added
+
+- **Planner quality now has a deterministic scenario lab.** Martial turns, condition setup/payoff,
+  low-confidence quarantine, shared resources, wide candidate pools, and alternative diversity run
+  through the real planner and report coverage, completeness, search cost, and exact failures in
+  human-readable or JSON form.
+- **Auto-fill now has Conserve, Normal, and Burst resource horizons.** The selected mode changes how
+  plans value cantrips, focus points, ranked spell slots, consumables, innate uses, and limited
+  encounter/daily abilities using remaining uses and current encounter pressure. Normal preserves
+  the existing tactical scores.
+- **Strides now offer tactical route goals.** Cycle each movement step between Approach, Shortest,
+  Safest, Seek Cover, Flank, and Escape. Route previews score exposure across the full path while
+  Foundry and PF2e remain responsible for final measurement and movement execution.
+- **Installed-version compatibility now has its own smoke test.** The test checks the local Foundry
+  v14 and PF2e runtime contracts used for movement, actions, spells, slots, and item macros before a
+  release.
+- **Authenticated engine checks now have a safe live runner.** It verifies the loaded PF2e action and
+  socketlib GM round trip, while a GM-only opt-in check measures and executes multi-waypoint movement,
+  observes movement hooks, history, and regions, then restores the token through recorded Undo.
+
+### Changed
+
+- **Safest, Seek Cover, and Escape routes now measure exposure by movement segment.** Long,
+  diagonal, and difficult-terrain segments under melee threat or open enemy lines count
+  proportionally, while compressed and detailed representations of the same route produce the same
+  score.
+- **Movement now uses Foundry v14's native movement transaction from preview through Undo.** A route
+  is measured by PF2e, executed once with a stable movement ID, recorded in Foundry's movement
+  history, and reverted through that same native history instead of rebuilding token movement.
+- **Auto-fill planning is safer and more varied.** Normalized action facts prevent uncertain actions
+  from being automated unless an exact rule explicitly trusts them. Planner search now removes
+  equivalent states, fills incomplete turns, explores useful tail actions, and preserves tactically
+  different alternatives instead of returning near-duplicate plans.
+- **Every action source now passes through ActionFacts v2 before planning or scoring.** One immutable
+  representation normalizes attack/check/save resolution, critical-failure risk, targets, range,
+  areas, conditions, movement, duration, action/resource cost, sequencing, classification confidence,
+  and Auto-fill safety. Requirements, native preflight, scoring, resource policy, and planner rules no
+  longer reinterpret those raw classifier fields independently.
+- **Auto-fill now carries one projected turn state through search and manual gap filling.** Position,
+  MAP, Strike count, actor and target conditions, shield state, effect durations, and shared
+  resources advance together. Search pruning compares that full state instead of treating plans
+  with different tactical consequences as equivalent.
+- **Displayed PF2e odds and Auto-fill scoring now share the same native Roll Context result.** Only
+  disclosed results influence ranking, approximate revealed information receives reduced weight, and
+  the adjustment stays bounded so tactical value remains primary. Ranking now values all four PF2e
+  degrees, including critical hits, basic-save damage, stronger critical failures on save effects,
+  risky skill-action critical failures, and incapacitation's native one-degree shift.
+- **Foundry/PF2e integration now passes through one runtime adapter.** Version-sensitive movement,
+  action, spell, slot, and item-macro access is centralized and contract-tested against Foundry
+  14.361-14.364 and PF2e 8.3.0.
+
+### Fixed
+
+- **Auto-fill no longer spends the same last resource multiple times in one simulated turn.** Planner
+  search now reserves shared spontaneous/flexible spell slots, focus points, prepared copies,
+  consumable stacks/uses, innate uses, and frequency-limited abilities. Manual draft steps reserve
+  first when Auto-fill completes the remaining action budget. Flexible prepared entries now also
+  read PF2e's shared slot values instead of looking for fixed prepared copies.
+- **Gap filling no longer resets combat state after a manually planned action.** Existing draft
+  Strikes seed MAP and the per-turn Strike cap, while the last action and projected target conditions
+  remain available to legal immediate follow-ups before Auto-fill searches the remaining actions.
+- **Enemy conditions no longer leak onto the acting creature during draft projection.** Trip,
+  Grapple, Demoralize, and other targeted effects update their selected target; self effects such as
+  Drop Prone, Stand, Escape, Raise a Shield, and Shield remain on the actor.
+- **Undo no longer overwrites newer movement or resource changes.** Before restoring movement,
+  item uses, frequencies, or spell slots, Combater verifies that current state still matches what it
+  produced. Conflicts preserve the newer state and leave a recovery warning on the plan step.
+
 ## [1.1.10]
 
 ### Changed

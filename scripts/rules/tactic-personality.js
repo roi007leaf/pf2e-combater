@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.js";
 import { actorItems, collectionValues, systemValue, traitSlugs } from "../foundry-data.js";
 import { t } from "../i18n.js";
+import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 
 export const TACTIC_PERSONALITY_FLAG = "tacticPersonality";
 export const TACTIC_PERSONALITY_OVERRIDE_FLAG = "tacticPersonalityOverride";
@@ -583,7 +584,7 @@ function computeInferTacticPersonality(context) {
     addScore(scores, "temperament", "cautious", 3);
   }
 
-  const systemActions = collectionValues(actor?.system?.actions, { compact: true });
+  const systemActions = pf2eRuntime.readActor(actor).actions;
   for (const action of systemActions) {
     const traits = strikeTraits(action);
     const text = documentText(action);

@@ -1,4 +1,9 @@
-import { movementFootprintForToken, movementOriginForContext, movementRouteForStep } from "../movement-route.js";
+import {
+  movementBudgetForStep,
+  movementFootprintForToken,
+  movementOriginForContext,
+  movementRouteForStep,
+} from "../movement-route.js";
 import { executionPatch, revertEnvelope } from "./results.js";
 import { canvasTokenById, targetTokenId, tokenId } from "./targets.js";
 import { canvasGridDistance as gridDistance, canvasGridSize as gridSize } from "../../rules/canvas-geometry.js";
@@ -164,6 +169,80 @@ function samePoint(left, right) {
   return !!left && !!right && left.x === right.x && left.y === right.y;
 }
 
+function movementId() {
+  if (typeof globalThis.foundry?.utils?.randomID === "function") {
+    return globalThis.foundry.utils.randomID();
+  }
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from({ length: 16 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+
+function expectedMovementPoint(waypoint) {
+  if (!waypoint) return null;
+  return {
+    x: waypoint.x,
+    y: waypoint.y,
+    ...(waypoint.elevation === undefined ? {} : { elevation: waypoint.elevation }),
+  };
+}
+
+function nativeMovementCost(token, waypoints) {
+  if (typeof token?.measureMovementPath !== "function") return null;
+  try {
+    const measurement = token.measureMovementPath(waypoints, { preview: false });
+    return numeric(measurement?.cost);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function nativeMovementBudget(context, step, action, token) {
+  const activityProfile = {
+    ...(action?.activityProfile ?? {}),
+    ...(step?.activityProfile ?? {}),
+  };
+  const movementStep = {
+    ...(action ?? {}),
+    ...(step ?? {}),
+    activityProfile,
+    slug: step?.slug ?? action?.slug,
+    requiresDestination: true,
+  };
+  const base = movementBudgetForStep(context, movementStep, {
+    actor: token?.actor ?? context?.actor,
+    collisionToken: token,
+    gridSize: gridSize(),
+    gridDistance: gridDistance(),
+    movementAction: pf2eTokenMovementActionForStep(movementStep),
+  });
+  const strideCount = Math.max(1, Math.floor(numeric(activityProfile?.strideCount, 1) || 1));
+  return base * strideCount;
+}
+
+function movementStateChanged(origin, current) {
+  if (!samePoint(origin, current)) return true;
+  const originElevation = numeric(origin?.elevation);
+  const currentElevation = numeric(current?.elevation);
+  return originElevation !== null && currentElevation !== null && originElevation !== currentElevation;
+}
+
+function movementWasRecorded(document, id) {
+  const history = document?._source?._movementHistory;
+  return Array.isArray(history) && history.some((waypoint) => waypoint?.movementId === id);
+}
+
+function nativeMovementRange(context, step, action, token, waypoints) {
+  const cost = nativeMovementCost(token, waypoints);
+  if (cost === null) return { measured: false, error: null };
+  const budget = nativeMovementBudget(context, step, action, token);
+  return {
+    measured: true,
+    error: cost > budget + 0.001
+      ? t("Exec.DestinationUnavailable", "Destination is unavailable.")
+      : null,
+  };
+}
+
 function customMovementWaypoints(destination, movementPlan) {
   if (movementPlan?.native !== false || !Array.isArray(movementPlan.waypoints)) return [];
   const waypoints = movementPlan.waypoints.map((waypoint) => point(waypoint)).filter(Boolean);
@@ -206,8 +285,10 @@ export async function executeMovement({ context, step, action, choices }) {
   }
 
   const token = canvasTokenById(tokenId(context));
+  const document = token?.document ?? context?.combatant?.token ?? context?.token?.document;
   const preview = movementValidationPreview(context, action, destination, movementPlan);
-  if (preview.enabled && preview.explicitDestination && preview.destinationAvailable === false) {
+  const previewRejected = preview.enabled && preview.explicitDestination && preview.destinationAvailable === false;
+  if (previewRejected && typeof token?.measureMovementPath !== "function") {
     return {
       status: "failed",
       patch: executionPatch({ destination }, "failed", { error: preview.destinationIllegalReason || t("Exec.DestinationUnavailable", "Destination is unavailable.") }),
@@ -215,12 +296,18 @@ export async function executeMovement({ context, step, action, choices }) {
     };
   }
 
-  const document = token?.document ?? context?.combatant?.token ?? context?.token?.document;
   const origin = movementOrigin(token, document, context);
   const moveTokenId = targetTokenId(token) ?? tokenId(context);
   const path = movementPathPoints({ origin, destination, movementPlan, token, context, action });
-  const movementRevert = origin && moveTokenId
-    ? revertEnvelope([{ kind: "movement", tokenId: moveTokenId, origin, ...(path && path.length > 1 ? { path } : {}) }])
+  const revertFor = (expectedAfter, id = null) => origin && moveTokenId
+    ? revertEnvelope([{
+      kind: "movement",
+      tokenId: moveTokenId,
+      origin,
+      ...(path && path.length > 1 ? { path } : {}),
+      ...(id ? { movementId: id } : {}),
+      ...(expectedAfter ? { expectedAfter: expectedMovementPoint(expectedAfter) } : {}),
+    }])
     : null;
   if (!canMoveOnCurrentTurn(context, token)) {
     return {
@@ -232,9 +319,10 @@ export async function executeMovement({ context, step, action, choices }) {
 
   const plannedStarted = await startPlannedMovement(document, movementPlan);
   if (plannedStarted) {
+    const expectedAfter = tokenWaypointForDestination(destination, token, context, action);
     return {
       status: "done",
-      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.StartedMovement", "Started planned movement."), revert: movementRevert }),
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.StartedMovement", "Started planned movement."), revert: revertFor(expectedAfter, movementPlan.id) }),
     };
   }
 
@@ -248,27 +336,66 @@ export async function executeMovement({ context, step, action, choices }) {
 
   const customWaypoints = customMovementWaypoints(destination, movementPlan);
   if (customWaypoints.length && typeof document?.move === "function") {
-    for (const waypointDestination of customWaypoints) {
-      const waypoint = tokenWaypointForDestination(waypointDestination, token, context, action);
-      const moved = await document.move(waypoint, { method: "api", showRuler: true });
-      if (!moved) {
+    const waypoints = customWaypoints.map((waypointDestination) =>
+      tokenWaypointForDestination(waypointDestination, token, context, action));
+    const nativeRange = nativeMovementRange(context, step, action, token, waypoints);
+    if (nativeRange.error || (previewRejected && !nativeRange.measured)) {
+      const error = nativeRange.error ?? preview.destinationIllegalReason ?? t("Exec.DestinationUnavailable", "Destination is unavailable.");
+      return {
+        status: "failed",
+        patch: executionPatch({ destination, movementPlan }, "failed", { error }),
+        error,
+      };
+    }
+    const id = movementId();
+    const moved = await document.move(waypoints, { id, method: "api", showRuler: true });
+    if (!moved) {
+      const stoppedAt = expectedMovementPoint(document);
+      if (origin && movementStateChanged(origin, stoppedAt)) {
         return {
-          status: "failed",
-          patch: executionPatch({ destination, movementPlan }, "failed", { error: t("Exec.MovementPrevented", "Movement was prevented.") }),
-          error: t("Exec.MovementPrevented", "Movement was prevented."),
+          status: "done",
+          patch: executionPatch({ destination, movementPlan }, "done", {
+            result: t("Exec.MovementStopped", "Movement stopped before the destination."),
+            revert: revertFor(stoppedAt, movementWasRecorded(document, id) ? id : null),
+          }),
         };
       }
+      return {
+        status: "failed",
+        patch: executionPatch({ destination, movementPlan }, "failed", { error: t("Exec.MovementPrevented", "Movement was prevented.") }),
+        error: t("Exec.MovementPrevented", "Movement was prevented."),
+      };
     }
     return {
       status: "done",
-      patch: executionPatch({ destination, movementPlan }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
+      patch: executionPatch({ destination, movementPlan }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: revertFor(waypoints.at(-1), id) }),
     };
   }
 
   const waypoint = tokenWaypointForDestination(destination, token, context, action);
   if (typeof document?.move === "function") {
-    const moved = await document.move(waypoint, { method: "api", showRuler: true });
+    const nativeRange = nativeMovementRange(context, step, action, token, [waypoint]);
+    if (nativeRange.error || (previewRejected && !nativeRange.measured)) {
+      const error = nativeRange.error ?? preview.destinationIllegalReason ?? t("Exec.DestinationUnavailable", "Destination is unavailable.");
+      return {
+        status: "failed",
+        patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error }),
+        error,
+      };
+    }
+    const id = movementId();
+    const moved = await document.move(waypoint, { id, method: "api", showRuler: true });
     if (!moved) {
+      const stoppedAt = expectedMovementPoint(document);
+      if (origin && movementStateChanged(origin, stoppedAt)) {
+        return {
+          status: "done",
+          patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", {
+            result: t("Exec.MovementStopped", "Movement stopped before the destination."),
+            revert: revertFor(stoppedAt, movementWasRecorded(document, id) ? id : null),
+          }),
+        };
+      }
       return {
         status: "failed",
         patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: t("Exec.MovementPrevented", "Movement was prevented.") }),
@@ -277,7 +404,7 @@ export async function executeMovement({ context, step, action, choices }) {
     }
     return {
       status: "done",
-      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
+      patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: revertFor(waypoint, id) }),
     };
   }
 
@@ -292,10 +419,11 @@ export async function executeMovement({ context, step, action, choices }) {
   await document.update({
     x: waypoint.x,
     y: waypoint.y,
+    ...(waypoint.elevation === undefined ? {} : { elevation: waypoint.elevation }),
   });
   return {
     status: "done",
-    patch: executionPatch({ destination }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: movementRevert }),
+    patch: executionPatch({ destination }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: revertFor(waypoint) }),
   };
 }
 
@@ -316,5 +444,16 @@ export async function teleportTokenTo(context, action, destination, origin) {
       { animate: false },
     );
   }
-  return origin && moveTokenId ? { kind: "movement", tokenId: moveTokenId, origin } : null;
+  return origin && moveTokenId
+    ? {
+      kind: "movement",
+      tokenId: moveTokenId,
+      origin,
+      expectedAfter: {
+        x: waypoint.x,
+        y: waypoint.y,
+        ...(waypoint.elevation === undefined ? {} : { elevation: waypoint.elevation }),
+      },
+    }
+    : null;
 }

@@ -11,6 +11,7 @@ import {
   titleCase,
 } from "./facts.js";
 import { actionSkillDcSlug } from "./skills.js";
+import { normalizedActionFacts } from "../action/facts.js";
 
 function numeric(...values) {
   for (const value of values) {
@@ -31,19 +32,67 @@ function contextIsGM(context) {
 }
 
 function actionSlug(action) {
-  return String(action?.slug ?? action?.id ?? "").trim().toLowerCase();
+  return normalizedActionFacts(action).identity.slug;
 }
 
 function actionTraits(action) {
-  return [...new Set([
-    ...(Array.isArray(action?.traits) ? action.traits : []),
-    ...(Array.isArray(action?.item?.system?.traits?.value) ? action.item.system.traits.value : []),
-  ].map((trait) => String(trait?.slug ?? trait?.name ?? trait).trim().toLowerCase()).filter(Boolean))];
+  return normalizedActionFacts(action).traits;
+}
+
+function actionItem(action) {
+  return action?.item ?? action?.strike?.item ?? action?.generatedAction?.item ?? null;
 }
 
 function nativeItem(action) {
-  const item = action?.item ?? action?.strike?.item ?? action?.generatedAction?.item ?? null;
+  const item = actionItem(action);
   return item && typeof item.getRollOptions === "function" ? item : null;
+}
+
+function itemIsType(item, type) {
+  if (typeof item?.isOfType === "function") return item.isOfType(type) === true;
+  if (type === "spell") return item?.type === "spell";
+  if (type === "physical") {
+    return ["armor", "backpack", "book", "consumable", "equipment", "shield", "treasure", "weapon"]
+      .includes(String(item?.type ?? "").toLowerCase());
+  }
+  return false;
+}
+
+function actorLevel(actor) {
+  return numeric(actor?.level, actor?.system?.details?.level?.value, actor?.system?.details?.level);
+}
+
+function incapacitationEffectLevel(actor, action) {
+  const item = actionItem(action);
+  const facts = normalizedActionFacts(action);
+  const spell = itemIsType(item, "spell") || facts.resolution.spell;
+  if (spell) {
+    const rank = numeric(facts.resolution.rank, item?.system?.level);
+    return Number.isFinite(rank) && rank > 0 ? rank * 2 : null;
+  }
+  if (itemIsType(item, "physical")) {
+    return numeric(item?.level, item?.system?.level?.value, item?.system?.level);
+  }
+  return actorLevel(actor);
+}
+
+function incapacitationDegreeShift(context, actor, target, action, mode) {
+  if (!contextIsGM(context) || !actionTraits(action).includes("incapacitation")) return 0;
+  const targetLevel = actorLevel(targetActorDocument(target));
+  const effectLevel = incapacitationEffectLevel(actor, action);
+  if (!Number.isFinite(targetLevel) || !Number.isFinite(effectLevel) || targetLevel <= effectLevel) return 0;
+  return mode === "save" ? 1 : -1;
+}
+
+function shiftDegreeDistribution(odds, amount) {
+  if (!odds || !amount) return odds;
+  const keys = ["criticalFailure", "failure", "success", "criticalSuccess"];
+  const shifted = Object.fromEntries(keys.map((key) => [key, 0]));
+  keys.forEach((key, index) => {
+    const shiftedIndex = Math.max(0, Math.min(keys.length - 1, index + amount));
+    shifted[keys[shiftedIndex]] += odds[key];
+  });
+  return shifted;
 }
 
 function spellcastingEntry(actor, action) {
@@ -133,14 +182,11 @@ function targetAc(target) {
 }
 
 function attackLike(action) {
-  return action?.source === "strike"
-    || action?.attackTrait === true
-    || action?.activityProfile?.spellAttack === true
-    || actionTraits(action).includes("attack");
+  return normalizedActionFacts(action).resolution.makesAttackRoll;
 }
 
 function skillCheckLike(action) {
-  const statisticSlug = String(action?.skill ?? action?.statistic ?? "").trim();
+  const statisticSlug = normalizedActionFacts(action).resolution.skill;
   const dcSlug = actionSkillDcSlug(action);
   return Boolean(statisticSlug && dcSlug && dcSlug !== "ac");
 }
@@ -186,8 +232,10 @@ function resultData({
   modifiers,
   source,
   approximate = false,
+  degreeShift = 0,
 }) {
-  const odds = Number.isFinite(dc) ? degreeDistribution(modifier, dc) : null;
+  const unadjustedOdds = Number.isFinite(dc) ? degreeDistribution(modifier, dc) : null;
+  const odds = shiftDegreeDistribution(unadjustedOdds, degreeShift);
   const successChance = odds ? odds.success + odds.criticalSuccess : null;
   const effectChance = odds
     ? mode === "save" ? odds.failure + odds.criticalFailure : successChance
@@ -216,17 +264,24 @@ function resultData({
   const approximateText = approximate
     ? t("Preflight.ApproximateIntel", "Target DC uses revealed approximate Intel.")
     : "";
+  const incapacitationText = degreeShift > 0
+    ? t("Preflight.IncapacitationRaisesTarget", "Incapacitation raises the target's result by one degree.")
+    : degreeShift < 0
+      ? t("Preflight.IncapacitationLowersCheck", "Incapacitation lowers the acting check's result by one degree.")
+      : "";
   const informationalText = t("Preflight.InformationalOnly", "Informational only; does not change Auto-fill ranking.");
   const tooltipLines = [
     `${resolution}.`,
     breakdownText,
     approximateText,
+    incapacitationText,
     informationalText,
   ].filter(Boolean);
   const tooltip = [
     reason,
     breakdownText,
     approximateText,
+    incapacitationText,
     informationalText,
   ].filter(Boolean).join(" ");
 
@@ -242,6 +297,9 @@ function resultData({
     dcLabel: Number.isFinite(dc) ? dcLabel : "",
     approximate,
     odds,
+    unadjustedOdds: degreeShift ? unadjustedOdds : null,
+    incapacitationApplied: degreeShift !== 0,
+    degreeShift,
     successChance,
     effectChance,
     modifiers,
@@ -274,7 +332,7 @@ function attackPreflight(context, actor, target, action, options) {
     : { modifier: strike, breakdown: "", modifiers: [] };
   if (!contextual) return null;
   const dc = contextIsGM(context) ? targetAc(target) : null;
-  const statisticLabel = action?.source === "strike"
+  const statisticLabel = normalizedActionFacts(action).resolution.strike
     ? t("Preflight.Strike", "Strike")
     : String(contextual.statistic?.label ?? action?.name ?? t("Preflight.Attack", "Attack"));
   return resultData({
@@ -287,11 +345,12 @@ function attackPreflight(context, actor, target, action, options) {
     breakdown: contextual.breakdown,
     modifiers: contextual.modifiers,
     source: strike === null ? "pf2e-statistic" : "pf2e-strike",
+    degreeShift: incapacitationDegreeShift(context, actor, target, action, "attack"),
   });
 }
 
 function savePreflight(context, actor, target, action, options) {
-  const saveSlug = String(action?.saveProfile?.stat ?? "").trim().toLowerCase();
+  const saveSlug = normalizedActionFacts(action).resolution.saveStat;
   if (!saveSlug || !target) return null;
   const dc = actionDc(action, resolveStatistic(actor, action), context);
   if (!Number.isFinite(dc)) return null;
@@ -321,6 +380,7 @@ function savePreflight(context, actor, target, action, options) {
     modifiers: contextual?.modifiers ?? [],
     source: contextual ? "pf2e-target-statistic" : "revealed-intel",
     approximate: !contextual && targetDcIsApproximate(target, saveSlug),
+    degreeShift: incapacitationDegreeShift(context, actor, target, action, "save"),
   });
 }
 
@@ -340,6 +400,7 @@ function checkPreflight(context, actor, target, action, options) {
     modifiers: contextual.modifiers,
     source: "pf2e-statistic",
     approximate: Number.isFinite(dc) && targetDcIsApproximate(target, dcSlug),
+    degreeShift: incapacitationDegreeShift(context, actor, target, action, "check"),
   });
 }
 
@@ -354,7 +415,7 @@ export function nativeRollContextPreflight(context, action, { target = null } = 
       target: gm ? targetActorDocument(target) : null,
       extraRollOptions: safeRollOptions(context, action, target),
     };
-    const result = action?.saveProfile?.stat
+    const result = normalizedActionFacts(action).resolution.saveStat
       ? savePreflight(context, actor, target, action, options)
       : skillCheckLike(action)
         ? checkPreflight(context, actor, target, action, options)

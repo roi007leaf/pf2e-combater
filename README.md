@@ -30,7 +30,16 @@ players plan their own turns.
   action economy — moving into reach, attacking, casting, or repositioning as the situation calls
   for. Shift-click it to discard the current draft and rebuild a whole new plan from scratch. The
   shuffle-icon counter next to it cycles through the next-best ranked alternative plans (right-click
-  to go back) — that cycling is what the rest of this doc calls **Shuffle**.
+  to go back) — that cycling is what the rest of this doc calls **Shuffle**. One projected plan
+  state follows position, MAP, conditions, shields, targets, durations, and resources through every
+  step. Filling around manual choices continues their MAP and Strike count instead of starting a
+  fresh simulated turn, and remembers immediate-action and target-condition setups.
+- **Resource horizons.** Cycle the battery chip between **Conserve, Normal, and Burst** before
+  Auto-fill. Conserve protects scarce slots, consumables, and limited uses; Normal keeps the standard
+  tactical ranking; Burst spends more freely as encounter pressure rises. The choice is local to
+  your client and does not alter actor resources until you execute a step. During search, Auto-fill
+  reserves each shared resource pool, so a plan cannot spend one remaining spell slot, focus point,
+  consumable, or limited use twice. Manual draft steps reserve their resources before gap filling.
 - **Real action sources.** Options are read from the actor itself, not a fixed list:
   - **Strikes** (melee and ranged), with the multiple attack penalty accounted for — and a
     per-strike MAP button to pin a level when an ability keeps MAP flat across attacks.
@@ -87,7 +96,9 @@ players plan their own turns.
 - **Native Roll-Context Preflight.** A chip on supported actions previews what PF2e's live check
   context would say before you roll it — Hit/Success chance or the named check modifier — using only
   the target information you're allowed to know. GMs always see it; showing it to players is an
-  opt-in world setting, off by default, and it never changes Auto-fill's ranking.
+  opt-in world setting, off by default. Disclosed degree-of-success odds provide a bounded Auto-fill
+  adjustment that values critical outcomes, basic saves, risky skill failures, and incapacitation;
+  approximate revealed Intel receives half weight.
 - **Best target chip.** Each scored action names the combatant recommendation scoring picked for it.
   A normal target-button click still uses your current Foundry target; Shift-click commits the scored
   Best target directly.
@@ -102,6 +113,11 @@ players plan their own turns.
 - **Choose the movement type.** When a creature has more than one Speed, a Stride can travel on
   **fly, burrow, swim, or climb** — the chosen speed sizes the reachable range and is the movement
   the token uses on execute (land-only creatures see no extra control).
+- **Tactical routes.** Cycle a Stride between **Approach, Shortest, Safest, Seek Cover, Flank, and
+  Escape**. The route scorer weights melee threats and open enemy lines by each segment's PF2e
+  movement cost, so long or difficult exposed segments matter more than brief crossings.
+  Foundry/PF2e still measures and executes the final waypoint route through its native movement
+  transaction.
 - **Vertical movement** for fly and burrow: hold **Shift** and scroll while placing a waypoint to
   raise or lower its elevation. Each waypoint keeps its own height (so a path can climb, level off,
   then dive), the elevation is shown on the waypoint, and every leg's vertical distance counts
@@ -125,6 +141,9 @@ players plan their own turns.
   area actions delete their template — and **Reset** undoes the whole turn in reverse. Effects that
   can't be safely auto-undone (e.g. a condition applied to another token) are flagged for manual
   cleanup.
+- Undo is conflict-aware: if movement, a spell slot, a consumable, frequency, reload state, or carry
+  state changed again after Combater used it, Revert leaves the newer value intact and reports the
+  conflict instead of overwriting it.
 
 ## 👥 Players & GM
 
@@ -464,12 +483,48 @@ Configurable from Foundry's module settings:
   tactically score, instead of hiding them.
 - **Hide Auto-fill from players** — remove the Auto-fill button for players so they plan their own
   turn instead of accepting the generic recommendation; the GM still sees it.
-- **Show PF2e check previews to players** — let players see Native Roll-Context Preflight chips using
-  only their revealed Intel; GMs always see previews regardless. Off by default.
+- **Show PF2e check previews to players** — let players see Native Roll-Context Preflight chips and
+  use disclosed odds as a bounded Auto-fill ranking input. Only revealed Intel is used; GMs always
+  receive native previews. Off by default for players.
 - **Show GM debug tab** — a GM-only panel tab for inspecting scoring inputs, rejected actions, and
   detected actor actions.
 - **Disable PF2e Combater for players** — hide the panel and toolbar toggle from players entirely; the
   GM keeps full access.
+
+---
+
+## Planner quality lab
+
+Run deterministic martial, setup/payoff, confidence, resource, wide-pool, and diversity scenarios:
+
+```bash
+npm run planner:quality
+npm run planner:quality:json
+```
+
+Each scenario reports recommendation, candidate coverage, complete-plan rate, alternative diversity,
+search states, and failures. Command exits nonzero when quality expectations regress.
+
+---
+
+## Live engine matrix
+
+For authenticated Foundry/PF2e integration checks, run the read-only matrix from the console:
+
+```js
+await game.modules.get("pf2e-combater").api.runLiveEngineMatrix();
+```
+
+A GM can test a selected token's native multi-waypoint movement and recorded Undo on two clear grid
+segments. This moves the token, observes hooks/history/region membership, immediately reverts it, and
+uses an emergency origin restore if interrupted:
+
+```js
+await game.modules.get("pf2e-combater").api.runLiveEngineMatrix({
+  allowMutations: true,
+  movement: { deltas: [{ x: 1, y: 0 }, { x: 1, y: 1 }] },
+});
+```
 
 ---
 

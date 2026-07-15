@@ -38,6 +38,7 @@
                 <span class="combater-step-details {{#if minionPlan}}has-minion-plan{{/if}}">
                   {{#if targetLabel}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
+                  {{#if swapItemsLabel}}<span class="combater-detail-chip is-swap-items"><i class="fa-solid fa-right-left"></i> {{swapItemsLabel}}</span>{{/if}}
                   {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
                   {{#unless minionPlanAsChildren}}{{> minionPlanDetails}}{{/unless}}
                   {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
@@ -68,6 +69,11 @@
                     <i class="fa-solid fa-draw-polygon"></i>
                   </button>
                 {{/if}}
+                {{#if canChooseSwapItems}}
+                  <button type="button" class="combater-chip-tool" data-choose-swap-items="{{instanceId}}" data-tooltip="{{swapItemsTooltip}}" aria-label="{{swapItemsTooltip}}">
+                    <i class="fa-solid fa-right-left"></i>
+                  </button>
+                {{/if}}
                 {{#if canCycleMap}}
                   <button type="button" class="combater-chip-tool combater-map-cycle {{#if mapPinned}}is-pinned{{/if}}" data-cycle-map="{{instanceId}}" data-tooltip="{{mapToolTip}}" aria-label="{{mapToolTip}}">
                     <i class="fa-solid fa-burst"></i><span class="combater-map-value">{{mapToolLabel}}</span>
@@ -76,6 +82,11 @@
                 {{#if canCycleMovement}}
                   <button type="button" class="combater-chip-tool combater-movement-cycle" data-cycle-movement="{{instanceId}}" data-tooltip="{{movementToolTip}}" aria-label="{{movementToolTip}}">
                     <i class="fa-solid fa-shoe-prints"></i><span class="combater-movement-value">{{movementToolLabel}}</span>
+                  </button>
+                {{/if}}
+                {{#if canCycleRoute}}
+                  <button type="button" class="combater-chip-tool combater-route-cycle" data-cycle-route="{{instanceId}}" data-tooltip="{{routeModeToolTip}}" aria-label="{{routeModeToolTip}}">
+                    <i class="fa-solid fa-route"></i><span class="combater-route-value">{{routeModeLabel}}</span>
                   </button>
                 {{/if}}
                 {{#if canCycleWeapon}}
@@ -346,6 +357,12 @@
             <span>{{intelLedger.label}}</span>
           </button>
         {{/if}}
+        {{#if resourceHorizon.visible}}
+          <button type="button" class="combater-header-resource {{#if resourceHorizon.isConserve}}is-conserve{{/if}} {{#if resourceHorizon.isBurst}}is-burst{{/if}}" data-cycle-resource-horizon data-tooltip="{{resourceHorizon.tooltip}}" aria-label="{{resourceHorizon.ariaLabel}}">
+            <i class="fa-solid {{resourceHorizon.icon}}"></i>
+            <span>{{resourceHorizon.label}}</span>
+          </button>
+        {{/if}}
         {{#if builder}}
           {{#unless builder.readonly}}
             {{#if showAutoFill}}
@@ -464,6 +481,9 @@
                     {{/if}}
                     {{#if canCycleMovement}}
                       <button type="button" class="combater-chip-tool combater-movement-cycle" data-cycle-movement="{{instanceId}}" data-tooltip="{{movementToolTip}}" aria-label="{{movementToolTip}}"><i class="fa-solid fa-shoe-prints"></i><span class="combater-movement-value">{{movementToolLabel}}</span></button>
+                    {{/if}}
+                    {{#if canCycleRoute}}
+                      <button type="button" class="combater-chip-tool combater-route-cycle" data-cycle-route="{{instanceId}}" data-tooltip="{{routeModeToolTip}}" aria-label="{{routeModeToolTip}}"><i class="fa-solid fa-route"></i><span class="combater-route-value">{{routeModeLabel}}</span></button>
                     {{/if}}
                     {{#if canDragStep}}
                       <span class="combater-chip-tool combater-step-drag" data-drag-draft-step="{{instanceId}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}"><i class="fa-solid fa-grip-vertical"></i></span>

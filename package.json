@@ -1,6 +1,6 @@
 {
   "name": "pf2e-combater",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -22,6 +22,9 @@
     "test:watch": "node scripts/engine/self-test.js",
     "test:coverage": "node scripts/engine/self-test.js",
     "test:ci": "node scripts/engine/self-test.js",
+    "test:installed": "node scripts/engine/self-test/installed-runtime.test.js",
+    "planner:quality": "node scripts/dev/run-planner-quality.mjs",
+    "planner:quality:json": "node scripts/dev/run-planner-quality.mjs --json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

@@ -11,6 +11,26 @@ function handsHeld(item) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+function usageValue(item) {
+  return String(systemValue(item?.system?.usage?.value) ?? "").trim().toLowerCase();
+}
+
+function usageHands(item) {
+  const value = Number(systemValue(item?.system?.usage?.hands));
+  if (Number.isFinite(value) && value > 0) return value;
+
+  const usage = usageValue(item);
+  if (usage === "held-in-two-hands") return 2;
+  if (usage.startsWith("held-in-one")) return 1;
+  return 0;
+}
+
+function hasHeldUsage(item) {
+  const type = String(systemValue(item?.system?.usage?.type) ?? "").trim().toLowerCase();
+  if (type) return type === "held";
+  return usageValue(item).startsWith("held-") || usageHands(item) > 0;
+}
+
 function isSwappablePhysicalItem(item) {
   const type = String(item?.type ?? "").toLowerCase();
   const category = String(systemValue(item?.system?.category) ?? "").toLowerCase();
@@ -32,8 +52,7 @@ export function itemCarryState(item) {
 }
 
 export function itemHandsRequired(item) {
-  const hands = Number(systemValue(item?.system?.usage?.hands));
-  return Number.isFinite(hands) && hands > 0 ? hands : 1;
+  return usageHands(item) || 1;
 }
 
 export function heldSwapItems(actor) {
@@ -43,7 +62,10 @@ export function heldSwapItems(actor) {
 
 export function drawableSwapItems(actor) {
   return swapItems(actor).filter((item) =>
-    item?.isHeld !== true && carryType(item) === "worn" && handsHeld(item) === 0);
+    item?.isHeld !== true
+    && carryType(item) === "worn"
+    && handsHeld(item) === 0
+    && hasHeldUsage(item));
 }
 
 export function swapItemById(items, id) {
