@@ -29,9 +29,6 @@
       }
     ]
   },
-  "system": [
-    "pf2e"
-  ],
   "esmodules": [
     "scripts/main.js"
   ],
