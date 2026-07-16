@@ -45,6 +45,8 @@ import {
 } from "./planner/conflicts.js";
 import { contextAllies } from "./target-pool.js";
 import { t } from "../i18n.js";
+import { contextActorDocument } from "./actor-context.js";
+import { actionReloadCost, npcWeaponNeedsReloadAfterSteps } from "./npc-reload-state.js";
 import {
   boundedPlanPreferenceDelta,
   deterministicPlanPreferenceAdjustment,
@@ -174,6 +176,7 @@ function contextAutoFillMatches(context, candidate) {
 }
 
 function autoFillEligibleCandidate(context, candidate) {
+  if (candidate?.autoFillEligible === false) return false;
   const facts = normalizedActionFacts(candidate);
   const { combatUse, role, utilitySubtype } = facts;
   if (combatUse === "context-only" && contextAutoFillMatches(context, candidate)) return true;
@@ -237,13 +240,7 @@ function selectPlanningCandidates(sortedCandidates) {
 }
 
 function reloadCost(candidate) {
-  const value = Number(
-    candidate?.reload
-      ?? candidate?.activityProfile?.reloadCost
-      ?? candidate?.item?.system?.reload?.value
-      ?? candidate?.item?.system?.reload,
-  );
-  return Number.isFinite(value) && value > 0 ? value : 0;
+  return actionReloadCost(candidate);
 }
 
 function hasOffensiveFollowUp(steps) {
@@ -617,6 +614,7 @@ function diversifyPlanOrder(sortedPlans, budget) {
 
 export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true } = {}) {
   const budget = turnIntentActionBudget(context?.turnIntent, actionBudget(context));
+  const planningActor = contextActorDocument(context, { allowActorFallback: true });
   const initialPlanState = createPlanState(context, { steps: reservedSteps });
   const resolvedTactic = resolveTacticPersonality(context);
   // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
@@ -707,7 +705,12 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       const nextPlanState = advancePlanState(context, planState, linkedCandidate);
       if (!nextPlanState.resourceLegal) continue;
 
-      const repeatReloadCost = strikeAction && currentUses > 0 ? reloadCost(linkedCandidate) : 0;
+      const npcReloadRequired = strikeAction && npcWeaponNeedsReloadAfterSteps(
+        planningActor,
+        linkedCandidate,
+        [...reservedSteps, ...steps],
+      );
+      const repeatReloadCost = strikeAction && (currentUses > 0 || npcReloadRequired) ? reloadCost(linkedCandidate) : 0;
       const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost;
 
       let nextNormalCost = normalCost + candidateActionCost;

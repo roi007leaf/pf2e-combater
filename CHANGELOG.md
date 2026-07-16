@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.1]
+
+### Fixed
+
+- **NPC reloadable weapons now keep their loaded state between plans.** Combater keys each attack
+  to its PF2e linked weapon, treats untracked weapons as initially loaded, marks them unloaded after
+  a successful Strike, and makes Browse and Auto-fill offer Reload only when it is needed. Reload
+  and Strike state changes participate in conflict-safe Undo, while PC weapons retain PF2e's native
+  ammunition handling.
+
 ## [1.2.0]
 
 ### Added

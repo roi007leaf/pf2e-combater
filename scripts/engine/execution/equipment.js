@@ -9,6 +9,7 @@ import {
 } from "../equipment-items.js";
 import { createGuidance } from "./guidance.js";
 import { executionPatch, revertEnvelope } from "./results.js";
+import { setNpcWeaponLoaded } from "../npc-reload-state.js";
 
 async function changeItemCarry(actor, item, target) {
   if (typeof actor?.changeCarryType === "function") {
@@ -216,6 +217,17 @@ async function reloadRevertOpAfterAttach(weaponUuid, before) {
 
 export async function executeReloadWeapon({ actor, action }) {
   const weapon = action?.item;
+  const npcReloadOp = await setNpcWeaponLoaded(actor, action, true);
+  if (npcReloadOp) {
+    const weaponName = action?.activityProfile?.weaponName ?? weapon?.name ?? t("Exec.YourWeapon", "your weapon");
+    return {
+      status: "done",
+      patch: executionPatch({}, "done", {
+        result: t("Exec.Reloaded", "Reloaded {name}.", { name: weaponName }),
+        revert: revertEnvelope([npcReloadOp]),
+      }),
+    };
+  }
   const ammo = findCompatibleAmmo(actor, weapon);
   if (weapon?.uuid && ammo && typeof weapon.attach === "function") {
     const before = weaponSubitemQuantities(weapon);

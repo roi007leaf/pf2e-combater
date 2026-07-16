@@ -1,7 +1,8 @@
 import { t } from "../../i18n.js";
 import { chatActionRevert } from "./chat-revert.js";
-import { executionPatch } from "./results.js";
+import { attachRevertOp, executionPatch } from "./results.js";
 import { resolveTarget, setTarget } from "./targets.js";
+import { setNpcWeaponLoaded } from "../npc-reload-state.js";
 
 function numeric(value, fallback = null) {
   const number = Number(value);
@@ -20,7 +21,7 @@ function strikeVariant(action, index) {
   return variants[index] ?? null;
 }
 
-export async function executeStrike({ step, action, event, choices = {} }) {
+export async function executeStrike({ actor, step, action, event, choices = {} }) {
   const target = resolveTarget(step, action, choices);
   if (!target) return { status: "needs-choice", choices: ["target"], patch: {} };
   setTarget(target.token);
@@ -36,7 +37,7 @@ export async function executeStrike({ step, action, event, choices = {} }) {
   }
   // PF2e reads strike targets from game.user.targets after setTarget, matching sheet strike clicks.
   const result = await roller.call(variant ?? action?.strike ?? action, { event });
-  return {
+  const execution = {
     status: "done",
     patch: executionPatch({ targetTokenIds: [target.id], targetLabel: target.label }, "done", {
       result: t("Exec.StrikeOpened", "Strike roll opened."),
@@ -44,4 +45,6 @@ export async function executeStrike({ step, action, event, choices = {} }) {
     }),
     nativeResult: result,
   };
+  const reloadStateOp = await setNpcWeaponLoaded(actor, action, false);
+  return attachRevertOp(execution, reloadStateOp);
 }

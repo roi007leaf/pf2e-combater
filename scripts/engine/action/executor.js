@@ -80,7 +80,7 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   } else if (resolvedAction?.executable === "reload-weapon") {
     result = await executeReloadWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {
-    result = await executeStrike({ step, action: resolvedAction, event, choices });
+    result = await executeStrike({ actor, step, action: resolvedAction, event, choices });
   } else if (slug === "seek" || resolvedAction?.executable === "pf2e-action") {
     result = await executeSystemAction({ actor, step, action: resolvedAction, event, choices });
   } else {

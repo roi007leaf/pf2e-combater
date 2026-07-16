@@ -4,6 +4,7 @@ import { canAttackTarget, contextEnemies, contextTargets } from "../engine/targe
 import { readItemAvailability } from "./item-action-reader.js";
 import { readyStrikeCanReach } from "./action/reach.js";
 import { t } from "../i18n.js";
+import { npcWeaponNeedsReload } from "../engine/npc-reload-state.js";
 
 const WORD_NUMBERS = {
   one: 1,
@@ -217,11 +218,14 @@ function weaponHasLoadedAmmo(weapon) {
 }
 
 function readReloadWeaponActions(actor) {
+  const npcActor = actor?.type === "npc" || actor?.isOfType?.("npc") === true;
   return readWeaponItems(actor)
     .filter(isHeldWeapon)
     .map((weapon) => ({ weapon, reload: weaponReloadValue(weapon) }))
     .filter(({ reload }) => reload !== null && reload > 0)
-    .filter(({ weapon }) => !weaponHasLoadedAmmo(weapon))
+    .filter(({ weapon, reload }) => npcActor
+      ? npcWeaponNeedsReload(actor, { item: weapon, reload })
+      : !weaponHasLoadedAmmo(weapon))
     .map(({ weapon, reload }) => {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
       return {
@@ -237,7 +241,9 @@ function readReloadWeaponActions(actor) {
         available: true,
         item: weapon,
         role: "setup",
-        activityProfile: { includes: ["reload"], reload: true, free: false, weaponName: weapon.name },
+        reload,
+        autoFillEligible: !npcActor,
+        activityProfile: { includes: ["reload"], reload: true, reloadCost: reload, free: false, weaponId: weapon.id, weaponName: weapon.name },
         targetingProfile: { self: true },
         setupFor: ["strike", "damage"],
         reasons: [t("Reason.ReloadWeapon", "Reload {weapon}.", { weapon: weapon.name })],

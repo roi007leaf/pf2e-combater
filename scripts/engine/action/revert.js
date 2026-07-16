@@ -6,6 +6,7 @@ import { revertCarryType, revertConsumable, revertFrequency, revertReload } from
 import { revertMovement } from "../revert/movement.js";
 import { revertSlot } from "../revert/spell-slot.js";
 import { t } from "../../i18n.js";
+import { revertNpcReloadState } from "../npc-reload-state.js";
 
 async function applyRevertOp(op, scope) {
   switch (op?.kind) {
@@ -23,6 +24,8 @@ async function applyRevertOp(op, scope) {
       return revertConsumable(op, scope);
     case "reload":
       return revertReload(op, scope);
+    case "npc-reload-state":
+      return revertNpcReloadState(op, scope);
     case "frequency":
       return revertFrequency(op, scope);
     case "chat":
