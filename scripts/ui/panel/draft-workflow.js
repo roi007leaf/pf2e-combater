@@ -1190,6 +1190,12 @@ export function actionKeyForPanelStep(panel, step) {
   const direct = panel._findBuilderAction(key);
   if (direct) return direct.key;
 
+  // Planner-generated Reload atoms deliberately share their backing Strike's item. The generic
+  // item-UUID fallback below would therefore turn Reload into another Strike when Auto-fill writes
+  // the draft. Keep the canonical Reload key so the hidden loaded-weapon candidate can resolve it
+  // on the next render.
+  if (step?.executable === "reload-weapon") return key;
+
   // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
   // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
   // which makes step.item.uuid collide with that weapon's OWN standalone candidate below. The

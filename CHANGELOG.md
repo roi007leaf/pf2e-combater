@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.2]
+
+### Fixed
+
+- **NPC reload-1 weapons no longer turn a planned Reload into another Strike.** Auto-fill now keeps
+  the linked PF2e weapon identity when it expands repeated attacks, so plans such as Sling correctly
+  remain `Sling -> Reload -> Sling` after the draft rerenders. Reload stays hidden from Browse while
+  the weapon is loaded but remains available internally for plan execution.
+
 ## [1.2.1]
 
 ### Fixed

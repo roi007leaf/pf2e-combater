@@ -530,6 +530,7 @@
       "Summon": "Summoning spell adds an ally to the battlefield."
     },
     "Avail": {
+      "WeaponAlreadyLoaded": "{weapon} is already loaded.",
       "NoTargetInRange": "No target in range.",
       "AttackPathBlocked": "Attack path to target is blocked.",
       "TriggerNotActive": "Trigger is not active: {trigger}",

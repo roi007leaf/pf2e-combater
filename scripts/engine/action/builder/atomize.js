@@ -5,6 +5,7 @@
 import { slugify } from "../text.js";
 import { pf2eActionName, t } from "../../../i18n.js";
 import { actionBuilderKey, actionName } from "./shared.js";
+import { npcReloadWeaponKey } from "../../npc-reload-state.js";
 
 const COMPOSITE_ATOMIC_PARTS = new Set(["crawl", "draw", "interact", "stand", "step", "stride"]);
 const GENERATED_COMPOSITE_PREFIXES = [
@@ -42,8 +43,9 @@ export function syntheticInteractAction(overrides = {}) {
 
 function syntheticReloadAction(action, reloadCost) {
   const weaponName = String(action?.name ?? action?.item?.name ?? "weapon").replace(/^Reload\s*->\s*/i, "").trim();
+  const weaponKey = npcReloadWeaponKey(action) ?? action?.item?.id ?? action?.weapon?.id;
   return {
-    id: `${action?.id ?? action?.slug ?? "strike"}-reload`,
+    id: weaponKey ? `reload-weapon-${weaponKey}` : `${action?.id ?? action?.slug ?? "strike"}-reload`,
     name: pf2eActionName("reload", "Reload"),
     slug: `reload-${slugify(weaponName) || "weapon"}`,
     actionCost: reloadCost,
@@ -58,7 +60,7 @@ function syntheticReloadAction(action, reloadCost) {
       includes: ["reload"],
       reload: true,
       reloadCost,
-      weaponId: action?.item?.id ?? action?.weapon?.id ?? action?.activityProfile?.weaponId,
+      weaponId: weaponKey,
       weaponName,
     },
     reason: t("Reason.ReloadBeforeStrike", "Reload before firing {name}.", { name: weaponName }),

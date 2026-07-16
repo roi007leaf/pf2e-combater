@@ -223,10 +223,15 @@ function readReloadWeaponActions(actor) {
     .filter(isHeldWeapon)
     .map((weapon) => ({ weapon, reload: weaponReloadValue(weapon) }))
     .filter(({ reload }) => reload !== null && reload > 0)
-    .filter(({ weapon, reload }) => npcActor
-      ? npcWeaponNeedsReload(actor, { item: weapon, reload })
-      : !weaponHasLoadedAmmo(weapon))
-    .map(({ weapon, reload }) => {
+    .map(({ weapon, reload }) => ({
+      weapon,
+      reload,
+      available: npcActor
+        ? npcWeaponNeedsReload(actor, { item: weapon, reload })
+        : !weaponHasLoadedAmmo(weapon),
+    }))
+    .filter(({ available }) => npcActor || available)
+    .map(({ weapon, reload, available }) => {
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
       return {
         id: `reload-weapon-${weapon.id ?? slug}`,
@@ -238,7 +243,10 @@ function readReloadWeaponActions(actor) {
         confidence: "medium",
         executable: "reload-weapon",
         detected: true,
-        available: true,
+        available,
+        unavailableReason: available
+          ? ""
+          : t("Avail.WeaponAlreadyLoaded", "{weapon} is already loaded.", { weapon: weapon.name }),
         item: weapon,
         role: "setup",
         reload,

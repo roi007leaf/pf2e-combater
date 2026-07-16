@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { MODULE_ID } from "../../constants.js";
 import { buildTurnPlans } from "../planner.js";
+import { builderAtomicActionsForStep } from "../action/builder/atomize.js";
+import { buildActionBuilderModel } from "../action/builder/model.js";
 import { revertDraftStep } from "../action/revert.js";
 import {
   NPC_RELOAD_STATE_FLAG,
@@ -13,6 +15,8 @@ import {
 import { executeReloadWeapon } from "../execution/equipment.js";
 import { executeStrike } from "../execution/strike.js";
 import { readWeaponActions } from "../../readers/weapon-action-reader.js";
+import { actorStrikeOptions } from "../../readers/action/reader.js";
+import { actionKeyForPanelStep } from "../../ui/panel/draft-workflow.js";
 
 function npcFixture() {
   const weapon = {
@@ -81,7 +85,7 @@ assert.equal(npcReloadWeaponKey(strike), weapon.id, "NPC attack and linked weapo
 assert.equal(npcReloadWeaponKey({ item: weapon }), weapon.id);
 assert.equal(npcWeaponNeedsReload(actor, strike), false, "untracked NPC weapons start loaded");
 assert.equal(
-  readWeaponActions(actor, {}, []).some((action) => action.executable === "reload-weapon"),
+  readWeaponActions(actor, {}, []).some((action) => action.executable === "reload-weapon" && action.available !== false),
   false,
   "Browse must not offer Reload while the NPC weapon is loaded",
 );
@@ -116,6 +120,54 @@ assert.equal(
 
 await revertNpcReloadState(firedOp, { actor, warnings: [] });
 assert.equal(npcWeaponNeedsReload(actor, strike), false, "undoing the first shot restores loaded default");
+
+const preparedNpcStrike = {
+  type: "strike",
+  slug: "sling",
+  label: "Sling",
+  ready: true,
+  canAttack: true,
+  item: strike.item,
+  traits: [{ slug: "attack" }, { slug: "propulsive" }, { slug: "reload-1" }],
+  variants: strike.variants,
+};
+actor.system = { actions: [preparedNpcStrike] };
+const preparedSling = {
+  ...actorStrikeOptions(actor, context)[0],
+  score: 100,
+  reason: "Shoot.",
+};
+assert.equal(preparedSling.reload, 1, "PF2e NPC prepared Strike must preserve reload-1");
+const loadedPlans = buildTurnPlans(context, [preparedSling], { includeCoverage: false });
+const loadedAtoms = loadedPlans[0].steps.flatMap(builderAtomicActionsForStep);
+assert.deepEqual(
+  loadedAtoms.map((step) => step.name),
+  ["Sling", "Reload", "Sling"],
+  "an initially loaded reload-1 NPC weapon must reload between consecutive shots",
+);
+const preparedSlingRow = { ...preparedSling, key: preparedSling.id, baseKey: preparedSling.id };
+const keyPanel = {
+  _builder: { tabs: { one: { all: [preparedSlingRow] } } },
+  _findBuilderAction(key) {
+    return key === preparedSlingRow.key ? preparedSlingRow : null;
+  },
+};
+const reloadAtomKey = actionKeyForPanelStep(keyPanel, loadedAtoms[1]);
+assert.equal(
+  reloadAtomKey,
+  `reload-weapon-${weapon.id}`,
+  "Auto-fill must not rematch its synthetic Reload atom to the Strike sharing the same item UUID",
+);
+const loadedReloadAction = readWeaponActions(actor, context, []).find((action) => action.executable === "reload-weapon");
+assert.equal(loadedReloadAction?.available, false, "loaded NPC Reload stays hidden from Browse but available for draft resolution");
+const resolvedReloadDraft = buildActionBuilderModel({
+  context,
+  candidates: [preparedSling],
+  rejected: [{ action: loadedReloadAction, reason: loadedReloadAction.unavailableReason }],
+  draft: { steps: [{ instanceId: "reload-step", actionKey: reloadAtomKey, actionCost: 1 }] },
+});
+assert.equal(resolvedReloadDraft.draft.steps[0].action?.executable, "reload-weapon");
+assert.equal(resolvedReloadDraft.draft.steps[0].stale, false, "synthetic Reload must resolve after the Auto-fill draft rerenders");
 
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;
