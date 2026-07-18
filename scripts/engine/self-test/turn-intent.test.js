@@ -4,7 +4,11 @@ import { buildTurnPlans } from "../planner.js";
 import {
   activeTurnIntentCount,
   applyTurnIntentToPlan,
+  hasLockedTurnIntentDecisions,
+  lockedTurnIntentForNextTurn,
   normalizeTurnIntent,
+  turnIntentContextKey,
+  turnIntentLockKey,
   turnIntentActionBudget,
   turnIntentCandidateAllowed,
   turnIntentPlanAllowed,
@@ -25,6 +29,11 @@ function candidate(id, score, fields = {}) {
 }
 
 const intent = normalizeTurnIntent({
+  decisionLocks: {
+    noSpellSlots: true,
+    stayRanged: true,
+    endInCover: true,
+  },
   lockedTargetIds: ["token-a", "token-a"],
   requiredActionKey: "required",
   noSpellSlots: true,
@@ -33,7 +42,27 @@ const intent = normalizeTurnIntent({
   preserveFinalAction: true,
 });
 assert.deepEqual(intent.lockedTargetIds, ["token-a"], "turn intent should normalize locked targets");
+assert.equal(hasLockedTurnIntentDecisions(intent), true, "turn intent should detect individual between-turn locks");
 assert.equal(activeTurnIntentCount(intent), 6, "turn intent badge should count each active control");
+const nextTurnIntent = lockedTurnIntentForNextTurn(intent);
+assert.deepEqual(nextTurnIntent.lockedTargetIds, [], "unlocked target choice should reset next turn");
+assert.equal(nextTurnIntent.requiredActionKey, "", "non-checkbox action requirement should reset next turn");
+assert.equal(nextTurnIntent.noSpellSlots, true, "locked No spell slots choice should survive next turn");
+assert.equal(nextTurnIntent.stayRanged, true, "locked Stay ranged choice should survive next turn");
+assert.equal(nextTurnIntent.endInCover, true, "locked End in cover choice should survive next turn");
+assert.equal(nextTurnIntent.preserveFinalAction, false, "unlocked Preserve final action choice should reset next turn");
+assert.deepEqual(nextTurnIntent.decisionLocks, intent.decisionLocks, "individual lock buttons should remain locked between turns");
+const intentKeyContext = {
+  combat: { id: "combat-a", round: 2, turn: 3 },
+  combatant: { id: "combatant-a" },
+};
+assert.equal(turnIntentContextKey(intentKeyContext), "combat-a:2:3:combatant-a");
+assert.equal(turnIntentLockKey(intentKeyContext), "combat-a:combatant-a");
+assert.equal(
+  turnIntentLockKey({ ...intentKeyContext, combat: { id: "combat-a", round: 5, turn: 1 } }),
+  "combat-a:combatant-a",
+  "locked decisions should use a stable per-combatant encounter key across turns",
+);
 assert.deepEqual(
   turnIntentActionBudget({ preserveFinalAction: true }, { normalActions: 3, quickenedActions: 1, totalActions: 4 }),
   { normalActions: 2, quickenedActions: 1, totalActions: 3, reservedActions: 1 },

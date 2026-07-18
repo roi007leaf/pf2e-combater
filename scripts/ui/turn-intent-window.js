@@ -50,7 +50,7 @@ export function turnIntentWindowView(context, value, candidates = []) {
     intent,
     captureTargetIds: selection.ids,
     title: t("TurnIntent.Title", "Turn Intent"),
-    help: t("TurnIntent.Help", "Temporary constraints for this combatant's current turn. Auto-fill and shuffle both obey them."),
+    help: t("TurnIntent.Help", "Constraints for this combatant. Lock individual choices to keep them between turns until the encounter ends."),
     targetLabel,
     canLockTarget: selection.ids.length > 0,
     lockTarget: intent.lockedTargetIds.length > 0,
@@ -95,7 +95,15 @@ export class TurnIntentWindow extends HandlebarsApplicationMixin(ApplicationV2) 
     const form = this.element.querySelector("[data-turn-intent-form]");
     const checked = (name) => form?.elements?.namedItem?.(name)?.checked === true;
     const value = (name) => String(form?.elements?.namedItem?.(name)?.value ?? "");
+    const locked = (name) => form?.querySelector?.(`[data-turn-intent-lock="${name}"]`)?.getAttribute("aria-pressed") === "true";
     return normalizeTurnIntent({
+      decisionLocks: {
+        lockedTargetIds: checked("lockTarget") && locked("lockedTargetIds"),
+        noSpellSlots: checked("noSpellSlots") && locked("noSpellSlots"),
+        stayRanged: checked("stayRanged") && locked("stayRanged"),
+        endInCover: checked("endInCover") && locked("endInCover"),
+        preserveFinalAction: checked("preserveFinalAction") && locked("preserveFinalAction"),
+      },
       lockedTargetIds: checked("lockTarget") ? this._view.captureTargetIds : [],
       requiredActionKey: value("requiredActionKey"),
       noSpellSlots: checked("noSpellSlots"),
@@ -118,6 +126,26 @@ export class TurnIntentWindow extends HandlebarsApplicationMixin(ApplicationV2) 
 
   _onRender(context, options) {
     super._onRender(context, options);
+    const setLockState = (button, active) => {
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("is-active", active);
+      const icon = button.querySelector("i");
+      if (icon) icon.className = active ? "fa-solid fa-lock" : "fa-solid fa-lock-open";
+    };
+    for (const button of this.element.querySelectorAll("[data-turn-intent-lock]")) {
+      button.addEventListener("click", () => {
+        const active = button.getAttribute("aria-pressed") !== "true";
+        setLockState(button, active);
+      });
+    }
+    for (const decision of this.element.querySelectorAll(".combater-turn-intent-decision")) {
+      decision.querySelector('input[type="checkbox"]')?.addEventListener("change", (event) => {
+        if (!event.currentTarget.checked) {
+          const button = decision.querySelector("[data-turn-intent-lock]");
+          if (button) setLockState(button, false);
+        }
+      });
+    }
     this.element.querySelector("[data-turn-intent-cancel]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[data-turn-intent-clear]")?.addEventListener("click", (event) =>
       this._finish(normalizeTurnIntent(), event.currentTarget));

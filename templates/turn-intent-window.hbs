@@ -1,13 +1,16 @@
 <form class="combater-turn-intent-form" data-turn-intent-form>
   <p class="combater-turn-intent-help">{{help}}</p>
 
-  <label class="combater-turn-intent-option {{#unless canLockTarget}}is-disabled{{/unless}}">
-    <input type="checkbox" name="lockTarget" {{#if lockTarget}}checked{{/if}} {{#unless canLockTarget}}disabled{{/unless}}>
-    <span>
-      <strong>Lock target</strong>
-      <small>{{targetLabel}}</small>
-    </span>
-  </label>
+  <div class="combater-turn-intent-decision">
+    <label class="combater-turn-intent-option {{#unless canLockTarget}}is-disabled{{/unless}}">
+      <input type="checkbox" name="lockTarget" {{#if lockTarget}}checked{{/if}} {{#unless canLockTarget}}disabled{{/unless}}>
+      <span>
+        <strong>Lock target</strong>
+        <small>{{targetLabel}}</small>
+      </span>
+    </label>
+    <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.lockedTargetIds}}is-active{{/if}}" data-turn-intent-lock="lockedTargetIds" aria-label="Keep target choice between turns" aria-pressed="{{#if intent.decisionLocks.lockedTargetIds}}true{{else}}false{{/if}}" data-tooltip="Keep target choice between turns" {{#unless canLockTarget}}disabled{{/unless}}><i class="fa-solid {{#if intent.decisionLocks.lockedTargetIds}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+  </div>
 
   <label class="combater-turn-intent-field">
     <span>Require action</span>
@@ -20,22 +23,34 @@
   </label>
 
   <div class="combater-turn-intent-grid">
-    <label class="combater-turn-intent-option">
-      <input type="checkbox" name="noSpellSlots" {{#if intent.noSpellSlots}}checked{{/if}}>
-      <span><strong>No spell slots</strong><small>Cantrips and focus spells remain available.</small></span>
-    </label>
-    <label class="combater-turn-intent-option">
-      <input type="checkbox" name="stayRanged" {{#if intent.stayRanged}}checked{{/if}}>
-      <span><strong>Stay ranged</strong><small>Exclude melee attacks and maneuvers.</small></span>
-    </label>
-    <label class="combater-turn-intent-option">
-      <input type="checkbox" name="endInCover" {{#if intent.endInCover}}checked{{/if}}>
-      <span><strong>End in cover</strong><small>Require movement and route it toward cover.</small></span>
-    </label>
-    <label class="combater-turn-intent-option">
-      <input type="checkbox" name="preserveFinalAction" {{#if intent.preserveFinalAction}}checked{{/if}}>
-      <span><strong>Preserve final action</strong><small>Auto-fill spends one fewer normal action.</small></span>
-    </label>
+    <div class="combater-turn-intent-decision">
+      <label class="combater-turn-intent-option">
+        <input type="checkbox" name="noSpellSlots" {{#if intent.noSpellSlots}}checked{{/if}}>
+        <span><strong>No spell slots</strong><small>Cantrips and focus spells remain available.</small></span>
+      </label>
+      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.noSpellSlots}}is-active{{/if}}" data-turn-intent-lock="noSpellSlots" aria-label="Keep No spell slots between turns" aria-pressed="{{#if intent.decisionLocks.noSpellSlots}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.noSpellSlots}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+    </div>
+    <div class="combater-turn-intent-decision">
+      <label class="combater-turn-intent-option">
+        <input type="checkbox" name="stayRanged" {{#if intent.stayRanged}}checked{{/if}}>
+        <span><strong>Stay ranged</strong><small>Exclude melee attacks and maneuvers.</small></span>
+      </label>
+      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.stayRanged}}is-active{{/if}}" data-turn-intent-lock="stayRanged" aria-label="Keep Stay ranged between turns" aria-pressed="{{#if intent.decisionLocks.stayRanged}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.stayRanged}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+    </div>
+    <div class="combater-turn-intent-decision">
+      <label class="combater-turn-intent-option">
+        <input type="checkbox" name="endInCover" {{#if intent.endInCover}}checked{{/if}}>
+        <span><strong>End in cover</strong><small>Require movement and route it toward cover.</small></span>
+      </label>
+      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.endInCover}}is-active{{/if}}" data-turn-intent-lock="endInCover" aria-label="Keep End in cover between turns" aria-pressed="{{#if intent.decisionLocks.endInCover}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.endInCover}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+    </div>
+    <div class="combater-turn-intent-decision">
+      <label class="combater-turn-intent-option">
+        <input type="checkbox" name="preserveFinalAction" {{#if intent.preserveFinalAction}}checked{{/if}}>
+        <span><strong>Preserve final action</strong><small>Auto-fill spends one fewer normal action.</small></span>
+      </label>
+      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.preserveFinalAction}}is-active{{/if}}" data-turn-intent-lock="preserveFinalAction" aria-label="Keep Preserve final action between turns" aria-pressed="{{#if intent.decisionLocks.preserveFinalAction}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.preserveFinalAction}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+    </div>
   </div>
 
   <footer class="combater-turn-intent-actions">

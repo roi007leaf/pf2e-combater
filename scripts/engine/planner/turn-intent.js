@@ -2,6 +2,13 @@ import { normalizedActionFacts } from "../action/facts.js";
 import { actionKey } from "./rules.js";
 
 const DEFAULT_INTENT = Object.freeze({
+  decisionLocks: Object.freeze({
+    lockedTargetIds: false,
+    noSpellSlots: false,
+    stayRanged: false,
+    endInCover: false,
+    preserveFinalAction: false,
+  }),
   lockedTargetIds: Object.freeze([]),
   requiredActionKey: "",
   noSpellSlots: false,
@@ -18,6 +25,13 @@ function normalizedIds(values) {
 
 export function normalizeTurnIntent(value = null) {
   return {
+    decisionLocks: {
+      lockedTargetIds: value?.decisionLocks?.lockedTargetIds === true,
+      noSpellSlots: value?.decisionLocks?.noSpellSlots === true,
+      stayRanged: value?.decisionLocks?.stayRanged === true,
+      endInCover: value?.decisionLocks?.endInCover === true,
+      preserveFinalAction: value?.decisionLocks?.preserveFinalAction === true,
+    },
     lockedTargetIds: normalizedIds(value?.lockedTargetIds),
     requiredActionKey: String(value?.requiredActionKey ?? "").trim(),
     noSpellSlots: value?.noSpellSlots === true,
@@ -31,6 +45,20 @@ export function emptyTurnIntent() {
   return normalizeTurnIntent(DEFAULT_INTENT);
 }
 
+export function hasLockedTurnIntentDecisions(value) {
+  return Object.values(normalizeTurnIntent(value).decisionLocks).some(Boolean);
+}
+
+export function lockedTurnIntentForNextTurn(value) {
+  const intent = normalizeTurnIntent(value);
+  const next = emptyTurnIntent();
+  next.decisionLocks = { ...intent.decisionLocks };
+  for (const field of Object.keys(intent.decisionLocks)) {
+    if (intent.decisionLocks[field]) next[field] = intent[field];
+  }
+  return normalizeTurnIntent(next);
+}
+
 export function turnIntentContextKey(context) {
   const combat = context?.combat ?? globalThis.game?.combat ?? null;
   const actor = context?.actor?.document ?? context?.actor ?? context?.combatant?.actor ?? null;
@@ -39,6 +67,16 @@ export function turnIntentContextKey(context) {
     combat?.id ?? "no-combat",
     combat?.round ?? 0,
     combat?.turn ?? -1,
+    combatant?.id ?? actor?.uuid ?? actor?.id ?? "no-actor",
+  ].map(String).join(":");
+}
+
+export function turnIntentLockKey(context) {
+  const combat = context?.combat ?? globalThis.game?.combat ?? null;
+  const actor = context?.actor?.document ?? context?.actor ?? context?.combatant?.actor ?? null;
+  const combatant = context?.combatant ?? null;
+  return [
+    combat?.id ?? "no-combat",
     combatant?.id ?? actor?.uuid ?? actor?.id ?? "no-actor",
   ].map(String).join(":");
 }

@@ -22,7 +22,11 @@ import {
   writeSharedDraftPlanPayload,
 } from "./state/draft-plans.js";
 import { clearMovementPreview } from "./ui/movement-preview.js";
-import { openPanelForCurrentCombatant, togglePanelForCurrentCombatant } from "./ui/CombaterPanel.js";
+import {
+  clearLockedTurnIntentsForCombat,
+  openPanelForCurrentCombatant,
+  togglePanelForCurrentCombatant,
+} from "./ui/CombaterPanel.js";
 import { registerCombatTrackerIntel } from "./ui/combat-tracker-intel.js";
 import { cancelDestinationPicker } from "./ui/destination-picker.js";
 import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
@@ -479,6 +483,8 @@ Hooks.on("deleteCombat", (combat) => {
   // A deleted combat's plans are dead weight: drop every draft (local + shared + actor flag) tied
   // to it, independent of whether its panel is open, so nothing lingers in storage.
   clearCombatDraftPlans(combat).catch((error) => console.warn(`${MODULE_ID} | Combat draft cleanup failed`, error));
+  clearLockedTurnIntentsForCombat(combat);
+  activePanel?.resetTurnIntent(combat);
   const activeCombatId = activeContext()?.combat?.id;
   const isActiveCombat = activeCombatId && activeCombatId === combat.id;
   const isCurrentCombat = game.combat && combat === game.combat;
@@ -506,7 +512,12 @@ function clearEndedTurnDraft(combat) {
 
 Hooks.on("updateCombat", async (combat, changed) => {
   if (combat !== game.combat) return;
-  if (!combat.started) return;
+  if (!combat.started) {
+    clearLockedTurnIntentsForCombat(combat);
+    activePanel?.resetTurnIntent(combat);
+    if (activePanel) await activePanel.refresh("combat-end");
+    return;
+  }
   if (!("turn" in changed) && !("round" in changed)) return;
   await sweepExpiredAreaTemplates();
   // Read the ended turn's plan for sustained cleanup BEFORE clearing it.

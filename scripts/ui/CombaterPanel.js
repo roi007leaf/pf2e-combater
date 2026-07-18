@@ -8,8 +8,11 @@ import { buildTurnPlans } from "../engine/planner.js";
 import { createPlanState, planStateSignature } from "../engine/plan-state.js";
 import {
   emptyTurnIntent,
+  hasLockedTurnIntentDecisions,
+  lockedTurnIntentForNextTurn,
   normalizeTurnIntent,
   turnIntentContextKey,
+  turnIntentLockKey,
   withTurnIntent,
 } from "../engine/planner/turn-intent.js";
 import { clearActionPreview, showActionPreview } from "./action/preview.js";
@@ -145,6 +148,15 @@ const RESET_PIN_REFRESH_SOURCES = new Set([
   "token-update",
 ]);
 
+const lockedTurnIntents = new Map();
+
+export function clearLockedTurnIntentsForCombat(combat = null) {
+  const combatId = String(combat?.id ?? "");
+  for (const key of lockedTurnIntents.keys()) {
+    if (!combatId || key.startsWith(`${combatId}:`)) lockedTurnIntents.delete(key);
+  }
+}
+
 function readPanelState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.panelState) ?? "{}");
@@ -251,6 +263,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     this.resourceHorizon = normalizeResourceHorizon(state.resourceHorizon);
     this._turnIntent = emptyTurnIntent();
     this._turnIntentContextKey = null;
+    this._turnIntentLockKey = null;
     this._context = null;
     this._planningContext = null;
     this._candidates = [];
@@ -788,8 +801,22 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   _syncTurnIntentContext(context) {
     const key = context ? turnIntentContextKey(context) : null;
     if (key === this._turnIntentContextKey) return;
+    const lockKey = context ? turnIntentLockKey(context) : null;
     this._turnIntentContextKey = key;
+    this._turnIntentLockKey = lockKey;
+    this._turnIntent = normalizeTurnIntent(lockedTurnIntents.get(lockKey));
+    this._pinnedPlanId = null;
+    this._pinnedFillPlanId = null;
+  }
+
+  resetTurnIntent(combat = null) {
+    const combatId = String(combat?.id ?? "");
+    clearLockedTurnIntentsForCombat(combat);
+    const contextCombatId = String(this._context?.combat?.id ?? "");
+    if (combatId && contextCombatId && combatId !== contextCombatId) return;
     this._turnIntent = emptyTurnIntent();
+    this._turnIntentContextKey = null;
+    this._turnIntentLockKey = null;
     this._pinnedPlanId = null;
     this._pinnedFillPlanId = null;
   }
@@ -800,6 +827,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     await openTurnIntentWindow(view, {
       onSave: async (intent) => {
         this._turnIntent = normalizeTurnIntent(intent);
+        if (hasLockedTurnIntentDecisions(this._turnIntent)) {
+          lockedTurnIntents.set(this._turnIntentLockKey, lockedTurnIntentForNextTurn(this._turnIntent));
+        } else {
+          lockedTurnIntents.delete(this._turnIntentLockKey);
+        }
         this._pinnedPlanId = null;
         this._pinnedFillPlanId = null;
         await this.refresh("turn-intent-update");

@@ -136,6 +136,7 @@ const panelTemplateSource = [
 ].join("\n");
 const tacticWindowTemplateSource = readFileSync(new URL("../../../templates/tactic-window.hbs", import.meta.url), "utf8");
 const intelWindowTemplateSource = readFileSync(new URL("../../../templates/intel-window.hbs", import.meta.url), "utf8");
+const turnIntentTemplateSource = readFileSync(new URL("../../../templates/turn-intent-window.hbs", import.meta.url), "utf8");
 const panelSource = readFileSync(new URL("../../ui/CombaterPanel.js", import.meta.url), "utf8");
 const panelContextWorkflowSource = readFileSync(new URL("../../ui/panel/context-workflow.js", import.meta.url), "utf8");
 const panelViewModelSource = readFileSync(new URL("../../ui/panel/view-model.js", import.meta.url), "utf8");
@@ -715,6 +716,21 @@ assert.ok(mainSource.includes("clearEndedTurnDraft"), "a combatant's execution p
 assert.ok(
   /Hooks\.on\("deleteCombat"[\s\S]*?clearCombatDraftPlans\(combat\)/.test(mainSource),
   "deleting a combat should clear all of its lingering draft plans",
+);
+assert.ok(
+  /Hooks\.on\("deleteCombat"[\s\S]*?resetTurnIntent\(combat\)/.test(mainSource)
+    && /Hooks\.on\("updateCombat"[\s\S]*?if \(!combat\.started\) \{[\s\S]*?resetTurnIntent\(combat\)/.test(mainSource),
+  "ending or deleting an encounter should clear locked turn-intent decisions",
+);
+assert.equal(
+  turnIntentTemplateSource.match(/data-turn-intent-lock=/g)?.length,
+  5,
+  "each turn-intent checkbox should have its own between-turn lock button",
+);
+assert.equal(
+  turnIntentTemplateSource.includes('name="lockDecisions"'),
+  false,
+  "turn intent should not use one master lock checkbox",
 );
 // Ending a turn must reset BOTH the acting player's local plan and the GM-visible shared plan.
 assert.ok(

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3]
+
+### Added
+
+- **Turn Intent choices can now be locked individually across turns.** Each checked intent option
+  exposes a compact lock inside its card. Locked choices persist for that combatant while unlocked
+  choices still reset next turn, and every intent lock clears automatically when the encounter ends.
+
 ## [1.2.2]
 
 ### Fixed
