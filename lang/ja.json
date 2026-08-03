@@ -48,7 +48,17 @@
       "RankingReduces": "PF2eの成功度により、自動入力の順位が低下する({delta})。",
       "RankingNeutral": "PF2eの成功度は自動入力の順位を変更しない。",
       "IncapacitationRaisesTarget": "無力化特性により、対象の結果が1段階向上する。",
-      "IncapacitationLowersCheck": "無力化特性により、実行者の判定結果が1段階低下する。"
+      "IncapacitationLowersCheck": "無力化特性により、実行者の判定結果が1段階低下する。",
+      "ApproximateIntel": "対象のDCは公開済みのおおよその情報を使用している。",
+      "Attack": "攻撃",
+      "HitChance": "PF2e命中 {chance}",
+      "InformationalOnly": "参考情報のみ。自動入力の順位付けには影響しない。",
+      "ModifierBreakdown": "修正値の内訳：{breakdown}。",
+      "NativeModifier": "PF2e {statistic} {modifier}",
+      "PreviewReason": "PF2e判定プレビュー：{resolution}。",
+      "Strike": "ストライク",
+      "SuccessChance": "PF2e成功率 {chance}",
+      "TargetFailChance": "PF2e失敗率 {chance}"
     },
     "ResourceHorizon": {
       "Conserve": "温存",
@@ -135,7 +145,20 @@
       "SwapSelectionRequired": "入れ替えるアイテムを選択",
       "RangeIncrement": "射程増大値{value}フィート",
       "Range": "射程{value}フィート",
-      "Ranged": "遠隔"
+      "Ranged": "遠隔",
+      "AreaPlacementChoose": "推奨エリア配置。クリックで切り替え。現在：{counts}。",
+      "AreaPlacementCounts": "敵{enemies}体、味方{allies}体",
+      "AreaPlacementCustom": "範囲：カスタム",
+      "AreaPlacementCustomDetail": "キャンバス上でカスタム配置",
+      "AreaPlacementOrdinal": "範囲 {current}/{total}",
+      "AutoFillCycleAria": "自動入力プランを切り替える",
+      "AutoFillCycleTooltip": "左クリックで次のプランへ、右クリックで前のプランへ。現在：{current}/{total}。",
+      "ScoreLabel": "スコア {score}",
+      "WhyThisPlan": "理由",
+      "WhyThisPlanTitle": "このプランの理由",
+      "AddFavorite": "お気に入りに追加",
+      "RemoveFavorite": "お気に入りから削除",
+      "AddToDraft": "ドラフトに追加"
     },
     "Browser": {
       "TabsAria": "PF2e Combaterのアクションコスト",
@@ -196,7 +219,12 @@
       "Sustain": "〈維持〉"
     },
     "Warning": {
-      "ChooseDestExec": "実行時に目的地を選択する。"
+      "ChooseDestExec": "実行時に目的地を選択する。",
+      "DestinationMayProvoke": "移動先で機会攻撃を誘発する可能性がある。",
+      "KnownImmunityBlocks": "判明している免疫によりこれは無効化される。",
+      "KnownResistanceReduces": "判明している抵抗によりこれは軽減される。",
+      "SaveLooksHigh": "{save}は高そうだ。",
+      "TargetHidden": "対象は隠れている。"
     },
     "Tab": {
       "one": "1アクション",
@@ -289,7 +317,9 @@
       "StrideStrikeStride": "〈ストライド〉 -> {strike} -> 〈ストライド〉",
       "FlankStrike": "挟み撃ちのために〈ストライド〉 ({strike}のリーチ)",
       "SkirmishKite": "{prefix}離れるように〈ストライド〉 -> {finisher}",
-      "ElementalBlastNamed": "エレメンタル・ブラスト ({element})"
+      "ElementalBlastNamed": "エレメンタル・ブラスト ({element})",
+      "StepArrow": "ステップ → ",
+      "TakeCover": "遮蔽を取る"
     },
     "Reason": {
       "StandThenStride": "〈立ち上がる〉、その後{name}に向かって〈ストライド〉する。",
@@ -317,7 +347,11 @@
       "SustainExtend": "1アクションを消費して、維持している呪文の持続時間を延長する。",
       "DrawOrRetrieve": "{name}を抜くか、取り出す。",
       "InteractItem": "アイテムを抜く、取り出す、または操作する。",
-      "ReloadFree": "{weapon}は射撃の一部として再装填される(アクション不要)。"
+      "ReloadFree": "{weapon}は射撃の一部として再装填される(アクション不要)。",
+      "ReloadBeforeStrike": "{name}を撃つ前にリロードする。",
+      "StandStrideMultiattack": "立ち上がり、間合いに入るために〈歩行〉し、{target}へ{action}を使用する。",
+      "StrideMultiattack": "間合いに入るために〈歩行〉し、{target}へ{action}を使用する。",
+      "StrideTwiceMultiattack": "間合いに入るために2回〈歩行〉し、{target}へ{action}を使用する。"
     },
     "Label": {
       "Target": "対象：{name}",
@@ -389,7 +423,8 @@
       "WaitingRetchGM": "GMがあなたの「吐き気をもよおす」のセーヴィング・スローを判定するのを待機中。",
       "RetchFailed": "「吐き気をもよおす」を解決できなかった。コンソールを参照すること。",
       "PlanSharedBy": "PF2e Combater: {user}が{actor}の計画を共有した。",
-      "ExecuteFailed": "ステップを実行できなかった。コンソールを参照すること。"
+      "ExecuteFailed": "ステップを実行できなかった。コンソールを参照すること。",
+      "NoRecommendedArea": "推奨されるエリア配置がない。"
     },
     "Choice": {
       "destination": "目的地",
@@ -453,7 +488,8 @@
       "ThisActionCap": "このアクション",
       "ManualUndo": "{action}を手動で元に戻すこと。そのチャット出力は追跡できなかった。",
       "ThisAction": "このアクション",
-      "NoRegionApi": "地域作成APIは利用できない。"
+      "NoRegionApi": "地域作成APIは利用できない。",
+      "Reloaded": "{name}をリロードした。"
     },
     "ActReason": {
       "ReactionCanPunishA": "リアクションは誘発した敵を処罰できる。",
@@ -505,7 +541,11 @@
       "ActionIsAvailableBut": "アクションは使用可能だが、認識された戦術パターンがない。",
       "MoveAndStrikeActivity": "移動して〈ストライク〉を行うアクティビティが認識される。",
       "MultiStrikeActivityIs": "複数回〈ストライク〉を行うアクティビティが認識される。",
-      "StrikeBasedDamageActivity": "〈ストライク〉に基づくダメージ・アクティビティが認識される。"
+      "StrikeBasedDamageActivity": "〈ストライク〉に基づくダメージ・アクティビティが認識される。",
+      "CaptureActionCanRestrain": "「捕縛」アクションは対象を拘束または行動不能にできる。",
+      "CommandSupportsAllies": "「指揮」アクションは味方がこのターンで貢献できるようにする。",
+      "DefensiveActionImprovesSurvival": "防御的なアクションは次のターンまでの生存率を高める。",
+      "StealthActionMakesActor": "隠密行動により対象にされにくくなる。"
     },
     "SpellReason": {
       "SustainControl": "維持される呪文は、制御効果を有効に保つことができる。",
@@ -577,7 +617,8 @@
       "InnateNoUses": "生得の呪文の残り使用回数がない。",
       "ItemSpellNoUses": "アイテムの呪文の残り使用回数がない。",
       "NoFocusPoints": "フォーカス・ポイントが残っていない。",
-      "NoMatchingSpellcasting": "このアイテムの呪文を発動できる呪文発動エントリーがない。"
+      "NoMatchingSpellcasting": "このアイテムの呪文を発動できる呪文発動エントリーがない。",
+      "NoExpendedSpell": "今日はまだ回収可能な呪文を発動していない。"
     },
     "SpellRes": {
       "Prepared": "準備済み{available}/{total}",
@@ -758,7 +799,14 @@
       "OnlyOneEnemyIsIn": "間合いにいる敵は1体のみ。通常は集中攻撃の方が効果的である。",
       "NoEnemyIsInReach": "{p0}が届く範囲に敵はいない。",
       "AlliesInAreaOne": "エリア内に{count}の味方がいる可能性がある。",
-      "AlliesInAreaMany": "エリア内に{count}体の味方がいる可能性がある。"
+      "AlliesInAreaMany": "エリア内に{count}体の味方がいる可能性がある。",
+      "ActionDcLabel": "アクションDC",
+      "NoThreatForProne": "現在脅威がないため、伏せる価値はない。",
+      "ProneNoDefenseBenefit": "「無防備」はすべての攻撃者に等しく適用されるため、伏せること自体は近接・遠隔いずれに対しても防御上の恩恵をもたらさない。",
+      "QuickAlchemyCreatesAlchemicalTool": "{p0}はこのターン限りの錬金アイテムを作成する。",
+      "RequiresTwoHeldMeleeWeapons": "近接武器を両手に持っている必要がある。",
+      "SpellDcLabel": "呪文DC",
+      "StanceAlreadyActive": "既にスタンスが有効になっている。"
     },
     "Reject": {
       "Duplicate": "重複が検出されたアクションは、優先されるソースに置き換えられた。",
@@ -773,7 +821,9 @@
       "MapPenalty": "{reason} MAP -{penalty}。",
       "VolleyMoved": "移動後の位置から射撃した場合、ボレー -2。",
       "QuickenedCastingDiscount": "クイックによる呪文発動の後、{name}の消費アクション数は1減少する。",
-      "LingeringCompositionExtend": "リンガリング・コンポジションの後、{name}の持続時間が延長される。"
+      "LingeringCompositionExtend": "リンガリング・コンポジションの後、{name}の持続時間が延長される。",
+      "ProjectedFollowUpStrike": "移動後、{name}は間合い内に入る。",
+      "TakeCoverAfterProne": "伏せた後に遮蔽を取る。"
     },
     "Keybind": {
       "ToggleName": "PF2e Combaterの切り替え",
@@ -977,7 +1027,13 @@
       "SaveTokenOverride": "トークンの上書きを保存",
       "ResetTokenOverride": "上書きをリセット",
       "Saved": "戦術を{label}に設定した。",
-      "SaveFailed": "NPCの戦術を更新できなかった。"
+      "SaveFailed": "NPCの戦術を更新できなかった。",
+      "NpcHelp": "このNPCの戦術的個性をセットする。このプロファイルからアクションとターゲットのウェイトを自動入力してシャッフルする。",
+      "NpcTitle": "NPCの戦術",
+      "PlanAvoids": "「{label}」の戦術は役割に合わないプランの優先度を下げる。",
+      "PlanFavors": "「{label}」の戦術は合致するプランを優先する。",
+      "PlayerHelp": "このキャラクターの戦闘での役割をセットする。このプロファイルからアクションとターゲットのウェイトを自動入力してシャッフルする。",
+      "PlayerTitle": "プレイヤーの戦術"
     },
     "Intel": {
       "Label": "情報",
@@ -1024,7 +1080,15 @@
       "ResetAttemptsConfirm": "{target}に対する〈知識を思い出す〉の試行をすべてリセットしますか？ 最初の試行DCに戻り、失敗による制限も解除される。",
       "AttemptsReset": "アクター（{count}体）について、{target}に対する〈知識を思い出す〉の試行回数をリセットした。",
       "NoAttemptsToReset": "{target}に対する〈知識を思い出す〉の記録済み試行はない。",
-      "ResetAttemptsFailed": "〈知識を思い出す〉の試行回数をリセットできなかった。"
+      "ResetAttemptsFailed": "〈知識を思い出す〉の試行回数をリセットできなかった。",
+      "AddFalseInformation": "{category}に偽の情報を追加",
+      "FalseInformation": "偽の情報",
+      "FalseInformationGmTooltip": "偽の情報。プレイヤーには通常の公開済み情報として見える。",
+      "FalseInformationPrepared": "準備済み。プレイヤーには非表示",
+      "FalseInformationRevealed": "プレイヤーに公開済み",
+      "HidePreparedFalseInformation": "この偽情報をプレイヤーから隠す",
+      "OpenFailed": "〈知識を思い出す〉情報を開けなかった。",
+      "RevealPreparedFalseInformation": "この準備済みの偽情報をプレイヤーに公開する"
     },
     "MinionPlan": {
       "Minion": "コンパニオン",
@@ -1042,7 +1106,17 @@
       "ChooseDestination": "このミニオンのアクションの目的地を選択する。",
       "ChooseDestinationFirst": "このミニオンのアクションを実行する前に目的地を選択する。",
       "ExecutedStep": "このミニオンのアクションは実行された。",
-      "RevertStep": "このミニオンのアクションを元に戻す。"
+      "RevertStep": "このミニオンのアクションを元に戻す。",
+      "ChooseTarget": "このミニオン・アクションに現在のFoundryターゲットを使用する。",
+      "CycleStep": "クリックでこのミニオン・アクションを変更。右クリックまたはShiftクリックで前へ。",
+      "DropProne": "伏せる",
+      "ExecuteStep": "このミニオン・アクションを実行する。",
+      "LabelNoTarget": "{minion}：{steps}",
+      "Leap": "跳躍する",
+      "Seek": "探す",
+      "Stand": "立ち上がる",
+      "TargetLabel": "対 {target}",
+      "UnsupportedExecute": "このミニオン・アクションはまだ手動での処理が必要。"
     },
     "Aggro": {
       "FinisherTarget": "対象は排除されかかっている。",
@@ -1073,6 +1147,129 @@
       "Free": "フリー・アクション",
       "ActionOne": "{count}アクション",
       "ActionMany": "{count}アクション"
+    },
+    "EffectClock": {
+      "ActiveLabel": "クロック {count}",
+      "ActiveTooltip": "このターン、注意が必要な効果イベントが{count}件ある。",
+      "ClearSummary": "{total}件の時限イベントを追跡中。このターンに注意が必要なものはない。",
+      "Days": "約{count}日",
+      "Duration": "時限効果",
+      "Effect": "効果",
+      "Empty": "追跡する有限効果やターン終了時の状態イベントはない。",
+      "Encounter": "遭遇が終わるまで",
+      "EndOfTurn": "ターン終了時",
+      "Expired": "期限切れ",
+      "ExpiredDetail": "PF2eはこの効果を期限切れとして報告している。",
+      "ExpiresAt": "{boundary}に終了",
+      "ExpiresAtInitiative": "{boundary}(イニシアチブ{initiative})に終了",
+      "Frightened": "「恐怖」",
+      "FrightenedDetail": "通常、このターンが終了すると1減少する。",
+      "FrightenedTiming": "1減少する",
+      "Group": {
+        "Attention": "このターンの注意事項",
+        "Handled": "このターンで処理済み",
+        "Later": "後で",
+        "Soon": "2ラウンド以内"
+      },
+      "Help": "PF2eの効果・状態・ターン境界イベントをターン単位で追跡する。PF2e本来の持続時間ルールが常に優先される。",
+      "Hours": "約{count}時間",
+      "Label": "クロック",
+      "Minutes": "約{count}分",
+      "NativeTimingDetail": "タイミングはPF2e本来の効果持続時間に従う。",
+      "NeedsCleanup": "要対応",
+      "OneRound": "1ラウンド以内",
+      "PersistentDamage": "持続ダメージ",
+      "PersistentDetail": "PF2eはターン終了時に持続ダメージとその回復判定を処理する。",
+      "PersistentTiming": "ダメージ、その後回復判定",
+      "RoundEnd": "ラウンド終了時",
+      "Rounds": "約{count}ラウンド",
+      "Title": "エフェクト・クロック",
+      "Tooltip": "{count}件の時限効果イベントを追跡中。",
+      "TurnEnd": "ターン終了時",
+      "TurnStart": "ターン開始時",
+      "TwoRounds": "2ラウンド以内",
+      "UrgentSummary": "追跡中の{total}件のうち{urgent}件が、このターンで注意が必要。"
+    },
+    "Loadout": {
+      "ActiveLabel": "ロードアウト {count}",
+      "ActiveTooltip": "戦場の状況を考慮したロードアウト変更が{count}件利用可能。",
+      "Empty": "現在の装備は既に視認できる戦場の状況に適合している。",
+      "FitTooltip": "{score}の理由：{explanation}",
+      "FitTooltipFallback": "現在の戦場の状況に対して{score}。",
+      "Help": "戦場の状況を考慮した装備変更。現在の対象、判明している防御値、間合い、リロード、必要な手数、およびPF2e由来のストライクを基に助言する。",
+      "ItemsChanged": "ロードアウトが変更された。アドバイザーの推奨を更新すること。",
+      "Label": "ロードアウト",
+      "Reason": {
+        "AvoidImmunity": "{target}の判明している免疫を避けるためダメージ・タイプを変更。",
+        "AvoidResistance": "{target}の判明している抵抗により、{draw}のダメージ低下が少ない。",
+        "Damage": "武器の期待ダメージがより高い({draw} 対 {held})。",
+        "General": "現在の戦場の状況により適している。",
+        "Reach": "{draw}は{target}に届くが、{held}は届かない。",
+        "ReadyAttack": "{draw}は{target}への攻撃を構える。",
+        "Reload": "リロード・コストが低く、後のアクションを温存できる。",
+        "ShieldLowHp": "HPが低いため防御的なロードアウトの価値が上がる。",
+        "ShieldThreat": "近くの敵がいるため構えた盾に価値がある。",
+        "UnreachableToShield": "{held}は{target}に届かない。{draw}は使えない攻撃力の代わりに防御手段を得る。"
+      },
+      "Score": "適合度 +{score}",
+      "Summary": "{held}をしまい、{draw}を構える",
+      "SwapUnavailable": "「アイテムを交換」はもう利用できない。",
+      "Title": "ロードアウト・アドバイザー",
+      "Tooltip": "現在の装備を戦場の状況と照らし合わせて確認する。"
+    },
+    "RecallKnowledge": {
+      "Blocked": "〈知識を思い出す〉の失敗により、このクリーチャーへのそれ以上の試行はできない。",
+      "Concentrate": "精神集中",
+      "DieUnavailable": "〈知識を思い出す〉のd20の結果が取得できない。",
+      "DocumentsUnavailable": "〈知識を思い出す〉のアクターまたは対象が利用できない。",
+      "DubiousKnowledgeGM": "「不確かな知識」：正しい答えと誤った答えを1つずつ手動で伝えること。プランナーの情報はどちらが真実か判別できないよう変更されない。",
+      "GMUnavailable": "〈知識を思い出す〉にはアクティブなGMとsocketlibが必要。",
+      "IntelRevealed": "GMが〈知識を思い出す〉の事実を{count}件、情報に追加した。",
+      "ManualUndo": "〈知識を思い出す〉の試行状態と公開済み情報は、GMが手動で取り消す必要がある。",
+      "NativeUnavailable": "Foundryの〈知識を思い出す〉ロールが利用できない。",
+      "OutcomeMissing": "ロール結果を自動で読み取れなかった。チャットに表示された結果を選択すること。",
+      "OutcomeTitle": "〈知識を思い出す〉の結果",
+      "Question": "何についての情報を思い出そうとしていますか？",
+      "QuestionTitle": "〈知識を思い出す〉の質問",
+      "Resolved": "〈知識を思い出す〉をロールした。GMの裁定が完了した。",
+      "Secret": "秘密",
+      "TargetRequired": "〈知識を思い出す〉を使用する前にクリーチャーの対象を選択すること。",
+      "Title": "〈知識を思い出す〉",
+      "WaitingGM": "ロールを送信した。GMによる〈知識を思い出す〉の裁定を待っている。"
+    },
+    "TurnIntent": {
+      "ActiveLabel": "方針 {count}",
+      "ActiveTooltip": "{count}件のターン方針の制約が有効。クリックで編集。",
+      "Help": "この戦闘員の現在のターンに対する一時的な制約。自動入力とシャッフルの両方がこれに従う。",
+      "Label": "方針",
+      "NoTargets": "対象が選択されていない",
+      "Title": "ターン方針",
+      "Tooltip": "このターンの自動入力の制約を一時的に設定する。",
+      "LockTarget": {
+        "Label": "対象を固定"
+      },
+      "RequireAction": {
+        "Label": "必須アクション",
+        "Any": "任意のアクション"
+      },
+      "NoSpellSlots": {
+        "Label": "呪文スロットを使わない",
+        "Detail": "キャントリップとフォーカス呪文は引き続き使用できる。"
+      },
+      "StayRanged": {
+        "Label": "遠隔を維持",
+        "Detail": "近接攻撃と近接マニューバーを除外する。"
+      },
+      "EndInCover": {
+        "Label": "遮蔽で終える",
+        "Detail": "移動を要求し、遮蔽へ向かう経路を取る。"
+      },
+      "PreserveFinalAction": {
+        "Label": "最後のアクションを温存",
+        "Detail": "自動入力が消費する通常アクションが1つ少なくなる。"
+      },
+      "Clear": "クリア",
+      "Apply": "適用"
     }
   }
 }
