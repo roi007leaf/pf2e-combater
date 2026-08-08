@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.5]
+
+### Added
+
+- **Japanese localization is now available.** The module now includes a complete Japanese
+  translation and exposes Japanese in Foundry's language selection.
+
 ## [1.2.4]
 
 ### Added
