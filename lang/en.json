@@ -611,6 +611,7 @@
       "CurrentHuntedPreyOnlyTarget": "Current hunted prey is already designated; no other valid prey target.",
       "ResistanceAbsorbsMostExpected": "Resistance absorbs most expected damage.",
       "RequiresTrained": "Requires trained {skill}.",
+      "NpcNegativeSkill": "{skill} modifier is too low for Auto-fill.",
       "UntrainedSkill": "Untrained in {skill}; reliability reduced.",
       "SkillOddsPoor": "{skill} success odds are poor.",
       "NoAthleticsDataMelee": "No Athletics data; melee maneuvers are unreliable.",
@@ -687,6 +688,7 @@
       "AllyDying": "{ally} is dying.",
       "BadlyInjured": "{name} is badly injured.",
       "NoAllyIsBadly": "No ally is badly injured.",
+      "NoBadlyInjuredHealingTargetInReach": "No badly injured healing target is in reach.",
       "CanDamage": "{action} can damage {target}.",
       "AggroPriority": "Aggro priority: {roles}.",
       "DebuffPressure": "Debuff spell can pressure {target}.",
@@ -975,8 +977,11 @@
       "ConfigureTitle": "NPC tactic",
       "SaveActorDefault": "Save actor default",
       "SaveTokenOverride": "Save token override",
+      "SaveSelectedTokens": "Save to {count} selected NPCs",
       "ResetTokenOverride": "Reset override",
+      "ResetSelectedOverrides": "Reset {count} selected overrides",
       "Saved": "Tactic set to {label}.",
+      "SavedMany": "Tactic updated for {count} selected NPCs.",
       "SaveFailed": "Could not update NPC tactic."
     },
     "Intel": {

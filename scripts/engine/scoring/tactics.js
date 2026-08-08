@@ -36,6 +36,7 @@ import {
   dyingAlly,
   enemyInMelee,
   includesStand,
+  inActionReach,
   isCurated,
   profileReach,
   selfReference,
@@ -256,11 +257,15 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
   }
 
   if (role === "healing") {
-    const dying = dyingAlly(context);
+    const profile = context?.profile ?? context?.actor?.profile ?? {};
+    const healingAllies = action?.targetingProfile?.reach === true
+      ? contextAllies(context).filter((ally) => inActionReach(profile, action, ally))
+      : contextAllies(context);
+    const dying = healingAllies.find((ally) => hasCondition(ally, "dying"));
     if (dying) return targetReference(dying, "ally");
-    const bleeding = bleedingAlly(context);
+    const bleeding = healingAllies.find((ally) => hasCondition(ally, "persistent-bleed"));
     if (bleeding) return targetReference(bleeding, "ally");
-    const injuredAlly = contextAllies(context).find((ally) => hpPercent(ally) < 0.5);
+    const injuredAlly = healingAllies.find((ally) => hpPercent(ally) < 0.5);
     if (injuredAlly) return targetReference(injuredAlly, "ally");
     return selfReference(context);
   }

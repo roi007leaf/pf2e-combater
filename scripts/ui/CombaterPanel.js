@@ -97,6 +97,7 @@ import {
 import { openIntelWindow } from "./intel-window.js";
 import { resetRecallKnowledgeAttemptsForTarget } from "./recall-knowledge.js";
 import { openTacticWindow } from "./tactic-window.js";
+import { selectedNpcTacticTokens } from "./tactic-targets.js";
 import { openTurnIntentWindow, turnIntentWindowView } from "./turn-intent-window.js";
 import { loadoutWindowView, openLoadoutWindow } from "./loadout-window.js";
 import { effectClockWindowView, openEffectClockWindow } from "./effect-clock-window.js";
@@ -504,15 +505,20 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _configureTacticPersonality() {
-    const view = tacticPersonalityView(this._context);
+    const baseView = tacticPersonalityView(this._context);
+    const selectedNpcTokens = baseView.showAdvanced ? selectedNpcTacticTokens() : [];
+    const view = {
+      ...baseView,
+      bulkTokenCount: selectedNpcTokens.length > 1 ? selectedNpcTokens.length : 0,
+    };
     if (!view.visible) return;
 
     await openTacticWindow(view, {
-      onSave: (decision) => this._applyTacticPersonalityDecision(decision),
+      onSave: (decision) => this._applyTacticPersonalityDecision(decision, { selectedNpcTokens }),
     });
   }
 
-  async _applyTacticPersonalityDecision(decision) {
+  async _applyTacticPersonalityDecision(decision, { selectedNpcTokens = [] } = {}) {
     if (!decision) return;
 
     const actor = this._context?.actor?.document ?? this._context?.actor;
@@ -524,13 +530,30 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       } else if (decision.mode === "token") {
         if (typeof token?.setFlag !== "function") throw new Error("Token flags unavailable");
         await token.setFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG, decision.value);
+      } else if (decision.mode === "tokens") {
+        if (selectedNpcTokens.length < 2 || selectedNpcTokens.some((entry) => typeof entry?.setFlag !== "function")) {
+          throw new Error("Selected NPC token flags unavailable");
+        }
+        await Promise.all(selectedNpcTokens.map((entry) =>
+          entry.setFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG, decision.value)));
       } else if (decision.mode === "reset") {
         if (typeof token?.unsetFlag !== "function") throw new Error("Token flags unavailable");
         await token.unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG);
+      } else if (decision.mode === "reset-tokens") {
+        if (selectedNpcTokens.length < 2 || selectedNpcTokens.some((entry) => typeof entry?.unsetFlag !== "function")) {
+          throw new Error("Selected NPC token flags unavailable");
+        }
+        await Promise.all(selectedNpcTokens.map((entry) =>
+          entry.unsetFlag(MODULE_ID, TACTIC_PERSONALITY_OVERRIDE_FLAG)));
       }
       this._pinnedPlanId = null;
       this._pinnedFillPlanId = null;
-      globalThis.ui?.notifications?.info?.(t("Tactic.Saved", "Tactic set to {label}.", { label: tacticPersonalityView(this._context).label }));
+      const updatedCount = decision.mode === "tokens" || decision.mode === "reset-tokens"
+        ? selectedNpcTokens.length
+        : 1;
+      globalThis.ui?.notifications?.info?.(updatedCount > 1
+        ? t("Tactic.SavedMany", "Tactic updated for {count} selected NPCs.", { count: updatedCount })
+        : t("Tactic.Saved", "Tactic set to {label}.", { label: tacticPersonalityView(this._context).label }));
       await this.refresh("tactic-update");
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to update tactic`, error);

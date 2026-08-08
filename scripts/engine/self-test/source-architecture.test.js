@@ -306,6 +306,13 @@ assert.ok(panelEventBindingsSource.includes("data-configure-tactic") && panelEve
 assert.ok(panelSource.includes("openTacticWindow") && panelSource.includes("_applyTacticPersonalityDecision"),
   "tactic configuration should use the styled tactic window and keep panel persistence in one callback");
 assert.ok(
+  panelSource.includes("selectedNpcTacticTokens")
+    && panelSource.includes('decision.mode === "tokens"')
+    && panelSource.includes('decision.mode === "reset-tokens"')
+    && tacticWindowSource.includes('"Save to {count} selected NPCs"'),
+  "tactic configuration should apply or reset overrides across all selected NPC tokens",
+);
+assert.ok(
   /combater-header-tactic\s*\{[\s\S]*?min-height:\s*28px;/.test(panelStyleSource)
     && /combater-header-tactic-label\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(panelStyleSource),
   "tactic chip should match header button height and truncate long Auto labels",

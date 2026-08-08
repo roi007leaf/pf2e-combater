@@ -16,7 +16,7 @@ import {
 } from "./facts.js";
 import { isRangeBuffSetup, rangeBuffIsNeeded } from "./spells.js";
 import { attackableEnemies, isExtractElementAction } from "./targets.js";
-import { bleedingAlly, dyingAlly } from "./tactic-helpers.js";
+import { inActionReach } from "./tactic-helpers.js";
 import { contextAllies } from "../target-pool.js";
 import { HARD_BLOCK_SCORE } from "./weights.js";
 
@@ -90,10 +90,18 @@ function kineticAuraActive(context, profile) {
     || hasEffectSlug(profile, "channel-elements");
 }
 
-function hasNeededHealingRecipient(context, profile) {
+function entityNeedsHealing(entity) {
+  return hpPercent(entity) < 0.5
+    || hasCondition(entity, "dying")
+    || hasCondition(entity, "persistent-bleed");
+}
+
+function hasNeededHealingRecipient(context, profile, action, { ignoreRange = false } = {}) {
   if (hpPercent(profile) < 0.5) return true;
-  if (dyingAlly(context) || bleedingAlly(context)) return true;
-  return contextAllies(context).some((ally) => hpPercent(ally) < 0.5);
+  return contextAllies(context).some((ally) =>
+    entityNeedsHealing(ally)
+    && (ignoreRange || action?.targetingProfile?.reach !== true || inActionReach(profile, action, ally)),
+  );
 }
 
 function actorType(context) {
@@ -124,6 +132,11 @@ export function blockedCandidateResult(context, action, {
     && (!Array.isArray(backingStrikes) || backingStrikes.length < 2)
   ) {
     return blockedAction(action, t("ScoreReason.RequiresTwoHeldMeleeWeapons", "Requires two held melee weapons."));
+  }
+
+  const handsFree = Number(profile?.handsFree);
+  if (action.activityProfile?.requiresFreeHand === true && Number.isFinite(handsFree) && handsFree < 1) {
+    return blockedAction(action, t("Avail.NoFreeHand", "No free hand available."));
   }
 
   if (action.slug === "demoralize" && !target && attackableEnemies(context).some(hasDemoralizeImmunity)) {
@@ -168,8 +181,12 @@ export function blockedCandidateResult(context, action, {
     return blockedAction(action, t("ScoreReason.StanceAlreadyActive", "A stance is already active."));
   }
 
-  if (role === "healing" && !hasNeededHealingRecipient(context, profile) && !hasExplicitPlayerHealerPreference(context)) {
-    return blockedAction(action, t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
+  if (role === "healing" && !hasNeededHealingRecipient(context, profile, action) && !hasExplicitPlayerHealerPreference(context)) {
+    const hasOutOfReachRecipient = action?.targetingProfile?.reach === true
+      && hasNeededHealingRecipient(context, profile, action, { ignoreRange: true });
+    return blockedAction(action, hasOutOfReachRecipient
+      ? t("ScoreReason.NoBadlyInjuredHealingTargetInReach", "No badly injured healing target is in reach.")
+      : t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
   }
 
   if (action.source === "strike" && !target) {

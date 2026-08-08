@@ -639,6 +639,7 @@ function sharesNonDefaultOwner(actorA, actorB) {
   if (!ownershipA || typeof ownershipA !== "object") return false;
   return Object.entries(ownershipA).some(([userId, level]) =>
     userId !== "default"
+    && globalThis.game?.users?.get?.(userId)?.isGM !== true
     && Number(level) >= Number(ownerLevel)
     && Number(actorB?.ownership?.[userId]) >= Number(ownerLevel),
   );
@@ -675,7 +676,9 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   // itself (their actions happen on the master's turn), so they never appear in `combatTokens`.
   // Minion detection has to run against the wider `tokens` pool instead.
   const minionTokens = tokens.filter((token) =>
-    !tokenInCombat(encounterCombat, token) && isCommandableMinion(actor, tokenActor(token)));
+    !tokenInCombat(encounterCombat, token)
+    && isAllyDisposition(token, activeDisposition)
+    && isCommandableMinion(actor, tokenActor(token)));
   const minions = minionTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
 
   const combatTokens = tokens

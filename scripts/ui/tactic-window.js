@@ -40,6 +40,8 @@ function windowContext(view) {
   const custom = view?.custom ?? {};
   const role = view?.role ?? "auto";
   const temperament = view?.temperament ?? "auto";
+  const bulkTokenCount = Math.max(0, Number(view?.bulkTokenCount) || 0);
+  const bulkTokens = bulkTokenCount > 1;
   return {
     title: view?.title ?? t("Tactic.ConfigureTitle", "Auto-fill tactic"),
     help: view?.help ?? t("Tactic.Help", "Set this actor's tactical profile. Auto-fill and shuffle weight actions and targets from it."),
@@ -56,9 +58,13 @@ function windowContext(view) {
     actionSliders: TACTIC_ACTION_SLIDERS.map((slider) => sliderModel("action", slider, custom.action)),
     targetSliders: TACTIC_TARGET_SLIDERS.map((slider) => sliderModel("target", slider, custom.target)),
     cancelLabel: t("Dialog.Cancel", "Cancel"),
-    resetLabel: t("Tactic.ResetTokenOverride", "Reset override"),
+    resetLabel: bulkTokens
+      ? t("Tactic.ResetSelectedOverrides", "Reset {count} selected overrides", { count: bulkTokenCount })
+      : t("Tactic.ResetTokenOverride", "Reset override"),
     saveActorLabel: t("Tactic.SaveActorDefault", "Save actor default"),
-    saveTokenLabel: t("Tactic.SaveTokenOverride", "Save token override"),
+    saveTokenLabel: bulkTokens
+      ? t("Tactic.SaveSelectedTokens", "Save to {count} selected NPCs", { count: bulkTokenCount })
+      : t("Tactic.SaveTokenOverride", "Save token override"),
   };
 }
 
@@ -145,9 +151,12 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     this.element.querySelector("[data-tactic-save-actor]")?.addEventListener("click", (event) =>
       this._save({ mode: "actor", value: this._readForm() }, event.currentTarget));
     this.element.querySelector("[data-tactic-save-token]")?.addEventListener("click", (event) =>
-      this._save({ mode: "token", value: this._readForm() }, event.currentTarget));
+      this._save({
+        mode: Number(this._view?.bulkTokenCount) > 1 ? "tokens" : "token",
+        value: this._readForm(),
+      }, event.currentTarget));
     this.element.querySelector("[data-tactic-reset]")?.addEventListener("click", (event) =>
-      this._save({ mode: "reset" }, event.currentTarget));
+      this._save({ mode: Number(this._view?.bulkTokenCount) > 1 ? "reset-tokens" : "reset" }, event.currentTarget));
   }
 }
 

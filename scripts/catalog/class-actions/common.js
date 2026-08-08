@@ -5,6 +5,10 @@ export const COMMON_ACTIONS = [
     targetingProfile: {
       ally: true,
       self: true,
+      reach: true,
+    },
+    activityProfile: {
+      requiresFreeHand: true,
     },
     executable: 'pf2e-action',
     confidence: 'high',

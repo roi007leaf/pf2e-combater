@@ -67,6 +67,25 @@ export function trainedSkillRequirement(profile, action) {
   };
 }
 
+export function skillAutoFillRequirement(profile, action) {
+  const training = trainedSkillRequirement(profile, action);
+  if (training) return training;
+
+  const skillSlug = String(action?.skill ?? "").toLowerCase();
+  if (!skillSlug || !isNpcProfile(profile)) return null;
+  const skill = skillEntry(profile, skillSlug);
+  if (!skill || skill.rank !== null || skill.mod >= 0) return null;
+
+  return {
+    skill: skillSlug,
+    reason: t(
+      "ScoreReason.NpcNegativeSkill",
+      "{skill} modifier is too low for Auto-fill.",
+      { skill: titleCase(skillSlug) },
+    ),
+  };
+}
+
 export function actionSkillDcSlug(action) {
   if (action.targetDefense) return action.targetDefense;
   if (action.targetSave) return action.targetSave;

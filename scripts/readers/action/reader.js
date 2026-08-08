@@ -27,6 +27,7 @@ import {
 } from "../defense-action-reader.js";
 import {
   hideNonCombatSystemAction,
+  readActionRequirementAvailability,
   readGenericActionAvailability,
   readGenericActions,
   readMovementAvailability,
@@ -327,10 +328,17 @@ function readGeneratedActivities(actor, context) {
       const activityProfile = addItemTraitProfile(tactic?.activityProfile, traits);
       if (hideNonCombatSystemAction(slug, traits, tactic)) return [];
       const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
+      const requirementAvailability = readActionRequirementAvailability({
+        slug,
+        role: tactic?.role,
+        activityProfile,
+        targetingProfile: tactic?.targetingProfile,
+      }, context);
       const available = actionCost !== null
         && actionCost !== Infinity
         && triggerAvailability.available
-        && movementAvailability.available;
+        && movementAvailability.available
+        && requirementAvailability.available;
 
       if (!tactic && parsedCost.passive) return [];
       if (!curated && actionCost === null) return [];
@@ -346,7 +354,7 @@ function readGeneratedActivities(actor, context) {
         executable: tactic?.executable ?? "open-item",
         detected: true,
         available,
-        unavailableReason: triggerAvailability.reason || movementAvailability.reason,
+        unavailableReason: triggerAvailability.reason || movementAvailability.reason || requirementAvailability.reason,
         item: action.item ?? null,
         generatedAction: action,
         trigger,
@@ -569,6 +577,12 @@ function readActorItemActions(actor, context) {
     if (hideNonCombatSystemAction(slug, traits, tactic)) return [];
     const movementAvailability = readMovementAvailability(context, { slug, traits, activityProfile });
     const genericAvailability = readGenericActionAvailability(slug, context);
+    const requirementAvailability = readActionRequirementAvailability({
+      slug,
+      role: tactic?.role,
+      activityProfile,
+      targetingProfile: tactic?.targetingProfile,
+    }, context);
     const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
     const resourceRecoveryAvailability = readResourceRecoveryAvailability({ activityProfile }, context);
     // Reactions are standing options the player should see on their own turn — the trigger
@@ -582,6 +596,7 @@ function readActorItemActions(actor, context) {
       && shieldBlockAvailability.available
       && movementAvailability.available
       && genericAvailability.available
+      && requirementAvailability.available
       && resourceRecoveryAvailability.available;
 
     if (!tactic && parsedCost.passive) return [];
@@ -605,6 +620,7 @@ function readActorItemActions(actor, context) {
         || shieldBlockAvailability.reason
         || movementAvailability.reason
         || genericAvailability.reason
+        || requirementAvailability.reason
         || resourceRecoveryAvailability.reason,
       item,
       trigger,

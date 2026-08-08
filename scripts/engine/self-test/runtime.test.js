@@ -129,6 +129,7 @@ import { choosePanelRecommendedArea, choosePanelTarget } from "../../ui/panel/pi
 import { choosePanelSwapItems } from "../../ui/panel/execution-workflow.js";
 import { clearHoverGhost, clearMovementPreview, movementPreviewForStep, recommendedMovementForStep, routeCornerWaypoints, showHoverGhost, showMovementPreview } from "../../ui/movement-preview.js";
 import { cancelAreaPicker, chooseAreaMarker } from "../../ui/area-picker.js";
+import { selectedNpcTacticTokens } from "../../ui/tactic-targets.js";
 import { computeRangeRing, rangeLabelText, spellRangeFeet } from "../../ui/range-overlay.js";
 import { cancelDestinationPicker, chooseDestination } from "../../ui/destination-picker.js";
 import { builderActionCategory, groupActionsByBuilderCategory } from "../../ui/action/categories.js";
@@ -3884,6 +3885,47 @@ const rankedGrapple = scoreCandidate({
   battlefield: { targets: [hardGrappleTarget, favorableGrappleTarget], enemies: [hardGrappleTarget, favorableGrappleTarget], allies: [] },
 }, GENERIC_ACTIONS.find((action) => action.slug === "grapple"));
 assert.equal(rankedGrapple.suggestedTarget?.name, "Silva", "Grapple Best target should favor lower Fortitude DC");
+
+const defeatedAutoFillTarget = {
+  ...scoredBrowseTarget,
+  id: "defeated-auto-fill-target",
+  name: "Defeated Enemy",
+  hpPercent: 0,
+  ac: 1,
+  distance: 5,
+  conditions: { slugs: ["dead"], values: { dead: 1 } },
+};
+const livingAutoFillTarget = {
+  ...scoredBrowseTarget,
+  id: "living-auto-fill-target",
+  name: "Living Enemy",
+  hpPercent: 1,
+  ac: 30,
+  distance: 20,
+  conditions: { slugs: [], values: {} },
+};
+const livingAutoFillStrike = scoreCandidate({
+  ...scoredBrowseContext,
+  targets: [defeatedAutoFillTarget, livingAutoFillTarget],
+  battlefield: {
+    targets: [defeatedAutoFillTarget, livingAutoFillTarget],
+    enemies: [defeatedAutoFillTarget, livingAutoFillTarget],
+    allies: [],
+  },
+}, {
+  id: "living-target-regression-strike",
+  name: "Longbow",
+  slug: "strike",
+  actionCost: 1,
+  source: "strike",
+  attackTrait: true,
+  range: { max: 100 },
+});
+assert.equal(
+  livingAutoFillStrike.suggestedTarget?.name,
+  "Living Enemy",
+  "Auto-fill attacks must skip defeated enemies even when they would otherwise score higher",
+);
 assert.ok(
   rankedGrapple.bestTargetReasons.some((reason) => reason.includes("success chance") && reason.includes("Fortitude DC 18")),
   "Grapple Best target reason should name known target Fortitude DC",
@@ -5752,6 +5794,14 @@ assert.equal(playerIgnoredTemperament.customEnabled, false, "player tactic shoul
 const npcTacticView = tacticPersonalityView(tacticContext({ role: "boss", temperament: "aggressive" }, undefined));
 assert.equal(npcTacticView.title, "NPC tactic");
 assert.equal(npcTacticView.showAdvanced, true, "NPC tactic view should keep temperament/custom controls");
+const selectedNpcOne = { id: "npc-token-1", actor: { type: "npc" }, document: { id: "npc-token-1", actor: { type: "npc" } } };
+const selectedNpcTwo = { id: "npc-token-2", actor: { isOfType: (type) => type === "npc" }, document: { id: "npc-token-2", actor: { isOfType: (type) => type === "npc" } } };
+const selectedCharacter = { id: "pc-token", actor: { type: "character" }, document: { id: "pc-token", actor: { type: "character" } } };
+assert.deepEqual(
+  selectedNpcTacticTokens([selectedNpcOne, selectedCharacter, selectedNpcTwo, selectedNpcOne]),
+  [selectedNpcOne.document, selectedNpcTwo.document],
+  "bulk tactic targeting should keep unique selected NPC token documents and exclude PCs",
+);
 assert.equal(
   npcTacticView.roles.some((role) => [
     "melee-striker",
@@ -14037,6 +14087,76 @@ const battleMedicineClassification = classifySystemAction({
   },
 }, { actionCost: 1, type: "action" });
 assert.equal(battleMedicineClassification.role, "healing");
+assert.equal(battleMedicineClassification.activityProfile.requiresFreeHand, true, "Battle Medicine classification must retain its free-hand requirement");
+assert.equal(battleMedicineClassification.targetingProfile.reach, true, "Battle Medicine classification must retain its touch-range requirement");
+
+const battleMedicineSourceContext = (handsFree, allyDistance) => {
+  const injuredAlly = {
+    id: "battle-medicine-ally",
+    name: "Injured Ally",
+    hpPercent: 0.25,
+    distance: allyDistance,
+    conditions: { slugs: [], values: {} },
+  };
+  return {
+    ...fighterContext,
+    actor: {
+      document: {
+        type: "character",
+        system: {
+          actions: [{
+            id: "battle-medicine-action",
+            name: "Battle Medicine",
+            slug: "battle-medicine",
+            type: "action",
+            actionType: "action",
+            actions: 1,
+            traits: ["healing", "manipulate"],
+            description: "The healer uses Medicine to restore Hit Points in combat.",
+          }],
+        },
+        itemTypes: { action: [], feat: [], feature: [], consumable: [] },
+        items: [],
+      },
+    },
+    profile: {
+      ...fighterContext.profile,
+      actorType: "character",
+      handsFree,
+      reach: 5,
+      meleeReach: 5,
+      hpPercent: 1,
+      skills: { ...(fighterContext.profile?.skills ?? {}), medicine: { rank: 1, value: 8 } },
+    },
+    allies: [injuredAlly],
+    battlefield: { targets: [], enemies: [], allies: [injuredAlly] },
+    targets: [],
+  };
+};
+const noFreeHandBattleMedicineContext = battleMedicineSourceContext(0, 5);
+const noFreeHandBattleMedicine = readActionSources(noFreeHandBattleMedicineContext)
+  .find((action) => action.slug === "battle-medicine");
+assert.equal(noFreeHandBattleMedicine.available, false, "Battle Medicine must be unavailable with both hands occupied");
+assert.equal(noFreeHandBattleMedicine.unavailableReason, "No free hand available.");
+assert.equal(
+  buildCandidates(noFreeHandBattleMedicineContext).candidates.some((action) => action.slug === "battle-medicine"),
+  false,
+  "Battle Medicine must not enter Auto-fill without a free hand",
+);
+
+const distantBattleMedicineContext = battleMedicineSourceContext(1, 10);
+const distantBattleMedicine = readActionSources(distantBattleMedicineContext)
+  .find((action) => action.slug === "battle-medicine");
+const scoredDistantBattleMedicine = scoreCandidate(distantBattleMedicineContext, distantBattleMedicine);
+assert.equal(scoredDistantBattleMedicine.score, -999, "Battle Medicine must not Auto-fill for an injured ally outside reach");
+assert.equal(scoredDistantBattleMedicine.reason, "No badly injured healing target is in reach.");
+
+const reachableBattleMedicineContext = battleMedicineSourceContext(1, 5);
+const reachableBattleMedicine = readActionSources(reachableBattleMedicineContext)
+  .find((action) => action.slug === "battle-medicine");
+const scoredReachableBattleMedicine = scoreCandidate(reachableBattleMedicineContext, reachableBattleMedicine);
+assert.ok(scoredReachableBattleMedicine.score > -999, "Battle Medicine must remain usable for an injured ally in reach");
+assert.equal(scoredReachableBattleMedicine.suggestedTarget?.name, "Injured Ally");
 
 const raiseShieldClassification = classifySystemAction({
   name: "Raise a Shield",
@@ -17399,6 +17519,18 @@ const unknownNpcRankSkillGate = buildCandidates(skillGateContext({
 assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "grapple"), true);
 assert.equal(unknownNpcRankSkillGate.candidates.some((action) => action.slug === "demoralize"), true);
 
+const negativeIntimidationNpcSkillGate = buildCandidates(skillGateContext({
+  intimidation: { rank: null, mod: -1 },
+}, "npc"));
+assert.equal(
+  negativeIntimidationNpcSkillGate.candidates.some((action) => action.slug === "demoralize"),
+  false,
+  "NPCs with negative Intimidation must not receive Demoralize from Auto-fill",
+);
+assert.ok(negativeIntimidationNpcSkillGate.rejected.some(({ action, reason }) =>
+  action.slug === "demoralize" && reason === "Intimidation modifier is too low for Auto-fill.",
+));
+
 const unknownNpcPerceptionGate = buildCandidates(skillGateContext({
   perception: { rank: null, mod: 8 },
 }, "npc", hiddenSkillGateTarget));
@@ -19640,7 +19772,7 @@ try {
       token: { object: token, id: token.id, uuid: token.document.uuid },
     });
 
-    const casterActor = makeMinionActor("caster", "Caster", { ownership: { "user-1": 3 } });
+    const casterActor = makeMinionActor("caster", "Caster", { ownership: { "user-1": 3, "gm-user": 3 } });
     const casterToken = makeMinionToken("token-caster", "Caster", casterActor);
     const casterCombatant = makeMinionCombatant(casterToken);
 
@@ -19658,7 +19790,7 @@ try {
     const companionActor = makeMinionActor("companion", "Animal Companion", {
       type: "character",
       traits: ["minion", "animal"],
-      ownership: { "user-1": 3 },
+      ownership: { "user-1": 3, "gm-user": 3 },
     });
     const companionToken = makeMinionToken("token-companion", "Animal Companion", companionActor);
 
@@ -19683,14 +19815,28 @@ try {
     const eidolonToken = makeMinionToken("token-eidolon", "Eidolon", eidolonActor);
 
     const hostileCompanionActor = makeMinionActor("hostile-stray", "Hostile Wolf", {
-      type: "npc",
+      type: "character",
       traits: ["minion", "animal"],
-      ownership: { "user-2": 3 },
+      ownership: { "user-1": 3, "gm-user": 3 },
     });
     const hostileCompanionToken = makeMinionToken("token-hostile-stray", "Hostile Wolf", hostileCompanionActor, { disposition: -1 });
 
+    const foreignCompanionActor = makeMinionActor("foreign-companion", "Other Player's Companion", {
+      type: "character",
+      traits: ["minion", "animal"],
+      ownership: { "user-2": 3, "gm-user": 3 },
+    });
+    const foreignCompanionToken = makeMinionToken("token-foreign-companion", "Other Player's Companion", foreignCompanionActor);
+
     globalThis.game = {
       user: { isGM: true, targets: new Set() },
+      users: {
+        get: (id) => ({
+          "user-1": { id: "user-1", isGM: false },
+          "user-2": { id: "user-2", isGM: false },
+          "gm-user": { id: "gm-user", isGM: true },
+        })[id] ?? null,
+      },
       combat: {
         id: "combat-minion",
         round: 1,
@@ -19712,6 +19858,7 @@ try {
           ownedAllyToken,
           eidolonToken,
           hostileCompanionToken,
+          foreignCompanionToken,
         ],
       },
     };
@@ -19720,7 +19867,7 @@ try {
     assert.deepEqual(
       minionContext.minions.map((minion) => minion.name).sort(),
       ["Animal Companion", "Familiar", "Master Linked Familiar"],
-      "PF2e familiars should come from actor.familiar or system.master.id, and companions from character minions; ordinary same-side NPC animals should not be commandable minions",
+      "PF2e commandable minions must belong to the acting character and share its disposition; hostile and other-player companions must stay excluded",
     );
   } finally {
     globalThis.game = previousMinionGame;
@@ -24558,6 +24705,39 @@ assert.deepEqual(
   displayStepEntries(reloadOnePistolPlan.steps).map((entry) => entry.step.name),
   ["+1 Dueling Pistol", "Reload", "+1 Dueling Pistol"],
   "a reload-1 pistol must plan Strike, Reload, Strike instead of consecutive Strikes",
+);
+
+const pairedReloadOnePistolActor = {
+  system: {
+    actions: ["left-pistol", "right-pistol"].map((id) => ({
+      slug: "dueling-pistol",
+      label: "+1 Dueling Pistol",
+      name: "+1 Dueling Pistol",
+      type: "strike",
+      visible: true,
+      ready: true,
+      canAttack: true,
+      reload: "-",
+      item: {
+        id,
+        type: "weapon",
+        system: {
+          reload: { value: "1" },
+          range: { increment: 60 },
+          traits: { value: ["concealable", "concussive", "fatal-d10"] },
+          damageRolls: { a: { damage: "1d6+1", damageType: "piercing" } },
+        },
+      },
+    })),
+  },
+};
+const pairedReloadOnePistols = actorStrikeOptions(pairedReloadOnePistolActor, fighterContext)
+  .map((strike) => ({ ...strike, score: 90, confidence: "medium", reason: "Shoot." }));
+const pairedReloadOnePistolPlan = bestTurnPlan(fighterContext, pairedReloadOnePistols);
+assert.deepEqual(
+  displayStepEntries(pairedReloadOnePistolPlan.steps).map((entry) => entry.step.name),
+  ["+1 Dueling Pistol", "Reload", "+1 Dueling Pistol"],
+  "duplicate-looking reload-1 Strikes must still require Reload between firings",
 );
 
 const meleeItem = (damage, type, traits, range = null) => ({ type: "melee", system: { damageRolls: { r: { damage, damageType: type } }, range, traits: { value: traits } } });

@@ -37,6 +37,9 @@ export function detectionState(entity) {
 
 export function canAttackTarget(entity) {
   if (entity?.attackTargetable === false) return false;
+  const hpPercent = Number(entity?.hpPercent);
+  if (Number.isFinite(hpPercent) && hpPercent <= 0) return false;
+  if (targetConditionActive(entity, "dead") || targetConditionActive(entity, "destroyed")) return false;
   const state = detectionState(entity);
   if (state === "undetected" || state === "unnoticed") return false;
   return !targetConditionActive(entity, "undetected") && !targetConditionActive(entity, "unnoticed");

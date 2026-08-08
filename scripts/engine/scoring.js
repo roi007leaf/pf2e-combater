@@ -16,8 +16,8 @@ import {
 import {
   actionSkillDcSlug,
   ownSkillReliabilityScore,
+  skillAutoFillRequirement,
   skillCheckScore,
-  trainedSkillRequirement,
 } from "./scoring/skills.js";
 import { spellTacticalAdjustment } from "./scoring/spells.js";
 import { nativeRollContextPreflight } from "./scoring/roll-preflight.js";
@@ -53,14 +53,14 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const role = action.curated?.role ?? action.role;
   const preference = deterministicPreferenceAdjustment(context, action);
-  const requiredTraining = trainedSkillRequirement(profile, action);
-  if (requiredTraining) {
+  const skillRequirement = skillAutoFillRequirement(profile, action);
+  if (skillRequirement) {
     return {
       ...action,
       score: HARD_BLOCK_SCORE,
       suggestedTarget: null,
-      reason: requiredTraining.reason,
-      reasons: [requiredTraining.reason],
+      reason: skillRequirement.reason,
+      reasons: [skillRequirement.reason],
       preference,
     };
   }

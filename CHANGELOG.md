@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.2.4]
+
+### Added
+
+- **NPC tactic overrides can now be applied to multiple selected tokens at once.** When two or more
+  NPC tokens are selected, the tactic editor can save or reset their token overrides together while
+  excluding PCs and preserving the separate actor-default control.
+
+### Fixed
+
+- **Command an Animal now stays tied to the acting character's companion.** Companion detection
+  requires the PF2e minion relationship, matching non-GM ownership, and an allied disposition, so
+  hostile companions and other players' companions are no longer recommended.
+- **Battle Medicine now respects its free-hand and reach requirements.** Auto-fill rejects it when
+  both hands are occupied, ignores injured allies outside the actor's reach, and selects a reachable
+  injured recipient when one is available.
+- **Auto-fill no longer targets defeated creatures.** Enemies at 0 Hit Points or carrying the dead
+  or destroyed condition are excluded from attack recommendations without removing them from
+  corpse-specific context.
+- **Reload 1 weapons now require Reload between repeated shots even when multiple weapons look
+  identical.** Plans retain the strict `Strike -> Reload -> Strike` sequence requested for these
+  attacks.
+- **NPCs with unknown training and a negative skill modifier no longer receive that skill action in
+  Auto-fill.** Clearly unusable options such as a negative-Intimidation zombie's Demoralize are
+  rejected before plan search.
+
 ## [1.2.3]
 
 ### Added

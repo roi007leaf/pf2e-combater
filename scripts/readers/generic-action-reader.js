@@ -212,6 +212,14 @@ export function readGenericActionAvailability(slug, context) {
   return action ? readGenericActionAvailabilityForAction(action, context) : availability(true, "");
 }
 
+export function readActionRequirementAvailability(action, context) {
+  const profile = contextProfile(context);
+  if (action?.activityProfile?.requiresFreeHand === true && freeHands(profile) < 1) {
+    return availability(false, t("Avail.NoFreeHand", "No free hand available."));
+  }
+  return availability(true, "");
+}
+
 function readGenericActionAvailabilityForAction(action, context) {
   const profile = contextProfile(context);
   const targets = contextTargets(context);

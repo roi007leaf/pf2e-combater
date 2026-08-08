@@ -893,8 +893,9 @@ function classifySystemActionBase(action, parsedCost) {
       activityProfile: {
         ...baseProfile(["healing"]),
         medicine: true,
+        requiresFreeHand: true,
       },
-      targetingProfile: { ally: true, self: true },
+      targetingProfile: { ally: true, self: true, reach: true },
       gatingProfile,
       confidence: "high",
       reasons: [t("ActReason.BattleMedicineCanRestore", "Battle Medicine can restore Hit Points in combat.")],
