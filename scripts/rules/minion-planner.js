@@ -1,5 +1,5 @@
 import { actorStrikeOptions } from "../readers/action/reader.js";
-import { actorMovementOptions, readActorSpeed } from "../readers/actor-profile.js";
+import { actorMovementOptions, preferredActorMovement } from "../readers/actor-profile.js";
 import { t } from "../i18n.js";
 import { numeric } from "./canvas-geometry.js";
 
@@ -25,7 +25,7 @@ function measureDistance(from, to) {
 }
 
 function actorSpeed(actor) {
-  return readActorSpeed(actor);
+  return preferredActorMovement(actor).speed;
 }
 
 function strikeRange(strike) {
@@ -187,6 +187,8 @@ export function planMinionSubturn(context, options = {}) {
     const strikes = strikeOptions.filter((strike) => strike.available !== false);
     const strike = bestStrike(strikes.length ? strikes : strikeOptions);
     const actionOptions = minionActionOptions(strikes.length ? strikes : strikeOptions);
+    const movementOptions = actorMovementOptions(actor);
+    const preferredMovement = preferredActorMovement(actor);
 
     const distance = numeric(target.distance, Infinity);
     const steps = strike
@@ -205,8 +207,11 @@ export function planMinionSubturn(context, options = {}) {
       targetName: target.name ?? "",
       actionBudget,
       steps,
+      stepStates: steps.map((step) => String(step).toLowerCase() === "stride"
+        ? { movementAction: preferredMovement.action }
+        : {}),
       actionOptions,
-      movementOptions: actorMovementOptions(actor),
+      movementOptions,
       label,
       scoreDelta: minionScoreDelta(steps, strike?.name ?? null),
       reasons: [label],

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.6]
+
+### Fixed
+
+- **Auto-fill now uses a creature's fastest generally available movement Speed.** Creatures with a
+  faster fly Speed now plan and execute Fly movement instead of spending extra actions on their
+  slower land Speed, including companion and minion subturns. Terrain-dependent movement modes
+  remain available for manual selection.
+
 ## [1.2.5]
 
 ### Added

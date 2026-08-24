@@ -923,6 +923,7 @@ async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit,
           // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
           name: atom?.name ?? atom?.action?.name,
           actionCost: atom?.actionCost ?? atom?.cost,
+          ...(atom?.movementAction ? { movementAction: atom.movementAction } : {}),
           requiresDestination: requiresDestinationForAction(atom),
           requiresTarget: requiresTargetForAction(atom),
           ...(atom?.groupId
@@ -1455,6 +1456,7 @@ export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, pref
       // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
       name: step?.name ?? step?.action?.name,
       actionCost: step?.actionCost ?? step?.cost,
+      ...(step?.movementAction ? { movementAction: step.movementAction } : {}),
       requiresDestination: requiresDestinationForAction(step),
       requiresTarget: requiresTargetForAction(step),
       // A distinct-target ability's atoms all share the same id (compositeStrikeActionKey is

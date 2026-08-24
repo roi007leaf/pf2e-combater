@@ -133,6 +133,19 @@ export function actorMovementOptions(actor) {
   return options;
 }
 
+// Walking and flying are generally usable on an ordinary battlefield. Swim, climb, and burrow
+// depend on terrain the planner may not know about, so keep those available in the movement picker
+// without selecting them automatically. Ties prefer walking to avoid needless mode changes.
+export function preferredActorMovement(actor) {
+  const options = actorMovementOptions(actor)
+    .filter((option) => ["walk", "fly"].includes(option.action) && option.speed > 0);
+  return options.reduce((best, option) => {
+    if (!best || option.speed > best.speed) return option;
+    if (option.speed === best.speed && option.action === "walk") return option;
+    return best;
+  }, null) ?? { action: "walk", speed: readActorSpeed(actor) };
+}
+
 function traitSlug(trait) {
   return String(trait?.slug ?? trait?.name ?? trait ?? "").toLowerCase();
 }
@@ -420,6 +433,8 @@ export function readActorProfile(actor) {
   const reach = readReach(actor);
   const classSlugs = readClassSlugs(actor);
   const subclassEntries = readSubclassEntries(actor);
+  const landSpeed = readActorSpeed(actor);
+  const preferredMovement = preferredActorMovement(actor);
 
   return {
     id: actor.id,
@@ -439,7 +454,9 @@ export function readActorProfile(actor) {
     effects: readEffects(actor),
     combatState: readCombatState(actor),
     hp: readHp(actor),
-    speed: readActorSpeed(actor),
+    speed: preferredMovement.speed,
+    landSpeed,
+    movementAction: preferredMovement.action,
     reach,
     meleeReach: reach,
     defenses: readDefenses(actor),

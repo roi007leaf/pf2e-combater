@@ -188,6 +188,9 @@ export function readGenericActions(context) {
     const proneCover = action.slug === "take-cover" && hasCondition(profile, "prone");
     return {
       ...action,
+      ...(action.slug === "stride" && profile?.movementAction
+        ? { movementAction: profile.movementAction }
+        : {}),
       name: genericActionDisplayName(action),
       source: "generic",
       confidence: "medium",

@@ -8200,6 +8200,63 @@ const movementSpeedProfile = readActorProfile({
 });
 assert.equal(movementSpeedProfile.speed, 40);
 
+const ferrousButterflyActor = {
+  id: "ferrous-butterfly",
+  name: "Ferrous Butterfly",
+  type: "npc",
+  items: [],
+  itemTypes: { action: [], feat: [], feature: [], consumable: [], condition: [] },
+  system: {
+    movement: {
+      speeds: {
+        land: { type: "land", value: 10, base: 10 },
+        fly: { type: "fly", value: 40, base: 40 },
+      },
+    },
+    actions: [{
+      id: "wing",
+      slug: "wing",
+      type: "strike",
+      label: "Wing",
+      visible: true,
+      ready: true,
+      canAttack: true,
+      item: { id: "wing", system: { traits: { value: [] } } },
+      roll: () => null,
+    }],
+    attributes: { hp: { value: 10, max: 10 }, reach: { base: 5 } },
+    saves: {},
+    skills: {},
+    abilities: {},
+  },
+};
+const ferrousButterflyProfile = readActorProfile(ferrousButterflyActor);
+const ferrousButterflyContext = {
+  actor: { document: ferrousButterflyActor, profile: ferrousButterflyProfile },
+  profile: ferrousButterflyProfile,
+  token: { id: "ferrous-butterfly-token" },
+  battlefield: {
+    enemies: [{ id: "target", name: "Target", distance: 35 }],
+    targets: [{ id: "target", name: "Target", distance: 35 }],
+  },
+  targets: undefined,
+};
+const ferrousButterflyApproach = readActionSources(ferrousButterflyContext)
+  .find((action) => action.slug === "stride-strike-wing");
+const ferrousButterflyPlan = bestTurnPlan(
+  ferrousButterflyContext,
+  buildCandidates(ferrousButterflyContext).candidates,
+);
+assert.equal(ferrousButterflyProfile.speed, 40, "planning should use the fastest generally available Speed, not only land Speed");
+assert.equal(ferrousButterflyProfile.movementAction, "fly", "the best Speed should retain its Foundry movement action");
+assert.equal(ferrousButterflyApproach?.activityProfile?.strideCount, 1, "40-foot fly Speed should close 35 feet in one move instead of planning three 10-foot Strides");
+assert.equal(ferrousButterflyApproach?.movementAction, "fly", "the generated approach should execute using Fly");
+assert.equal(builderAtomicActionsForStep(ferrousButterflyApproach)[0]?.movementAction, "fly", "atomizing Auto-fill should preserve Fly on its movement row");
+assert.ok(
+  ferrousButterflyPlan.steps.some((step) => step.slug === "stride-strike-wing"),
+  `Auto-fill should choose the one-Fly approach instead of three land Strides, got ${ferrousButterflyPlan.summary}`,
+);
+
 const hydraProfileFromGeneratedStrike = readActorProfile({
   id: "hydra-reach",
   name: "Hydra Reach",
@@ -25452,6 +25509,34 @@ try {
     familiarPlan?.movementOptions,
     [{ action: "walk", speed: 25 }, { action: "fly", speed: 25 }],
     "Command Companion minion plans should keep the minion's own movement modes for child Stride controls",
+  );
+  const flyingFamiliarPlan = planMinionSubturn({
+    isGM: false,
+    minions: [{
+      ...familiarMinion,
+      actor: {
+        ...familiarMinion.actor,
+        system: {
+          ...familiarMinion.actor.system,
+          movement: { speeds: { land: { value: 10 }, fly: { value: 40 } } },
+        },
+      },
+    }],
+    battlefield: {
+      enemies: [{ ...minionEnemy, id: "far-flying-dummy", center: { x: 350, y: 0 }, distance: 35 }],
+      allies: [],
+      targets: [],
+    },
+  }, { actionBudget: 3 });
+  assert.deepEqual(
+    flyingFamiliarPlan?.steps,
+    ["Stride", "Attack Roll", "Attack Roll"],
+    "a 40-foot fly Speed should replace three 10-foot land Strides with one Fly and two attacks",
+  );
+  assert.equal(
+    flyingFamiliarPlan?.stepStates?.[0]?.movementAction,
+    "fly",
+    "the minion's automatically selected movement row should execute using Fly",
   );
   const tokenBackedFamiliarPlan = planMinionSubturn({
     isGM: false,

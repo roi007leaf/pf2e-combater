@@ -407,7 +407,10 @@ export function builderAtomicActionsForStep(action) {
   const atoms = parts.flatMap((part, partIndex) => {
     const normalized = String(part).toLowerCase();
     if (["crawl", "stand", "step", "stride"].includes(normalized)) {
-      const atom = atomicMovementAction(normalized);
+      const baseAtom = atomicMovementAction(normalized);
+      const atom = normalized === "stride" && action?.movementAction
+        ? { ...baseAtom, movementAction: action.movementAction }
+        : baseAtom;
       if (!atom) return [];
       if (["step", "stride"].includes(normalized) && partIndex === approachMovementIndex) {
         const rawStrikeReach = action.activityProfile?.strikeReach;

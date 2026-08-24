@@ -143,6 +143,7 @@ function readStandStrideActivities(context) {
     item: null,
     preferredTarget: target,
     role: "mobility",
+    movementAction: profile?.movementAction ?? "walk",
     activityProfile: {
       includes: ["stand", "stride"],
       removesCondition: "prone",
