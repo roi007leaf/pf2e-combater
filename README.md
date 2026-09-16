@@ -507,12 +507,28 @@ search states, and failures. Command exits nonzero when quality expectations reg
 
 ---
 
-## Live engine matrix
+## Live testing
+
+Combater includes a Visioner-style automated browser suite for a disposable Foundry world. It uses
+separate GM/player sessions, exercises all shipped feature families, captures screenshots and a JSON
+report, and restores settings/documents after every case (including interrupted-run recovery).
+
+```powershell
+npm run test:live                 # quick integration smoke
+npm run test:live:full            # complete live feature catalog
+npm run test:live:list            # list exact cases
+npm run test:live:harness         # runner safety checks; no Foundry required
+npm run test:live:cleanup         # recover interrupted run
+```
+
+Setup and credential/environment configuration: [`tests/live/README.md`](tests/live/README.md).
+
+### Console engine matrix
 
 For authenticated Foundry/PF2e integration checks, run the read-only matrix from the console:
 
 ```js
-await game.modules.get("pf2e-combater").api.runLiveEngineMatrix();
+await game.modules.get('pf2e-combater').api.runLiveEngineMatrix();
 ```
 
 A GM can test a selected token's native multi-waypoint movement and recorded Undo on two clear grid
@@ -520,9 +536,14 @@ segments. This moves the token, observes hooks/history/region membership, immedi
 uses an emergency origin restore if interrupted:
 
 ```js
-await game.modules.get("pf2e-combater").api.runLiveEngineMatrix({
+await game.modules.get('pf2e-combater').api.runLiveEngineMatrix({
   allowMutations: true,
-  movement: { deltas: [{ x: 1, y: 0 }, { x: 1, y: 1 }] },
+  movement: {
+    deltas: [
+      { x: 1, y: 0 },
+      { x: 1, y: 1 },
+    ],
+  },
 });
 ```
 

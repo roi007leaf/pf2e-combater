@@ -1,6 +1,6 @@
 {
   "name": "pf2e-combater",
-  "version": "1.2.6",
+  "version": "1.3.0",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -23,6 +23,13 @@
     "test:coverage": "node scripts/engine/self-test.js",
     "test:ci": "node scripts/engine/self-test.js",
     "test:installed": "node scripts/engine/self-test/installed-runtime.test.js",
+    "test:live": "node tests/live/run.mjs",
+    "test:live:full": "node tests/live/run.mjs --full",
+    "test:live:cleanup": "node tests/live/run.mjs --cleanup-only",
+    "test:live:list": "node tests/live/run.mjs --list",
+    "test:live:harness": "node --test tests/live/*.checks.mjs",
+    "test:live:matrix": "node tests/live/matrix.mjs",
+    "test:shipping": "npm test && npm run lint && npm run test:live:harness && npm run test:live:matrix --",
     "planner:quality": "node scripts/dev/run-planner-quality.mjs",
     "planner:quality:json": "node scripts/dev/run-planner-quality.mjs --json",
     "lint": "eslint .",
@@ -41,6 +48,8 @@
     "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.3.0",
     "husky": "^9.1.7",
+    "@inquirer/prompts": "^8.7.2",
+    "playwright": "^1.63.0",
     "prettier": "^3.6.2"
   }
 }

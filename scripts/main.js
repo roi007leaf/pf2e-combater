@@ -193,7 +193,7 @@ function selectedTokenCombatant() {
 
 function refreshSceneControls() {
   try {
-    ui?.controls?.render?.();
+    ui?.controls?.render?.({ force: true });
   } catch (_error) {
     // Toolbar active state is cosmetic; ignore render failures.
   }
@@ -333,13 +333,15 @@ function addTool(toolsContainer, tool) {
   if (typeof toolsContainer === "object") toolsContainer[tool.name] = tool;
 }
 
-Hooks.on("getSceneControlButtons", (controls) => {
-  if (!playerAccessAllowed()) return;
-  const groups = Array.isArray(controls) ? controls : Object.values(controls ?? {});
-  const tokenControl = groups.find((control) => control?.name === "tokens" || control?.name === "token");
-  if (!tokenControl?.tools) return;
+function removeTool(toolsContainer, name) {
+  if (Array.isArray(toolsContainer)) {
+    const index = toolsContainer.findIndex((entry) => entry?.name === name);
+    if (index >= 0) toolsContainer.splice(index, 1);
+  } else if (toolsContainer && typeof toolsContainer === "object") delete toolsContainer[name];
+}
 
-  addTool(tokenControl.tools, {
+function panelSceneControlTool() {
+  return {
     name: `${MODULE_ID}-toggle-panel`,
     title: t("Keybind.ToggleName", "Toggle PF2e Combater"),
     icon: "fa-solid fa-crosshairs",
@@ -357,7 +359,22 @@ Hooks.on("getSceneControlButtons", (controls) => {
         refreshSceneControls();
       }
     },
-  });
+  };
+}
+
+function currentTokenControl() {
+  const controls = ui?.controls?.controls;
+  const groups = Array.isArray(controls) ? controls : Object.values(controls ?? {});
+  return groups.find((control) => control?.name === "tokens" || control?.name === "token") ?? null;
+}
+
+Hooks.on("getSceneControlButtons", (controls) => {
+  if (!playerAccessAllowed()) return;
+  const groups = Array.isArray(controls) ? controls : Object.values(controls ?? {});
+  const tokenControl = groups.find((control) => control?.name === "tokens" || control?.name === "token");
+  if (!tokenControl?.tools) return;
+
+  addTool(tokenControl.tools, panelSceneControlTool());
 });
 
 // GM-side handler for a player's shared draft plan (runs on each GM via socketlib.executeForAllGMs).
@@ -389,6 +406,11 @@ Hooks.once("socketlib.ready", () => {
 // The GM can lock players out of the panel mid-session; each player's own client reacts by
 // closing whatever's open and dropping the toolbar toggle immediately, without a reload.
 Hooks.on("pf2e-combater.playerAccessChanged", () => {
+  const tokenControl = currentTokenControl();
+  if (tokenControl?.tools) {
+    if (playerAccessAllowed()) addTool(tokenControl.tools, panelSceneControlTool());
+    else removeTool(tokenControl.tools, `${MODULE_ID}-toggle-panel`);
+  }
   refreshSceneControls();
   ui?.combat?.render?.(true);
   if (playerAccessAllowed() || !activePanel) return;

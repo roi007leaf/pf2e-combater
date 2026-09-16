@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0]
+
+### Added
+
+- **A live Foundry test engine now covers every Combater feature family.** The automated browser
+  suite runs isolated GM and player sessions against a disposable world, records screenshots and
+  structured evidence for 39 feature cases, and includes interrupted-run recovery and cleanup.
+
+### Fixed
+
+- **Disabling player access now removes Combater's token-toolbar control immediately.** Re-enabling
+  access restores the control without requiring a reload, and scene-control active state refreshes
+  reliably after the panel changes.
+
 ## [1.2.6]
 
 ### Fixed
