@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1]
+
+### Fixed
+
+- **Auto-fill no longer recommends sheathing a held weapon.** Sheathe remains available through
+  Browse for manual selection but cannot contradict a plan that closes distance to Strike with that
+  weapon.
+
 ## [1.3.0]
 
 ### Added

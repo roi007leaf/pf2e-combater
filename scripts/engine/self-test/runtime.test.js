@@ -12828,7 +12828,28 @@ assert.ok(sheatheDagger, "a held weapon should get a Sheathe (1-action) action")
 assert.equal(sheatheDagger.actionCost, 1);
 assert.equal(sheatheDagger.executable, "sheathe-weapon");
 assert.equal(sheatheDagger.name, "Sheathe Dagger");
+assert.equal(sheatheDagger.combatUse, "browse-only", "Sheathe must stay player-selected instead of contradicting an Auto-fill plan that closes to Strike with the held weapon");
 assert.ok(!weaponSources.some((action) => action.slug === "sheathe-longsword"), "a sheathed weapon should not get a Sheathe");
+const closeAndStrike = {
+  id: "stride-strike-dagger",
+  name: "Stride -> Dagger",
+  slug: "stride-strike-dagger",
+  source: "strike",
+  confidence: "medium",
+  actionCost: 2,
+  score: 100,
+  role: "mobility-attack",
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1 },
+};
+const sheatheContradictionPlans = buildTurnPlans(weaponActionsContext, [
+  closeAndStrike,
+  { ...scoreCandidate(weaponActionsContext, sheatheDagger), confidence: "medium" },
+]);
+assert.equal(
+  sheatheContradictionPlans.some((plan) => plan.steps.some((step) => step.executable === "sheathe-weapon")),
+  false,
+  "Auto-fill must never pair closing to Strike with sheathing the weapon, even if Sheathe confidence is later raised",
+);
 const swapItemsAction = weaponSources.find((action) => action.slug === "swap-items");
 assert.ok(swapItemsAction, "an actor with one held item and one worn item should get Swap Items");
 assert.equal(swapItemsAction.name, "Swap Items");

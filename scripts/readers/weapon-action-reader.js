@@ -163,6 +163,7 @@ function readSheatheWeaponActions(actor) {
       executable: "sheathe-weapon",
       detected: true,
       available: true,
+      combatUse: "browse-only",
       item: weapon,
       role: "utility",
       activityProfile: { includes: ["interact"], sheathesWeapon: true, weaponName: weapon.name },
