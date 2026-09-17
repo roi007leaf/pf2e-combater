@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.2]
+
+### Fixed
+
+- **Auto-fill no longer recommends dropping prone.** Drop Prone remains available through Browse
+  for situations where scene geometry makes it useful, but Combater no longer manufactures a
+  speculative `Drop Prone -> Take Cover` plan without that tactical context.
+
 ## [1.3.1]
 
 ### Fixed

@@ -7632,13 +7632,52 @@ assert.equal(
   false,
   "standing removes prone, so the same plan must not also Crawl or use prone-only Take Cover",
 );
-const dropProneTakeCoverPlan = bestTurnPlan({ ...fighterContext, actionsSpent: { normal: 1, total: 1 } }, [
-  { id: "generic-drop-prone", name: "Drop Prone", slug: "generic-drop-prone", source: "system-inferred", actionCost: 1, score: 60, confidence: "low", allowLowConfidenceAutoFill: true, reason: "Cover." },
-]);
+const detectedDropProne = readActionSources(fighterContext)
+  .find((action) => action.slug === "drop-prone");
+assert.ok(detectedDropProne, "Drop Prone should remain available for manual selection");
 assert.equal(
-  dropProneTakeCoverPlan.summary,
-  "Drop Prone -> Take Cover",
-  "Drop Prone should spend a remaining action on Take Cover when no stronger follow-up exists",
+  detectedDropProne.combatUse,
+  "browse-only",
+  "Drop Prone needs scene-specific cover judgment and must stay player-selected",
+);
+const actorItemDropProne = readActionSources({
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      itemTypes: {
+        action: [{
+          id: "system-drop-prone",
+          name: "Drop Prone",
+          type: "action",
+          system: {
+            slug: "drop-prone",
+            actionType: { value: "action" },
+            actions: { value: 1 },
+            description: { value: "<p>You fall prone.</p>" },
+          },
+        }],
+        feat: [],
+        feature: [],
+        consumable: [],
+      },
+      items: [],
+    },
+  },
+}).find((action) => action.slug === "drop-prone");
+assert.equal(
+  actorItemDropProne?.combatUse,
+  "browse-only",
+  "an actor-provided Drop Prone action must be manual-only too",
+);
+const dropProneTakeCoverPlan = bestTurnPlan(
+  { ...fighterContext, actionsSpent: { normal: 1, total: 1 } },
+  [{ ...scoreCandidate(fighterContext, detectedDropProne), confidence: "medium" }],
+);
+assert.equal(
+  dropProneTakeCoverPlan.steps.length,
+  0,
+  "Auto-fill must not manufacture Drop Prone -> Take Cover even if Drop Prone confidence is later raised",
 );
 
 const fullBudgetPreferencePlans = buildTurnPlans(fighterContext, [
