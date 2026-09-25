@@ -3821,7 +3821,7 @@
 
 .combater-flanking-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(100px, 112px));
   gap: 6px;
   flex: 1 0 100%;
   grid-column: 1 / -1;
@@ -3859,7 +3859,6 @@
 .combater-dg-ally { fill: rgba(74, 144, 226, .35); stroke: #4a90e2; stroke-width: 4; }
 .combater-dg-target { fill: rgba(217, 83, 79, .35); stroke: #d9534f; stroke-width: 4; }
 .combater-dg-dot { fill: #fff; }
-.combater-dg-arc { fill: none; stroke: #f0ad4e; stroke-width: 5; stroke-linecap: round; }
 .combater-dg-line { stroke-width: 6; stroke-linecap: round; }
 .combater-dg-line.combater-dg-pass { stroke: #3cb371; }
 .combater-dg-line.combater-dg-fail { stroke: #d9534f; stroke-opacity: .45; stroke-width: 4; stroke-dasharray: 14 12; }

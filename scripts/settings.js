@@ -113,7 +113,6 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     raw: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.Raw",
     anySquare: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnySquare",
     anyCorner: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnyCorner",
-    oppositeArcs: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.OppositeArcs",
     lineThrough: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.LineThrough",
   };
   const StringField = globalThis.foundry?.data?.fields?.StringField;
@@ -168,7 +167,7 @@ export async function migrateVisionerCombatSettings() {
       const current = setting(key);
       const defaultValue = key === SETTINGS.flankingSizeRule ? "raw" : false;
       if (legacy === undefined || legacy === defaultValue) continue;
-      if (current === defaultValue) {
+      if (current === defaultValue && legacy !== "oppositeArcs") {
         await game.settings.set(MODULE_ID, key, legacy);
       }
       await game.settings.set("pf2e-visioner", key, defaultValue);
@@ -178,6 +177,13 @@ export async function migrateVisionerCombatSettings() {
     }
   }
   await game.settings.set(MODULE_ID, "visionerCombatSettingsMigrated", true);
+}
+
+export async function migrateDeprecatedFlankingRule() {
+  if (!game.user?.isActiveGM) return;
+  if (setting(SETTINGS.flankingSizeRule) === "oppositeArcs") {
+    await game.settings.set(MODULE_ID, SETTINGS.flankingSizeRule, "raw");
+  }
 }
 
 // GM can lock players out of the panel entirely; the GM's own access is never affected.

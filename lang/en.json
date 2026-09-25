@@ -48,7 +48,6 @@
           "Raw": "PF2e default (center to center)",
           "AnySquare": "Any occupied square",
           "AnyCorner": "Any corner",
-          "OppositeArcs": "Opposite arcs (defender's view)",
           "LineThrough": "Line through target"
         },
         "Diagram": {

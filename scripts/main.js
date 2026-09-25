@@ -1,9 +1,9 @@
 import { MODULE_ID } from "./constants.js";
-import { migrateVisionerCombatSettings, playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
+import { migrateDeprecatedFlankingRule, migrateVisionerCombatSettings, playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
 import { applyCombatStartCharacterActions } from "./combat-start-character-actions.js";
 import { registerFlankingSizeRuleWrapper } from "./flanking/flanking-size-rule.js";
 import { registerFlankingHighlightOriginHooks } from "./flanking/flanking-highlight-origin.js";
-import { mountFlankingSettingsCards } from "./flanking/flanking-settings-ui.js";
+import { mountFlankingSettingsCards, registerFlankingSettingsCardClicks } from "./flanking/flanking-settings-ui.js";
 import { collectionValues } from "./foundry-data.js";
 import { clearMovementCollisionCache } from "./readers/action/reach.js";
 import { promptRetchDc, promptRetchResult } from "./ui/retch-decision.js";
@@ -310,6 +310,7 @@ Hooks.once("init", () => {
     });
   }
   registerSettings({ decorateFlankingFormGroup: mountFlankingSettingsCards });
+  registerFlankingSettingsCardClicks();
   Hooks.on("renderSettingsConfig", (_app, html) => mountFlankingSettingsCards(html));
   registerFlankingHighlightOriginHooks();
   registerCombatTrackerIntel();
@@ -430,6 +431,7 @@ Hooks.on("pf2e-combater.preflightSettingChanged", () => {
 Hooks.once("ready", async () => {
   console.log("PF2e Combater | Ready");
   await migrateVisionerCombatSettings();
+  await migrateDeprecatedFlankingRule();
   registerFlankingSizeRuleWrapper();
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;

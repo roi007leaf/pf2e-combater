@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildFlankingIllustrations, mountFlankingSettingsCards } from "../../flanking/flanking-settings-ui.js";
+import { buildFlankingIllustrations, mountFlankingSettingsCards, registerFlankingSettingsCardClicks } from "../../flanking/flanking-settings-ui.js";
 import { registerSettings } from "../../settings.js";
 
 class Element {
@@ -17,6 +17,7 @@ class Element {
   append(...elements) { this.children.push(...elements); }
   addEventListener(name, callback) { this.listeners[name] = callback; }
   dispatchEvent(event) { this.listeners[event.type]?.(event); return true; }
+  setAttribute(name, value) { this[name] = value; }
 }
 
 const previousGame = globalThis.game;
@@ -30,22 +31,34 @@ try {
   };
   globalThis.Event = class { constructor(type) { this.type = type; } };
   const cards = buildFlankingIllustrations();
-  assert.deepEqual(cards.map((card) => card.value), ["raw", "anySquare", "anyCorner", "oppositeArcs", "lineThrough"]);
+  assert.deepEqual(cards.map((card) => card.value), ["raw", "anySquare", "anyCorner", "lineThrough"]);
   assert.ok(cards.every((card) => card.svg.includes("<svg") && card.svg.includes("</svg>")));
 
   const group = new Element("div");
   const select = new Element("select");
   select.value = "raw";
   select.closest = () => group;
-  group.querySelector = (selector) => selector === ".combater-flanking-cards" ? group.children[0] ?? null : null;
+  group.querySelector = (selector) => {
+    if (selector === 'select[name="pf2e-combater.flankingSizeRule"]') return select;
+    return selector === ".combater-flanking-cards" ? group.children[0] ?? null : null;
+  };
   const root = { querySelector: (selector) => selector === 'select[name="pf2e-combater.flankingSizeRule"]' ? select : null };
-  const document = { createElement: (tagName) => new Element(tagName) };
+  const document = {
+    listeners: {},
+    createElement: (tagName) => new Element(tagName),
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+  };
+  registerFlankingSettingsCardClicks(document);
+  const clickCard = (button, cardGroup) => {
+    button.closest = (selector) => selector === ".combater-flanking-card" ? button : cardGroup;
+    document.listeners.click({ target: button });
+  };
   assert.equal(mountFlankingSettingsCards(root, document), true);
   assert.equal(mountFlankingSettingsCards(root, document), false, "rerender must not duplicate cards");
   const chooser = group.children[0];
-  assert.equal(chooser.children.length, 5);
+  assert.equal(chooser.children.length, cards.length);
   assert.ok(chooser.children.every((button) => button.innerHTML.includes("<svg")));
-  chooser.children[1].listeners.click();
+  clickCard(chooser.children[1], group);
   assert.equal(select.value, "anySquare");
   assert.ok(chooser.children[1].classes.has("active"));
   assert.ok(!chooser.children[0].classes.has("active"));
@@ -68,7 +81,7 @@ try {
     assert.ok(field instanceof StringField);
     assert.deepEqual(Object.keys(field.options.choices), cards.map((card) => card.value));
     assert.equal(field.toFormGroup(), group);
-    assert.equal(group.children[0].children.length, 5, "setting field must include SVGs when rendered");
+    assert.equal(group.children[0].children.length, cards.length, "setting field must include SVGs when rendered");
 
     const renderedGroup = new Element("div");
     const renderedChooser = new Element("div");
@@ -85,7 +98,7 @@ try {
     select.closest = () => renderedGroup;
     select.value = "raw";
     assert.equal(mountFlankingSettingsCards(renderedGroup, document), false, "render hook rebinds serialized cards");
-    renderedChooser.children[2].listeners.click();
+    clickCard(renderedChooser.children[2], renderedGroup);
     assert.equal(select.value, "anyCorner");
     assert.ok(renderedChooser.children[2].classes.has("active"));
     assert.ok(renderedGroup.classes.has("combater-flanking-setting"));

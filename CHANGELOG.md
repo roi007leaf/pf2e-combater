@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.4]
+
+### Fixed
+
+- Flanking rule cards respond to clicks after Foundry rebuilds the settings form.
+
+### Changed
+
+- Removed the Opposite arcs flanking rule. Worlds using it return to the PF2e default rule.
+
 ## [1.3.3]
 
 ### Added

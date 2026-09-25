@@ -1,15 +1,13 @@
 ﻿import {
-  angularSpanFrom,
   lineThroughTarget,
-  oppositeArcsFlank,
   pointsOnOppositeSides,
   segmentLiesOnEdge,
 } from './flanking-size-rule.js';
 
 const CHOICE_KEY = 'PF2E_COMBATER.Settings.FlankingSizeRule.Choices';
 const DIAGRAM_KEY = 'PF2E_COMBATER.Settings.FlankingSizeRule.Diagram';
-const CHOICE_NAMES = { raw: 'Raw', anySquare: 'AnySquare', anyCorner: 'AnyCorner', oppositeArcs: 'OppositeArcs', lineThrough: 'LineThrough' };
-const boundChoosers = new WeakSet();
+const CHOICE_NAMES = { raw: 'Raw', anySquare: 'AnySquare', anyCorner: 'AnyCorner', lineThrough: 'LineThrough' };
+let delegatedClicksRegistered = false;
 
 const CELL = 100;
 const COLS = 4;
@@ -25,7 +23,6 @@ const RULE_POINTS = {
   raw: 'center',
   anySquare: 'squares',
   anyCorner: 'corners',
-  oppositeArcs: 'center',
   lineThrough: 'center',
 };
 
@@ -94,7 +91,6 @@ function boundsOf(rect) {
 
 function pairPasses(rule, from, to) {
   const target = boundsOf(SCENE.target);
-  if (rule === 'oppositeArcs') return oppositeArcsFlank(boundsOf(SCENE.flanker), boundsOf(SCENE.ally), target);
   if (rule === 'lineThrough') return lineThroughTarget(boundsOf(SCENE.flanker), boundsOf(SCENE.ally), target);
   if (rule === 'anyCorner' && segmentLiesOnEdge(from, to, target)) return false;
   return pointsOnOppositeSides(from, to, target);
@@ -124,26 +120,6 @@ function linesSvg(lines) {
   return [...failing, ...passing, ...dots].join('');
 }
 
-function arcPath(span, radius) {
-  const origin = centerOf(SCENE.target);
-  const point = (angle) => ({
-    x: (origin.x + Math.cos(angle) * radius).toFixed(1),
-    y: (origin.y + Math.sin(angle) * radius).toFixed(1),
-  });
-  const from = point(span.start);
-  const to = point(span.end);
-  const large = span.end - span.start > Math.PI ? 1 : 0;
-  return `<path class="combater-dg-arc" d="M ${from.x} ${from.y} A ${radius} ${radius} 0 ${large} 1 ${to.x} ${to.y}"/>`;
-}
-
-function arcsSvg(rule) {
-  if (rule !== 'oppositeArcs') return '';
-  const origin = centerOf(SCENE.target);
-  const flankerSpan = angularSpanFrom(origin, boundsOf(SCENE.flanker));
-  const allySpan = angularSpanFrom(origin, boundsOf(SCENE.ally));
-  return arcPath(flankerSpan, 70) + arcPath(allySpan, 60);
-}
-
 function badge(flanked) {
   const text = localize(`${DIAGRAM_KEY}.${flanked ? 'Flanked' : 'NotFlanked'}`);
   const cls = flanked ? 'combater-dg-badge combater-dg-pass' : 'combater-dg-badge combater-dg-fail';
@@ -157,7 +133,6 @@ function sceneSvg(rule, lines) {
     box(SCENE.ally, 'combater-dg-ally'),
     box(SCENE.flanker, 'combater-dg-ally'),
     box(SCENE.target, 'combater-dg-target'),
-    arcsSvg(rule),
     linesSvg(lines),
     badge(lines.some((l) => l.pass)),
     '</svg>',
@@ -211,16 +186,24 @@ export function mountFlankingSettingsCards(html, document = globalThis.document)
       button.setAttribute?.('aria-pressed', String(active));
     }
   };
-  if (!boundChoosers.has(chooser)) {
-    for (const button of chooser.children) {
-      button.addEventListener('click', () => {
-        select.value = button.dataset.value;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-    }
-    select.addEventListener('change', sync);
-    boundChoosers.add(chooser);
-  }
   sync();
   return created;
+}
+
+export function registerFlankingSettingsCardClicks(document = globalThis.document) {
+  if (!document?.addEventListener || delegatedClicksRegistered) return;
+  document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('.combater-flanking-card');
+    const group = button?.closest?.('.combater-flanking-setting');
+    const select = group?.querySelector?.('select[name="pf2e-combater.flankingSizeRule"]');
+    if (!select || !button.dataset.value) return;
+    select.value = button.dataset.value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    for (const card of group.querySelector('.combater-flanking-cards').children) {
+      const active = card.dataset.value === select.value;
+      card.classList.toggle('active', active);
+      card.setAttribute('aria-pressed', String(active));
+    }
+  }, { capture: true });
+  delegatedClicksRegistered = true;
 }

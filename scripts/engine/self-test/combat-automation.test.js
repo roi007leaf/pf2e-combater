@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { MODULE_ID } from "../../constants.js";
-import { registerSettings, migrateVisionerCombatSettings, SETTINGS } from "../../settings.js";
+import { registerSettings, migrateDeprecatedFlankingRule, migrateVisionerCombatSettings, SETTINGS } from "../../settings.js";
 import { applyCombatStartCharacterActions } from "../../combat-start-character-actions.js";
 import { registerFlankingSizeRuleWrapper } from "../../flanking/flanking-size-rule.js";
 
@@ -103,7 +103,9 @@ try {
   await settings.set(MODULE_ID, SETTINGS.flankingSizeRule, "lineThrough");
   assert.equal(new Token().onOppositeSides(flanker, ally, target), true);
   await settings.set(MODULE_ID, SETTINGS.flankingSizeRule, "oppositeArcs");
-  assert.equal(new Token().onOppositeSides(flanker, ally, target), true);
+  assert.equal(new Token().onOppositeSides(flanker, ally, target), false, "removed arc rule uses PF2e default");
+  await migrateDeprecatedFlankingRule();
+  assert.equal(settings.get(MODULE_ID, SETTINGS.flankingSizeRule), "raw");
   await settings.set(MODULE_ID, SETTINGS.flankingSizeRule, "anyCorner");
   assert.equal(new Token().onOppositeSides(
     { mechanicalBounds: rect(200, 200, 100, 100) },
@@ -115,6 +117,12 @@ try {
   globalThis.canvas.grid.isGridless = false;
   await settings.set(MODULE_ID, SETTINGS.flankingSizeRule, "raw");
   assert.equal(new Token().onOppositeSides(flanker, ally, target), false);
+
+  await settings.set(MODULE_ID, "visionerCombatSettingsMigrated", false);
+  legacy.set(SETTINGS.flankingSizeRule, "oppositeArcs");
+  await migrateVisionerCombatSettings();
+  assert.equal(settings.get(MODULE_ID, SETTINGS.flankingSizeRule), "raw");
+  assert.equal(legacy.get(SETTINGS.flankingSizeRule), "raw");
 
   const main = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
   assert.ok(main.includes('Hooks.on("combatStart", (combat) => {'));

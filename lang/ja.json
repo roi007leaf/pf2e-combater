@@ -48,7 +48,6 @@
           "Raw": "PF2e標準（中心から中心）",
           "AnySquare": "占有するいずれかのマス",
           "AnyCorner": "いずれかの角",
-          "OppositeArcs": "反対側の弧（防御側の視点）",
           "LineThrough": "目標を通る線"
         },
         "Diagram": {
