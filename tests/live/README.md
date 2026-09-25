@@ -14,7 +14,7 @@ Tests run only against a running Foundry 14 / PF2e world with source checkout of
 
 ```powershell
 npm run test:live                 # smoke suite
-npm run test:live:full            # all 39 feature scenarios
+npm run test:live:full            # all 40 feature scenarios
 npm run test:live:list            # catalog and feature areas
 npm run test:live:harness         # runner safety tests; Foundry not required
 npm run test:live:cleanup         # recover interrupted run
@@ -43,4 +43,4 @@ Credentials never enter reports, screenshots, recovery journal, or source finger
 
 Live catalog covers every shipped user-feature family: startup/runtime contract, GM/player panel access, compact/refresh, action browser/search/add, Auto-fill/alternatives/resource horizon/preference learning, draft editing/reorder, target/movement controls, live movement undo, native strike contract, area/sustain execution seams, NPC/PC tactics, Turn Intent, Intel/Recall Knowledge, Loadout, Effect Clock, combat tracker, token-follow, player draft socket sync, player access transitions, persisted window geometry, native sheets, reset, localization, minions, and optional Visioner integration.
 
-Fast deterministic self-tests remain authoritative for combinatorial scoring, all class catalogs, spell classification, PF2e rule matrices, and failure injection. Live suite validates real Foundry/PF2e/browser integration rather than repeating those pure matrices.
+Fast deterministic self-tests remain authoritative for combinatorial scoring, all class catalogs, spell classification, PF2e rule matrices, and failure injection. Live suite validates real Foundry/PF2e/browser integration rather than repeating those pure matrices. The `standalone-combat-options` case checks flanking, Defend shield, and Quick-Tempered Rage with panel auto-open disabled.

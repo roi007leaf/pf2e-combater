@@ -11,6 +11,9 @@ const SETTINGS = {
   nativeRollContextPreflight: "nativeRollContextPreflight",
   showDebugTab: "showDebugTab",
   disableForPlayers: "disableForPlayers",
+  flankingSizeRule: "flankingSizeRule",
+  raisePcShieldsWhenDefending: "raisePcShieldsWhenDefending",
+  enrageBarbariansAtCombatStart: "enrageBarbariansAtCombatStart",
 };
 
 export function registerSettings() {
@@ -105,6 +108,65 @@ export function registerSettings() {
     default: false,
     onChange: () => Hooks.callAll("pf2e-combater.playerAccessChanged"),
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.flankingSizeRule, {
+    name: "PF2E_COMBATER.Settings.FlankingSizeRule.Name",
+    hint: "PF2E_COMBATER.Settings.FlankingSizeRule.Hint",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      raw: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.Raw",
+      anySquare: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnySquare",
+      anyCorner: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnyCorner",
+      oppositeArcs: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.OppositeArcs",
+      lineThrough: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.LineThrough",
+    },
+    default: "raw",
+  });
+  game.settings.register(MODULE_ID, SETTINGS.raisePcShieldsWhenDefending, {
+    name: "PF2E_COMBATER.Settings.RaisePcShieldsWhenDefending.Name",
+    hint: "PF2E_COMBATER.Settings.RaisePcShieldsWhenDefending.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+  game.settings.register(MODULE_ID, SETTINGS.enrageBarbariansAtCombatStart, {
+    name: "PF2E_COMBATER.Settings.EnrageBarbariansAtCombatStart.Name",
+    hint: "PF2E_COMBATER.Settings.EnrageBarbariansAtCombatStart.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+  game.settings.register(MODULE_ID, "visionerCombatSettingsMigrated", {
+    scope: "world",
+    config: false,
+    type: Boolean,
+    default: false,
+  });
+}
+
+export async function migrateVisionerCombatSettings() {
+  if (!game.user?.isActiveGM || !game.modules?.get?.("pf2e-visioner")?.active) return;
+  if (setting("visionerCombatSettingsMigrated")) return;
+  for (const key of [SETTINGS.flankingSizeRule, SETTINGS.raisePcShieldsWhenDefending, SETTINGS.enrageBarbariansAtCombatStart]) {
+    try {
+      const legacy = game.settings.get("pf2e-visioner", key);
+      const current = setting(key);
+      const defaultValue = key === SETTINGS.flankingSizeRule ? "raw" : false;
+      if (legacy === undefined || legacy === defaultValue) continue;
+      if (current === defaultValue) {
+        await game.settings.set(MODULE_ID, key, legacy);
+      }
+      await game.settings.set("pf2e-visioner", key, defaultValue);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Could not migrate Visioner combat setting ${key}:`, error);
+      return;
+    }
+  }
+  await game.settings.set(MODULE_ID, "visionerCombatSettingsMigrated", true);
 }
 
 // GM can lock players out of the panel entirely; the GM's own access is never affected.

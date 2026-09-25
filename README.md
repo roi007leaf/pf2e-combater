@@ -10,6 +10,19 @@ battlefield around it, and helps you **plan a whole turn, see it on the canvas, 
 by step** (with one-click undo). GMs get tactical recommendations for the creatures they run;
 players plan their own turns.
 
+## Combat options without the panel
+
+GMs can enable **Large creature flanking rule**, **Raise PC shields when Defending**, and
+**Enrage barbarians at combat start** in Foundry's PF2e Combater module settings. These world
+settings work without opening the Combater panel or using its planner. Set **Auto-open on turn
+start** to off on each client that should keep the panel closed.
+
+Shield raising requires a PC with the Defend exploration activity and a usable held shield.
+Rage requires Quick-Tempered and a Rage action with a configured self-applied effect. If PF2e
+Avoid Notice already handles either action, Combater leaves that action to it. Existing Visioner
+combat-option settings transfer once when both modules are active; Visioner's old values reset
+to their defaults to prevent duplicate automation.
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf)
 
 ---

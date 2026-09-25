@@ -40,6 +40,29 @@
       "DisableForPlayers": {
         "Name": "プレイヤーのPF2e Combaterを無効化",
         "Hint": "プレイヤーにはパネルとツールバーの切り替えを一切表示しない。GMは引き続きすべての機能を利用できる。"
+      },
+      "FlankingSizeRule": {
+        "Name": "大型クリーチャーの挟撃判定",
+        "Hint": "大型クリーチャーの挟撃線の引き方を選択します。Combaterのパネルを開かなくても機能します。",
+        "Choices": {
+          "Raw": "PF2e標準（中心から中心）",
+          "AnySquare": "占有するいずれかのマス",
+          "AnyCorner": "いずれかの角",
+          "OppositeArcs": "反対側の弧（防御側の視点）",
+          "LineThrough": "目標を通る線"
+        },
+        "Diagram": {
+          "Flanked": "挟撃",
+          "NotFlanked": "挟撃なし"
+        }
+      },
+      "RaisePcShieldsWhenDefending": {
+        "Name": "防御中のPCの盾を構える",
+        "Hint": "戦闘開始時、防御の探索行動を行い、使用可能な盾を保持しているPCの盾を構えます。パネルを開く必要はありません。"
+      },
+      "EnrageBarbariansAtCombatStart": {
+        "Name": "戦闘開始時にバーバリアンを激怒させる",
+        "Hint": "戦闘開始時、即怒と自己適用効果が設定された激怒アクションを持つPCに激怒を適用します。パネルを開く必要はありません。"
       }
     },
     "Preflight": {

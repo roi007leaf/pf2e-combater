@@ -22,6 +22,9 @@ const SETTING_KEYS = [
   'nativeRollContextPreflight',
   'showDebugTab',
   'disableForPlayers',
+  'flankingSizeRule',
+  'raisePcShieldsWhenDefending',
+  'enrageBarbariansAtCombatStart',
 ];
 
 export function validateRunId(runId) {
@@ -116,6 +119,18 @@ async function compendiumItem(slug) {
   if (!entry) return null;
   const document = await pack.getDocument(entry._id);
   const data = document.toObject();
+  delete data._id;
+  return data;
+}
+
+async function combatOptionItem(packId, slug) {
+  const pack = game.packs.get(packId);
+  if (!pack) throw Error(`Required PF2e pack missing: ${packId}`);
+  const index = await pack.getIndex({ fields: ['system.slug'] });
+  const entry = index.find((item) => item.system?.slug === slug);
+  if (!entry) throw Error(`Required PF2e item missing: ${packId}/${slug}`);
+  const source = await pack.getDocument(entry._id);
+  const data = source.toObject();
   delete data._id;
   return data;
 }
@@ -819,6 +834,76 @@ export async function runFeature({ name, fixture }) {
       const target = canvas.tokens.get(fixture.hero);
       details.detection = visioner.readVisionerDetectionState(observer, target);
       details.cover = visioner.readVisionerCoverState(observer, target);
+      break;
+    }
+    case 'standalone-combat-options': {
+      const actor = game.actors.get(fixture.actors.hero);
+      const scene = game.scenes.get(fixture.scene);
+      const combat = game.combats.get(fixture.combat);
+      requireCondition(game.user.isActiveGM && actor && combat && scene?.getFlag(MODULE, MARKER), 'Owned GM encounter required');
+      for (const key of ['raiseShields', 'rage']) {
+        let competing = false;
+        if (game.modules.get('pf2e-avoid-notice')?.active) {
+          try { competing = game.settings.get('pf2e-avoid-notice', key); }
+          catch { /* Older versions may not register this setting. */ }
+        }
+        if (competing) {
+          throw Error(`Disable Avoid Notice ${key} automation in disposable QA world`);
+        }
+      }
+      const featPackIds = ['pf2e.feats-srd', 'pf2e.classfeatures'];
+      let quickTempered;
+      for (const packId of featPackIds) {
+        try { quickTempered = await combatOptionItem(packId, 'quick-tempered'); break; }
+        catch { /* Try next native PF2e pack. */ }
+      }
+      requireCondition(quickTempered, 'Native Quick-Tempered feat missing');
+      const defend = await combatOptionItem('pf2e.actionspf2e', 'defend');
+      const rage = await combatOptionItem('pf2e.actionspf2e', 'rage');
+      if (!rage.system.selfEffect?.uuid) {
+        const pack = game.packs.get('pf2e.feat-effects');
+        const index = await pack?.getIndex({ fields: ['system.slug'] });
+        const effect = index?.find((item) => item.system?.slug === 'effect-rage');
+        requireCondition(effect, 'Native Rage effect missing');
+        rage.system.selfEffect = { uuid: `Compendium.pf2e.feat-effects.Item.${effect._id}` };
+      }
+      const created = await actor.createEmbeddedDocuments('Item', [defend, rage, quickTempered]);
+      const defendItem = created.find((item) => item.slug === 'defend');
+      requireCondition(defendItem && created.some((item) => item.slug === 'quick-tempered'), 'Native combat option items not prepared');
+      const shield = actor.items.find((item) => item.slug === 'steel-shield');
+      requireCondition(shield, 'Fixture steel shield missing');
+      await shield.update({ 'system.equipped.carryType': 'held', 'system.equipped.handsHeld': 1 });
+      await actor.update({ 'system.exploration': [defendItem.id] });
+      requireCondition(actor.heldShield && Array.from(actor.system.exploration ?? []).includes(defendItem.id), 'Held shield and Defend activity not prepared');
+
+      await game.settings.set(MODULE, 'autoOpen', false);
+      await game.settings.set(MODULE, 'flankingSizeRule', 'anySquare');
+      await game.settings.set(MODULE, 'raisePcShieldsWhenDefending', true);
+      await game.settings.set(MODULE, 'enrageBarbariansAtCombatStart', true);
+      const panel = applications().find((app) => app.id === `${MODULE}-panel`);
+      if (panel) await panel.close();
+      requireCondition(!panelElement(), 'Combater panel remained open');
+
+      const bounds = (x, y, width, height) => ({ x, y, width, height, left: x, top: y, right: x + width, bottom: y + height });
+      const proto = CONFIG.Token.objectClass.prototype;
+      const token = (box) => Object.create(proto, { mechanicalBounds: { value: box } });
+      const flanker = token(bounds(200, 300, 100, 100));
+      requireCondition(flanker.onOppositeSides(
+        flanker, token(bounds(0, 0, 200, 200)), token(bounds(100, 200, 100, 100)),
+      ) === true, 'Any occupied square flanking rule did not apply');
+
+      await combat.endCombat();
+      await combat.startCombat();
+      await waitFor(() => actor.itemTypes.effect.some((item) => ['raise-a-shield', 'effect-raise-a-shield'].includes(item.slug))
+        && actor.itemTypes.effect.some((item) => item.slug === 'effect-rage'),
+      'Shield and Rage effects did not apply at combat start');
+      const shieldEffect = actor.itemTypes.effect.find((item) => ['raise-a-shield', 'effect-raise-a-shield'].includes(item.slug));
+      requireCondition(shieldEffect.system.duration?.value === 0, 'Raised shield did not expire at first turn');
+      requireCondition(!panelElement(), 'Combater panel opened during standalone combat automation');
+      details.flanking = 'anySquare';
+      details.shield = shieldEffect.slug;
+      details.rage = 'effect-rage';
+      details.panel = false;
       break;
     }
     default:

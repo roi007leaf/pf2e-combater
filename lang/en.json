@@ -40,6 +40,29 @@
       "DisableForPlayers": {
         "Name": "Disable PF2e Combater for players",
         "Hint": "Hide the panel and toolbar toggle from players entirely. The GM keeps full access."
+      },
+      "FlankingSizeRule": {
+        "Name": "Large creature flanking rule",
+        "Hint": "Choose how flanking lines are traced for large creatures. Works even when the Combater panel stays closed.",
+        "Choices": {
+          "Raw": "PF2e default (center to center)",
+          "AnySquare": "Any occupied square",
+          "AnyCorner": "Any corner",
+          "OppositeArcs": "Opposite arcs (defender's view)",
+          "LineThrough": "Line through target"
+        },
+        "Diagram": {
+          "Flanked": "Flanked",
+          "NotFlanked": "Not flanked"
+        }
+      },
+      "RaisePcShieldsWhenDefending": {
+        "Name": "Raise PC shields when Defending",
+        "Hint": "At combat start, raise a held, usable shield for each PC using the Defend exploration activity. Works without opening the Combater panel."
+      },
+      "EnrageBarbariansAtCombatStart": {
+        "Name": "Enrage barbarians at combat start",
+        "Hint": "At combat start, apply Rage for PCs with Quick-Tempered and a Rage action configured with a self-applied effect. Works without opening the Combater panel."
       }
     },
     "Preflight": {

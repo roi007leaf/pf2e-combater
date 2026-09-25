@@ -1,4 +1,6 @@
 import "./self-test/source-architecture.test.js";
+import "./self-test/combat-automation.test.js";
+import "./self-test/flanking-settings-ui.test.js";
 import "./self-test/action-facts.test.js";
 import "./self-test/roll-preflight.test.js";
 import "./self-test/preference-learning.test.js";

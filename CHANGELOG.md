@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3]
+
+### Added
+
+- Standalone GM settings for large-creature flanking, Defend shield raising, and Quick-Tempered Rage. They run without the Combater panel; enabled Visioner settings migrate once and reset there to prevent duplicate automation.
+- Restored the five SVG flanking diagrams in Foundry's Combater settings; selecting a diagram updates the flanking rule dropdown.
+
 ## [1.3.2]
 
 ### Fixed

@@ -1,5 +1,9 @@
 import { MODULE_ID } from "./constants.js";
-import { playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
+import { migrateVisionerCombatSettings, playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
+import { applyCombatStartCharacterActions } from "./combat-start-character-actions.js";
+import { registerFlankingSizeRuleWrapper } from "./flanking/flanking-size-rule.js";
+import { registerFlankingHighlightOriginHooks } from "./flanking/flanking-highlight-origin.js";
+import { mountFlankingSettingsCards } from "./flanking/flanking-settings-ui.js";
 import { collectionValues } from "./foundry-data.js";
 import { clearMovementCollisionCache } from "./readers/action/reach.js";
 import { promptRetchDc, promptRetchResult } from "./ui/retch-decision.js";
@@ -306,6 +310,8 @@ Hooks.once("init", () => {
     });
   }
   registerSettings();
+  Hooks.on("renderSettingsConfig", (_app, html) => mountFlankingSettingsCards(html));
+  registerFlankingHighlightOriginHooks();
   registerCombatTrackerIntel();
   registerRecallKnowledgeChatHooks();
 
@@ -423,10 +429,17 @@ Hooks.on("pf2e-combater.preflightSettingChanged", () => {
 
 Hooks.once("ready", async () => {
   console.log("PF2e Combater | Ready");
+  await migrateVisionerCombatSettings();
+  registerFlankingSizeRuleWrapper();
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;
   await openCurrent("ready");
+});
+
+Hooks.on("combatStart", (combat) => {
+  applyCombatStartCharacterActions(combat)
+    .catch((error) => console.warn(`${MODULE_ID} | Combat start actions failed`, error));
 });
 
 // --- Auto-expiring area templates (GM authority) ---------------------------------------

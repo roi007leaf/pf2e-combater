@@ -49,6 +49,7 @@ export const fullCases = [
   live('localization-contract', 'localization', 'gm'),
   live('minion-planner-contract', 'minions', 'gm'),
   live('visioner-integration-contract', 'integrations', 'gm'),
+  live('standalone-combat-options', 'combat-options', 'gm'),
 ];
 
 export const smokeCases = fullCases.filter((testCase) => testCase.smoke);

@@ -24,6 +24,7 @@ export const requiredAreas = [
   'localization',
   'minions',
   'integrations',
+  'combat-options',
 ];
 
 export function assessCoverage(catalog, results = []) {
