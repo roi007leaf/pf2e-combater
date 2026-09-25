@@ -13824,6 +13824,8 @@ const throwRockClassification = classifySystemAction({
 }, { actionCost: 1, type: "action" });
 assert.equal(throwRockClassification.role, "damage");
 assert.equal(throwRockClassification.activityProfile.includesStrike, true);
+assert.notEqual(throwRockClassification.activityProfile.focusedStrike, true,
+  "Throw Rock is an ordinary ranged Strike, not a special focused attack");
 assert.equal(throwRockClassification.targetingProfile.maxRange, 120);
 
 const scoredThrowRock = scoreCandidate({
@@ -13842,8 +13844,168 @@ const scoredThrowRock = scoreCandidate({
   activityProfile: throwRockClassification.activityProfile,
   targetingProfile: throwRockClassification.targetingProfile,
 });
-assert.ok(scoredThrowRock.score > 70);
+assert.ok(scoredThrowRock.score > 60);
 assert.equal(scoredThrowRock.suggestedTarget.name, "Ogre");
+
+// Agorron tomb giant guards: melee options must survive reading and beat Throw Rock in reach.
+const tombGiantTarget = { ...fighterContext.targets[0], distance: 10 };
+const tombGiantStrike = (slug, label, damage, traits, range = null, attackEffects = []) => ({
+  type: "strike", slug, label, visible: true, ready: true, canAttack: true,
+  traits: traits.map((trait) => ({ slug: trait })),
+  item: {
+    id: slug, name: label, type: "melee",
+    system: {
+      range,
+      traits: { value: traits },
+      damageRolls: { first: { damage, damageType: "slashing" } },
+      attackEffects: { value: attackEffects },
+    },
+  },
+});
+const tombGiantContext = {
+  ...fighterContext,
+  actor: {
+    ...fighterContext.actor,
+    document: {
+      type: "npc",
+      system: {
+        actions: [
+          tombGiantStrike("scythe", "Scythe", "3d10+18", ["deadly-2d10", "reach-10", "trip"]),
+          tombGiantStrike("claw", "Claw", "3d6+18", ["agile", "reach-10"], null, ["Dooming Touch"]),
+          tombGiantStrike("rock", "Rock", "3d8+18", ["brutal"], { increment: 120 }),
+        ],
+      },
+      itemTypes: { action: [{
+        id: "wicked-blow", name: "Wicked Blow", type: "action",
+        system: {
+          actionType: { value: "action" }, actions: { value: 2 }, category: "offensive",
+          description: { value: "<p>The guard makes a Strike with their scythe. A creature damaged by this attack takes 3d6 persistent bleed damage and is doomed 1.</p>" },
+        },
+      }, {
+        id: "throw-rock", name: "Throw Rock", type: "action",
+        system: {
+          actionType: { value: "action" }, actions: { value: 1 }, category: "offensive",
+          description: { value: "<p>@Localize[PF2E.NPC.Abilities.Glossary.ThrowRock]</p>" },
+        },
+      }] },
+      items: [],
+    },
+  },
+  profile: { ...fighterContext.profile, reach: 10, meleeReach: 10 },
+  targets: [tombGiantTarget],
+  battlefield: { targets: [tombGiantTarget], enemies: [tombGiantTarget] },
+};
+const tombGiantCandidates = buildCandidates(tombGiantContext);
+const tombGiantPlan = bestTurnPlan(tombGiantContext, tombGiantCandidates.candidates);
+const wickedBlow = tombGiantCandidates.candidates.find((action) => action.name === "Wicked Blow");
+assert.ok(tombGiantCandidates.candidates.some((action) => action.name === "Scythe"));
+assert.ok(tombGiantCandidates.candidates.some((action) => action.name === "Claw"));
+assert.ok(wickedBlow);
+assert.ok(wickedBlow.activityProfile.appliesConditions.includes("doomed"));
+assert.equal(wickedBlow.activityProfile.persistentBleed, true);
+assert.ok(wickedBlow.score > 180,
+  "two-action scythe activity must be valued as a two-action attack");
+assert.ok(tombGiantCandidates.candidates.find((action) => action.name === "Claw").score
+  > tombGiantCandidates.candidates.find((action) => action.name === "Rock").score,
+"Dooming Touch should make Claw more useful than Rock against a fresh melee target");
+const tombGiantClaw = tombGiantCandidates.candidates.find((action) => action.name === "Claw");
+const tombGiantScythe = tombGiantCandidates.candidates.find((action) => action.name === "Scythe");
+assert.deepEqual(tombGiantClaw.activityProfile.appliesConditions, ["doomed"]);
+const repeatClawPlans = buildTurnPlans(tombGiantContext, [tombGiantClaw, tombGiantScythe]);
+assert.ok(repeatClawPlans[0].steps.some((step) => step.name === "Scythe"),
+  `the best claw/scythe turn should include the stronger scythe: ${repeatClawPlans[0].summary}`);
+const doubleClawPlan = repeatClawPlans.find((plan) => plan.steps.filter((step) => step.name === "Claw").length >= 2);
+assert.ok(doubleClawPlan, "repeatable Claw should remain legal");
+const [, followUpClaw] = doubleClawPlan.steps.filter((step) => step.name === "Claw");
+assert.ok(followUpClaw.score <= tombGiantClaw.score - 18,
+  `a second Claw against the same target must not receive Dooming Touch's one-time bonus: base ${tombGiantClaw.score}, follow ${followUpClaw.score}, targets ${JSON.stringify(doubleClawPlan.steps.map((step) => step.suggestedTarget))}`);
+assert.equal(followUpClaw.reasons.some((reason) => /can make the target doomed/i.test(reason)), false);
+const liveGiantTarget = { ...tombGiantTarget, id: "rootfall", name: "Rootfall", distance: 5 };
+const liveGiantTactic = tacticContext({ role: "brute", temperament: "aggressive" });
+const liveGiantContext = {
+  ...liveGiantTactic,
+  profile: { ...liveGiantTactic.profile, reach: 10, meleeReach: 10 },
+  targets: [liveGiantTarget],
+  battlefield: { ...liveGiantTactic.battlefield, targets: [liveGiantTarget], enemies: [liveGiantTarget], allies: [] },
+};
+const liveGiantClaw = { ...tombGiantClaw, score: 150.875, preferredTarget: liveGiantTarget };
+const liveGiantScythe = { ...tombGiantScythe, score: 127, preferredTarget: liveGiantTarget };
+const spentDoomClaw = {
+  ...liveGiantClaw,
+  activityProfile: { ...liveGiantClaw.activityProfile, appliesConditions: [] },
+};
+assert.ok(tacticPersonalityAdjustment(liveGiantContext, liveGiantClaw).scoreDelta
+  > tacticPersonalityAdjustment(liveGiantContext, spentDoomClaw).scoreDelta,
+"a strike with no remaining condition to apply must lose the control tactic bonus");
+const liveGiantPlans = buildTurnPlans(liveGiantContext, [liveGiantClaw, liveGiantScythe], { includeCoverage: false });
+const liveGiantClawScythe = liveGiantPlans.find((plan) =>
+  plan.steps.some((step) => step.name === "Claw") && plan.steps.some((step) => step.name === "Scythe"));
+const liveGiantDoubleClaw = liveGiantPlans.find((plan) =>
+  plan.steps.filter((step) => step.name === "Claw").length === 2);
+assert.ok(liveGiantClawScythe && liveGiantDoubleClaw);
+assert.ok(liveGiantClawScythe.score > liveGiantDoubleClaw.score,
+  `once Rootfall is doomed, a Scythe follow-up should beat a second Claw: ${JSON.stringify({ scythe: liveGiantClawScythe.steps.map((s) => [s.name, s.score]), claws: liveGiantDoubleClaw.steps.map((s) => [s.name, s.score]), tactic: [tacticPersonalityAdjustment(liveGiantContext, liveGiantClaw).scoreDelta, tacticPersonalityAdjustment(liveGiantContext, spentDoomClaw).scoreDelta] })}`);
+assert.equal(liveGiantDoubleClaw.steps[1].reasons.some((reason) => /favors damage and control/i.test(reason)), false);
+const adjacentTombGiantTarget = { ...tombGiantTarget, distance: 5 };
+const adjacentTombGiantContext = {
+  ...tombGiantContext,
+  targets: [adjacentTombGiantTarget],
+  battlefield: { targets: [adjacentTombGiantTarget], enemies: [adjacentTombGiantTarget] },
+};
+const adjacentTombGiantActions = readActionSources(adjacentTombGiantContext);
+const npcAttackBonus = (action, value) => ({
+  ...action,
+  item: { ...action.item, system: { ...action.item.system, bonus: { value } } },
+});
+const adjacentBonusClaw = npcAttackBonus(adjacentTombGiantActions.find((action) => action.name === "Claw"), 26);
+const adjacentBonusScythe = npcAttackBonus(adjacentTombGiantActions.find((action) => action.name === "Scythe"), 27);
+assert.equal(
+  scoreCandidate(adjacentTombGiantContext, adjacentBonusClaw, [], [adjacentBonusClaw, adjacentBonusScythe]).score,
+  scoreCandidate(adjacentTombGiantContext, adjacentBonusClaw, [], [adjacentBonusClaw]).score - 3,
+  "the Scythe's higher NPC Strike attack bonus should count before MAP is applied",
+);
+const adjacentTombGiantRock = adjacentTombGiantActions.find((action) => action.name === "Rock");
+const adjacentRockWithMelee = scoreCandidate(adjacentTombGiantContext, adjacentTombGiantRock, [], adjacentTombGiantActions);
+const adjacentRockAlone = scoreCandidate(adjacentTombGiantContext, adjacentTombGiantRock, [], [adjacentTombGiantRock]);
+assert.equal(adjacentRockWithMelee.score, adjacentRockAlone.score - 14,
+  "an adjacent ranged Strike should yield to a ready melee option without becoming unavailable");
+assert.ok(adjacentRockWithMelee.reasons.some((reason) => /melee Strike can reach/i.test(reason)));
+assert.equal(adjacentRockWithMelee.available, true, "the close-range preference must not make Rock unavailable");
+assert.notEqual(tombGiantPlan.steps[0]?.name, "Throw Rock",
+  `melee tomb giant must lead with melee offense: ${tombGiantPlan.steps.map((step) => step.name).join(", ")}`);
+assert.ok(tombGiantPlan.steps.some((step) => step.name === "Wicked Blow"),
+  `Wicked Blow should compete for the melee turn: ${tombGiantPlan.steps.map((step) => step.name).join(", ")}`);
+const doomedTombGiantTarget = { ...tombGiantTarget, conditions: ["doomed"] };
+const doomedTombGiantContext = {
+  ...tombGiantContext,
+  targets: [doomedTombGiantTarget],
+  battlefield: { targets: [doomedTombGiantTarget], enemies: [doomedTombGiantTarget] },
+};
+const doomedTombGiantCandidates = buildCandidates(doomedTombGiantContext).candidates;
+assert.ok(doomedTombGiantCandidates.find((action) => action.name === "Claw").score
+  < tombGiantCandidates.candidates.find((action) => action.name === "Claw").score,
+"Claw's doom bonus should disappear after target is doomed");
+const distantTombGiantTarget = { ...tombGiantTarget, distance: 60 };
+const distantTombGiantContext = {
+  ...tombGiantContext,
+  targets: [distantTombGiantTarget],
+  battlefield: { targets: [distantTombGiantTarget], enemies: [distantTombGiantTarget] },
+};
+const distantTombGiantCandidates = buildCandidates(distantTombGiantContext);
+const distantTombGiantActions = readActionSources(distantTombGiantContext);
+const distantBonusRock = npcAttackBonus(distantTombGiantActions.find((action) => action.name === "Rock"), 24);
+const distantBonusScythe = npcAttackBonus(distantTombGiantActions.find((action) => action.name === "Scythe"), 27);
+assert.equal(
+  scoreCandidate(distantTombGiantContext, distantBonusRock, [], [distantBonusRock, distantBonusScythe])
+    .reasons.some((reason) => /attack bonus trails/i.test(reason)),
+  false,
+  "an out-of-reach Scythe must not lower Rock's accuracy score at range",
+);
+assert.ok(distantTombGiantCandidates.candidates.some((action) => action.name === "Throw Rock"),
+  "Throw Rock remains available when the target is outside melee reach");
+assert.ok(bestTurnPlan(distantTombGiantContext, distantTombGiantCandidates.candidates).steps
+  .some((step) => ["Rock", "Throw Rock"].includes(step.name)),
+"ranged rock attack remains part of a distant-target plan");
 
 const huntPreyClassification = classifySystemAction({
   name: "Hunt Prey",
@@ -21869,6 +22031,44 @@ assert.deepEqual([...new Set(harmActions.map((action) => action.role))], ["save-
 assert.ok(harmActions.some((action) => action.name.includes("Damage") && action.targetingProfile.enemy === true));
 assert.ok(harmActions.some((action) => action.name.includes("Heal Undead") && action.combatUse === "context-only"));
 assert.equal(new Set(harmActions.map((action) => action.id)).size, harmActions.length, "Harm tactical modes need unique action ids");
+const distantHarmTarget = { ...fighterContext.targets[0], distance: 20 };
+const distantHarmContext = {
+  ...harmSpellContext,
+  actor: {
+    document: {
+      ...harmSpellContext.actor.document,
+      itemTypes: {
+        ...harmSpellContext.actor.document.itemTypes,
+        spell: harmSpellContext.actor.document.itemTypes.spell.map((spell) => ({
+          ...spell,
+          system: { ...spell.system, range: { value: "varies" } },
+        })),
+      },
+    },
+  },
+  targets: [distantHarmTarget],
+  battlefield: { enemies: [distantHarmTarget], targets: [distantHarmTarget], allies: [] },
+};
+const distantHarmActions = readSpellActions(distantHarmContext).filter((action) => action.name.includes("Damage"));
+assert.equal(distantHarmActions.find((action) => action.actionCost === 1)?.targetingProfile?.maxRange, 5,
+  "one-action Harm must use touch range");
+assert.equal(distantHarmActions.find((action) => action.actionCost === 1)?.available, false,
+  "one-action Harm must be unavailable when living enemy is 20 feet away");
+assert.equal(distantHarmActions.find((action) => action.actionCost === 2)?.targetingProfile?.maxRange, 30,
+  "two-action Harm must use its 30-foot range");
+assert.equal(distantHarmActions.find((action) => action.actionCost === 2)?.available, true);
+const adjacentHarmTarget = { ...distantHarmTarget, distance: 5 };
+const adjacentHarmContext = {
+  ...distantHarmContext,
+  targets: [adjacentHarmTarget],
+  battlefield: { enemies: [adjacentHarmTarget], targets: [adjacentHarmTarget], allies: [] },
+};
+assert.equal(readSpellActions(adjacentHarmContext)
+  .find((action) => action.name.includes("Damage") && action.actionCost === 1)?.available, true,
+"one-action Harm remains available at touch range");
+assert.equal(buildCandidates(distantHarmContext).candidates.some((action) =>
+  action.slug === "harm" && action.role === "save-damage" && action.actionCost === 1), false,
+"Auto-fill candidates must exclude out-of-touch one-action Harm");
 const rankReviewedSpells = readSpellActions({
   actor: {
     document: {
@@ -22375,6 +22575,15 @@ const clawStrikeScore = scoreCandidate(meleeContext, {
   id: "claw", name: "Claw", slug: "strike", actionCost: 1, source: "strike",
   range: { max: 5 }, averageDamage: 19,
 });
+const deadlyScytheBase = {
+  id: "scythe", name: "Scythe", slug: "strike", actionCost: 1, source: "strike",
+  range: { max: 10 }, averageDamage: 24,
+  damageProfile: { entries: [{ formula: "2d10+13", average: 24 }] },
+};
+const plainScytheScore = scoreCandidate(meleeContext, { ...deadlyScytheBase, traits: [] });
+const deadlyScytheScore = scoreCandidate(meleeContext, { ...deadlyScytheBase, traits: ["deadly-d10"] });
+assert.ok(deadlyScytheScore.score > plainScytheScore.score,
+  "deadly scythe's extra critical damage should affect Strike ranking");
 assert.ok(
   jawsStrikeScore.score > clawStrikeScore.score,
   `harder-hitting strike should outrank a smaller one, got Jaws ${jawsStrikeScore.score} vs Claw ${clawStrikeScore.score}`,
@@ -23163,6 +23372,25 @@ try {
   const scoredPlainShot = scoreCandidate(rangedRetreatContext, readActionSources(rangedRetreatContext)
     .find((action) => action.source === "strike" && action.name === "Shortbow"));
   assert.ok(scoredRetreat.score > scoredPlainShot.score, "retreat shot should outscore adjacent ranged shot");
+  const giantRetreat = npcAttackBonus({
+    ...retreatAction,
+    item: { ...retreatAction.item, type: "melee" },
+  }, 24);
+  const { profile: retreatProfile, ...retreatContextWithoutRootProfile } = rangedRetreatContext;
+  const giantRetreatContext = {
+    ...retreatContextWithoutRootProfile,
+    actor: { ...rangedRetreatContext.actor, profile: { ...retreatProfile, hp: { percent: 1 } } },
+  };
+  assert.ok(scoreCandidate(giantRetreatContext, giantRetreat, [], [giantRetreat, adjacentBonusScythe])
+    .reasons.some((reason) => /stronger ready melee Strike/i.test(reason)),
+  "a healthy Tomb Giant should not favor retreating for a less accurate Rock over its ready Scythe");
+  const fragileRetreatContext = {
+    ...giantRetreatContext,
+    actor: { ...giantRetreatContext.actor, profile: { ...giantRetreatContext.actor.profile, hp: { percent: 0.3 } } },
+  };
+  assert.equal(scoreCandidate(fragileRetreatContext, giantRetreat, [], [giantRetreat, adjacentBonusScythe])
+    .reasons.some((reason) => /stronger ready melee Strike/i.test(reason)), false,
+  "a badly hurt ranged attacker can still value retreating from melee");
 
   const retreatGrapplePlans = buildTurnPlans(rangedRetreatContext, [{
     ...retreatAction,

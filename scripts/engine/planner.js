@@ -19,6 +19,9 @@ import {
   targetConditionChainBonus,
   targetConditionRequirementOptions,
   targetConditionSatisfied,
+  targetForCandidate,
+  targetHasCondition,
+  targetIdentity,
   values,
 } from "./planner/rules.js";
 import {
@@ -43,7 +46,7 @@ import {
   includesStand,
   isRepeatablePlanningAction,
 } from "./planner/conflicts.js";
-import { contextAllies } from "./target-pool.js";
+import { contextAllies, contextEnemies, contextTargets } from "./target-pool.js";
 import { t } from "../i18n.js";
 import { contextActorDocument } from "./actor-context.js";
 import { actionReloadCost, npcWeaponNeedsReloadAfterSteps } from "./npc-reload-state.js";
@@ -54,6 +57,7 @@ import {
 import { HARD_BLOCK_SCORE, MAP_PENALTY_BY_ATTACK_INDEX } from "./scoring/weights.js";
 import {
   resolveTacticPersonality,
+  tacticPersonalityAdjustment,
   tacticPersonalityPlanAdjustment,
 } from "../rules/tactic-personality.js";
 import {
@@ -501,6 +505,52 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null)
   };
 }
 
+function withProjectedConditionalBonuses(context, candidate) {
+  const bonuses = candidate.activityProfile?.conditionalBonuses ?? [];
+  if (!bonuses.length) return candidate;
+  const reference = targetForCandidate(context, candidate);
+  const ids = new Set([
+    reference?.id, reference?.uuid, reference?.actor?.id, reference?.actor?.uuid,
+    reference?.token?.id, reference?.token?.uuid,
+  ].filter(Boolean).map(String));
+  const entities = [...contextTargets(context), ...contextEnemies(context)];
+  const target = entities.find((entity) => targetIdentity(entity).some((alias) => ids.has(alias)))
+    ?? (!ids.size ? entities.find((entity) => entity.name === reference?.name) : null)
+    ?? reference;
+  const spent = bonuses.filter((bonus) => targetHasCondition(target, bonus.condition));
+  if (!spent.length) return candidate;
+  const spentConditions = new Set(spent.map((bonus) => bonus.condition));
+  const profile = candidate.activityProfile ?? {};
+  const projectedCandidate = {
+    ...candidate,
+    activityProfile: {
+      ...profile,
+      ...(Array.isArray(profile.appliesConditions)
+        ? { appliesConditions: profile.appliesConditions.filter((condition) => !spentConditions.has(condition)) }
+        : {}),
+      ...(spentConditions.has(profile.appliesCondition) ? { appliesCondition: null } : {}),
+    },
+  };
+  const role = candidate.curated?.role ?? candidate.role;
+  const originalTactic = tacticPersonalityAdjustment(context, candidate, { role });
+  const projectedTactic = tacticPersonalityAdjustment(context, projectedCandidate, { role });
+  const spentReasons = new Set(spent.map((bonus) => bonus.reason));
+  if (originalTactic.scoreDelta !== projectedTactic.scoreDelta) {
+    for (const reason of originalTactic.reasons) spentReasons.add(reason);
+  }
+  const reasons = (candidate.reasons ?? []).filter((reason) => !spentReasons.has(reason));
+  if (originalTactic.scoreDelta !== projectedTactic.scoreDelta) {
+    reasons.push(...projectedTactic.reasons);
+  }
+  return {
+    ...projectedCandidate,
+    score: candidate.score - spent.reduce((total, bonus) => total + bonus.score, 0)
+      - (originalTactic.scoreDelta - projectedTactic.scoreDelta),
+    reasons,
+    reason: reasons[0] ?? candidate.reason,
+  };
+}
+
 function dedupePlans(plans) {
   const deduped = [];
   const seen = new Set();
@@ -689,7 +739,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
     for (let index = startIndex; index < candidatePool.length; index += 1) {
       const candidate = candidatePool[index];
       const prerequisiteSteps = steps.length || !planState.lastStep ? steps : [planState.lastStep];
-      const linkedCandidate = inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps);
+      const linkedCandidate = withProjectedConditionalBonuses(projectedContext,
+        inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps));
       const key = actionKey(candidate);
       const attackAction = isAttackAction(linkedCandidate);
       const strikeAction = isStrikeAction(linkedCandidate);

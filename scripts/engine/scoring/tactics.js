@@ -13,6 +13,7 @@ import {
   targetReference,
 } from "../target-pool.js";
 import {
+  actionTraitSlugs,
   damageAdjustment,
   hasCondition,
   hasEffect,
@@ -52,6 +53,16 @@ function strikeDamageScore(averageDamage) {
   // harder-hitting weapon still wins -- e.g. a 2d12+12 Pincer (avg 25) beats a 2d10+10 beam (avg 21)
   // at the same range instead of tying at the 40 ceiling.
   return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
+}
+
+function deadlyStrikeScore(action, criticalChance) {
+  const trait = actionTraitSlugs(action).find((slug) => /^deadly-(?:[1-3])?d\d+$/.test(slug));
+  if (!trait) return 0;
+  const match = trait.match(/^deadly-([1-3])?d(\d+)$/);
+  const dice = Number(match[1]) || 1;
+  const faces = Number(match[2]);
+  const chance = Number.isFinite(criticalChance) ? criticalChance : 0.1;
+  return Math.round(dice * ((faces + 1) / 2) * chance * 2);
 }
 
 function demoralizeTactic(acc, { target }) {
@@ -301,7 +312,7 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
   return null;
 }
 
-export function scoreRoleTactics(context, action, { role, profile, target } = {}) {
+export function scoreRoleTactics(context, action, { role, profile, target, criticalChance = null } = {}) {
   const reasons = [...(action.reasons ?? [])];
   const targetDamageAdjustment = damageAdjustment(context, action, target);
   const targetSaveScore = saveScoreDelta(context, action, target, profile);
@@ -311,6 +322,7 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
   let areaPlacementAimPoint = null;
   let areaPlacementOptions = [];
   let minionPlan = null;
+  const conditionalBonuses = [];
   let score = baseScore(action);
 
   if (Number(action.interactDrawCost) > 0) {
@@ -327,6 +339,18 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
     if (Number.isFinite(average) && average > 0) {
       score += strikeDamageScore(average);
       reasons.push(t("ScoreReason.AverageDamage", "Average damage about {amount}.", { amount: Math.round(average) }));
+    }
+    const deadlyScore = deadlyStrikeScore(action, criticalChance);
+    if (deadlyScore > 0) {
+      score += deadlyScore;
+      reasons.push(t("ScoreReason.DeadlyCritical", "Deadly adds critical damage potential (+{amount}).", { amount: deadlyScore }));
+    }
+    if (action.attackEffects?.some((effect) => /\bdoom(?:ing|ed)?\b/i.test(String(effect)))
+      && !hasCondition(target, "doomed")) {
+      score += 18;
+      const reason = t("ScoreReason.StrikeCanDoom", "Strike can make the target doomed.");
+      reasons.push(reason);
+      conditionalBonuses.push({ condition: "doomed", score: 18, reason });
     }
     if (targetDamageAdjustment) {
       score += targetDamageAdjustment.scoreDelta;
@@ -471,5 +495,6 @@ export function scoreRoleTactics(context, action, { role, profile, target } = {}
     areaPlacementAimPoint,
     areaPlacementOptions,
     minionPlan,
+    conditionalBonuses,
   };
 }

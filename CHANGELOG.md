@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.5]
+
+### Fixed
+
+- Auto-fill respects one-action Harm's touch range and weighs adjacent ranged attacks against ready melee Strikes, including reach, attack bonus, deadly, and Dooming Touch. Tomb Giants now favor Claw followed by Scythe over retreating to throw Rocks at a nearby target.
+- Execute casts the PF2e spell variant matching the planned action count, including Harm's touch, 30-foot living or undead, and emanation variants.
+
 ## [1.3.4]
 
 ### Fixed

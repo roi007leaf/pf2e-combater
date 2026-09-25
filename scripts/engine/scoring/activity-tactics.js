@@ -2,6 +2,7 @@ import { threatsAtCenter } from "../../rules/battlefield-analysis.js";
 import { attackableEnemies } from "./targets.js";
 import {
   canUseTargetDefenses,
+  hasCondition,
   hpPercent,
 } from "./facts.js";
 import {
@@ -152,6 +153,14 @@ export function scoreActivityProfileTactics(context, action, {
     if (inActionReach(profile, action, target)) {
       nextScore += 72;
       nextReasons.unshift(t("ScoreReason.FocusesAttacksOn", "{p0} focuses attacks on {p1}.", { p0: action.name, p1: target.name }));
+      if (action.activityProfile?.appliesConditions?.includes("doomed") && !hasCondition(target, "doomed")) {
+        nextScore += 18;
+        nextReasons.push(t("ScoreReason.StrikeCanDoom", "Strike can make the target doomed."));
+      }
+      if (action.activityProfile?.persistentBleed && !hasCondition(target, "persistent-damage")) {
+        nextScore += 20;
+        nextReasons.push(t("ScoreReason.StrikeCausesBleed", "Strike can cause persistent bleed damage."));
+      }
     } else {
       nextScore -= 40;
       nextReasons.unshift(t("ScoreReason.TargetIsOutOfRange", "{p0} target is out of range.", { p0: action.name }));

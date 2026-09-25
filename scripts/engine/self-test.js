@@ -19,4 +19,5 @@ await import("./self-test/loadout-advisor.test.js");
 await import("./self-test/effect-clock.test.js");
 await import("./self-test/npc-reload-state.test.js");
 await import("./self-test/transaction-revert.test.js");
+await import("./self-test/spell-variant-execution.test.js");
 await import("./self-test/runtime.test.js");

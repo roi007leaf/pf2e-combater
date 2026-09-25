@@ -15,6 +15,13 @@ function titleCase(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function targetingForSpellActionCost(slug, actionCost, profile) {
+  if (slug !== "harm") return profile;
+  if (actionCost === 1) return { ...profile, maxRange: 5, touch: true };
+  if (actionCost === 2) return { ...profile, maxRange: 30, touch: false };
+  return profile;
+}
+
 export function readSpellActions(context) {
   const actor = contextActorDocument(context);
   return collectionValues(actor?.itemTypes?.spell).flatMap((item) => {
@@ -37,8 +44,6 @@ export function readSpellActions(context) {
           tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
         }
       }
-      const maxRange = Number(tactic?.targetingProfile?.maxRange ?? tactic?.targetingProfile?.range);
-      const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
       const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
       const parsedTime = readSpellActionCost(effectiveItem);
       const actionCosts = curatedForRank?.actionCost !== undefined
@@ -48,7 +53,11 @@ export function readSpellActions(context) {
       const rankSuffix = Number.isFinite(castRank) && castRank !== rank ? `-r${castRank}` : "";
       const actionIdBase = `${variantGroup}${rankSuffix}`;
 
-      return actionCosts.map((actionCost) => ({
+      return actionCosts.map((actionCost) => {
+        const targetingProfile = targetingForSpellActionCost(slug, actionCost, tactic?.targetingProfile ?? null);
+        const maxRange = Number(targetingProfile?.maxRange ?? targetingProfile?.range);
+        const enemyInRange = targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
+        return {
         ...(tactic ?? {}),
         id: actionCosts.length > 1 ? `${actionIdBase}-${actionCost}a` : actionIdBase,
         name: spellNameForRank(curatedForRank?.name ?? item.name, rank, castRank),
@@ -74,7 +83,7 @@ export function readSpellActions(context) {
         variableActionCost: actionCosts.length > 1,
         role: tactic?.role ?? "unknown",
         activityProfile: tactic?.activityProfile ?? null,
-        targetingProfile: tactic?.targetingProfile ?? null,
+        targetingProfile,
         saveProfile: tactic?.saveProfile ?? null,
         damageProfile: tactic?.damageProfile ?? null,
         setupFor: tactic?.setupFor ?? [],
@@ -93,7 +102,8 @@ export function readSpellActions(context) {
         spellResource: readSpellResource(actor, item, entry, castRank),
         location: systemValue(item.system?.location),
         time: systemValue(effectiveItem.system?.time) ?? "2",
-      })).flatMap(expandSpellTacticalActions);
+        };
+      }).flatMap(expandSpellTacticalActions);
     });
   });
 }
@@ -174,8 +184,6 @@ export function readConsumableSpellActions(context) {
       const averageDamage = bestReadyStrikeAverageDamage(actor, context);
       if (averageDamage !== null) tactic.activityProfile = { ...tactic.activityProfile, averageDamage };
     }
-    const maxRange = Number(tactic?.targetingProfile?.maxRange ?? tactic?.targetingProfile?.range);
-    const enemyInRange = tactic?.targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
     const source = curated ? "spell-curated" : (inferred ? "spell-inferred" : "spell-unknown");
     const parsedTime = readSpellActionCost(embeddedSpell);
     const actionCosts = curatedForRank?.actionCost !== undefined
@@ -186,7 +194,11 @@ export function readConsumableSpellActions(context) {
     const itemUses = consumableUses(item);
     const variantGroup = `consumable-spell-${item.id ?? item._id ?? slug}`;
 
-    return actionCosts.map((actionCost) => ({
+    return actionCosts.map((actionCost) => {
+      const targetingProfile = targetingForSpellActionCost(slug, actionCost, tactic?.targetingProfile ?? null);
+      const maxRange = Number(targetingProfile?.maxRange ?? targetingProfile?.range);
+      const enemyInRange = targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
+      return {
       ...(tactic ?? {}),
       id: actionCosts.length > 1 ? `${variantGroup}-${actionCost}a` : variantGroup,
       name: curatedForRank?.name ?? embeddedSpell.name,
@@ -210,7 +222,7 @@ export function readConsumableSpellActions(context) {
       variableActionCost: actionCosts.length > 1,
       role: tactic?.role ?? "unknown",
       activityProfile: tactic?.activityProfile ?? null,
-      targetingProfile: tactic?.targetingProfile ?? null,
+      targetingProfile,
       saveProfile: tactic?.saveProfile ?? null,
       damageProfile: tactic?.damageProfile ?? null,
       setupFor: tactic?.setupFor ?? [],
@@ -236,7 +248,8 @@ export function readConsumableSpellActions(context) {
       location: null,
       time: systemValue(embeddedSpell.system?.time) ?? "2",
       consumableItem: item,
-    })).flatMap(expandSpellTacticalActions);
+      };
+    }).flatMap(expandSpellTacticalActions);
   });
 }
 

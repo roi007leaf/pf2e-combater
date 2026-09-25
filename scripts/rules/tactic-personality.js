@@ -755,10 +755,10 @@ function actionCategories(action, explicitRole) {
     "control",
     "debuff",
     "grab",
-  ].includes(role) || profile.appliesCondition || Array.isArray(profile.appliesConditions);
+  ].includes(role) || profile.appliesCondition || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0);
 
   if (["damage", "save-damage", "area-damage", "multiattack"].includes(role) || source === "strike" || profile.includesStrike === true || action?.damageProfile) categories.add("damage");
-  if (["control", "debuff", "grab", "setup"].includes(role) || profile.appliesCondition || Array.isArray(profile.appliesConditions)) categories.add("control");
+  if (["control", "debuff", "grab", "setup"].includes(role) || profile.appliesCondition || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0)) categories.add("control");
   if (["debuff"].includes(role)) categories.add("debuff");
   if (role === "grab" || ["grapple", "grab"].includes(slug)) categories.add("grab");
   if (["defense", "stealth-defense"].includes(role) || ["raise-a-shield", "take-cover", "hide"].includes(slug)) categories.add("defense");

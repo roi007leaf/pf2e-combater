@@ -12,6 +12,8 @@ import {
   isMeleeStrikeFallback,
   isRangedStrike,
   isSpellAction,
+  hpPercent,
+  maxRange,
 } from "./scoring/facts.js";
 import {
   actionSkillDcSlug,
@@ -48,6 +50,19 @@ import { HARD_BLOCK_SCORE } from "./scoring/weights.js";
 // 11 succeeds on a roll of 11 or higher — exactly half of a d20's outcomes.
 const HIDDEN_TARGET_FLAT_CHECK_DISCOUNT = 0.5;
 const PLAYER_INTEL_CATEGORIES = ["traits", "saves", "perception", "weaknesses", "resistances", "immunities"];
+
+function npcStrikeAttackBonus(action) {
+  if (action?.source !== "strike" || action?.item?.type !== "melee") return null;
+  return npcStrikeItemBonus(action);
+}
+
+function npcStrikeItemBonus(action) {
+  if (action?.item?.type !== "melee") return null;
+  const rawBonus = action.item.system?.bonus?.value;
+  if (rawBonus === null || rawBonus === undefined || rawBonus === "") return null;
+  const bonus = Number(rawBonus);
+  return Number.isFinite(bonus) ? bonus : null;
+}
 
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
   const profile = context?.profile ?? context?.actor?.profile ?? {};
@@ -111,7 +126,51 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     areaPlacementAimPoint,
     areaPlacementOptions,
     minionPlan,
-  } = scoreRoleTactics(context, action, { role, profile, target });
+    conditionalBonuses,
+  } = scoreRoleTactics(context, action, {
+    role,
+    profile,
+    target,
+    criticalChance: rawNativePreflight?.odds?.criticalSuccess,
+  });
+
+  const targetDistance = Number(target?.distance);
+  if (action.source === "strike" && isRangedStrike(action) && target
+    && Number.isFinite(targetDistance) && targetDistance <= 5
+    && siblingActions.some((sibling) => sibling !== action && sibling.source === "strike"
+      && sibling.available !== false && !isRangedStrike(sibling)
+      && targetDistance <= maxRange(sibling))) {
+    score -= 14;
+    reasons.push(t("ScoreReason.RangedStrikeAdjacentMeleeReady", "A ready melee Strike can reach this adjacent target."));
+  }
+
+  const strikeBonus = npcStrikeAttackBonus(action);
+  if (strikeBonus !== null && target) {
+    const bestReadyBonus = Math.max(strikeBonus, ...siblingActions
+      .filter((sibling) => sibling.available !== false && Number(target.distance) <= maxRange(sibling))
+      .map(npcStrikeAttackBonus)
+      .filter((bonus) => bonus !== null));
+    const difference = Math.min(10, bestReadyBonus - strikeBonus);
+    if (difference > 0) {
+      score -= difference * 3;
+      reasons.push(t("ScoreReason.NpcStrikeAttackBonusGap", "Strike attack bonus trails another ready Strike by {difference}.", { difference }));
+    }
+  }
+
+  const retreatBonus = action.activityProfile?.retreatBeforeStrike === true
+    ? npcStrikeItemBonus(action)
+    : null;
+  if (retreatBonus !== null && target && hpPercent(profile) >= 0.5) {
+    const readyMeleeBonuses = siblingActions
+      .filter((sibling) => sibling.available !== false && sibling.source === "strike"
+        && !isRangedStrike(sibling) && Number(target.distance) <= maxRange(sibling))
+      .map(npcStrikeAttackBonus)
+      .filter((bonus) => bonus !== null);
+    if (readyMeleeBonuses.length && Math.max(...readyMeleeBonuses) >= retreatBonus + 2) {
+      score -= 18;
+      reasons.push(t("ScoreReason.RetreatSacrificesStrongerMelee", "Retreating for a ranged Strike gives up a stronger ready melee Strike."));
+    }
+  }
 
   const classAdjustment = classTacticAdjustment(profile, action, {
     context,
@@ -163,7 +222,8 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   // whole-turn investment it is.
   const multiActionOffensive = String(action.source).startsWith("spell")
     ? ["damage", "area-damage", "save-damage", "control", "debuff"].includes(role)
-    : ["mobility-attack", "multiattack"].includes(role) && !includesStand(action);
+    : (["mobility-attack", "multiattack"].includes(role)
+      || (role === "damage" && action.activityProfile?.includesStrike === true)) && !includesStand(action);
   if (multiActionOffensive && Number(action.actionCost) >= 2 && score > baseScore(action)) {
     const extraActions = Math.min(2, Number(action.actionCost) - 1);
     const extraActionValue = role === "area-damage" && areaHitCount === 1 ? 20 : 55;
@@ -220,6 +280,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
       ...(backingStrikes ? { backingStrikes } : {}),
       ...(backingManeuver ? { backingManeuver } : {}),
       ...(minionPlan ? { minionPlan } : {}),
+      conditionalBonuses,
     },
   }, {
     isGM: canUseTargetDefenses(context),

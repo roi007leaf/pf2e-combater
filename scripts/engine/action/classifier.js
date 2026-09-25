@@ -677,7 +677,8 @@ function classifySystemActionBase(action, parsedCost) {
     return inferred("damage", {
       activityProfile: {
         ...baseAttackProfile(),
-        focusedStrike: true,
+        // Throw Rock is the ordinary ranged rock Strike, not a special focused attack.
+        // The latter earns a large bonus that makes this wrapper beat stronger melee Strikes.
         ranged: true,
       },
       targetingProfile: { enemy: true, maxRange: rangeProfile.maxRange ?? 120 },
@@ -1406,6 +1407,10 @@ function classifySystemActionBase(action, parsedCost) {
     activityProfile: {
       ...baseAttackProfile(),
       focusedStrike: mentionsFocusedTarget || actionCost > 1,
+      ...(/\bdoomed\s*(?:1|one)\b/.test(text) ? { appliesConditions: ["doomed"] } : {}),
+      ...(/\b\d+d\d+(?:\s*[+-]\s*\d+)?\s+persistent\s+bleed\s+damage\b/.test(text)
+        || /@Damage\[[^\]]*(?:bleed[^\]]*persistent|persistent[^\]]*bleed)/i.test(rawDescription(action))
+        ? { persistentBleed: true } : {}),
       ...(mapAttacks !== null ? { mapAttacks } : {}),
     },
     targetingProfile: { enemy: true, reach: true },

@@ -7,6 +7,7 @@ import { createGuidance } from "./guidance.js";
 import { attachRevertOp, executionPatch } from "./results.js";
 import { setTarget } from "./targets.js";
 import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
+import { parseActionText } from "../action/text.js";
 
 function numeric(value, fallback = null) {
   const number = Number(value);
@@ -160,6 +161,47 @@ function isCantripSpell(item) {
   return Array.isArray(traits) && traits.includes("cantrip");
 }
 
+function spellOverrideVariants(item, actionCost) {
+  const overlays = item?.overlays?.entries?.() ?? Object.entries(item?.system?.overlays ?? {});
+  return Array.from(overlays)
+    .filter(([, overlay]) => overlay?.overlayType === "override"
+      && parseActionText(systemValue(overlay?.system?.time)) === actionCost)
+    .map(([id, overlay]) => ({ id, overlay }));
+}
+
+function spellVariantFit(overlay, action) {
+  const kinds = Object.values(overlay?.system?.damage ?? {})
+    .flatMap((damage) => damage?.kinds ?? []);
+  const includes = action?.activityProfile?.includes ?? [];
+  const healing = action?.role === "healing" || includes.includes("healing");
+  const damage = action?.role === "save-damage" || includes.includes("damage");
+  const requiredTraits = action?.targetingProfile?.requiresAnyTrait ?? [];
+  const targetText = String(systemValue(overlay?.system?.target) ?? "").toLowerCase();
+  let fit = 0;
+  if (healing && kinds.includes("healing")) fit += 10;
+  if (damage && kinds.includes("damage")) fit += 10;
+  if (healing && kinds.includes("damage")) fit -= 10;
+  if (damage && kinds.includes("healing")) fit -= 10;
+  if (requiredTraits.some((trait) => targetText.includes(String(trait).toLowerCase()))) fit += 2;
+  if (action?.targetingProfile?.enemy && /\bliving\b/.test(targetText)) fit += 1;
+  return fit;
+}
+
+function spellForPlannedActions(item, action) {
+  if (item?.type !== "spell" || typeof item.loadVariant !== "function") return item;
+  const actionCost = Number(action?.actionCost);
+  if (!Number.isInteger(actionCost) || actionCost < 1 || actionCost > 3) return item;
+  const variants = spellOverrideVariants(item, actionCost);
+  if (!variants.length) return action?.variableActionCost === true && item?.hasVariants === true ? null : item;
+  const selected = variants.toSorted((left, right) =>
+    spellVariantFit(right.overlay, action) - spellVariantFit(left.overlay, action)
+    || Number(left.overlay.sort ?? 0) - Number(right.overlay.sort ?? 0))[0];
+  return item.loadVariant({
+    castRank: action?.castRank ?? action?.rank,
+    overlayIds: [selected.id],
+  }) ?? null;
+}
+
 function messageMatchesCast(message, actor, item) {
   const actorId = String(actor?.id ?? actor?._id ?? "");
   const messageActorId = String(message?.speaker?.actor ?? "");
@@ -302,6 +344,8 @@ async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
   const entry = findSpellcastingEntry(actor, action);
   if (typeof entry?.cast === "function") {
+    const spell = spellForPlannedActions(item, action);
+    if (!spell) return { spellCast: true, castFailed: true, variantUnavailable: true };
     const resourceOk = spellCastResourceSufficient(actor, entry, item, action);
     let castMessage = null;
     let resolveCastMessage = null;
@@ -313,7 +357,7 @@ async function executeNativeItem({ actor, action, event }) {
     };
     const hookId = globalThis.Hooks?.on?.("createChatMessage", onCreate) ?? null;
     try {
-      const returned = await pf2eRuntime.castSpell(entry, item, {
+      const returned = await pf2eRuntime.castSpell(entry, spell, {
         event,
         rank: action?.castRank ?? action?.rank,
         slotId: action?.slotId ?? action?.location,
@@ -381,7 +425,9 @@ export async function executeNativeAction({ actor, action, event, target = null,
   const nativeResult = await executeOpenItem({ actor, action, event });
   const slotOp = finalizeSpellSlotRevertOp(actor, slotBefore);
   if (nativeResult?.spellCast === true && nativeResult?.castFailed === true) {
-    const reason = action?.unavailableReason || t("Exec.SpellNoSlot", "Spell could not be cast (no slot available).");
+    const reason = nativeResult?.variantUnavailable
+      ? t("Exec.SpellVariantUnavailable", "The planned spell variant is unavailable.")
+      : (action?.unavailableReason || t("Exec.SpellNoSlot", "Spell could not be cast (no slot available)."));
     return {
       status: "failed",
       patch: executionPatch(patch, "failed", { error: reason }),

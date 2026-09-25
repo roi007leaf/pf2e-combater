@@ -255,6 +255,8 @@ export function actorStrikeOptions(actor, context = null, { includeUnready = fal
       const range = readStrikeRange(strike, traits, actor);
       const reload = readStrikeReload(strike, traits);
       const damageProfile = readStrikeDamageProfile(strike);
+      const attackEffects = Array.isArray(strike.item?.system?.attackEffects?.value)
+        ? strike.item.system.attackEffects.value : [];
       const action = {
         range,
         traits,
@@ -271,7 +273,9 @@ export function actorStrikeOptions(actor, context = null, { includeUnready = fal
         attackTrait: true,
         traits,
         weaponTraits: strike.weaponTraits ?? [],
-        attackEffects: Array.isArray(strike.item?.system?.attackEffects?.value) ? strike.item.system.attackEffects.value : [],
+        attackEffects,
+        ...(attackEffects.some((effect) => /\bdoom(?:ing|ed)?\b/i.test(String(effect)))
+          ? { activityProfile: { appliesConditions: ["doomed"] } } : {}),
         range,
         reload,
         detected: true,
