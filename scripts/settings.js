@@ -16,7 +16,7 @@ const SETTINGS = {
   enrageBarbariansAtCombatStart: "enrageBarbariansAtCombatStart",
 };
 
-export function registerSettings() {
+export function registerSettings({ decorateFlankingFormGroup } = {}) {
   game.settings.register(MODULE_ID, SETTINGS.autoOpen, {
     name: "PF2E_COMBATER.Settings.AutoOpen.Name",
     hint: "PF2E_COMBATER.Settings.AutoOpen.Hint",
@@ -109,19 +109,30 @@ export function registerSettings() {
     onChange: () => Hooks.callAll("pf2e-combater.playerAccessChanged"),
   });
 
+  const flankingChoices = {
+    raw: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.Raw",
+    anySquare: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnySquare",
+    anyCorner: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnyCorner",
+    oppositeArcs: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.OppositeArcs",
+    lineThrough: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.LineThrough",
+  };
+  const StringField = globalThis.foundry?.data?.fields?.StringField;
+  const flankingType = StringField && decorateFlankingFormGroup
+    ? new (class extends StringField {
+      toFormGroup(groupConfig, inputConfig) {
+        const group = super.toFormGroup(groupConfig, inputConfig);
+        decorateFlankingFormGroup(group);
+        return group;
+      }
+    })({ required: true, choices: flankingChoices, initial: "raw" })
+    : String;
   game.settings.register(MODULE_ID, SETTINGS.flankingSizeRule, {
     name: "PF2E_COMBATER.Settings.FlankingSizeRule.Name",
     hint: "PF2E_COMBATER.Settings.FlankingSizeRule.Hint",
     scope: "world",
     config: true,
-    type: String,
-    choices: {
-      raw: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.Raw",
-      anySquare: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnySquare",
-      anyCorner: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.AnyCorner",
-      oppositeArcs: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.OppositeArcs",
-      lineThrough: "PF2E_COMBATER.Settings.FlankingSizeRule.Choices.LineThrough",
-    },
+    type: flankingType,
+    choices: flankingChoices,
     default: "raw",
   });
   game.settings.register(MODULE_ID, SETTINGS.raisePcShieldsWhenDefending, {

@@ -309,7 +309,7 @@ Hooks.once("init", () => {
       runLiveEngineMatrix,
     });
   }
-  registerSettings();
+  registerSettings({ decorateFlankingFormGroup: mountFlankingSettingsCards });
   Hooks.on("renderSettingsConfig", (_app, html) => mountFlankingSettingsCards(html));
   registerFlankingHighlightOriginHooks();
   registerCombatTrackerIntel();

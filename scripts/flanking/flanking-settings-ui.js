@@ -9,6 +9,7 @@
 const CHOICE_KEY = 'PF2E_COMBATER.Settings.FlankingSizeRule.Choices';
 const DIAGRAM_KEY = 'PF2E_COMBATER.Settings.FlankingSizeRule.Diagram';
 const CHOICE_NAMES = { raw: 'Raw', anySquare: 'AnySquare', anyCorner: 'AnyCorner', oppositeArcs: 'OppositeArcs', lineThrough: 'LineThrough' };
+const boundChoosers = new WeakSet();
 
 const CELL = 100;
 const COLS = 4;
@@ -179,28 +180,29 @@ export function mountFlankingSettingsCards(html, document = globalThis.document)
   const root = html?.[0] ?? html;
   const select = root?.querySelector?.('select[name="pf2e-combater.flankingSizeRule"]');
   const group = select?.closest?.('.form-group');
-  if (!group || group.querySelector('.combater-flanking-cards')) return false;
+  if (!group) return false;
+  group.classList.add('combater-flanking-setting');
 
-  const chooser = document.createElement('div');
-  chooser.className = 'combater-flanking-cards';
-  chooser.setAttribute?.('role', 'group');
-  chooser.setAttribute?.('aria-label', localize('PF2E_COMBATER.Settings.FlankingSizeRule.Name'));
-  const cards = buildFlankingIllustrations();
-  for (const card of cards) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'combater-flanking-card';
-    button.dataset.value = card.value;
-    button.innerHTML = card.svg;
-    const label = document.createElement('span');
-    label.className = 'combater-flanking-card-label';
-    label.textContent = localize(card.label);
-    button.append(label);
-    button.addEventListener('click', () => {
-      select.value = card.value;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    chooser.append(button);
+  let chooser = group.querySelector('.combater-flanking-cards');
+  const created = !chooser;
+  if (created) {
+    chooser = document.createElement('div');
+    chooser.className = 'combater-flanking-cards';
+    chooser.setAttribute?.('role', 'group');
+    chooser.setAttribute?.('aria-label', localize('PF2E_COMBATER.Settings.FlankingSizeRule.Name'));
+    for (const card of buildFlankingIllustrations()) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'combater-flanking-card';
+      button.dataset.value = card.value;
+      button.innerHTML = card.svg;
+      const label = document.createElement('span');
+      label.className = 'combater-flanking-card-label';
+      label.textContent = localize(card.label);
+      button.append(label);
+      chooser.append(button);
+    }
+    group.append(chooser);
   }
   const sync = () => {
     for (const button of chooser.children) {
@@ -209,8 +211,16 @@ export function mountFlankingSettingsCards(html, document = globalThis.document)
       button.setAttribute?.('aria-pressed', String(active));
     }
   };
-  select.addEventListener('change', sync);
-  group.append(chooser);
+  if (!boundChoosers.has(chooser)) {
+    for (const button of chooser.children) {
+      button.addEventListener('click', () => {
+        select.value = button.dataset.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    select.addEventListener('change', sync);
+    boundChoosers.add(chooser);
+  }
   sync();
-  return true;
+  return created;
 }
