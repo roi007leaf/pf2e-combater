@@ -539,7 +539,7 @@ export function buildActionBuilderModel({
   const usage = draftUsage(resolvedDraftSteps);
   // Anticipate Haste-style quickened during planning: the condition isn't applied until the spell
   // executes, so a drafted quickening spell aimed at the current combatant grants the extra action now.
-  const anticipatedQuickened = draftAnticipatesQuickened(resolvedDraftSteps, context) ? 1 : 0;
+  const anticipatedQuickened = !budget.quickened && draftAnticipatesQuickened(resolvedDraftSteps, context) ? 1 : 0;
   const quickenedActions = Math.max(budget.quickenedActions ?? 0, anticipatedQuickened);
   const quickenedUsed = Math.min(quickenedActions, usage.quickenedEligibleCost);
   const normalUsed = usage.normal - quickenedUsed;

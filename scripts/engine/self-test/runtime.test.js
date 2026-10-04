@@ -7399,6 +7399,32 @@ const quickenedPlan = bestTurnPlan(quickenedContext, [
   },
 ]);
 assert.equal(actionBudget(quickenedContext).quickenedActions, 1);
+for (const [slowed, normalActions] of [[1, 3], [2, 2], [3, 1], [4, 0]]) {
+  const context = {
+    ...quickenedContext,
+    profile: {
+      ...quickenedContext.profile,
+      conditions: { slugs: ["quickened", "slowed"], values: { quickened: null, slowed } },
+    },
+  };
+  const budget = actionBudget(context);
+  assert.equal(budget.normalActions, normalActions, "slowed should consume the restricted quickened action first");
+  assert.equal(budget.quickenedActions, 0);
+  assert.equal(budget.totalActions, normalActions);
+  assert.equal(actionBudget({ ...context, actionsSpent: { normal: 1 } }).normalActions, Math.max(0, normalActions - 1));
+  const candidates = [{ id: "full-turn", slug: "full-turn", name: "Full Turn", actionCost: 3, score: 100 }];
+  const builder = buildActionBuilderModel({ context, candidates, draft: { steps: [] } });
+  assert.equal(builder.remainingNormalActions, normalActions);
+  assert.equal(builder.remainingQuickenedActions, 0);
+  assert.equal(builder.remainingTotalActions, normalActions);
+  assert.equal(bestTurnPlan(context, candidates).totalCost, normalActions === 3 ? 3 : 0);
+  const recastBuilder = buildActionBuilderModel({
+    context,
+    candidates: [{ id: "haste", slug: "haste", source: "spell-inferred", name: "Haste", actionCost: 2, targetingProfile: { self: true } }],
+    draft: { steps: [{ instanceId: "recast", actionKey: "haste", actionCost: 2 }] },
+  });
+  assert.equal(recastBuilder.remainingQuickenedActions, 0, "recasting Haste must not restore the quickened action lost to slowed");
+}
 assert.equal(quickenedPlan.totalCost, 4);
 assert.ok(quickenedPlan.steps.some((step) => ["strike", "stride", "step"].includes(step.slug)));
 

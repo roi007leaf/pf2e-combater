@@ -56,12 +56,15 @@ export function actionBudget(context) {
   const stunned = profileStateValue(profile, "stunned");
   const quickened = profileStateValue(profile, "quickened");
   const spent = spentNormalActions(context);
-  const normalActions = Math.max(0, BASE_ACTIONS - slowed - stunned - spent);
+  // Choose to lose the restricted quickened action before unrestricted normal actions.
+  const quickenedLost = quickened > 0 && slowed > 0 ? 1 : 0;
+  const quickenedActions = quickened > 0 ? 1 - quickenedLost : 0;
+  const normalActions = Math.max(0, BASE_ACTIONS - (slowed - quickenedLost) - stunned - spent);
 
   return {
     normalActions,
-    quickenedActions: quickened > 0 ? 1 : 0,
-    totalActions: normalActions + (quickened > 0 ? 1 : 0),
+    quickenedActions,
+    totalActions: normalActions + quickenedActions,
     slowed,
     stunned,
     quickened,

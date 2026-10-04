@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.6]
+
+### Fixed
+
+- Slowed consumes Haste's restricted quickened action before normal actions. Slowed 1 with Haste now leaves three normal actions for Browse and Auto-fill; recasting Haste cannot restore the lost extra action.
+
 ## [1.3.5]
 
 ### Fixed
