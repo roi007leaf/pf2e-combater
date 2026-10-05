@@ -6,6 +6,7 @@ import "./self-test/roll-preflight.test.js";
 import "./self-test/preference-learning.test.js";
 
 await import("./self-test/recall-knowledge.test.js");
+await import("./self-test/bestiary.test.js");
 await import("./self-test/pf2e-runtime.test.js");
 await import("./self-test/live-engine-matrix.test.js");
 await import("./self-test/planner-search.test.js");

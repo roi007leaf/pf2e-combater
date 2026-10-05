@@ -102,6 +102,14 @@ to their defaults to prevent duplicate automation.
   Misinformation displays as ordinary truth to players — no false marker — while GMs still see it
   flagged. Auto-fill, Best target, and planner scoring only ever use real facts, never planted false
   ones.
+- **Bestiary Tracking integration.** With an active Bestiary Tracking release exposing the v1
+  knowledge API (including fork 1.3.11), Auto-fill and Shuffle also use shared party knowledge:
+  revealed traits, numeric saves and Perception, IWR, and known Reactive Strike. Revealed numeric
+  AC supports attack preflight estimates and its optional scoring. Hidden fields and vague/custom
+  text provide no numeric estimates. Existing Combater Intel takes precedence for overlapping
+  save, Perception, and IWR facts. Bestiary's displayed misinformation is treated as party knowledge;
+  custom text is never parsed into numbers. Changes to the bestiary refresh an open panel.
+  Older, inactive, or unavailable Bestiary modules preserve existing behavior.
 - **Plan preference learning.** Thumbs-up/down a visible plan to teach Auto-fill and Shuffle which
   complete turn sequences you like. Ratings are local per user and actor and give future rankings a
   capped, predictable nudge for similar actions, roles, and ordering — they never touch actor data or

@@ -631,6 +631,20 @@ Hooks.on("createItem", (item) => {
   scheduleDocumentRefresh(item, "item-create");
 });
 
+Hooks.on("UpdateBestiary", () => {
+  if (game.modules.get("pf2e-bestiary-tracking")?.active) scheduleRefresh("bestiary-update");
+});
+
+Hooks.on("updateSetting", (setting) => {
+  if (String(setting?.key ?? "").startsWith("pf2e-bestiary-tracking.")) scheduleRefresh("bestiary-update");
+});
+
+for (const event of ["createJournalEntryPage", "updateJournalEntryPage", "deleteJournalEntryPage"]) {
+  Hooks.on(event, (page) => {
+    if (String(page?.type ?? "").startsWith("pf2e-bestiary-tracking.")) scheduleRefresh("bestiary-update");
+  });
+}
+
 Hooks.on("updateItem", (item) => {
   scheduleDocumentRefresh(item, "item-update");
 });

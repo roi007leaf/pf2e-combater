@@ -331,7 +331,9 @@ function attackPreflight(context, actor, target, action, options) {
     ? contextualStatistic(resolveStatistic(actor, action), options)
     : { modifier: strike, breakdown: "", modifiers: [] };
   if (!contextual) return null;
-  const dc = contextIsGM(context) ? targetAc(target) : null;
+  const dc = contextIsGM(context)
+    ? targetAc(target)
+    : target?.bestiaryAcKnown === true ? numeric(target.ac) : null;
   const statisticLabel = normalizedActionFacts(action).resolution.strike
     ? t("Preflight.Strike", "Strike")
     : String(contextual.statistic?.label ?? action?.name ?? t("Preflight.Attack", "Attack"));

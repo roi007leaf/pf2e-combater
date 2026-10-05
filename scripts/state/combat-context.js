@@ -1,5 +1,6 @@
 import { readActorProfile, readConditions, readEffects } from "../readers/actor-profile.js";
 import { readVisionerDetectionState } from "../integrations/visioner.js";
+import { readBestiaryKnowledge, withBestiaryKnowledge } from "../integrations/bestiary.js";
 import { collectionValues } from "../foundry-data.js";
 import { movementActionsSpent } from "./token-refresh.js";
 import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
@@ -384,7 +385,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
   const conditions = readConditions(actor);
   const effects = readEffects(actor, { includeHidden: canSeeDefenses });
   const visionerDetectionState = readVisionerDetectionState(tokenSummary(originToken), tokenSummary(token));
-  return {
+  return withBestiaryKnowledge({
     id: token?.id ?? token?.document?.id,
     name: tokenDisplayName(token, actor, combatant),
     disposition: tokenDisposition(token),
@@ -412,7 +413,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     conditions,
     effects,
     ...readDefensiveMeta(actor, canSeeDefenses, intelLedger),
-  };
+  }, readBestiaryKnowledge(token));
 }
 
 function actorOwnedByUser(actor, user) {

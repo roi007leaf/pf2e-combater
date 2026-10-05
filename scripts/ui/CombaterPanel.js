@@ -135,6 +135,7 @@ import { pf2eActionName, t } from "../i18n.js";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 const RESET_PIN_REFRESH_SOURCES = new Set([
+  "bestiary-update",
   "actor-update",
   "button",
   "combat-turn",

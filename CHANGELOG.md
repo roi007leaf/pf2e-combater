@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.0]
+
+### Added
+
+- Auto-fill and Shuffle use revealed party knowledge from Bestiary Tracking's v1 API alongside Combater Intel. Supports traits, numeric saves and Perception, IWR, known Reactive Strike, and numeric AC for attack preflight. Bestiary updates refresh the open panel; hidden and vague/custom values remain unavailable for numeric scoring.
+
 ## [1.3.7]
 
 ### Fixed
