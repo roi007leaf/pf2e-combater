@@ -1197,6 +1197,11 @@ export function actionKeyForPanelStep(panel, step) {
   // on the next render.
   if (step?.executable === "reload-weapon") return key;
 
+  // Out-of-range Strikes are absent from Browse, but their canonical keys still
+  // resolve from rejected candidates. A shared item UUID can otherwise alias
+  // them to Draw/Sheathe, which disappears once Ready Weapon executes.
+  if (step?.source === "strike" && !step?.activityProfile?.requiresDistinctTargets) return key;
+
   // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
   // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
   // which makes step.item.uuid collide with that weapon's OWN standalone candidate below. The

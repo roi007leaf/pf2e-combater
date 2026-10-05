@@ -3306,6 +3306,21 @@ try {
     users: [offlinePlayer, activePlayer],
   };
   assert.deepEqual(
+    gmPlayerPlanAccess({ type: "character", ownership: {} }),
+    { viewing: true, editable: true, ownerId: "gm-user", ownerName: "GM" },
+    "GM-only games should allow Auto-fill and Browse edits for ownerless PCs",
+  );
+  assert.equal(
+    gmPlayerPlanAccess({ type: "npc", ownership: {} }).viewing,
+    false,
+    "ownerless NPCs should keep their ordinary GM draft path",
+  );
+  const gmOnlyUser = globalThis.game.user;
+  globalThis.game.user = activePlayer;
+  assert.equal(gmPlayerPlanAccess({ type: "character", ownership: {} }).editable, false,
+    "ownerless PC edit access must remain GM-only");
+  globalThis.game.user = gmOnlyUser;
+  assert.deepEqual(
     gmPlayerPlanAccess({ type: "character", ownership: { "offline-player": 3 } }),
     { viewing: true, editable: true, ownerId: "offline-player", ownerName: "Offline Player" },
     "GM should be able to edit a player character plan while its owner is offline",
@@ -4508,6 +4523,69 @@ try {
     buildCandidates(projectedDraftContext).candidates.some((action) => action.name === "Shortsword"),
     false,
   );
+  const { actionKeyForPanelStep } = await import("../../ui/panel/draft-workflow.js");
+  const carriedSword = {
+    id: "carried-sword", uuid: "Actor.test.Item.carried-sword", name: "Shortsword",
+    type: "weapon", system: { traits: { value: [] } },
+  };
+  const readySword = {
+    id: "draw-weapon-carried-sword", slug: "draw-shortsword", name: "Ready Weapon",
+    source: "system-inferred", executable: "draw-weapon", actionCost: 1,
+    item: carriedSword, available: true,
+  };
+  const swordStrike = {
+    ...actorStrikeOptions(projectedDraftContext.actor.document, projectedDraftContext)[0],
+    item: carriedSword,
+  };
+  const initialSwordBuilder = buildActionBuilderModel({
+    context: projectedDraftContext, candidates: [readySword],
+    rejected: [{ action: swordStrike, reason: "No target in range." }], draft: { steps: [] },
+  });
+  const swordPanel = {
+    _builder: initialSwordBuilder,
+    _findBuilderAction(key) {
+      return Object.values(this._builder.tabs).flatMap((tab) => tab.all).find((action) => action.key === key);
+    },
+  };
+  assert.equal(
+    actionKeyForPanelStep(swordPanel, swordStrike),
+    swordStrike.id,
+    "an out-of-range planned Strike must not inherit Ready Weapon's key through their shared item UUID",
+  );
+  const { atomizePanelAutoFillSteps } = await import("../../ui/panel/draft-workflow.js");
+  swordPanel._context = projectedDraftContext;
+  swordPanel._actionKeyForStep = (step) => actionKeyForPanelStep(swordPanel, step);
+  const swordStride = {
+    id: "stride", slug: "stride", name: "Stride", source: "generic", actionCost: 1,
+    requiresDestination: true, destination: { x: 5, y: 0 },
+  };
+  const swordDraft = { steps: atomizePanelAutoFillSteps(swordPanel, {
+    steps: [readySword, swordStride, swordStrike],
+  }, projectedDraftContext) };
+  assert.deepEqual(swordDraft.steps.map((step) => step.actionKey),
+    [readySword.id, "stride", swordStrike.id], "Ready Weapon -> Stride -> Strike must persist distinct action identities");
+  swordDraft.steps[0].execution = { status: "done" };
+  swordDraft.steps[1].execution = { status: "done" };
+  let swordRolls = 0;
+  const liveSwordStrike = { ...swordStrike, available: true, unavailableReason: "",
+    variants: [{ roll: () => { swordRolls += 1; return null; } }],
+  };
+  const afterSwordStride = buildActionBuilderModel({
+    context: { ...projectedDraftContext, actionsSpent: { normal: 1, movement: 1 } },
+    candidates: [swordStride, liveSwordStrike], draft: swordDraft,
+  });
+  const pendingSwordStrike = afterSwordStride.draft.steps[2];
+  assert.equal(pendingSwordStrike.stale, false, "Strike must remain resolvable after Ready Weapon disappears and movement spends an action");
+  assert.equal(pendingSwordStrike.action.executable, "strike");
+  const swordTargetToken = { id: projectedDraftTarget.id, name: projectedDraftTarget.name, setTarget() {} };
+  globalThis.canvas.tokens = { placeables: [swordTargetToken] };
+  const executedSwordStrike = await executeDraftStep({
+    context: projectedDraftContext,
+    step: { ...pendingSwordStrike, targetTokenIds: [swordTargetToken.id], targetSelection: "manual" },
+  });
+  assert.equal(executedSwordStrike.status, "done", "final Strike should execute through its native roller after Ready Weapon and Stride");
+  assert.equal(swordRolls, 1);
+  delete globalThis.canvas.tokens;
   const projectedAfterStride = projectContextForDraftDestination(projectedDraftContext, {
     steps: [{ instanceId: "draft-1", actionKey: "stride", requiresDestination: true, destination: { x: 5, y: 0 } }],
   });

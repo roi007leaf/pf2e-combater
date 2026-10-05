@@ -70,12 +70,15 @@ export function gmPlayerPlanAccess(actor) {
   const owner = owners[0] ?? null;
   const isCharacter = String(document?.type ?? "").toLowerCase() === "character";
   const viewing = globalThis.game?.user?.isGM === true && Boolean(document) && (isCharacter || Boolean(owner));
-  const editable = viewing && Boolean(owner) && owners.every((candidate) => candidate?.active !== true);
+  // A GM-only game has no player owner to go offline. The GM owns that PC's
+  // shared plan until a player owner is assigned and connects.
+  const editable = viewing && owners.every((candidate) => candidate?.active !== true);
+  const planOwner = owner ?? (editable ? globalThis.game?.user : null);
   return {
     viewing,
     editable,
-    ownerId: owner?.id ?? "",
-    ownerName: owner?.name ?? "",
+    ownerId: planOwner?.id ?? "",
+    ownerName: planOwner?.name ?? "",
   };
 }
 

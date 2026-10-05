@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.7]
+
+### Fixed
+
+- Auto-fill preserves Strike action identities in Ready Weapon -> Stride -> Strike plans. Drawing a weapon no longer makes the final Strike unavailable by resolving it as another equipment action.
+- GMs can Auto-fill and add Browse actions for player characters without player owners, including GM-only games. Plans owned by connected players remain read-only for the GM.
+
 ## [1.3.6]
 
 ### Fixed
