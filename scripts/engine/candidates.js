@@ -4,6 +4,7 @@ import { npcTacticRejection } from "../rules/npc-tactics.js";
 import { SETTINGS, settingOrDefault } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
 import { t } from "../i18n.js";
+import { actionExclusionKey, readActionExclusions } from "../state/action-exclusions.js";
 
 const REJECTED_SCORE = -900;
 
@@ -74,8 +75,15 @@ export function buildCandidates(context) {
   const { detected, duplicates } = dedupeDetected([...actions, ...spells], includeUnknown);
   const candidates = [];
   const rejected = [...duplicates];
+  const exclusions = readActionExclusions(context);
 
-  for (const action of detected) {
+  for (const detectedAction of detected) {
+    const hidden = exclusions.has(actionExclusionKey(detectedAction));
+    const action = hidden ? { ...detectedAction, userExcluded: true } : detectedAction;
+    if (hidden && globalThis.game?.user?.isGM !== true) {
+      rejected.push({ action, exclusionRejected: true, reason: t("Reject.UserExcluded", "Hidden from Browse and Auto-fill for this actor.") });
+      continue;
+    }
     if (!action.available) {
       rejected.push({ action, reason: action.unavailableReason || t("Reject.NotAvailable", "Action is not available in current context.") });
       continue;

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0]
+
+### Added
+
+- Plan a creature and placement for supported summon spells with PF2e Summons Assistant. Execute reuses both choices through native summoning, without reopening the creature picker or placement prompt.
+- Hide actions per actor from player Browse and Auto-fill. GMs see a **Hidden for players** indicator and retain normal Add, Uncounted, and Auto-fill access. Hidden actions can be restored with the eye control.
+
+### Fixed
+
+- Player Uncounted actions remain visible in the compact planner and can be added after the normal action budget is exhausted.
+- Fortify Summoning is recommended only when the caster has a living summoned creature within range.
+- Summon planning loads creature traits and rarity into the picker. Executing a planned summon no longer starts a second summon flow; a failed summon after casting does not make the spent spell retryable.
+
 ## [1.4.0]
 
 ### Added

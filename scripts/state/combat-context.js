@@ -5,6 +5,7 @@ import { collectionValues } from "../foundry-data.js";
 import { movementActionsSpent } from "./token-refresh.js";
 import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
 import { isPlannableActor } from "../rules/actor-eligibility.js";
+import { summonIdentity } from "../rules/summoned-creatures.js";
 import {
   INTEL_REVEAL_MODES,
   bandedIntelDefenseEntry,
@@ -72,6 +73,7 @@ function tokenSummary(token, { combatant = null } = {}) {
     name: tokenDisplayName(token, actor, combatant),
     img: document.texture?.src ?? token?.texture?.src,
     disposition: tokenDisposition(token),
+    ...summonIdentity(actor),
     center: tokenCenter(token),
     width: Number(document.width ?? token?.width ?? 1) || 1,
     height: Number(document.height ?? token?.height ?? 1) || 1,
@@ -741,5 +743,9 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
       targets,
     },
     minions,
+    summons: tokens.filter((token) => summonIdentity(tokenActor(token)).summoned)
+      .filter((token) => isAllyDisposition(token, activeDisposition))
+      .filter((token) => !tokenMatchesIdentity(token, activeToken) && isTargetableCombatToken(token))
+      .map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) })),
   };
 }

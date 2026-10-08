@@ -114,6 +114,11 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     panel._restoreSearchFocus(element);
 
+    element.querySelector("[data-show-excluded]")?.addEventListener("click", () => panel._toggleExcludedVisibility());
+    for (const button of element.querySelectorAll("[data-exclude-action]")) {
+      button.addEventListener("click", () => panel._toggleExcludedAction(button.dataset.excludeAction));
+    }
+
     for (const button of element.querySelectorAll("[data-add-action]")) {
       button.addEventListener("click", () => panel._addAction(button.dataset.addAction));
     }

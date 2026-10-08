@@ -7,6 +7,7 @@ import { actionBudget } from "../budget.js";
 import { actionIncludes, isDestinationActionSlug, requiresDestinationForAction } from "../requirements.js";
 import { draftStepIsUsable } from "./projection.js";
 import { t } from "../../../i18n.js";
+import { actionExclusionKey, readActionExclusions } from "../../../state/action-exclusions.js";
 import { actionBuilderKey, actionName, scoreValue } from "./shared.js";
 import {
   actionIncludedParts,
@@ -285,6 +286,7 @@ function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normal
   const favoriteEntry = favoriteEntryKey(favorites, key, baseKey, baseKeyCounts);
   return {
     ...action,
+    blockedByExclusion: action?.userExcluded === true && globalThis.game?.user?.isGM !== true,
     key,
     baseKey,
     tabId: tab.id,
@@ -356,6 +358,9 @@ function normalizeDraftOnlyActions(unavailableActions, rejected) {
       if (!action) return null;
 
       const rejectionReason = entry?.reason;
+      // Player exclusion is only an indicator when the same row is viewed by a GM.
+      // Preserve the action's own availability and normal rules restrictions.
+      if (entry.exclusionRejected && globalThis.game?.user?.isGM === true) return action;
       const disabledReason = action.disabledReason ?? action.unavailableReason ?? rejectionReason;
       return {
         ...action,
@@ -506,6 +511,7 @@ export function buildActionBuilderModel({
   draft,
   draftStepActions = null,
   favorites = new Set(),
+  showExcluded = false,
 }) {
   const budget = actionBudget(context);
   const tabs = emptyTabs();
@@ -513,6 +519,8 @@ export function buildActionBuilderModel({
   // Sets iterate in insertion order, which is already the user's favorite-order (see
   // action-favorites.js) -- capture it once here for sorting tab.favorites below.
   const favoriteOrder = [...favoriteSet];
+  const exclusions = readActionExclusions(context);
+  const revealExcluded = showExcluded || globalThis.game?.user?.isGM === true;
   // The dedicated sustained-spells section handles sustaining, so no "Sustain a Spell" action
   // is injected into the builder tabs.
   // Composites (Rush, Sudden Charge, ...) used to be hidden from Browse entirely because a manual
@@ -522,7 +530,7 @@ export function buildActionBuilderModel({
   const normalizedCandidates = expandMinionCommandRows(
     builderActionRows(candidates ?? [], { keepComposites: true }),
     draft,
-  );
+  ).map((action) => exclusions.has(actionExclusionKey(action)) ? { ...action, userExcluded: true } : action);
   const draftOnlyActions = builderActionRows(normalizeDraftOnlyActions(unavailableActions, rejected), { includeSyntheticInteract: false, keepComposites: true });
   const { keyedActions, baseKeyCounts } = assignActionKeys(normalizedCandidates);
   const sortedKeyedActions = [...keyedActions].toSorted((left, right) => {
@@ -603,10 +611,10 @@ export function buildActionBuilderModel({
   );
   const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions);
 
-  for (const action of decoratedActions.filter((entry) => entry.hideFromBuilder !== true)) {
+  for (const action of decoratedActions.filter((entry) => entry.userExcluded ? revealExcluded : entry.hideFromBuilder !== true)) {
     tabs[action.tabId].all.push(action);
   }
-  for (const action of decoratedDraftOnlyActions.filter(showDisabledInBuilder)) {
+  for (const action of decoratedDraftOnlyActions.filter((entry) => entry.userExcluded ? revealExcluded : showDisabledInBuilder(entry))) {
     tabs[action.tabId].all.push(action);
   }
 
@@ -615,13 +623,13 @@ export function buildActionBuilderModel({
       .filter((action) => action.favorite)
       .toSorted((left, right) => favoriteOrder.indexOf(left.favoriteEntryKey) - favoriteOrder.indexOf(right.favoriteEntryKey));
     tab.quickened = [];
-    tab.recommended = tab.all.filter((action) => !action.disabled).slice(0, 3);
+    tab.recommended = tab.all.filter((action) => !action.disabled && !action.blockedByExclusion).slice(0, 3);
   }
   if (quickenedRemaining > 0) {
     tabs.one.quickened = quickenedShelfActions([
-      ...decoratedActions,
-      ...decoratedDraftFallbackActions,
-      ...decoratedDraftOnlyActions,
+      ...decoratedActions.filter((entry) => !entry.blockedByExclusion),
+      ...decoratedDraftFallbackActions.filter((entry) => !entry.blockedByExclusion),
+      ...decoratedDraftOnlyActions.filter((entry) => !entry.blockedByExclusion),
     ]);
   }
 

@@ -882,7 +882,7 @@ export async function addPanelUncountedAction(panel, actionKey) {
 async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit, checkBudgetAndMinion }) {
   if (!canEdit(panel)) return;
   const action = panel._findBuilderAction(actionKey);
-  if (!panel._context || !action) return;
+  if (!panel._context || !action || (action.userExcluded && globalThis.game?.user?.isGM !== true)) return;
 
   if (checkBudgetAndMinion) {
     if (isMinionBrowseAction(action)) {

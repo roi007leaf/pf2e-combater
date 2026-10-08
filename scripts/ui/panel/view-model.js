@@ -8,6 +8,7 @@ import {
 } from "../../engine/action/requirements.js";
 import { executionAction, executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
+import { canPlanSummon } from "../../integrations/summons-assistant.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
@@ -748,6 +749,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     areaPlacementToolLabel: recommendedAreaPlacement.label,
     areaPlacementToolTip: recommendedAreaPlacement.tooltip,
     canChooseSwapItems,
+    canChooseSummon: canRunStep && !isExecutionDone && canPlanSummon(action),
+    summonLabel: step?.summonPlan?.actorName
+      ? t("Summon.Planned", "{name}: placement planned", { name: step.summonPlan.actorName }) : "",
     swapItemsLabel: swapItems.label,
     swapItemsTooltip: swapItems.tooltip,
     areaLabel: stepAreaLabel,

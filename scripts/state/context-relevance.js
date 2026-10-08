@@ -81,6 +81,7 @@ function documentTokenIds(document) {
 
 function contextReferences(context) {
   const targets = [
+    ...(context?.summons ?? []),
     ...(context?.targets ?? []),
     ...(context?.battlefield?.targets ?? []),
     ...(context?.battlefield?.enemies ?? []),

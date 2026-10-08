@@ -89,6 +89,12 @@ export function activatePanelRenderBindings(panel, element) {
       panel._chooseSwapItems(button.dataset.chooseSwapItems);
     });
   }
+  for (const button of element.querySelectorAll("[data-choose-summon]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      panel._chooseSummon(button.dataset.chooseSummon);
+    });
+  }
   activateDraftDragBindings(panel, element);
 
   for (const button of element.querySelectorAll("[data-auto-fill]")) {

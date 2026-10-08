@@ -4,6 +4,8 @@ import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../en
 import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
 import { actionBudget } from "../engine/action/budget.js";
+import { toggleActionExclusion } from "../state/action-exclusions.js";
+import { choosePanelSummon } from "./panel/summon-workflow.js";
 import { buildTurnPlans } from "../engine/planner.js";
 import { createPlanState, planStateSignature } from "../engine/plan-state.js";
 import {
@@ -451,6 +453,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     return {
       builder: this._builder,
       readonly: this._builder?.readonly === true,
+      showExcluded: this._showExcludedActions === true,
       showDebug,
       actor: this._context?.actor ?? null,
       debug: {
@@ -927,6 +930,24 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _toggleFavorite(actionKey) {
     return togglePanelFavorite(this, actionKey);
+  }
+
+  async _toggleExcludedAction(actionKey) {
+    if (!this._canEditDraft()) return;
+    const action = this._findBuilderAction(actionKey);
+    if (!action || !await toggleActionExclusion(this._context, action)) return;
+    this._autoFillPreparationCache = null;
+    this._fillGapPlanCache = null;
+    await this.render({ force: true });
+  }
+
+  async _toggleExcludedVisibility() {
+    this._showExcludedActions = !this._showExcludedActions;
+    await this.render({ force: true });
+  }
+
+  async _chooseSummon(instanceId) {
+    return choosePanelSummon(this, instanceId);
   }
 
   async _setPlanPreferenceFeedback(value) {

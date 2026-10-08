@@ -159,6 +159,17 @@
       "Range": "Range {value} ft",
       "Ranged": "Ranged"
     },
+    "Summon": {
+      "Choose": "Choose summoned creature and plan placement",
+      "PlanPlacement": "Plan placement: {name}",
+      "OnlyWithArtwork": "Only creatures with artwork",
+      "ConfirmPlacement": "Confirm planned placement: {name}",
+      "Planned": "{name}: placement planned",
+      "Unavailable": "Summons Assistant is unavailable.",
+      "PlanInvalid": "Summon plan is unavailable or out of range. Choose creature and placement again.",
+      "ManualUndo": "Remove the summoned creature manually when undoing this spell.",
+      "FinishManually": "Spell already cast. Finish summoning from its chat card; do not cast again."
+    },
     "Browser": {
       "TabsAria": "PF2e Combater action costs",
       "SearchPlaceholder": "Search {label}",
@@ -168,6 +179,10 @@
       "AddToPlanAria": "Add {name} to plan",
       "AddUncounted": "Add to uncounted actions",
       "AddUncountedAria": "Add {name} to uncounted actions",
+      "HideAction": "Hide this action from Browse and Auto-fill for this actor",
+      "RestoreAction": "Restore this action to Browse and Auto-fill",
+      "ShowHidden": "Show hidden actions to restore them",
+      "HiddenForPlayers": "Hidden for players",
       "NoActions": "No actions in this section.",
       "NoContext": "No combat context available.",
       "Available": "available",

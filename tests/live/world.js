@@ -432,6 +432,40 @@ export async function runFeature({ name, fixture }) {
       );
       break;
     }
+    case 'browser-uncounted-player': {
+      await searchBrowser('raise a shield');
+      const panel = applications().find((app) => app.id === `${MODULE}-panel`);
+      if (!panelElement().querySelector('.combater-shell.is-compact')) {
+        await click(panelElement, '[data-action="toggle-compact"]');
+        await waitFor(() => panelElement()?.querySelector('.combater-shell.is-compact'), 'Compact mode did not activate');
+      }
+      const normalBefore = panel._builder.remainingNormalActions;
+      await click(browserElement, '[data-add-uncounted]');
+      await waitFor(() => panelElement()?.querySelector('.combater-uncounted-row')?.getBoundingClientRect().height > 0, 'Player Uncounted click produced no visible action in compact mode');
+      requireCondition(panel._builder.uncounted.entries.length === 1, 'Uncounted action missing from player model');
+      requireCondition(panel._builder.remainingNormalActions === normalBefore, 'Uncounted action consumed action budget');
+      details.remainingActions = normalBefore;
+      details.uncounted = panel._builder.uncounted.entries[0].name;
+      break;
+    }
+    case 'browser-hide-restore-player': {
+      await searchBrowser('raise a shield');
+      const panel = applications().find((app) => app.id === `${MODULE}-panel`);
+      const button = browserElement().querySelector('[data-exclude-action]');
+      requireCondition(button, 'Hide action control missing');
+      const key = button.dataset.excludeAction;
+      await click(browserElement, '[data-exclude-action]');
+      await waitFor(() => !browserElement()?.querySelector('[data-add-action]'), 'Hidden action still offered in Browse');
+      requireCondition(!panel._candidates.some((entry) => entry.slug === 'raise-a-shield'), 'Hidden action still eligible for Auto-fill');
+      await click(browserElement, '[data-show-excluded]');
+      await waitFor(() => browserElement()?.querySelector('[data-exclude-action]'), 'Show hidden did not offer Restore');
+      requireCondition(!browserElement().querySelector('[data-add-action]'), 'Hidden action must be restored before adding');
+      await click(browserElement, '[data-exclude-action]');
+      await waitFor(() => browserElement()?.querySelector('[data-add-action]'), 'Restore did not return action to Browse');
+      requireCondition(panel._candidates.some((entry) => entry.slug === 'raise-a-shield'), 'Restored action missing from Auto-fill');
+      details.restored = key;
+      break;
+    }
     case 'autofill-builds-legal-plan': {
       details.steps = await autoFill();
       requireCondition(details.steps <= 6, 'Auto-fill generated implausibly large action plan');

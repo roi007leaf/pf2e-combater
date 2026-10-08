@@ -19,6 +19,7 @@ import { attackableEnemies, isExtractElementAction } from "./targets.js";
 import { inActionReach } from "./tactic-helpers.js";
 import { contextAllies } from "../target-pool.js";
 import { HARD_BLOCK_SCORE } from "./weights.js";
+import { isSummonBuff, summonedRecipients } from "../../rules/summoned-creatures.js";
 
 function blockedAction(action, reason, patch = {}) {
   return {
@@ -127,6 +128,9 @@ export function blockedCandidateResult(context, action, {
   siblingSpells,
   backingStrikes,
 } = {}) {
+  if (isSummonBuff(action) && !summonedRecipients(context, action).length) {
+    return blockedAction(action, t("ScoreReason.NoSummonedRecipient", "No living creature you summoned is in range."));
+  }
   if (
     action.activityProfile?.requiresDualBackingStrike === true
     && (!Array.isArray(backingStrikes) || backingStrikes.length < 2)

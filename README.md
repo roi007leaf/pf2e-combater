@@ -76,6 +76,15 @@ to their defaults to prevent duplicate automation.
   grabbed/restrained.
 - **Action favorites.** Star an action in Browse to pin it into a dedicated Favorites section, and
   drag to reorder your favorites — saved per user, per actor.
+- **Hidden actions.** Use an action's eye button to hide it from player Browse and exclude it from
+  player Auto-fill for that actor. GMs see **Hidden for players** and can use the action normally,
+  including Add, Uncounted, and Auto-fill. **Show hidden** reveals
+  excluded actions for restoration. Existing draft steps stay intact.
+- **Summon planning.** With PF2e Summons Assistant and its dependencies active, supported creature
+  summon spells get a **Choose summon** button. Pick the creature and placement before casting;
+  execution casts normally; Summons Assistant reuses the saved creature without reopening its
+  picker or placement prompt, spawning at the saved location. Native summon effects and ownership still apply.
+  Reverting a cast requires manually removing any summoned token.
 - **Uncounted actions.** Multi-step activities such as Sudden Charge's Stride-Stride-Strike run
   alongside the main plan without spending the 3-action budget or slot tracking, and each still
   executes and reverts independently.

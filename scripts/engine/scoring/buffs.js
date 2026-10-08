@@ -1,6 +1,7 @@
 import { t } from "../../i18n.js";
 import { contextAllies, contextEnemies, selfTargetReference } from "../target-pool.js";
 import { slugify as slugText } from "../action/text.js";
+import { isSummonBuff, summonedRecipients } from "../../rules/summoned-creatures.js";
 import {
   hasAnyCondition,
   hasCondition,
@@ -116,6 +117,7 @@ export function isPrimarySpellcaster(entity) {
 }
 
 function buffRecipients(context, action) {
+  if (isSummonBuff(action)) return summonedRecipients(context, action).map((entity) => ({ entity, type: "ally" }));
   const targeting = action?.targetingProfile ?? {};
   const recipients = [];
   if (targeting.self !== false) recipients.push({ entity: selfEntity(context), type: "self" });

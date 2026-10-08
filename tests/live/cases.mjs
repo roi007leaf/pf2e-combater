@@ -16,6 +16,8 @@ export const fullCases = [
   live('panel-compact-refresh', 'panel', 'gm', true),
   live('browser-tabs-search', 'browser', 'gm', true),
   live('browser-add-remove-action', 'draft', 'gm', true),
+  live('browser-uncounted-player', 'draft', 'player'),
+  live('browser-hide-restore-player', 'browser', 'player'),
   live('autofill-builds-legal-plan', 'planner', 'gm', true),
   live('autofill-cycle-alternative', 'planner', 'gm'),
   live('resource-horizon-cycles', 'planner', 'gm'),

@@ -89,6 +89,7 @@ function contextEntities(context) {
     ...(context?.targets ?? []),
     ...(context?.enemies ?? []),
     ...(context?.allies ?? []),
+    ...(context?.summons ?? []),
     ...(context?.battlefield?.targets ?? []),
     ...(context?.battlefield?.enemies ?? []),
     ...(context?.battlefield?.allies ?? []),
@@ -587,6 +588,7 @@ export function projectContextFromPlanState(context, state) {
     targets: projectList(state, context.targets, originToken),
     enemies: projectList(state, context.enemies, originToken),
     allies: projectList(state, context.allies, originToken),
+    summons: projectList(state, context.summons, originToken),
   };
 }
 

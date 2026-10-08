@@ -346,6 +346,7 @@ export function preparePanelContext(panel) {
     draft: activeDraft,
     draftStepActions,
     favorites,
+    showExcluded: panel._showExcludedActions === true,
   });
   const sustainedSpells = readSustainedSpellEntries(context, undefined, builderModel.draft);
   panel._effectClock = buildEffectClock(context, { draft: builderModel.draft, sustainedEntries: sustainedSpells });
