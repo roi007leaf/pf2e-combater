@@ -49,6 +49,7 @@ import {
 import { contextAllies, contextEnemies, contextTargets } from "./target-pool.js";
 import { t } from "../i18n.js";
 import { contextActorDocument } from "./actor-context.js";
+import { readMovementAvailability } from "../readers/generic-action-reader.js";
 import { actionReloadCost, npcWeaponNeedsReloadAfterSteps } from "./npc-reload-state.js";
 import {
   boundedPlanPreferenceDelta,
@@ -339,6 +340,7 @@ function candidateSetupKeys(candidate) {
 }
 
 function setupPriority(step, allSteps) {
+  if (step?.slug === "escape") return -3;
   if (requiresPreviousAction(step)) return 1;
 
   if (includesStand(step)) return -2;
@@ -666,6 +668,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
   const budget = turnIntentActionBudget(context?.turnIntent, actionBudget(context));
   const planningActor = contextActorDocument(context, { allowActorFallback: true });
   const initialPlanState = createPlanState(context, { steps: reservedSteps });
+  const initialProjectedContext = projectContextFromPlanState(context, initialPlanState);
+  const requiresEscape = entityHasAnyCondition(initialProjectedContext.profile ?? initialProjectedContext.actor?.profile, ["restrained"]);
   const resolvedTactic = resolveTacticPersonality(context);
   // selectPlanningCandidates narrows the field to MAX_CANDIDATES (12) before the combinatorial
   // search below runs, for performance — a real actor can easily have 20-40+ legal candidates
@@ -688,6 +692,11 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
     ),
   );
+  // Escape must survive candidate narrowing and lead the search while Restrained.
+  const requiredEscape = requiresEscape ? eligibleCandidates.find((candidate) => candidate.slug === "escape") : null;
+  if (requiredEscape) {
+    sortedCandidates = [requiredEscape, ...sortedCandidates.filter((candidate) => actionKey(candidate) !== actionKey(requiredEscape))];
+  }
   const requiredCandidate = requiredTurnIntentCandidate(context?.turnIntent, eligibleCandidates);
   if (requiredCandidate && !sortedCandidates.some((candidate) => actionKey(candidate) === actionKey(requiredCandidate))) {
     sortedCandidates = [requiredCandidate, ...sortedCandidates];
@@ -695,7 +704,6 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
 
   const plans = [];
   const seenPlans = new Set();
-  const initialProjectedContext = projectContextFromPlanState(context, initialPlanState);
   const attackPathAvailable = hasAttackPathAvailable(initialProjectedContext, sortedCandidates);
 
   const mainSearch = createSearch(MAX_SEARCH_STATES);
@@ -741,6 +749,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       const prerequisiteSteps = steps.length || !planState.lastStep ? steps : [planState.lastStep];
       const linkedCandidate = withProjectedConditionalBonuses(projectedContext,
         inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps));
+      if (entityHasAnyCondition(projectedContext.profile ?? projectedContext.actor?.profile, ["restrained"]) && linkedCandidate.slug !== "escape") continue;
+      if (!readMovementAvailability(projectedContext, linkedCandidate).available) continue;
       const key = actionKey(candidate);
       const attackAction = isAttackAction(linkedCandidate);
       const strikeAction = isStrikeAction(linkedCandidate);
@@ -808,7 +818,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
 
       usedActions.set(key, currentUses + 1);
       steps.push(plannedCandidate);
-      const nextStartIndex = requiresPreviousAction(linkedCandidate) && candidateActionCost === 0
+      const nextStartIndex = linkedCandidate.slug === "escape" || (requiresPreviousAction(linkedCandidate) && candidateActionCost === 0)
         ? 0
         : repeatableAction ? index : index + 1;
       visit(

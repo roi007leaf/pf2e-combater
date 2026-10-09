@@ -1,5 +1,7 @@
 import { actionSlug, requiresDestinationForAction, requiresTargetForAction } from "./requirements.js";
 import { contextActorDocument } from "../actor-context.js";
+import { readMovementAvailability } from "../../readers/generic-action-reader.js";
+import { readConditions } from "../../readers/actor-profile.js";
 import { prepareAreaExecution } from "../execution/area.js";
 import {
   destinationFromStep,
@@ -40,6 +42,15 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   const resolvedAction = executionAction(step, action);
   const actor = actorDocument(context);
   const slug = actionSlug(resolvedAction);
+  // Draft projection assumes Escape succeeds; execution must use the actor's live conditions.
+  const movementContext = actor?.itemTypes?.condition
+    ? { ...context, profile: { ...(context?.profile ?? context?.actor?.profile ?? {}), conditions: readConditions(actor) } }
+    : context;
+  const movementAvailability = readMovementAvailability(movementContext, resolvedAction);
+  if (!movementAvailability.available) {
+    const error = movementAvailability.reason;
+    return { status: "failed", patch: executionPatch({}, "failed", { error }), error };
+  }
   if (step.summonPlan && !await validateSummonPlan(context, resolvedAction, step.summonPlan)) {
     const error = t("Summon.PlanInvalid", "Summon plan is unavailable or out of range. Choose creature and placement again.");
     return { status: "failed", patch: executionPatch({}, "failed", { error }), error };

@@ -667,6 +667,7 @@
       "TargetWeakness": "{target}は{types}に対する弱点{amount}を持つ。",
       "TargetMeleeThreat": "{target}は直接的な近接の脅威であり、戦術的優先度を高めている。",
       "TargetKnownSaveRank": "既知の{defense}がこの順位付けに影響した。",
+      "TargetKnownAcRank": "既知のAC {ac}が攻撃対象の順位付けに影響した。",
       "TargetBestKnownSuccessChance": "既知のうち最も高い成功率：{defense}に対して{chance}%。",
       "TargetBestKnownSuccessEstimate": "既知のうち最も高い推定成功率：{defense}に対して{chance}%。",
       "TargetKnownTraitMatch": "既知の{traits}特性がこのアクションと合致する。",

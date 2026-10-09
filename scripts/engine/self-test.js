@@ -10,6 +10,8 @@ await import("./self-test/bestiary.test.js");
 await import("./self-test/pf2e-runtime.test.js");
 await import("./self-test/live-engine-matrix.test.js");
 await import("./self-test/planner-search.test.js");
+await import("./self-test/restrained-autofill.test.js");
+await import("./self-test/attack-target-ac.test.js");
 await import("./self-test/planner-quality.test.js");
 await import("./self-test/planner-resource-budget.test.js");
 await import("./self-test/plan-state.test.js");

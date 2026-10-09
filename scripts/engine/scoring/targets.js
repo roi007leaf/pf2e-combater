@@ -7,8 +7,10 @@ import { actorItems, entityKey } from "../../foundry-data.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
 import { canStrikeTargetFromCurrentPosition } from "../../readers/action/reach.js";
 import { slugify as slugText } from "../action/text.js";
+import { normalizedActionFacts } from "../action/facts.js";
 import {
   actionTraitSlugs,
+  canUseTargetDefenses,
   canUseTargetSave,
   contextActorDocument,
   damageAdjustment,
@@ -104,6 +106,16 @@ function targetDefenseSlug(action) {
   return action?.saveProfile?.stat ?? actionSkillDcSlug(action);
 }
 
+function attackTargetAc(context, action, target) {
+  const resolution = normalizedActionFacts(action).resolution;
+  // Skill attacks use their own defense DC, and save effects do not roll against AC.
+  if (!resolution.attack || resolution.skill || resolution.saveStat || !canUseTargetDefenses(context)) return null;
+  const rawAc = target?.ac ?? target?.actor?.document?.system?.attributes?.ac?.value;
+  if (rawAc === null || rawAc === undefined || rawAc === "") return null;
+  const ac = Number(rawAc);
+  return Number.isFinite(ac) && ac > 0 ? ac : null;
+}
+
 function offensiveTargetValue(context, action, role, target) {
   if (!target) return -Infinity;
   if ((action?.targetingProfile?.maxRange || action?.range?.max || action?.range?.increment) && !inRange(action, target)) {
@@ -121,6 +133,10 @@ function offensiveTargetValue(context, action, role, target) {
     const dc = targetDc(target, defenseSlug);
     if (Number.isFinite(dc)) value += 30 - dc;
   }
+  const ac = attackTargetAc(context, action, target);
+  // A substantial hit-chance disadvantage must outweigh proximity/offense aggro cues.
+  // Keep tactical bonuses useful for close defenses rather than forcing lowest AC every time.
+  if (ac !== null) value += (30 - ac) * 4;
 
   const appliedConditions = [
     action?.activityProfile?.appliesCondition,
@@ -168,6 +184,12 @@ export function targetRankingReasons(context, action, role, target) {
   const reasons = [];
   const pressure = battlefieldPressure(context);
   let hasOutcomeReason = false;
+
+  const ac = attackTargetAc(context, action, target);
+  if (ac !== null) {
+    reasons.push(t("ScoreReason.TargetKnownAcRank", "Known AC {ac} contributed to attack target ranking.", { ac }));
+    hasOutcomeReason = true;
+  }
 
   const defenseSlug = targetDefenseSlug(action);
   if (defenseSlug && canUseTargetSave(context, target, defenseSlug)) {

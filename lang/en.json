@@ -641,6 +641,7 @@
       "TargetWeakness": "{target} has {types} weakness {amount}.",
       "TargetMeleeThreat": "{target} is an immediate melee threat, increasing tactical priority.",
       "TargetKnownSaveRank": "Known {defense} contributed to this ranking.",
+      "TargetKnownAcRank": "Known AC {ac} contributed to attack target ranking.",
       "TargetBestKnownSuccessChance": "Best known success chance: {chance}% against {defense}.",
       "TargetBestKnownSuccessEstimate": "Best known success estimate: {chance}% against {defense}.",
       "TargetKnownTraitMatch": "Known {traits} traits match this action.",

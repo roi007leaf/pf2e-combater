@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1]
+
+### Fixed
+
+- Restrained creatures start Auto-fill with Escape. Movement execution checks current actor conditions, so a planned Escape cannot allow movement while the creature remains restrained.
+- Strikes and spell attacks account for known Armor Class when selecting targets. Much easier targets can outrank heavily armored threats; save spells and skill actions continue to use their relevant defenses.
+
 ## [1.5.0]
 
 ### Added
