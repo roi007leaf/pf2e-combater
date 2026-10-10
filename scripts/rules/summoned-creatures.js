@@ -2,8 +2,9 @@ import { contextActorDocument } from "../engine/actor-context.js";
 import { contextAllies, canAttackTarget } from "../engine/target-pool.js";
 
 export function summonIdentity(actor) {
-  const owner = actor?.getFlag?.("pf2e-summons-assistant", "summoner")
-    ?? actor?.flags?.["pf2e-summons-assistant"]?.summoner;
+  // Foundry getFlag rejects inactive module scopes. Stored summon ownership
+  // remains useful even when the optional Assistant is disabled or uninstalled.
+  const owner = actor?.flags?.["pf2e-summons-assistant"]?.summoner;
   const traits = actor?.system?.traits?.value ?? [];
   return {
     summoned: Array.from(traits).includes("summoned"),

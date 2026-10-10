@@ -324,7 +324,19 @@ function sustainedSpellDuration(action) {
   return parseSpellDuration(raw, { sustained: true });
 }
 
-async function createSustainedSpellEffect(actor, action) {
+function sustainReminderHandlesCast(actor, action, message) {
+  if (globalThis.game?.modules?.get?.("pf2e-sustain-reminder")?.active !== true) return false;
+  // Sustain Reminder creates its effect in an async chat hook. Checking existing
+  // effects here races that creation, so delegate only casts its hook can handle.
+  const systemId = globalThis.game?.system?.id ?? "pf2e";
+  const tokenActor = message?.token?.actor;
+  return action?.item?.system?.duration?.sustained === true
+    && message?.flags?.[systemId]?.origin?.type === "spell"
+    && Boolean(tokenActor && (tokenActor === actor || (actor?.uuid && tokenActor.uuid === actor.uuid)));
+}
+
+async function createSustainedSpellEffect(actor, action, message) {
+  if (sustainReminderHandlesCast(actor, action, message)) return null;
   const duration = sustainedSpellDuration(action);
   if (!duration || typeof actor?.createEmbeddedDocuments !== "function") return null;
   const worldTime = numeric(globalThis.game?.time?.worldTime, null);
@@ -437,7 +449,7 @@ export async function executeNativeAction({ actor, action, event, target = null,
   }
 
   const sustainedEffectUuid = nativeResult?.spellCast === true && trackSustainedSpell
-    ? await createSustainedSpellEffect(actor, action)
+    ? await createSustainedSpellEffect(actor, action, nativeResult.message)
     : null;
 
   await flushPendingChat();

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4]
+
+### Fixed
+
+- Sustained spell execution avoids adding a duplicate tracking effect when PF2e Sustain Reminder handles the cast. Combater retains its own tracking when that module is unavailable or cannot handle the cast.
+- Opening or refreshing Combater no longer throws an invalid flag scope error when Summons Assistant is inactive or uninstalled. Stored summon ownership remains available.
+
 ## [1.5.3]
 
 ### Fixed
