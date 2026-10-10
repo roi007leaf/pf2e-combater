@@ -5,6 +5,7 @@ import { readSustainedSpellEntries } from "../sustained-spells.js";
 const saved = Object.fromEntries(["game", "canvas", "Hooks"].map((key) => [key, globalThis[key]]));
 try {
   let reminderActive = true;
+  let assistantActive = false;
   let pendingReminder;
   const effects = [];
   const spell = {
@@ -31,9 +32,16 @@ try {
         flags: {},
       }]);
     }
+    if (assistantActive && spell.slug === "summon-animal") {
+      pendingReminder = actor.createEmbeddedDocuments("Item", [{
+        type: "effect", name: "Summon Animal",
+        system: { slug: "effect-summon-animal", duration: { value: 1, unit: "minutes", sustained: true } },
+        flags: { core: { sourceId: "Compendium.pf2e.spells-srd.Item.4YnON9JHYqtLzccu" } },
+      }]);
+    }
     return message;
   } }];
-  globalThis.game = { system: { id: "pf2e" }, user: { id: "player" }, modules: { get: (id) => ({ active: id === "pf2e-sustain-reminder" && reminderActive }) } };
+  globalThis.game = { system: { id: "pf2e" }, user: { id: "player" }, modules: { get: (id) => ({ active: id === "pf2e-sustain-reminder" ? reminderActive : id === "pf2e-summons-assistant" && assistantActive }) } };
   globalThis.canvas = {};
   globalThis.Hooks = undefined;
   const action = {
@@ -67,6 +75,39 @@ try {
   spell.system.duration.sustained = false;
   await execute();
   assert.equal(effects.length, 1, "profile-only sustained spells retain tracking when native reminder ignores them");
+
+  effects.length = 0;
+  reminderActive = false;
+  assistantActive = true;
+  spell.system.duration.sustained = true;
+  action.name = "Summon Animal (Rank 3)";
+  action.castRank = 3;
+  const summonResult = await execute();
+  await pendingReminder;
+  assert.equal(effects.length, 1, "Assistant-managed rank 3 summon must not add Combater's second effect without Sustain Reminder installed");
+  assert.equal(effects[0].name, "Summon Animal");
+  assert.equal(summonResult.patch.execution.revert.ops.some((op) => op.kind === "effect"), false);
+  assert.equal(readSustainedSpellEntries(context, [action], { steps: [] })[0]?.effectIds.length, 1);
+
+  effects.length = 0;
+  assistantActive = false;
+  await execute();
+  assert.equal(effects.length, 1, "summons retain Combater tracking when Assistant is absent");
+  assert.ok(effects[0].flags["pf2e-combater"].sustainedSpell);
+
+  effects.length = 0;
+  assistantActive = true;
+  action.slug = spell.slug = "animated-assault";
+  await execute();
+  assert.equal(effects.length, 1, "active Assistant must not suppress unrelated sustained spells");
+  assert.ok(effects[0].flags["pf2e-combater"].sustainedSpell);
+
+  effects.length = 0;
+  assistantActive = false;
+  action.slug = spell.slug = "summon-animal";
+  game.modules.get = () => undefined;
+  await execute();
+  assert.equal(effects.length, 1, "uninstalled Assistant must preserve Combater summon tracking");
 } finally {
   Object.assign(globalThis, saved);
 }

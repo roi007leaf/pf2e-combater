@@ -32,6 +32,10 @@ export function summonSpellConfig(action) {
   return { sourceUuid: `Compendium.pf2e.spells-srd.Item.${spell[0]}`, traits: spell[1], rank, castRank, level: LEVELS[rank] };
 }
 
+export function summonsAssistantHandlesSpell(action) {
+  return globalThis.game?.modules?.get?.(MODULE)?.active === true && Boolean(summonSpellConfig(action));
+}
+
 export function canPlanSummon(action) {
   return Boolean(summonSpellConfig(action) && typeof api()?.summon === "function"
     && typeof globalThis.foundrySummons?.SummonMenu?.start === "function"
@@ -60,19 +64,49 @@ function summonRange(action) {
   return Number.isFinite(value) && value > 0 ? value : 30;
 }
 
+function menuLabel(key, fallback) {
+  const label = globalThis.game?.i18n?.localize?.(key);
+  return label && label !== key ? label : fallback;
+}
+
 export async function planSummon(context, action) {
   if (!canPlanSummon(action)) return null;
   const config = summonSpellConfig(action);
   const uuid = await globalThis.foundrySummons.SummonMenu.start({
     noSummon: true,
     filter: (actor) => eligibleSummon(actor, config),
+    dropdowns: [{
+      id: "sortOrder",
+      name: menuLabel("DOCUMENT.FIELDS.sort.label", "Sort Order"),
+      options: [
+        { label: `${menuLabel("PF2E.CharacterLevelLabel", "Level")} ${menuLabel(`${MODULE}.dialog.summon.sort.descending`, "(Descending)")}`, value: 0 },
+        { label: menuLabel("PF2E.CharacterLevelLabel", "Level"), value: 1 },
+      ],
+      sort: (left, right, order) => {
+        const leftLevel = Number(left?.system?.details?.level?.value ?? left?.level);
+        const rightLevel = Number(right?.system?.details?.level?.value ?? right?.level);
+        if (leftLevel === rightLevel) return String(left?.name ?? "").localeCompare(String(right?.name ?? ""));
+        return Number(order) === 1 ? leftLevel - rightLevel : rightLevel - leftLevel;
+      },
+    }, {
+      id: "traitsFilter",
+      name: menuLabel("PF2E.Traits", "Traits"),
+      options: [
+        { label: "", value: "" },
+        ...[...config.traits].sort().map((trait) => ({
+          label: menuLabel(`PF2E.Trait${trait[0].toUpperCase()}${trait.slice(1)}`, trait), value: trait,
+        })),
+      ],
+      func: (actor, selectedTrait) => !selectedTrait || Array.from(actor?.system?.traits?.value ?? [])
+        .some((trait) => String(trait).toLowerCase() === String(selectedTrait).toLowerCase()),
+    }],
     // Foundry Summons requests extra compendium fields through its filter controls.
     // Level alone is indexed by default; eligibility also requires traits and rarity.
     toggles: [{
-      id: "onlyWithArtwork",
-      name: t("Summon.OnlyWithArtwork", "Only creatures with artwork"),
-      default: false,
-      indexedFields: ["system.details.level.value", "system.traits.value", "system.traits.rarity"],
+      id: "onlyWithImages",
+      name: menuLabel(`${MODULE}.dialog.summon.filter.only-with-art`, "Only with Art"),
+      default: globalThis.game?.settings?.get?.(MODULE, "filter.default.token-with-art") ?? false,
+      indexedFields: ["system.attributes.adjustment", "system.details.level.value", "system.traits.value", "system.traits.rarity", "img"],
       func: (actor, enabled) => !enabled || Boolean(actor?.img && !actor.img.endsWith("default-icons/npc.svg")),
     }],
   }).catch((error) => {

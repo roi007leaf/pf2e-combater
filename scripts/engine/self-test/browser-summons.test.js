@@ -95,7 +95,7 @@ try {
   let selection = "Compendium.test.Actor.wolf";
   let placement = { x: 150, y: 50 };
   const wolf = { name: "Wolf", level: -1, system: { traits: { rarity: "common", value: ["animal"] } }, prototypeToken: { height: 1 } };
-  globalThis.game = { user: { isGM: false }, modules: { get: () => ({ active: true }) }, settings: { get: () => undefined } };
+  globalThis.game = { user: { isGM: false }, modules: { get: () => ({ active: true }) }, settings: { get: (_module, key) => key === "filter.default.token-with-art" ? true : undefined } };
   globalThis.window = undefined;
   globalThis.Hooks = undefined;
   globalThis.canvas = { scene: { id: "qa-scene" }, grid: { distance: 5, measurePath: () => ({ cost: 10 }) } };
@@ -103,6 +103,22 @@ try {
   globalThis["pf2e-summons-assistant"] = { summon: async () => { summons++; } };
   globalThis.foundrySummons = { SummonMenu: { start: async (options) => {
     assert.equal(options.noSummon, true, "planning must not create tokens");
+    const sorting = options.dropdowns?.find((control) => control.id === "sortOrder");
+    assert.ok(sorting, "preplanning must expose native sort-order dropdown");
+    const bear = { ...wolf, name: "Bear" };
+    assert.ok(sorting.sort(bear, wolf, 0) < 0, "equal-level creatures must sort by name");
+    const stronger = { ...wolf, level: 2, system: { ...wolf.system, details: { level: { value: 2 } } } };
+    assert.ok(sorting.sort(stronger, wolf, 0) < 0, "default sorting must show highest level first");
+    assert.ok(sorting.sort(stronger, wolf, "1") > 0, "ascending sorting must accept dropdown string values");
+    const traits = options.dropdowns.find((control) => control.id === "traitsFilter");
+    assert.ok(traits.options.some((option) => option.value === "animal"));
+    assert.equal(traits.func(wolf, "animal"), true);
+    assert.equal(traits.func(wolf, "undead"), false);
+    assert.equal(traits.func(wolf, ""), true);
+    const artwork = options.toggles.find((control) => control.id === "onlyWithImages");
+    assert.equal(artwork.default, true, "planning must honor Assistant's default artwork setting");
+    assert.equal(artwork.func({ img: "systems/pf2e/icons/default-icons/npc.svg" }, true), false);
+    assert.equal(artwork.func({ img: "wolf.webp" }, true), true);
     const indexedFields = options.toggles.flatMap((toggle) => toggle.indexedFields);
     assert.ok(indexedFields.includes("system.traits.value"), "live picker must request creature traits from compendium indices");
     assert.ok(indexedFields.includes("system.traits.rarity"), "live picker must request rarity from compendium indices");
@@ -147,6 +163,7 @@ try {
     return { x: 900, y: 900 };
   };
   let unrelatedMenus = 0;
+  const combaterEffects = [];
   const listeners = new Map();
   let nextHook = 0;
   globalThis.game.user.id = "player";
@@ -183,14 +200,17 @@ try {
     })();
     automaticFlow.catch(() => {});
   });
-  const caster = { id: "caster", system: {}, spellcasting: [{ id: "entry", cast: async () => {
+  const caster = { id: "caster", system: {}, createEmbeddedDocuments: async (_type, documents) => {
+    combaterEffects.push(...documents);
+    return documents.map((data) => ({ ...data, uuid: "Actor.caster.Item.tracker" }));
+  }, spellcasting: [{ id: "entry", cast: async () => {
     casts++;
     await globalThis.foundrySummons.SummonMenu.start({ noSummon: true });
     const message = { id: "cast-card", speaker: { actor: "caster" }, item: { id: "summon-item", slug: "summon-animal" } };
     for (const listener of [...listeners.values()]) if (listener.name === "createChatMessage") listener.callback(message, {}, "player");
     return message;
   } }] };
-  const castAction = { ...action, item: { id: "summon-item", type: "spell", system: {} }, spellcastingEntryId: "entry" };
+  const castAction = { ...action, activityProfile: { spell: true, sustained: true, duration: "1 minute" }, item: { id: "summon-item", type: "spell", system: { duration: { value: "1 minute", sustained: true } } }, spellcastingEntryId: "entry" };
   const castContext = { ...context, actor: { document: caster } };
   const invalid = await executeDraftStep({ context: castContext, step: { summonPlan: { ...plan, sceneId: "other" } }, action: castAction });
   assert.equal(invalid.status, "failed");
@@ -200,6 +220,7 @@ try {
   await automaticFlow;
   assert.equal(reopenedMenus, 0, "native chat automation must reuse the saved creature without reopening its picker");
   assert.equal(nativeTokens, 1, "native chat automation must create exactly one token");
+  assert.equal(combaterEffects.length, 0, "planned Assistant summon must not create a separate Combater sustain effect");
   assert.equal(nativePlacement.nativeSetting, true, "native placement configuration must survive");
   assert.equal(placementPrompts, 0, "execution must not ask for placement after it was planned");
   assert.equal(unrelatedPlacementPrompts, 1, "unrelated crosshairs must retain their normal interaction");

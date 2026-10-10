@@ -8,6 +8,7 @@ import { attachRevertOp, executionPatch } from "./results.js";
 import { setTarget } from "./targets.js";
 import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 import { parseActionText } from "../action/text.js";
+import { summonsAssistantHandlesSpell } from "../../integrations/summons-assistant.js";
 
 function numeric(value, fallback = null) {
   const number = Number(value);
@@ -336,7 +337,9 @@ function sustainReminderHandlesCast(actor, action, message) {
 }
 
 async function createSustainedSpellEffect(actor, action, message) {
-  if (sustainReminderHandlesCast(actor, action, message)) return null;
+  // Assistant owns supported summons through async chat automation, whether or
+  // not the draft preselected a creature. Leave their sustain reminders to it.
+  if (summonsAssistantHandlesSpell(action) || sustainReminderHandlesCast(actor, action, message)) return null;
   const duration = sustainedSpellDuration(action);
   if (!duration || typeof actor?.createEmbeddedDocuments !== "function") return null;
   const worldTime = numeric(globalThis.game?.time?.worldTime, null);

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.5]
+
+### Fixed
+
+- Supported summon spells no longer add a separate Combater sustain effect when Summons Assistant is active, including casts without a preselected creature. Combater retains its tracking when Summons Assistant is unavailable.
+- Summon preplanning offers level sorting with alphabetical name ties, spell-specific trait filtering, and Summons Assistant's default artwork filter setting.
+
 ## [1.5.4]
 
 ### Fixed
