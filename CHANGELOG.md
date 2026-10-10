@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2]
+
+### Fixed
+
+- Spells available at multiple ranks remain separate choices in Browse and Auto-fill instead of being merged as duplicates. Adding a spell preserves the selected rank through planning and casting, including prepared and spontaneous signature spells.
+- The same spell in separate spellcasting entries retains each entry's slot resources. Expending one rank no longer removes other usable ranks.
+
 ## [1.5.1]
 
 ### Fixed

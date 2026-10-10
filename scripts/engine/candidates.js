@@ -33,6 +33,11 @@ function dedupeKey(action) {
   if (action.consumableItem) {
     return `consumable-spell:${itemKey(action.consumableItem) ?? action.id ?? action.name}:${action.actionCost}`;
   }
+  // The same spell can be prepared/known at several ranks or in separate entries.
+  // Each choice has its own slot resource and must remain independently addable.
+  if (String(action.source ?? "").startsWith("spell")) {
+    return `spell:${action.spellcastingEntryUuid ?? action.spellcastingEntryId ?? ""}:${itemKey(action.item) ?? action.variantGroup ?? action.id ?? action.slug}:${action.castRank ?? action.rank ?? ""}:${action.slug}:${action.actionCost}`;
+  }
   return `${action.slug ?? action.name}:${action.actionCost}`;
 }
 
