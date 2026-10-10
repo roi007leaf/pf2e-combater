@@ -668,6 +668,10 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
+  const maxTargets = Number(requirementAction?.targetingProfile?.maxTargets);
+  const targetToolTip = maxTargets > 1
+    ? t("Panel.ChooseMultipleTargets", "Target up to {count} tokens in Foundry, then click to use them. Shift-click to use Best target.", { count: maxTargets })
+    : t("Panel.UseCurrentTarget", "Use current Foundry target. Shift-click to use Best target.");
   const canChooseDestination = requiresDestination && canRunStep && !isExecutionDone;
   const canChooseArea = requiresManualArea && canRunStep && !isExecutionDone;
   const recommendedAreaPlacement = recommendedAreaPlacementView(step, action ?? step, context, { canRunStep, isExecutionDone });
@@ -743,6 +747,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     requiresTarget,
     requiresArea,
     canChooseTarget,
+    targetToolTip,
     canChooseDestination,
     canChooseArea,
     canChooseRecommendedArea: recommendedAreaPlacement.canChoose,

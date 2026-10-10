@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.6]
+
+### Fixed
+
+- Flexible Spell Preparation only offers spells selected for the daily collection, preserving their available heightened ranks.
+- Electric Arc and other spells with multiple explicit targets retain all planned targets through native casting. Target selection guidance reflects the allowed target count, and missing or excess targets require reselection.
+
 ## [1.5.5]
 
 ### Fixed

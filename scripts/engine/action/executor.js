@@ -62,7 +62,7 @@ export async function executeDraftStep({ context, step, action = step?.action ??
   const target = requiresTargetForAction(resolvedAction) ? resolveTarget(step, resolvedAction, choices) : null;
   if (requiresTargetForAction(resolvedAction)) {
     if (!target) return { status: "needs-choice", choices: ["target"], patch };
-    patch.targetTokenIds = [target.id];
+    patch.targetTokenIds = target.ids ?? [target.id];
     patch.targetLabel = target.label;
   }
 

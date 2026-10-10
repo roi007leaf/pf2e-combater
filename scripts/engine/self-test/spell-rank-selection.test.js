@@ -55,6 +55,12 @@ const spontaneousEntry = {
 const spontaneousContext = { ...context, actor: { document: { ...actor, itemTypes: { spell: [signature], spellcastingEntry: [spontaneousEntry] }, spellcasting: [spontaneousEntry] } } };
 assert.deepEqual(fireballs(buildCandidates(spontaneousContext).candidates).map((action) => action.castRank), [3, 4, 5], "Signature spells must retain every castable rank");
 
+const flexibleEntry = { ...spontaneousEntry, isFlexible: true, system: { ...spontaneousEntry.system, prepared: { value: "prepared", flexible: true } } };
+const uncollected = { ...spell, id: "uncollected", slug: "force-barrage", name: "Force Barrage", system: { ...spell.system, slug: "force-barrage", level: { value: 1 } } };
+const flexibleContext = { ...context, actor: { document: { ...actor, itemTypes: { spell: [signature, uncollected], spellcastingEntry: [flexibleEntry] }, spellcasting: [flexibleEntry] } } };
+assert.equal(readSpellActions(flexibleContext).some((action) => action.item.id === uncollected.id), false, "Flexible preparation must exclude spellbook spells outside the selected collection");
+assert.deepEqual(fireballs(buildCandidates(flexibleContext).candidates).map((action) => action.castRank), [3, 4, 5], "Flexible collection spells can use every available rank");
+
 const secondSpell = { ...spell, id: "second-fireball", system: { ...spell.system, location: { value: "second-entry" } } };
 const secondEntry = { ...entry, id: "second-entry", system: { ...entry.system, slots: { slot3: { prepared: [{ id: secondSpell.id, expended: false }] } } } };
 const twoEntryContext = { ...context, actor: { document: { ...actor, itemTypes: { spell: [spell, secondSpell], spellcastingEntry: [entry, secondEntry] }, spellcasting: [entry, secondEntry] } } };

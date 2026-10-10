@@ -642,6 +642,9 @@ function readSpellCastRanks(spell, entry) {
   const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
   if (preparedType === "focus" || isFocusSpell(spell, entry)) return [rank];
   if (preparedType === "prepared") {
+    // Flexible preparation selects a daily collection through the spell's
+    // signature flag; available slots alone do not make the whole spellbook castable.
+    if (isFlexibleSpellcastingEntry(entry) && !spellLocationSignature(spell)) return [];
     return isFlexibleSpellcastingEntry(entry)
       ? spontaneousCastRanks(entry, spell, rank)
       : preparedCastRanks(entry, spell, rank);

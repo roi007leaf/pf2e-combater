@@ -140,6 +140,17 @@ export function setTokenTargets(tokens) {
 
 export function resolveTarget(step, action, choices) {
   for (const source of targetSelectionSources(step, action, choices)) {
+    const maxTargets = Number(action?.targetingProfile?.maxTargets ?? action?.action?.targetingProfile?.maxTargets);
+    if (Number.isInteger(maxTargets) && maxTargets > 1) {
+      const selectedIds = [...new Set(source.targetTokenIds)];
+      const tokens = [...new Set(selectedIds.map((id) => targetTokenById(id)).filter(Boolean))];
+      if (tokens.length !== selectedIds.length || tokens.length > maxTargets) return null;
+      if (tokens.length) return {
+        token: tokens[0], id: targetTokenId(tokens[0]), tokens,
+        ids: tokens.map(targetTokenId),
+        label: t("Label.Target", "Target: {name}", { name: tokens.map(targetTokenName).join(", ") }),
+      };
+    }
     const token = source.targetTokenIds.map((id) => targetTokenById(id)).find(Boolean) ?? null;
     if (token) return { token, id: targetTokenId(token), label: targetLabelFor(token) || source.targetLabel };
   }

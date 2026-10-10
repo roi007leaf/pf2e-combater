@@ -99,6 +99,7 @@
       "RevertStep": "Revert this step",
       "SetDestination": "Set destination",
       "UseCurrentTarget": "Use current Foundry target. Shift-click to use Best target.",
+      "ChooseMultipleTargets": "Target up to {count} tokens in Foundry, then click to use them. Shift-click to use Best target.",
       "SetTemplate": "Set template",
       "RemoveTemplate": "Remove template",
       "Remove": "Remove",

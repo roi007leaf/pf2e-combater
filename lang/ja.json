@@ -109,6 +109,7 @@
       "RevertStep": "このステップを元に戻す",
       "SetDestination": "目的地をセット",
       "UseCurrentTarget": "現在のFoundryのターゲットを使用する。Shiftクリックで最適なターゲットを使用する。",
+      "ChooseMultipleTargets": "Foundryで最大{count}体をターゲットにしてからクリックすると、それらを使用します。Shiftクリックで最適なターゲットを使用します。",
       "SetTemplate": "テンプレートをセット",
       "RemoveTemplate": "テンプレートを削除",
       "Remove": "削除",

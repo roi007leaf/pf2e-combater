@@ -59,7 +59,7 @@
                 {{/if}}
                 {{#if summonLabel}}<span class="combater-chip-target">{{summonLabel}}</span>{{/if}}
                 {{#if canChooseTarget}}
-                  <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}" aria-label="{{localize "PF2E_COMBATER.Panel.UseCurrentTarget"}}">
+                  <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{targetToolTip}}" aria-label="{{targetToolTip}}">
                     <i class="fa-solid fa-crosshairs"></i>
                   </button>
                 {{/if}}
@@ -507,7 +507,7 @@
                     {{/if}}
                     {{#if summonLabel}}<span class="combater-target">{{summonLabel}}</span>{{/if}}
                     {{#if requiresTarget}}
-                      <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.ChooseTarget"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseTargetAria" name=name}}"><i class="fa-solid fa-crosshairs"></i></button>
+                      <button type="button" class="combater-chip-tool" data-choose-target="{{instanceId}}" data-tooltip="{{targetToolTip}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseTargetAria" name=name}}"><i class="fa-solid fa-crosshairs"></i></button>
                     {{/if}}
                     {{#if requiresDestination}}
                       <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.ChooseDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ChooseDestinationAria" name=name}}"><i class="fa-solid fa-location-dot"></i></button>

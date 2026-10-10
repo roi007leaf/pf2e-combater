@@ -123,7 +123,7 @@ function flexibleSpell(id, name) {
     system: {
       slug: id,
       level: { value: 3 },
-      location: { value: 'flexible-entry' },
+      location: { value: 'flexible-entry', signature: true },
       time: { value: '2' },
       traits: { value: ['concentrate', 'manipulate'] },
       range: { value: '30 feet' },

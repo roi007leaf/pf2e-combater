@@ -5,7 +5,7 @@ import { chatActionRevert } from "./chat-revert.js";
 import { flushPendingChat, rollActionDamageMessages } from "./damage.js";
 import { createGuidance } from "./guidance.js";
 import { attachRevertOp, executionPatch } from "./results.js";
-import { setTarget } from "./targets.js";
+import { setTarget, setTokenTargets } from "./targets.js";
 import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 import { parseActionText } from "../action/text.js";
 import { summonsAssistantHandlesSpell } from "../../integrations/summons-assistant.js";
@@ -435,7 +435,8 @@ export async function executeOpenItem({ actor, action, event }) {
 }
 
 export async function executeNativeAction({ actor, action, event, target = null, patch = {}, trackSustainedSpell = true }) {
-  if (target?.token) setTarget(target.token);
+  if (target?.tokens) setTokenTargets(target.tokens);
+  else if (target?.token) setTarget(target.token);
   const slotBefore = spellSlotRevertOp(actor, action);
   const nativeResult = await executeOpenItem({ actor, action, event });
   const slotOp = finalizeSpellSlotRevertOp(actor, slotBefore);
