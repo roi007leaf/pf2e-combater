@@ -23,7 +23,8 @@ Avoid Notice already handles either action, Combater leaves that action to it. E
 combat-option settings transfer once when both modules are active; Visioner's old values reset
 to their defaults to prevent duplicate automation.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf) 
+[![Patreon](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/roileaf)
 
 ---
 
