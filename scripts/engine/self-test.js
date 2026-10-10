@@ -15,6 +15,7 @@ await import("./self-test/attack-target-ac.test.js");
 await import("./self-test/planner-quality.test.js");
 await import("./self-test/planner-resource-budget.test.js");
 await import("./self-test/plan-state.test.js");
+await import("./self-test/player-token-selection.test.js");
 await import("./self-test/tactical-routes.test.js");
 await import("./self-test/resource-horizon.test.js");
 await import("./self-test/turn-intent.test.js");

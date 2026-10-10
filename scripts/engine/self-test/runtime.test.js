@@ -20092,11 +20092,11 @@ try {
   );
 
   globalThis.game.user.isGM = false;
-  assert.equal(
-    readCombatContext("player-exploration-test"),
-    null,
-    "out-of-combat panel access must remain GM-only",
-  );
+  const playerExplorationContext = readCombatContext("player-exploration-test");
+  assert.equal(playerExplorationContext.actor.id, "actor-owned", "players can plan for owned selected tokens outside combat");
+  assert.equal(playerExplorationContext.isGM, false);
+  globalThis.canvas.tokens.controlled = [explorationEnemyToken];
+  assert.equal(readCombatContext("player-unowned-exploration-test"), null);
 } finally {
   globalThis.game = previousGame;
   globalThis.canvas = previousCanvas;

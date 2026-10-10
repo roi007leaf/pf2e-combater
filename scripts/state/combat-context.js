@@ -571,8 +571,8 @@ function selectedEncounterCombatant(options = {}) {
     .find((token) => isPlannableActor(tokenActor(token)));
   const selectedCombatant = selectedToken ? combatantForSelectedToken(combat, selectedToken) : null;
   if (selectedCombatant) return selectedCombatant;
-  if (selectedToken && globalThis.game?.user?.isGM === true) {
-    return explorationCombatantForToken(selectedToken);
+  if (selectedToken) {
+    return canReadActor(tokenActor(selectedToken)) ? explorationCombatantForToken(selectedToken) : null;
   }
 
   if (options.combatant) {
@@ -658,7 +658,6 @@ function isCommandableMinion(actor, candidate) {
 export function readCombatContext(refreshSource = "manual", options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
   const encounterStarted = combat?.started === true;
-  if (!encounterStarted && globalThis.game?.user?.isGM !== true) return null;
 
   const combatant = selectedEncounterCombatant({ ...options, combat });
   const actor = combatant?.actor ?? null;

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.3]
+
+### Fixed
+
+- Players can switch the Combater window by selecting an owned actor token, including eidolons, summons, and other creatures outside the combat tracker. Planning also works for owned selected tokens outside combat.
+
 ## [1.5.2]
 
 ### Fixed

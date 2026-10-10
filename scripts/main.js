@@ -599,17 +599,16 @@ Hooks.on("targetToken", (user) => {
 });
 
 // The Combater window follows the selected token instead of tracking the active combatant — for
-// both the GM and players. Selecting a combatant token switches the open panel to it. (Players can
-// only control tokens they own, so this never exposes a plan they aren't allowed to see.)
+// both the GM and players, including owned tokens outside the encounter tracker.
 Hooks.on("controlToken", (token, controlled) => {
   if (!controlled || !activePanel) return;
   if (isNonPlannableActorToken(token)) return;
+  if (game.user?.isGM !== true && !actorOwnedByUser(token?.actor ?? token?.document?.actor)) return;
   // Grabbing a token to drag selects it, firing this hook. Rebuilding the panel for the token it
   // already shows is the hitch felt at drag-start — skip it. Only a genuine switch to a different
   // combatant's token needs the rebuild.
   if (token?.id && token.id === activePanel._context?.token?.id) return;
   const combatant = combatantForSelectedToken(token);
-  if (!combatant && game.user?.isGM !== true) return;
   // Switch the planned combatant cheaply, then rebuild on the debounce. Rebuilding synchronously
   // inside this canvas-thread hook is what makes selecting a token feel laggy.
   activePanel.selectCombatant?.(combatant ?? null);
