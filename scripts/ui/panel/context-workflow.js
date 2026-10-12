@@ -1,6 +1,7 @@
 import { SETTINGS, settingOrDefault } from "../../settings.js";
 import { collectionValues } from "../../foundry-data.js";
 import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder/index.js";
+import { refreshDraftAreaPlacements } from "../../engine/action/builder/projection.js";
 import { buildCandidates } from "../../engine/candidates.js";
 import { buildTurnPlans } from "../../engine/planner.js";
 import { buildLoadoutAdvice } from "../../engine/loadout-advisor.js";
@@ -352,6 +353,7 @@ export function preparePanelContext(panel) {
   panel._effectClock = buildEffectClock(context, { draft: builderModel.draft, sustainedEntries: sustainedSpells });
   panel._movementOptions = actorMovementOptions(panel._actorForMovement(context));
   panel._weaponOptions = actorStrikeOptions(panel._actorForMovement(context), context);
+  builderModel.draft = refreshDraftAreaPlacements(context, builderModel.draft);
   panel._builder = decorateBuilder(builderModel, panel.activeTab, panel.searchQuery, {
     sustainedSpells,
     awaitingGm: panel._awaitingGm,

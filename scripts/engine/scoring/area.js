@@ -108,8 +108,9 @@ function placementEvaluator(action, context, enemyValues) {
 }
 
 function comparePlacements(left, right) {
-  if (left.score !== right.score) return right.score - left.score;
+  // Extra enemy hits must never outweigh an available placement with less friendly fire.
   if (left.allies.length !== right.allies.length) return left.allies.length - right.allies.length;
+  if (left.score !== right.score) return right.score - left.score;
   return right.enemies.length - left.enemies.length;
 }
 
@@ -142,6 +143,7 @@ function bestPlacementWithOptions(action, placements, enemyValues, allyValues) {
   const seenOutcomes = new Set();
   const distinct = [];
   for (const placement of placements) {
+    if (placement.allies.length > placements[0].allies.length) continue;
     const outcome = placementOutcomeKey(placement, enemyValues, allyValues);
     if (seenOutcomes.has(outcome)) continue;
     seenOutcomes.add(outcome);
@@ -204,7 +206,7 @@ function directionalCandidates(origin, enemyValues, distance, maxCastRange) {
 function directionalAreaPlacements(type, action, context, origin, enemyValues, allyValues, maxCastRange) {
   const distance = areaRegionDistance(action, null, 30);
   const evaluate = placementEvaluator(action, context, enemyValues);
-  return directionalCandidates(origin, enemyValues, distance, maxCastRange)
+  const placements = directionalCandidates(origin, enemyValues, distance, maxCastRange)
     .map(({ aimPoint, centerTarget, direction }) => {
       const enemies = enemyValues.filter((enemy) => directionalAreaContains(type, action, origin, direction, distance, enemy));
       const allies = allyValues.filter((ally) => directionalAreaContains(type, action, origin, direction, distance, ally));
@@ -215,8 +217,10 @@ function directionalAreaPlacements(type, action, context, origin, enemyValues, a
         allies,
         score: evaluate(enemies, allies),
       };
-    })
-    .toSorted(comparePlacements);
+    });
+  // Do not let an empty direction beat a useful attack solely because it hits no allies.
+  const useful = placements.filter((placement) => placement.enemies.length > 0);
+  return useful.toSorted(comparePlacements);
 }
 
 function pointOnScene(point) {
@@ -417,5 +421,5 @@ export function scoredAreaPlacement(action, context, { enemyValues = [], allyVal
 
   const placements = burstAreaPlacements(action, context, origin, enemyValues, allyValues, maxCastRange);
   return bestPlacementWithOptions(action, placements, enemyValues, allyValues)
-    ?? emptyPlacement(action, entitiesInArea(action, enemyValues), entitiesInArea(action, allyValues));
+    ?? emptyPlacement(action);
 }

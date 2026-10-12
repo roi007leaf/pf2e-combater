@@ -2,6 +2,9 @@ import { actionBudget } from "./action/budget.js";
 import { slugify as normalizeSlug } from "./action/text.js";
 import { combineConfidence } from "./confidence.js";
 import { normalizedActionFacts } from "./action/facts.js";
+import { scoredAreaPlacement } from "./scoring/area.js";
+import { attackableEnemies } from "./scoring/targets.js";
+import { maxRange } from "./scoring/facts.js";
 import {
   actionKey,
   inheritPlannedTarget,
@@ -249,7 +252,7 @@ function reloadCost(candidate) {
 }
 
 function hasOffensiveFollowUp(steps) {
-  return steps.some((step) => isAttackAction(step));
+  return steps.some((step) => isAttackAction(step) || normalizedActionFacts(step).resolution.offensive);
 }
 
 function hasStrikeFollowUp(steps) {
@@ -293,6 +296,39 @@ function planSpellshapesAreUseful(steps) {
     if (!isSpellshapeSetup(step)) return true;
     const nextStep = steps[index + 1];
     return Boolean(nextStep && isSpellAction(nextStep) && !isSpellshapeSetup(nextStep));
+  });
+}
+
+function planAttackRollSetupsAreUseful(steps) {
+  return steps.every((step, index) => {
+    const facts = normalizedActionFacts(step);
+    const requiresAttackRoll = step?.activityProfile?.nextAttackRollBuff === true
+      || ["sure-strike", "true-strike"].includes(facts.identity.slug);
+    if (!requiresAttackRoll) return true;
+    return steps.slice(index + 1).some((followUp) =>
+      normalizedActionFacts(followUp).resolution.type === "attack",
+    );
+  });
+}
+
+function planAreasHitEnemies(context, steps, reservedSteps, cache) {
+  return steps.every((step, index) => {
+    const facts = normalizedActionFacts(step);
+    if (!facts.targeting.area || !facts.resolution.offensive) return true;
+    const origin = projectContextFromPlanState(context, createPlanState(context, {
+      steps: [...reservedSteps, ...steps.slice(0, index)],
+    }));
+    const enemies = attackableEnemies(origin);
+    // Positionless contexts cannot resolve geometry; live canvas contexts can.
+    if (!origin.token?.center || !enemies.every((enemy) => enemy.center ?? enemy.token?.center)) return true;
+    const key = JSON.stringify([actionKey(step), origin.token.center, facts.targeting.areaType,
+      step.targetingProfile?.distance, maxRange(step), enemies.map((enemy) => [enemy.id, enemy.center ?? enemy.token?.center])]);
+    if (!cache.has(key)) {
+      cache.set(key, scoredAreaPlacement(step, origin, {
+        enemyValues: enemies, allyValues: contextAllies(origin), maxCastRange: maxRange(step),
+      }).enemies.length > 0);
+    }
+    return cache.get(key);
   });
 }
 
@@ -703,6 +739,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
   }
 
   const plans = [];
+  const areaHitCache = new Map();
   const seenPlans = new Set();
   const attackPathAvailable = hasAttackPathAvailable(initialProjectedContext, sortedCandidates);
 
@@ -736,6 +773,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       && turnIntentPlanAllowed(context?.turnIntent, steps)
       && planReloadsAreUseful(steps)
       && planSpellshapesAreUseful(orderPlanSteps(steps))
+      && planAttackRollSetupsAreUseful(orderPlanSteps(steps))
+      && planAreasHitEnemies(context, orderPlanSteps(steps), reservedSteps, areaHitCache)
     ) {
       const key = steps.map(actionKey).join("|");
         if (!seen.has(key)) {

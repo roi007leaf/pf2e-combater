@@ -221,7 +221,7 @@ export async function removePanelAreaTemplate(panel, instanceId) {
       execution: { ...current.execution, ...(revert ? { revert: { ...revert, ops } } : {}) },
     });
   } else {
-    await panel._persistActiveDraftStep(stepWithRetryReset(current, { areaMarker: null, targetTokenIds: [] }));
+    await panel._persistActiveDraftStep(stepWithRetryReset(current, { areaMarker: null, areaPlacementIndex: -1, targetTokenIds: [] }));
   }
   clearActionPreview();
   await panel.render({ force: true });

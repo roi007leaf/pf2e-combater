@@ -4,6 +4,7 @@ import {
 } from "../requirements.js";
 import { areaMarkerLabel, areaMarkerShape, areaRegionDistance, areaRegionWidth } from "../../area/region.js";
 import { createPlanState, projectContextFromPlanState } from "../../plan-state.js";
+import { scoreCandidate } from "../../scoring.js";
 
 export function draftStepIsUsable(step) {
   return step && !step.stale && step.execution?.status !== "failed";
@@ -93,4 +94,46 @@ export function projectContextForDraftDestination(context, draft) {
 export function projectContextForDraftStepOrigin(context, draft, instanceId) {
   const state = createPlanState(context, { steps: draftStepsBefore(draft, instanceId) });
   return projectContextFromPlanState(context, state);
+}
+
+// Re-score only drafted areas, rather than rebuilding every candidate for every step.
+// Movement edits must update both the AOE choices and their automatic hover template.
+export function refreshDraftAreaPlacements(context, draft) {
+  const refresh = (step) => {
+    const action = step?.action;
+    if (!draftStepIsUsable(step) || step.execution?.status === "done" || !action
+      || !requiresAreaMarkerForAction(action)) return step;
+    const origin = projectContextForDraftStepOrigin(context, draft, step.instanceId);
+    const scored = scoreCandidate(origin, action);
+    const profile = scored.activityProfile ?? {};
+    const refreshedAction = {
+      ...action,
+      activityProfile: {
+        ...action.activityProfile,
+        areaPlacementCenter: profile.areaPlacementCenter ?? null,
+        areaPlacementAimPoint: profile.areaPlacementAimPoint ?? null,
+        areaPlacementOptions: profile.areaPlacementOptions ?? [],
+      },
+    };
+    // Manual placement has index -1. Leave its marker and committed targets alone.
+    if (step.areaPlacementIndex === -1) return { ...step, action: refreshedAction };
+    const options = refreshedAction.activityProfile.areaPlacementOptions;
+    const index = Math.min(Math.max(0, step.areaPlacementIndex ?? 0), Math.max(0, options.length - 1));
+    const placement = options[index];
+    const markerAction = placement ? {
+      ...refreshedAction,
+      activityProfile: { ...refreshedAction.activityProfile, ...placement },
+    } : refreshedAction;
+    return {
+      ...step,
+      action: refreshedAction,
+      areaPlacementIndex: index,
+      areaMarker: computeAreaMarker(origin, markerAction),
+    };
+  };
+  return {
+    ...draft,
+    steps: (draft.steps ?? []).map(refresh),
+    uncounted: (draft.uncounted ?? []).map(refresh),
+  };
 }

@@ -678,7 +678,7 @@ export const REVIEWED_SPELL_TACTICS = [
     slug: "sure-strike",
     role: "buff",
     targetingProfile: { self: true, enemy: false },
-    activityProfile: { attackBuff: true, preMovementSetup: true },
+    activityProfile: { attackBuff: true, preMovementSetup: true, nextAttackRollBuff: true },
     setupFor: ["strike", "attack", "damage"],
     confidence: "high",
     reasons: ["The spell improves the caster's next attack roll."],

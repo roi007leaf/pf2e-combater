@@ -1,6 +1,6 @@
 {
   "name": "pf2e-combater",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "main": "index.js",
   "directories": {
     "doc": "docs"

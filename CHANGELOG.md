@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.7]
+
+### Fixed
+
+- AOE recommendations and automatic template previews use the caster's position after preceding planned movement. Editing or reordering movement refreshes suggestions while preserving manual template placement.
+- Damaging area placements prioritize hitting fewer allies, then enemy value. Cycling recommendations keeps placements with the least friendly fire, and Auto-fill rejects areas that hit no enemies.
+- Planned movement precedes offensive save spells as well as attack rolls, allowing short-range areas to become useful after a Stride.
+- Sure Strike is included in Auto-fill only before a later attack roll. Save spells and attack-trait skill checks no longer count as valid follow-ups.
+
 ## [1.5.6]
 
 ### Fixed

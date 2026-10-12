@@ -15645,6 +15645,10 @@ const lineDamageCandidate = {
   targetingProfile: { type: "line", distance: 30, maxRange: 30, enemy: true },
   activityProfile: { spell: true },
 };
+// These pixel-space fixtures need an explicit grid; default 1 px cells put the
+// target outside the spell and previously passed only through the empty-area fallback.
+const previousLineDamageCanvas = globalThis.canvas;
+globalThis.canvas = { grid: { size: 100, distance: 5 }, scene: { grid: { size: 100, distance: 5 } } };
 const lineDamageScored = scoreCandidate({
   ...fighterContext,
   token: { center: { x: 0, y: 0 } },
@@ -15652,6 +15656,7 @@ const lineDamageScored = scoreCandidate({
 }, lineDamageCandidate);
 assert.equal(lineDamageScored.activityProfile.areaPlacementCenter, null);
 assert.deepEqual(lineDamageScored.activityProfile.areaPlacementAimPoint, { x: 0, y: 75 });
+globalThis.canvas = previousLineDamageCanvas;
 
 const previousScoredAreaCanvas = globalThis.canvas;
 globalThis.canvas = {
@@ -15838,6 +15843,8 @@ const expelTarget = {
   center: { x: 0, y: 100 },
   token: { id: "ezren-token", uuid: "Scene.Token.ezren-token", center: { x: 0, y: 100 } },
 };
+const previousExpelCanvas = globalThis.canvas;
+globalThis.canvas = { grid: { size: 100, distance: 5 }, scene: { grid: { size: 100, distance: 5 } } };
 const expelScored = scoreCandidate({
   ...fighterContext,
   token: { id: "isqulug-token", center: { x: 0, y: 0 } },
@@ -15853,6 +15860,7 @@ const expelMarker = computeAreaMarker({ token: { id: "isqulug-token", center: { 
 assert.equal(expelMarker?.shape, "cone");
 assert.deepEqual(expelMarker?.center, { x: 0, y: 0 });
 assert.equal(expelMarker?.rotation, 90);
+globalThis.canvas = previousExpelCanvas;
 
 // An emanation needs no externally-chosen placement/aim point at all -- it's always centered on
 // the caster, unlike burst/line above which need a chosen center/aim point supplied via
