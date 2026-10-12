@@ -19,6 +19,7 @@ await import("./self-test/plan-state.test.js");
 await import("./self-test/planned-area-placement.test.js");
 await import("./self-test/area-ally-safety.test.js");
 await import("./self-test/area-planner-hit.test.js");
+await import("./self-test/enemies-only-area.test.js");
 await import("./self-test/player-token-selection.test.js");
 await import("./self-test/sustain-reminder.test.js");
 await import("./self-test/summon-identity.test.js");

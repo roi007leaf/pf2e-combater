@@ -1,6 +1,7 @@
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
 import { canvasDistancePixels as distancePixels, canvasGridSize as gridSize, canvasPoint as point, canvasTokenById, contextTokenId, numeric } from "../../rules/canvas-geometry.js";
 import { movementFootprintForToken } from "../../rules/token-geometry.js";
+import { contextEnemies } from "../target-pool.js";
 
 const AREA_MARKER_SHAPES = new Set(["burst", "cone", "cube", "cylinder", "emanation", "line", "ring", "square"]);
 
@@ -172,6 +173,13 @@ export function tokensInAreaMarker({ context, action, marker }) {
   const shape = createAreaRegionData({ context, action, marker })?.shapes?.[0];
   if (!shape) return [];
   return (globalThis.canvas?.tokens?.placeables ?? []).filter((token) => {
+    if (action?.targetingProfile?.enemiesOnly === true) {
+      const identities = [token.id, token.uuid, token.document?.id, token.document?.uuid].filter(Boolean);
+      const isEnemy = contextEnemies(context).some((enemy) => [
+        enemy.id, enemy.uuid, enemy.token?.id, enemy.token?.uuid, enemy.document?.id, enemy.document?.uuid,
+      ].some((id) => id && identities.includes(id)));
+      if (!isEnemy) return false;
+    }
     const center = point(token?.center);
     return center && pointInAreaShape(center, shape);
   });

@@ -390,6 +390,8 @@ function emptyPlacement(action, enemies = [], allies = []) {
 }
 
 export function scoredAreaPlacement(action, context, { enemyValues = [], allyValues = [], maxCastRange = Infinity } = {}) {
+  // These spells still cover allies geometrically, but cannot harm them.
+  if (action?.targetingProfile?.enemiesOnly === true) allyValues = [];
   const type = String(action?.targetingProfile?.type ?? "area").toLowerCase();
   const distance = areaRegionDistance(action, null, 30);
   const origin = targetCenter(context?.token);

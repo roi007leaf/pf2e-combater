@@ -217,6 +217,14 @@ function targetText(spell) {
   return normalizeText(systemValue(spell?.system?.target) ?? spell?.system?.target ?? "");
 }
 
+function hasEnemiesOnlyArea(spell) {
+  // Explicit recipient wording only. "enemy: true" merely identifies an offensive
+  // spell; it does not make Fireball safe, or resolve legacy alignment immunities.
+  if (/^(?:all\s+)?(?:enemies|foes)(?:\s+in\s+(?:the|this)\s+area)?$/.test(targetText(spell))) return true;
+  const text = spellText(spell).replace(/@damage\[.*?\](?:\{[^}]*\})?(?=\s|[.,;])/gi, "damage");
+  return /\bdeal(?:s)?\s+[^.!?]{0,160}\bdamage\s+to\s+(?:all\s+)?(?:enemies|foes)\s+in\s+(?:the|this)\s+area\b/.test(text);
+}
+
 function targetsSelfOnly(spell, rangeProfile) {
   if (rangeProfile.self) return true;
   const target = targetText(spell);
@@ -479,6 +487,9 @@ export function classifySpell(spell) {
       distance: result.targetingProfile?.distance ?? templates[0].distance,
       templates,
     };
+  }
+  if (result.targetingProfile?.area === true && hasEnemiesOnlyArea(spell)) {
+    result.targetingProfile = { ...result.targetingProfile, enemiesOnly: true };
   }
   return result;
 }

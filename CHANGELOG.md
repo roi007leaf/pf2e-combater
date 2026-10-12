@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.8]
+
+### Fixed
+
+- AOE suggestions recognize explicit enemies-only spell wording, including remastered Divine Wrath. Allies inside these areas no longer reduce placement scores, and automatic template targeting excludes allies, the caster, and neutral creatures. Ordinary damaging spells retain friendly-fire avoidance.
+
 ## [1.5.7]
 
 ### Fixed
