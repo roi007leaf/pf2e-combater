@@ -10,4 +10,5 @@ web-bundles/
 .playwright-cli/
 output/playwright/
 artifacts/
+docs/
 .playwright-mcp/
