@@ -168,6 +168,15 @@ const resolvedReloadDraft = buildActionBuilderModel({
 });
 assert.equal(resolvedReloadDraft.draft.steps[0].action?.executable, "reload-weapon");
 assert.equal(resolvedReloadDraft.draft.steps[0].stale, false, "synthetic Reload must resolve after the Auto-fill draft rerenders");
+const repeatedShotKey = actionKeyForPanelStep(keyPanel, loadedAtoms[2]);
+assert.equal(repeatedShotKey, preparedSling.id, "repeated Reload -> Strike must persist the original Sling key");
+const repeatedShotDraft = buildActionBuilderModel({
+  context,
+  candidates: [preparedSling],
+  draft: { steps: [{ instanceId: "second-shot", actionKey: loadedAtoms[2].id, actionCost: 1 }] },
+});
+assert.equal(repeatedShotDraft.draft.steps[0].action?.item?.id, preparedSling.item.id, "older repeated-shot keys recover the same native attack");
+assert.equal(repeatedShotDraft.draft.steps[0].stale, false);
 
 const previousGame = globalThis.game;
 const previousCanvas = globalThis.canvas;

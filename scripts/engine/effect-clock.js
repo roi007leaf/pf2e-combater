@@ -193,7 +193,7 @@ function compareEntries(left, right) {
 
 function groupView(id, entries) {
   const labels = {
-    attention: t("EffectClock.Group.Attention", "Attention this turn"),
+    attention: t("EffectClock.Group.ThisTurn", "This turn"),
     soon: t("EffectClock.Group.Soon", "Within 2 rounds"),
     handled: t("EffectClock.Group.Handled", "Handled this turn"),
     later: t("EffectClock.Group.Later", "Later"),

@@ -1,4 +1,8 @@
 import { MODULE_ID } from "./constants.js";
+import { registerActionTrackerHooks } from "./state/action-tracker.js";
+import { delayedTurn, handleTurnControl, registerTurnControlHooks } from "./state/turn-controls.js";
+import { registerReadyMarkerHooks } from "./ui/ready-marker.js";
+import { registerUpcomingTurnHooks } from "./ui/panel/upcoming-turns.js";
 import { migrateDeprecatedFlankingRule, migrateVisionerCombatSettings, playerAccessAllowed, registerSettings, setting, SETTINGS } from "./settings.js";
 import { applyCombatStartCharacterActions } from "./combat-start-character-actions.js";
 import { registerFlankingSizeRuleWrapper } from "./flanking/flanking-size-rule.js";
@@ -131,6 +135,8 @@ function inlineTurnCombatant(combat = game.combat) {
 }
 
 function previousTurnCombatant(combat = game.combat) {
+  const previous = combat?.combatants?.get?.(combat.previous?.combatantId);
+  if (previous) return previous;
   const turns = collectionValues(combat?.turns);
   if (!turns.length) return null;
   const turnIndex = Number(combat?.turn);
@@ -283,6 +289,11 @@ function scheduleDocumentRefresh(document, source) {
   scheduleRefresh(source);
 }
 
+registerActionTrackerHooks(scheduleRefresh);
+registerTurnControlHooks(scheduleRefresh);
+registerReadyMarkerHooks();
+registerUpcomingTurnHooks(scheduleRefresh);
+
 function tokenUpdateChangesTacticOverride(changed) {
   const flags = changed?.flags?.[MODULE_ID];
   return Boolean(flags && (
@@ -407,6 +418,7 @@ Hooks.once("socketlib.ready", () => {
   socket.register("resolveRecallKnowledge", resolveRecallKnowledgeRequest);
   socket.register("receiveSharedDraft", receiveSharedDraft);
   socket.register("liveEngineMatrixPing", respondLiveEngineMatrixPing);
+  socket.register("turnControl", handleTurnControl);
   setSocket(socket);
 });
 
@@ -541,14 +553,18 @@ Hooks.on("deleteCombat", (combat) => {
 // persists through the whole turn and resets only afterward — not at the start of each round.
 function clearEndedTurnDraft(combat) {
   const ended = previousTurnCombatant(combat);
-  if (!ended) return;
+  if (!ended || delayedTurn(ended)) return;
   const context = { combat, combatant: ended };
   clearDraftPlan(context);
   clearSharedDraftPlan(context).catch((error) => console.warn(`${MODULE_ID} | Shared draft cleanup failed`, error));
 }
 
-Hooks.on("updateCombat", async (combat, changed) => {
+Hooks.on("updateCombat", async (combat, changed, options = {}) => {
   if (combat !== game.combat) return;
+  if (options.turnEvents === false) {
+    if (activePanel) await activePanel.refresh("combat-order");
+    return;
+  }
   if (!combat.started) {
     clearLockedTurnIntentsForCombat(combat);
     activePanel?.resetTurnIntent(combat);
@@ -580,7 +596,7 @@ Hooks.on("preUpdateToken", (token, changed) => {
 Hooks.on("updateToken", (token, changed, options) => {
   const movementSpent = markMovementActionSpent(token, { changed, options });
   if (tokenUpdateChangesTacticOverride(changed)) scheduleRefresh("tactic-update");
-  if (!tokenUpdateAffectsCombatGeometry(changed)) return;
+  if (!tokenUpdateAffectsCombatGeometry(changed) && !("_movementHistory" in changed)) return;
   scheduleRefresh(movementSpent ? "token-movement" : "token-update");
 });
 

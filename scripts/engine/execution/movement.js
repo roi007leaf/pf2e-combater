@@ -348,7 +348,7 @@ export async function executeMovement({ context, step, action, choices }) {
       };
     }
     const id = movementId();
-    const moved = await document.move(waypoints, { id, method: "api", showRuler: true });
+    const moved = await document.move(waypoints, { id, method: "api", showRuler: true, ...(context?.actionTracker ? { combaterActionSpend: true } : {}) });
     if (!moved) {
       const stoppedAt = expectedMovementPoint(document);
       if (origin && movementStateChanged(origin, stoppedAt)) {
@@ -384,7 +384,7 @@ export async function executeMovement({ context, step, action, choices }) {
       };
     }
     const id = movementId();
-    const moved = await document.move(waypoint, { id, method: "api", showRuler: true });
+    const moved = await document.move(waypoint, { id, method: "api", showRuler: true, ...(context?.actionTracker ? { combaterActionSpend: true } : {}) });
     if (!moved) {
       const stoppedAt = expectedMovementPoint(document);
       if (origin && movementStateChanged(origin, stoppedAt)) {
@@ -420,7 +420,7 @@ export async function executeMovement({ context, step, action, choices }) {
     x: waypoint.x,
     y: waypoint.y,
     ...(waypoint.elevation === undefined ? {} : { elevation: waypoint.elevation }),
-  });
+  }, context?.actionTracker ? { combaterActionSpend: true } : {});
   return {
     status: "done",
     patch: executionPatch({ destination }, "done", { result: t("Exec.MovedToken", "Moved token."), revert: revertFor(waypoint) }),
@@ -441,7 +441,7 @@ export async function teleportTokenTo(context, action, destination, origin) {
     const elevation = numeric(waypoint.elevation);
     await document.update(
       { x: waypoint.x, y: waypoint.y, ...(elevation === null ? {} : { elevation }) },
-      { animate: false },
+      { animate: false, ...(context?.actionTracker ? { combaterActionSpend: true } : {}) },
     );
   }
   return origin && moveTokenId

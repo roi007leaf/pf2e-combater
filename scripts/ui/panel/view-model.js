@@ -88,13 +88,17 @@ function actionImage(source) {
     ?? GENERIC_ACTION_IMG;
 }
 
-function finiteScoreLabel(...sources) {
+function finiteScore(...sources) {
   for (const source of sources) {
     const value = Number(source?.autoFillScore ?? source?.score);
-    if (!Number.isFinite(value)) continue;
-    return t("Panel.ScoreLabel", "Score {score}", { score: Math.round(value) });
+    if (Number.isFinite(value)) return value;
   }
-  return "";
+  return null;
+}
+
+function finiteScoreLabel(...sources) {
+  const value = finiteScore(...sources);
+  return value === null ? "" : t("Panel.ScoreLabel", "Score {score}", { score: Math.round(value) });
 }
 
 function whyReasonKey(reason) {
@@ -151,6 +155,7 @@ function whyDetails(...sources) {
     label: t("Panel.WhyThisPlan", "Why"),
     title: t("Panel.WhyThisPlanTitle", "Why this plan?"),
     scoreLabel,
+    score: finiteScore(...sources),
     summary,
     reasons,
     tooltip: scoreLabel ? `${scoreLabel}: ${summary}` : summary,
@@ -627,6 +632,27 @@ function recommendedAreaPlacementView(step, action, context, { canRunStep, isExe
   };
 }
 
+// Traits that change a decision stay inline; the rest collapse into a "+N" chip.
+const DECISION_TRAITS = ["agile", "nonlethal", "reach", "sweep", "forceful", "backswing", "twin", "deadly", "fatal", "propulsive", "volley", "splash"];
+const INLINE_TRAIT_LIMIT = 2;
+
+export function compactTraitChips(chips) {
+  const list = Array.isArray(chips) ? chips : [];
+  if (list.length <= INLINE_TRAIT_LIMIT + 1) return { chips: list, overflow: null };
+  const key = (chip) => String(chip?.slug ?? chip?.label ?? "").toLowerCase();
+  const important = list.filter((chip) => DECISION_TRAITS.some((trait) => key(chip).startsWith(trait)));
+  const inline = (important.length ? important : list).slice(0, INLINE_TRAIT_LIMIT);
+  const rest = list.filter((chip) => !inline.includes(chip));
+  return {
+    chips: inline,
+    overflow: { label: `+${rest.length}`, tooltip: rest.map((chip) => chip.label).join(", ") },
+  };
+}
+
+function signedNumber(value) {
+  return `${value >= 0 ? "+" : "−"}${Math.abs(value)}`;
+}
+
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
@@ -641,6 +667,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const requiresArea = requiresAreaMarkerForAction(requirementAction);
   const requiresManualArea = requiresArea && !isSelfCenteredAreaAction(requirementAction) && !isTargetCenteredAreaAction(requirementAction);
   const stepTraitChips = traitChips(action ?? step);
+  const compactTraits = compactTraitChips(stepTraitChips);
   const status = executionStatus(step);
   const isExecutionDone = status === "done";
   const canRunStep = readonly !== true || gmExecute === true;
@@ -664,7 +691,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
   const rkWarnings = isExecutionDone ? [] : rkWarningsForStep(context, step, action ?? step);
   const advisoryWarning = rkWarningLabel(rkWarnings);
-  const warning = isExecutionDone ? "" : (readiness.warning || rawWarning || advisoryWarning);
+  const warning = isExecutionDone || step?.quickenedNextTurn ? "" : (readiness.warning || rawWarning || advisoryWarning);
   const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
@@ -678,13 +705,16 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const swapItems = swapItemsView(step, action ?? step);
   const canChooseSwapItems = swapItems.visible && canRunStep && !isExecutionDone;
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
-  const canDuplicateStep = readonly !== true && !step?.groupId && !minionPlanAsChildren;
+  const canDuplicateStep = readonly !== true && !step?.groupId && !step?.quickenedNextTurn && !minionPlanAsChildren;
   const canRemoveDraftStep = readonly !== true && !minionPlanAsChildren;
   const isAttackStep = Number.isFinite(step?.attackIndex);
   const mapPenaltyValue = Number(step?.mapPenalty) || 0;
   const mapToolLabel = mapPenaltyValue > 0
     ? t("Panel.MapValue", "MAP -{penalty}", { penalty: mapPenaltyValue })
     : t("Panel.MapFull", "MAP 0");
+  const strikeTotal = Number(action?.strike?.totalModifier ?? action?.attackModifier);
+  const attackBonusLabel = isAttackStep && action?.source === "strike" && Number.isFinite(strikeTotal)
+    ? signedNumber(strikeTotal - mapPenaltyValue) : "";
   const mapPinned = step?.mapPinned === true;
   const mapToolTip = mapPinned
     ? t("Panel.MapPinned", "MAP pinned to {label}. Click to cycle.", { label: mapToolLabel })
@@ -764,6 +794,12 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     executionStatus: status,
     executionLabel: executionLabel(step),
     executionTooltip: step?.execution?.error ?? executionLabel(step),
+    quickenedNextTurnLabel: t("ActionTracker.QuickenedPending", "Quickened · next turn"),
+    quickenedNextTurnHint: t("ActionTracker.NextTurnRecommendationHint", "Quickened recommendation for next turn. Auto-fill again when your turn starts."),
+    quickenedActionLabel: t("ActionTracker.Quickened", "Quickened"),
+    quickenedActionHint: isExecutionDone
+      ? t("ActionTracker.QuickenedActionUsedHint", "Used your restricted Quickened action.")
+      : t("ActionTracker.QuickenedActionHint", "Uses your restricted Quickened action."),
     isExecutionDone,
     isExecutionFailed: status === "failed",
     canShowExecuteStep,
@@ -778,7 +814,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
           : (advisoryWarning ? `${t("Panel.ExecuteStep", "Execute this step")} ${advisoryWarning}` : t("Panel.ExecuteStep", "Execute this step"))),
     awaitingGm: isAwaitingGm,
     awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM\u2026"),
-    canCycleMap: isAttackStep && canRunStep && !isExecutionDone,
+    canCycleMap: isAttackStep && canRunStep && !isExecutionDone && !step?.quickenedNextTurn,
     mapToolLabel,
     mapToolTip,
     mapPinned,
@@ -798,7 +834,9 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canDragStep: canEditStepOrder,
     canRevertStep: !minionPlanAsChildren && isExecutionDone && canRunStep,
     warning,
-    traitChips: stepTraitChips,
+    attackBonusLabel,
+    traitChips: compactTraits.chips,
+    traitOverflow: compactTraits.overflow,
     hasTraitChips: stepTraitChips.length > 0,
     hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || swapItems.label || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
   };
@@ -912,6 +950,11 @@ function injectMapInfo(steps, startCount = 0) {
   while (i < list.length) {
     const step = list[i];
     const action = step?.action ?? step;
+    if (step?.quickenedNextTurn) {
+      tagged.push({ ...step, attackIndex: undefined, mapPenalty: 0 });
+      i += 1;
+      continue;
+    }
     if (!isAttackAction(action)) {
       tagged.push(step);
       i += 1;
@@ -966,6 +1009,7 @@ export function groupDraftSteps(steps) {
     }
     const prefix = `${members[0].groupLabel} -> `;
     const groupTraitChips = traitChips({ traits: members[0].groupTraits ?? [], item: members[0].groupItem ?? null });
+    const compactGroupTraits = compactTraitChips(groupTraitChips);
     grouped.push({
       isGroup: true,
       groupLabel: members[0].groupLabel,
@@ -975,8 +1019,10 @@ export function groupDraftSteps(steps) {
       canDragStep: members[0].canDragStep,
       groupItem: members[0].groupItem ?? null,
       groupUuid: members[0].groupUuid ?? null,
-      traitChips: groupTraitChips,
+      traitChips: compactGroupTraits.chips,
+      traitOverflow: compactGroupTraits.overflow,
       hasTraitChips: groupTraitChips.length > 0,
+      actionCost: members[0].actionCost ?? members[0].cost ?? members[0].action?.actionCost,
       children: members.map((member) => ({
         ...member,
         name: member.name?.startsWith(prefix) ? member.name.slice(prefix.length) : member.name,
@@ -1122,5 +1168,95 @@ export function markManualDraft(draft) {
     source: "manual",
     autoFillPlanId: null,
     autoFillPlanSummary: "",
+  };
+}
+
+function layoutCost(entry) {
+  const cost = Number(entry?.actionCost ?? entry?.cost ?? entry?.action?.actionCost ?? entry?.action?.cost);
+  return Number.isInteger(cost) && cost > 0 ? Math.min(3, cost) : 0;
+}
+
+function starRow(score, best) {
+  if (!Number.isFinite(score) || !(best > 0)) return null;
+  const ratio = score / best;
+  const filled = ratio >= 0.95 ? 3 : ratio >= 0.8 ? 2 : 1;
+  return [0, 1, 2].map((index) => ({ on: index < filled }));
+}
+
+function hasMoreStepTools(step) {
+  const live = !step?.isExecutionDone && Boolean(step?.canChooseSummon || step?.summonLabel || step?.canChooseTarget
+    || step?.canChooseDestination || step?.canChooseArea || step?.canChooseRecommendedArea || step?.canChooseSwapItems
+    || step?.canCycleMovement || step?.canCycleRoute || step?.canCycleDestination || step?.canCycleWeapon);
+  return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep || step?.canRemoveDraftStep);
+}
+
+// Numbers each top-level step, maps pending steps onto the remaining action
+// diamonds, ranks reasons as stars, and lifts a target every step shares.
+export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
+  const entries = Array.isArray(headerSteps) ? headerSteps : [];
+  const flat = entries.flatMap((entry) => (entry?.isGroup ? entry.children ?? [] : [entry])).filter((step) => step?.instanceId);
+  const best = Math.max(0, ...flat.map((step) => Number(step.why?.score)).filter(Number.isFinite));
+  const targeted = flat.filter((step) => !step.isExecutionDone && step.targetLabel);
+  const targets = targeted.map((step) => step.targetLabel);
+  const intelStep = targeted.find((step) => step.canOpenTargetIntel);
+  const shared = targets.length >= 2 && targets.every((label) => label === targets[0])
+    && flat.filter((step) => !step.isExecutionDone && step.requiresTarget).every((step) => step.targetLabel === targets[0])
+    ? targets[0] : "";
+  const pipOwners = [];
+  let quickenedOwner = null;
+  const decorateStep = (step, stepNumber, slots) => ({
+    ...step,
+    stepNumber,
+    pipSlots: slots,
+    hideTarget: Boolean(shared && step.targetLabel === shared),
+    toolsOpen: Boolean(openTools?.has?.(step.instanceId)),
+    hasMoreTools: hasMoreStepTools(step),
+    moreToolsLabel: t("Panel.MoreStepTools", "More options"),
+    moreToolsTargetLabel: t("Panel.MoreTarget", "Target"),
+    moreToolsDuplicateLabel: t("Panel.MoreDuplicate", "Duplicate"),
+    moreToolsRemoveLabel: t("Panel.MoreRemove", "Remove"),
+    why: step.why ? { ...step.why, stars: starRow(Number(step.why.score), best) } : step.why,
+  });
+  const steps = entries.map((entry, index) => {
+    const stepNumber = index + 1;
+    const lead = entry?.isGroup ? entry.children?.[0] : entry;
+    const done = entry?.isGroup ? entry.children?.every((child) => child.isExecutionDone) : entry?.isExecutionDone;
+    let slots = "";
+    if (!done && !lead?.quickenedNextTurn) {
+      if (lead?.usesQuickened) {
+        quickenedOwner = stepNumber;
+        slots = "q";
+      } else {
+        const cost = layoutCost(entry?.isGroup ? entry : lead);
+        const start = pipOwners.length;
+        for (let count = 0; count < cost; count += 1) pipOwners.push(stepNumber);
+        slots = Array.from({ length: cost }, (_, offset) => start + offset).join(" ");
+      }
+    }
+    if (!entry?.isGroup) return decorateStep(entry, stepNumber, slots);
+    return { ...entry, stepNumber, pipSlots: slots, children: entry.children.map((child) => decorateStep(child, null, slots)) };
+  });
+  const runnable = flat.filter((step) => step.canShowExecuteStep && !step.isExecutionDone && !step.quickenedNextTurn);
+  const next = runnable[0] ?? null;
+  return {
+    steps,
+    pipOwners,
+    quickenedOwner,
+    sharedTarget: shared ? {
+      label: shared,
+      prefix: t("Panel.SharedTargetPrefix", "All steps target"),
+      intelKey: intelStep?.targetIntelKey ?? "",
+      intelTooltip: intelStep?.targetIntelTooltip ?? "",
+    } : null,
+    footer: next ? {
+      visible: true,
+      instanceId: next.instanceId,
+      blocked: Boolean(next.executionBlocked),
+      label: t("Panel.RunNext", "Run next: {name}", { name: next.name }),
+      tooltip: next.executeTooltip,
+      canRunAll: runnable.length > 1,
+      runAllLabel: t("Panel.RunAll", "Run all"),
+      runAllTooltip: t("Panel.RunAllTooltip", "Run the remaining steps in order. Stops at the first step that needs a choice or fails."),
+    } : { visible: false },
   };
 }

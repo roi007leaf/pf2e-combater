@@ -7,7 +7,7 @@ function randomId(prefix) {
   return `${prefix}-${globalThis.foundry?.utils?.randomID?.() ?? Date.now()}`;
 }
 
-export function loadoutWindowView(advice = []) {
+export function loadoutWindowView(advice = [], actorName = "") {
   const recommendations = (Array.isArray(advice) ? advice : []).map((entry, index) => {
     const scoreLabel = t("Loadout.Score", "+{score} fit", { score: entry.score });
     const explanation = (Array.isArray(entry?.reasons) ? entry.reasons : []).join(" ");
@@ -16,14 +16,17 @@ export function loadoutWindowView(advice = []) {
       rank: index + 1,
       best: index === 0,
       scoreLabel,
+      bestLabel: t("Loadout.Best", "Best"),
+      addLabel: t("Loadout.AddSwap", "Add swap to plan"),
       fitTooltip: explanation
         ? t("Loadout.FitTooltip", "Why {score}: {explanation}", { score: scoreLabel, explanation })
         : t("Loadout.FitTooltipFallback", "{score} for current battlefield conditions.", { score: scoreLabel }),
     };
   });
   return {
-    title: t("Loadout.Title", "Loadout Advisor"),
-    help: t("Loadout.Help", "Battlefield-aware gear swaps. Advice uses current targets, known defenses, range, reload, hands, and PF2e-derived strikes."),
+    title: actorName ? t("Loadout.TitleFor", "Loadout · {name}", { name: actorName }) : t("Loadout.Title", "Loadout Advisor"),
+    help: t("Loadout.HelpShort", "Gear swaps that suit the current battlefield."),
+    closeLabel: t("Dialog.Close", "Close"),
     recommendations,
     hasRecommendations: recommendations.length > 0,
     empty: t("Loadout.Empty", "Current held gear already fits visible battlefield conditions."),

@@ -14,6 +14,12 @@ export function isSocketReady() {
   return socket != null;
 }
 
+export async function requestTurnControl(args) {
+  const gm = globalThis.game?.users?.activeGM;
+  if (!socket || !gm) return null;
+  return socket.executeAsUser("turnControl", gm.id, args);
+}
+
 // PLAYER → active GM: ask for the Retch save DC. Resolves to a DC number, or null when no GM is
 // connected / socketlib is unavailable (the caller then falls back to a local prompt).
 export async function requestRetchDc(args = {}) {

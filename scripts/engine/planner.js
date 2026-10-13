@@ -1,4 +1,4 @@
-import { actionBudget } from "./action/budget.js";
+import { actionBudget, quickenedEligible } from "./action/budget.js";
 import { slugify as normalizeSlug } from "./action/text.js";
 import { combineConfidence } from "./confidence.js";
 import { normalizedActionFacts } from "./action/facts.js";
@@ -88,8 +88,6 @@ const DIVERSITY_LOOKAHEAD = 12;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const MAP_SCORE_WEIGHT = 3;
-// Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
-const QUICKENED_ALLOWED_SLUGS = new Set(["strike", "stride"]);
 const DIVERSE_CANDIDATE_CATEGORIES = [
   "strike",
   "class",
@@ -479,9 +477,9 @@ export function attacksTowardMap(candidate) {
   return 1;
 }
 
-function quickenedCapacity(candidate, repeatReloadCost = 0) {
-  if (candidate.actionCost === 1 && QUICKENED_ALLOWED_SLUGS.has(candidate.slug)) return 1;
-  if (repeatReloadCost > 0 && isStrikeAction(candidate)) return 1;
+function quickenedCapacity(candidate, repeatReloadCost = 0, context = {}) {
+  if (quickenedEligible(candidate, candidate.actionCost, context)) return 1;
+  if (repeatReloadCost > 0 && isStrikeAction(candidate) && quickenedEligible({ slug: "strike" }, 1, context)) return 1;
   return 0;
 }
 
@@ -700,7 +698,28 @@ function diversifyPlanOrder(sortedPlans, budget) {
   return [...ordered, ...tail];
 }
 
-export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true } = {}) {
+export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true, includePendingQuickened = true } = {}) {
+  if (includePendingQuickened && context?.actionTracker?.quickenedPending
+    && context.actionTracker.nextTurnPool?.quickenedActions > 0 && context.quickenedAllowed?.length) {
+    // A future recommendation is separate from this turn's search: it cannot buy a
+    // fourth action now, satisfy a prerequisite, reserve a resource, or increase MAP.
+    const currentPlans = buildTurnPlans(context, candidates, { reservedSteps, includeCoverage, includePendingQuickened: false });
+    const futureContext = {
+      ...context,
+      turnActionPool: { ...context.actionTracker.nextTurnPool, normalActions: 0, quickenedActions: 1, totalActions: 1 },
+      actionsSpent: { normal: 0, quickened: 0, total: 0 },
+      turnIntent: null,
+    };
+    const allowed = candidates.filter((action) => quickenedEligible(action, action.actionCost, context));
+    const recommendation = buildTurnPlans(futureContext, allowed, { includeCoverage: false, includePendingQuickened: false })
+      .find((plan) => plan.steps.length === 1)?.steps[0];
+    if (!recommendation) return currentPlans;
+    return currentPlans.map((plan) => ({
+      ...plan,
+      steps: [...plan.steps, { ...recommendation, quickenedNextTurn: true }],
+      nextTurnCost: 1,
+    }));
+  }
   const budget = turnIntentActionBudget(context?.turnIntent, actionBudget(context));
   const planningActor = contextActorDocument(context, { allowActorFallback: true });
   const initialPlanState = createPlanState(context, { steps: reservedSteps });
@@ -814,7 +833,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost;
 
       let nextNormalCost = normalCost + candidateActionCost;
-      const nextQuickenedEligibleActions = quickenedEligibleActions + quickenedCapacity(candidate, repeatReloadCost);
+      const nextQuickenedEligibleActions = quickenedEligibleActions + quickenedCapacity(candidate, repeatReloadCost, context);
       const quickenedApplied = Math.min(
         budget.quickenedActions,
         nextQuickenedEligibleActions,

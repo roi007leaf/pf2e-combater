@@ -10,6 +10,79 @@ battlefield around it, and helps you **plan a whole turn, see it on the canvas, 
 by step** (with one-click undo). GMs get tactical recommendations for the creatures they run;
 players plan their own turns.
 
+## Live action tracker
+
+A compact turn-order strip under the header shows the next two creatures. It follows
+initiative and Delay changes, marks round wraparound, and respects hidden combatants and
+skip-defeated settings. Click a creature to pan to its visible token on the current scene
+without changing token selection or zoom. Reduced-motion preferences disable the slide
+transition. Turn off **Show turn navigation** in module settings to hide the strip and
+turn controls on your client.
+
+**End turn** advances the current combatant through Foundry's normal turn handling.
+Owners can end their own turn; the GM can end the active turn. The **▾** beside it opens
+**Delay** and **Ready**; each explains in place why it is unavailable. **Delay** is available
+at turn start before tracked actions are spent. Choose a visible creature to return
+after (earlier turns are marked **next round**); Combater schedules that initiative
+position, advances combat, and keeps the plan and remaining allowance for the return.
+Players see their waiting status. The GM sees **Bring in now** for waiting creatures;
+this ends the current turn and resumes the chosen creature immediately. Player turn
+controls require socketlib and a connected GM. Delaying forbids reactions; PF2e's
+native turn effects still run when the turn is delayed.
+
+**Ready** (2 actions) prepares a single action and ends the turn. Pick a Strike, Stride,
+Step, Raise a Shield (when holding a shield), Interact, or type another action; a readied
+Strike keeps the multiple attack penalty you had when you readied it. Declare the trigger
+at the table. The token shows an amber ring with a bullseye badge until the creature's next
+turn starts (visible to everyone for player characters, GM-only for GM creatures), and the
+panel shows **Readied · <action>** with **Use** and **Discard**. **Use** rolls a readied Strike
+at its stored MAP and spends the creature's reaction; **Reaction used** shows until its next
+turn. When PF2e Reaction Checker is active, its reaction state is updated too.
+
+Outside your turn, the tracker shows **Next turn** with the expected action total and
+current slowed, stunned, and quickened conditions. Auto-fill uses that upcoming budget,
+including permitted Quickened actions. Earlier movement and chat do not reduce the
+forecast. The GM can configure Quickened restrictions here; spend/refund controls appear
+when the actor's turn starts and the tracker switches to **Actions left**.
+
+During the selected combatant's active turn, **Actions left** tracks recognized PF2e chat
+cards and action rolls, alongside actions executed through Combater. Auto-fill and Browse
+use the remaining budget. Damage rolls, saving throws, rerolls, free actions, and reactions
+do not spend normal actions. Cards posted for reference still count: use **+** to refund
+them, or **−** to spend an action that was not posted. Deleting a standalone tracked card
+also removes its spend. Chat and execution receipts persist across panel closes and reloads.
+
+Canvas movement also spends actions, using Foundry's recorded path cost and the actor's
+prepared Speed. At Speed 25, a 35-foot Stride costs two actions. Terrain and diagonals use
+the native movement cost; continuing the same movement path shares its allowance, while a
+new path starts another movement action. Walking can use a Quickened action that permits
+Stride. Native movement undo refunds the corresponding spend. Combater-executed movement
+and matching movement chat cards are counted once. Displacement and teleport distance do
+not count as Strides. Recorded movement survives panel closes and reloads.
+
+The turn-start pool accounts for slowed, stunned, and quickened. Slowed and stunned overlap;
+the restricted quickened action is lost first. Haste gained during a turn takes effect on
+the next turn; the tracker immediately shows **Quickened · next turn** until then.
+Auto-fill also adds one allowed recommendation marked **Quickened · next turn**. This
+preview does not spend current actions or affect current MAP, and cannot execute yet.
+Auto-fill again when the next turn starts to build the plan against its actual budget.
+The GM can configure allowed actions from the pending chip too. Slowed or stunned can
+remove the predicted extra action.
+Newly applied valued stunned spends remaining actions, choosing the restricted
+quickened action first, and reduces its condition value by the actions actually lost.
+Only unpaid stunned carries into the next turn. A Combater activity in progress on
+the GM client finishes before this deduction; duration-based stunned remains active.
+Other condition changes and turn-start condition reductions remain under normal PF2e/GM control.
+
+Quickened has a separate counter. An active Haste effect automatically permits **Strike**
+or **Stride** in Auto-fill. Other sources show **Set actions**: the GM clicks the counter
+and enters allowed action slugs (for example `stride` or `strike, stride`). The choice stays
+with that Quickened condition across turns; a new application starts fresh. Players can
+spend/refund actions but cannot change these restrictions. Unknown restrictions remain
+manual until configured. The extra
+action never pays for a multi-action activity. Ambiguous custom cards can be corrected
+with the tracker controls.
+
 ## Combat options without the panel
 
 GMs can enable **Large creature flanking rule**, **Raise PC shields when Defending**, and
@@ -495,7 +568,15 @@ editable, and **Browse** lets you build the turn by hand instead.
 
 - Open the panel from the **Token Controls** toolbar (the Combater tool), or it opens automatically
   on a combatant's turn (configurable in module settings).
-- Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself, then execute.
+- Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself, then run steps
+  one by one or with **Run next** / **Run all** in the footer. Use **‹ Plan N of M ›** to step
+  through alternative plans.
+- Steps are numbered, and the numbered action diamonds show which actions each step uses
+  (hover a step to light them). Strikes show their attack bonus with MAP underneath; extra step
+  tools live behind **⋯**.
+- Tactic, resource use, Intel, Intent, and Loadout sit in one plan-setup dropdown. **Clock** sits
+  beside remaining actions; the budget's **Adjust** popover holds the spend/refund controls;
+  **Refresh** and **Expand/Collapse plan** are in the **⋯ Window options** menu.
 - On an NPC turn, use the **Tactic** chip to set monster behavior and the **Intel** chip to reveal
   Recall Knowledge facts players are allowed to use.
 
@@ -508,6 +589,7 @@ Configurable from Foundry's module settings:
 - **Auto-open on turn start** — open the Combater panel automatically when a combatant's turn starts.
 - **Compact by default** — open new panels in compact mode before any saved panel state exists.
 - **Remember panel position** — save the floating panel's screen position per client.
+- **Show turn navigation** — show the turn-order strip and End turn/Delay/Ready controls per client; enabled by default.
 - **Enable spell recommendations** — include curated spells in recommended full-turn plans.
 - **Hide untrained skill actions** — hide skill actions the combatant isn't trained in.
 - **Show unknown custom actions in alternatives** — surface actor actions Combater detects but can't

@@ -1,5 +1,6 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
 import { t } from "../i18n.js";
+import { browserViewContext } from "./browser-view.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -50,6 +51,8 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     super(options);
     this._panel = panel;
     this._restoredPosition = false;
+    this._expanded = new Set();
+    this._sort = readBrowserState().sort === "name" ? "name" : "best";
   }
 
   get title() {
@@ -61,7 +64,8 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _prepareContext(options) {
     await super._prepareContext(options);
-    return this._panel?.browserViewContext?.() ?? { builder: null, readonly: true, showDebug: false, debug: {} };
+    const base = this._panel?.browserViewContext?.() ?? { builder: null, readonly: true, showDebug: false, debug: {} };
+    return browserViewContext(base, { expanded: this._expanded, sort: this._sort });
   }
 
   _restorePosition() {
@@ -106,13 +110,31 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     for (const button of element.querySelectorAll("[data-tab]")) {
-      button.addEventListener("click", () => panel._setActiveTab(button.dataset.tab));
+      button.addEventListener("click", () => {
+        // Tabs stay usable while searching: picking one clears the search.
+        if (panel.searchQuery) panel._setSearchQuery("");
+        panel._setActiveTab(button.dataset.tab);
+      });
     }
 
     for (const input of element.querySelectorAll("[data-search-actions]")) {
       input.addEventListener("input", () => panel._setSearchQuery(input.value, input));
     }
     panel._restoreSearchFocus(element);
+
+    for (const button of element.querySelectorAll("[data-expand-action]")) {
+      button.addEventListener("click", () => {
+        const key = button.dataset.expandAction;
+        if (this._expanded.has(key)) this._expanded.delete(key);
+        else this._expanded.add(key);
+        this.render();
+      });
+    }
+    element.querySelector("[data-browser-sort]")?.addEventListener("click", () => {
+      this._sort = this._sort === "name" ? "best" : "name";
+      writeBrowserState({ sort: this._sort });
+      this.render();
+    });
 
     element.querySelector("[data-show-excluded]")?.addEventListener("click", () => panel._toggleExcludedVisibility());
     for (const button of element.querySelectorAll("[data-exclude-action]")) {

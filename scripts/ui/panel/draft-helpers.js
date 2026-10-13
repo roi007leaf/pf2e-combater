@@ -1,5 +1,6 @@
 import {
   actionBuilderKey,
+  resolveBuilderAction,
   backingStrikeOverrideFields,
   builderAtomicActionsForStep,
   projectContextForDraftStepOrigin,
@@ -12,6 +13,7 @@ import { actorStrikeOptions } from "../../readers/action/reader.js";
 import { actionCanReach } from "../../readers/action/reach.js";
 import { contextProfile, meleeReach } from "../../readers/action/reader-helpers.js";
 import { pf2eActionName, t } from "../../i18n.js";
+import { stepAlreadySpent } from "../../engine/action/budget.js";
 import {
   isSustainAction,
   withBuilderActionFields,
@@ -26,7 +28,7 @@ export function isAutoFillGeneratedStep(step) {
 export function draftForAutoFillGap(draft) {
   return {
     ...(draft ?? {}),
-    steps: (draft?.steps ?? []).filter((step) => !isAutoFillGeneratedStep(step)),
+    steps: (draft?.steps ?? []).filter((step) => !isAutoFillGeneratedStep(step) && !step.quickenedNextTurn),
   };
 }
 
@@ -34,8 +36,9 @@ export function hasLockedDraftSteps(draft) {
   return draftForAutoFillGap(draft).steps.length > 0;
 }
 
-export function draftNormalActionCost(draft) {
+export function draftNormalActionCost(draft, context) {
   return draftForAutoFillGap(draft).steps.reduce((total, step) => {
+    if (stepAlreadySpent(context, step)) return total;
     const cost = Number(step?.actionCost ?? step?.cost ?? step?.action?.actionCost ?? step?.action?.cost ?? 0);
     return Number.isFinite(cost) && cost > 0 ? total + cost : total;
   }, 0);
@@ -233,7 +236,9 @@ export function findProjectedDraftAction(context, draft, step) {
     }
   }
   const keys = draftStepLookupKeys(step);
-  const matched = draftStepActionRows(buildCandidates(stepContext)).find((action) =>
+  const rows = draftStepActionRows(buildCandidates(stepContext));
+  const matched = resolveBuilderAction(step?.actionKey ?? step?.key ?? actionBuilderKey(step), (key) =>
+    rows.find((action) => actionLookupValues(action).includes(key))) ?? rows.find((action) =>
     actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
   ) ?? null;
   if (!matched || (matched.source !== "strike" && !requiresMeleeReach(matched))) return matched;
@@ -268,11 +273,11 @@ export function findProjectedDraftAction(context, draft, step) {
   };
 }
 
-export function projectedDraftStepActions(context, draft) {
+export function projectedDraftStepActions(context, draft, { groupedOnly = false } = {}) {
   if (!context) return {};
   const actions = {};
   for (const step of Array.isArray(draft?.steps) ? draft.steps : []) {
-    if (!step?.instanceId) continue;
+    if (!step?.instanceId || (groupedOnly && !step.groupId)) continue;
     const action = findProjectedDraftAction(context, draft, step);
     if (action) actions[step.instanceId] = action;
   }

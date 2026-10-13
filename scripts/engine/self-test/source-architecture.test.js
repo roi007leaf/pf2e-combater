@@ -338,12 +338,11 @@ assert.ok(intelLedgerSource.includes("revealedIntelDetails") && intelLedgerSourc
 assert.ok(intelLedgerSource.includes("availableIntelDetails") && intelWindowSource.includes("entry.available")
   && panelStyleSource.includes(".combater-intel-shell.is-editable .combater-intel-entry"),
   "GM Recall Knowledge editor should show available system data in a compact edit layout before reveal");
-assert.ok(intelWindowSource.includes("categoryColumns")
-  && intelWindowTemplateSource.includes("combater-intel-category-column")
-  && panelStyleSource.includes(".combater-intel-category-column")
-  && panelStyleSource.includes("flex-direction: column")
-  && panelStyleSource.includes("align-self: stretch"),
-  "GM Recall Knowledge category cards should use independent vertical stacks without grid-row gaps");
+assert.ok(intelWindowTemplateSource.includes("combater-intel-category-list")
+  && panelStyleSource.includes(".combater-intel-category-list .combater-intel-category")
+  && intelWindowTemplateSource.includes("data-intel-progress-template")
+  && intelWindowSource.includes("_syncSaveLabel"),
+  "GM Recall Knowledge categories should render as one row each, with live progress and a change-counting Save");
 assert.ok(panelStyleSource.includes("--color-pf-text-critical-success")
   && panelStyleSource.includes("--color-pf-text-success")
   && panelStyleSource.includes("--color-pf-text-failure")
@@ -382,22 +381,13 @@ assert.ok(
   "GM false Intel should use structured PF2e choices, numeric values, and an explicit delete control",
 );
 assert.ok(
-  /\.combater-intel-false-record\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 20px;/.test(panelStyleSource)
-    && /\.combater-intel-false-list\s*\{[\s\S]*?flex-wrap:\s*wrap;/.test(panelStyleSource)
-    && /\.combater-intel-false-record\s*\{[\s\S]*?box-sizing:\s*border-box;[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/.test(panelStyleSource)
-    && /\.combater-intel-false-record\.has-value\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 20px;/.test(panelStyleSource)
-    && /\.combater-intel-false-value\s*\{[\s\S]*?grid-column:\s*1 \/ -1;[\s\S]*?grid-row:\s*2;/.test(panelStyleSource)
+  /data-intel-false-list[\s\S]*?\{\{#each falseInformation\}\}[\s\S]*?combater-intel-false-chip/.test(intelWindowTemplateSource)
+    && /data-intel-add-false[\s\S]*?data-intel-false-draft[\s\S]*?data-intel-false-confirm/.test(intelWindowTemplateSource)
     && intelWindowTemplateSource.includes('type="text" inputmode="numeric" pattern="[0-9]*"')
-    && /\.combater-intel-false-value \[data-intel-false-value\]\s*\{[\s\S]*?display:\s*block;[\s\S]*?width:\s*58px;[\s\S]*?max-width:\s*58px;/.test(panelStyleSource)
-    && intelWindowTemplateSource.includes("{{#if ../falseHasValue}}")
-    && intelWindowTemplateSource.includes("combater-intel-false-value"),
-  "false Intel controls should render as compact wrapping chips instead of full-width form cards",
-);
-assert.ok(
-  /combater-intel-false-section-head[\s\S]*?data-intel-add-false[\s\S]*?<\/header>/.test(intelWindowTemplateSource)
-    && /\.combater-intel-false-section\s*\{[\s\S]*?border-top:/.test(panelStyleSource)
-    && intelWindowTemplateSource.includes("combater-intel-false-list"),
-  "each Intel category should separate false facts under one labeled subsection with its own add control",
+    && intelWindowSource.includes("_confirmFalseInformation")
+    && intelWindowSource.includes("chip.intelFalseFactId")
+    && panelStyleSource.includes(".combater-intel-false-chip"),
+  "false Intel should be drafted inline, confirmed with +, and saved as a chip beside the category's real facts",
 );
 assert.ok(
   /\.combater-intel-false-record select\s*\{[\s\S]*?color-scheme:\s*dark;/.test(panelStyleSource)
@@ -420,7 +410,7 @@ assert.ok(
     && intelWindowSource.includes("falseInformationRevealCategory")
     && intelWindowSource.includes('dataset.intelFalseRevealed === "true"')
     && intelLedgerSource.includes("record.revealed === true"),
-  "prepared false Intel should become player-visible only through critical-failure activation",
+  "prepared false Intel stays hidden until a critical-failure result or the GM reveals it",
 );
 assert.ok(
   combatContextSource.includes("readIntelFalseInformation")
@@ -730,7 +720,7 @@ assert.ok(
   "ending or deleting an encounter should clear locked turn-intent decisions",
 );
 assert.equal(
-  turnIntentTemplateSource.match(/data-turn-intent-lock=/g)?.length,
+  turnIntentTemplateSource.match(/\{\{> keepButton key="/g)?.length,
   5,
   "each turn-intent checkbox should have its own between-turn lock button",
 );
@@ -1202,8 +1192,8 @@ assert.ok(
 );
 assert.ok(browserTemplateSource.includes("combater-section-tag"), "each merged result should show which tab it came from");
 assert.ok(
-  /data-tab="\{\{id\}\}" class="\{\{#if active\}\}active\{\{\/if\}\}" \{\{#if searchQuery\}\}disabled\{\{\/if\}\}/.test(browserTemplateSource),
-  "tabs should be inert while a cross-tab search is active",
+  /if \(panel\.searchQuery\) panel\._setSearchQuery\(""\);\s*panel\._setActiveTab/.test(browserSource),
+  "picking a tab while a cross-tab search is active should clear the search first",
 );
 assert.ok(panelStyleSource.includes(".combater-tabs button:disabled"), "inert tabs should read as visually disabled");
 assert.ok(panelStyleSource.includes(".combater-section-tag"), "the per-result tab tag should have its own styling");
@@ -1270,8 +1260,9 @@ assert.ok(panelTemplateSource.includes("combater-step-main"), "selected action r
 assert.ok(panelTemplateSource.includes("combater-step-details"), "selected action rows should group target and destination metadata");
 assert.ok(panelTemplateSource.includes("combater-step-tools"), "selected action tool buttons should stay inside the row");
 assert.ok(
-  /grid-template-areas:\s*"identity"\s*"actions"\s*"plan"/.test(panelStyleSource),
-  "panel header should stack identity, controls, and selected actions so toolbar chips never hide actor status",
+  /\.pf2e-combater \.combater-compact\s*\{\s*display:\s*flex;\s*flex-direction:\s*column;/.test(panelStyleSource)
+    && panelTemplateSource.includes("combater-setup-row") && panelTemplateSource.includes("combater-plan-toolbar"),
+  "panel header should stack identity, planning controls, and action status with separate setup and plan toolbars",
 );
 assert.ok(
   /\.pf2e-combater \.combater-plan-strip\s*\{[\s\S]*?grid-area:\s*plan;/.test(panelStyleSource),
@@ -1353,7 +1344,7 @@ assert.ok(
   "auto-fill's target-aimed Stride must fall back to resolving the live canvas token by id/uuid",
 );
 assert.equal(panelTemplateSource.includes("No usable action"), false, "panel template should not imply auto-fill is selected");
-assert.ok(panelContextWorkflowSource.includes("headerSteps: groupDraftSteps(draftSteps)"), "panel header should render draft steps only");
+assert.ok(panelContextWorkflowSource.includes("decoratePlanLayout(groupDraftSteps(draftSteps)") && panelContextWorkflowSource.includes("headerSteps: planLayout.steps"), "panel header should render draft steps only");
 assert.ok(panelPickerWorkflowSource.includes("projectContextForDraftStepOrigin"), "draft movement previews should use prior draft destinations as origin");
 assert.ok(panelContextWorkflowSource.includes("panel._planningContext = planningContext"), "action-list previews should remember projected draft destination context");
 assert.ok(
@@ -3506,10 +3497,9 @@ assert.ok(
   "main panel should defer projected Browse candidate generation until debug/browser UI needs it",
 );
 assert.ok(
-  panelContextWorkflowSource.includes("const draftStepActions = needsProjectedCandidates")
-    && panelContextWorkflowSource.includes("? projectedDraftStepActions(context, activeDraft)")
-    && panelContextWorkflowSource.includes(": null;"),
-  "main panel should defer per-step projected candidate scans until debug/browser UI needs their diagnostics",
+  panelContextWorkflowSource.includes("projectedDraftStepActions(context, activeDraft, { groupedOnly: !needsProjectedCandidates })")
+    && panelDraftHelpersSource.includes("(groupedOnly && !step.groupId)"),
+  "main panel must resolve grouped draft actions while deferring ordinary per-step scans until debug/browser UI needs them",
 );
 assert.ok(
   /return steps\.filter\(\(step, index\) => \{[\s\S]*?if \(!isStrikeLikeAutoFillStep\(panel, step\)\) return true;[\s\S]*?findProjectedDraftAction/.test(panelDraftWorkflowSource),

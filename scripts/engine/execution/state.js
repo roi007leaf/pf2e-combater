@@ -34,6 +34,11 @@ function needsSwapItemsChoice(step, action) {
 }
 
 export function executionReadinessForStep(step, action = step?.action ?? step) {
+  if (step?.quickenedNextTurn) return {
+    status: "needs-choice",
+    choices: ["next-turn"],
+    warning: t("ActionTracker.NextTurnRecommendationHint", "Quickened recommendation for next turn. Auto-fill again when your turn starts."),
+  };
   const resolvedAction = executionAction(step, action);
   const choices = [];
   if (requiresDestinationForAction(resolvedAction) && !destinationFromStep(step)) choices.push("destination");

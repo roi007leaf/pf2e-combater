@@ -7,7 +7,7 @@ import { createPlanState, projectContextFromPlanState } from "../../plan-state.j
 import { scoreCandidate } from "../../scoring.js";
 
 export function draftStepIsUsable(step) {
-  return step && !step.stale && step.execution?.status !== "failed";
+  return step && !step.stale && !step.quickenedNextTurn && step.execution?.status !== "failed";
 }
 
 function numericPoint(value) {

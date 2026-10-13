@@ -36,10 +36,15 @@ import {
   debugAction,
   decorateBuilder,
   decoratePlan,
+  decoratePlanLayout,
   groupDraftSteps,
   withBuilderActionFields,
 } from "./view-model.js";
 import { t } from "../../i18n.js";
+import { trackedActionContext } from "../../state/action-tracker.js";
+import { actionTrackerView } from "./action-tracker.js";
+import { turnControlsView } from "./turn-controls.js";
+import { upcomingTurnsView } from "./upcoming-turns.js";
 
 function ownershipLevelValue(level) {
   if (Number.isFinite(Number(level))) return Number(level);
@@ -136,12 +141,39 @@ export function viewPanelContext(panel, context) {
   const turnIntentCount = activeTurnIntentCount(turnIntent);
   const loadoutCount = panel._loadoutAdvice?.length ?? 0;
   const effectClock = panel._effectClock ?? { urgentCount: 0, totalCount: 0 };
+  const planLayout = decoratePlanLayout(groupDraftSteps(draftSteps), { openTools: panel._openStepTools });
+  const tracker = actionTrackerView(context);
+  if (tracker.visible) {
+    let normalIndex = 0;
+    tracker.pips = tracker.pips.map((pip) => {
+      if (pip.quickened) return { ...pip, slot: "q", owner: pip.spent ? null : planLayout.quickenedOwner };
+      const index = normalIndex;
+      normalIndex += 1;
+      return { ...pip, slot: String(index), owner: pip.spent ? null : planLayout.pipOwners[index] ?? null };
+    });
+    const planned = planLayout.pipOwners.length;
+    tracker.plannedLabel = planned > 0
+      ? t("ActionTracker.Planned", "{planned} of {total} planned", { planned: Math.min(planned, tracker.normal), total: tracker.normal })
+      : "";
+    tracker.overPlanned = planned > tracker.normal;
+    tracker.adjustLabel = t("ActionTracker.Adjust", "Adjust action budget");
+  }
+  const tactic = tacticPersonalityView(context);
+  const profileParts = [tactic?.visible ? tactic.label : "", resourceHorizon?.label ?? ""].filter(Boolean);
 
   return {
     actor: context?.actor ?? null,
+    actionTracker: tracker,
+    planLayout,
+    profileMenu: {
+      label: profileParts.join(" · ") || t("Panel.PlanSetupLabel", "Plan setup"),
+      ariaLabel: t("Panel.PlanSetup", "Plan setup"),
+    },
+    turnControls: turnControlsView(context),
+    upcomingTurns: upcomingTurnsView(),
     token: context?.token ?? null,
     plan: autoFill,
-    headerSteps: groupDraftSteps(draftSteps),
+    headerSteps: planLayout.steps,
     headerSummary: "",
     planPreference: {
       ...planPreference,
@@ -196,6 +228,12 @@ export function viewPanelContext(panel, context) {
     autoFillCycle: {
       canCycle: autoFillCycle.length > 1,
       label: `${autoFillCyclePosition}/${Math.max(1, autoFillCycle.length)}`,
+      position: autoFillCyclePosition,
+      total: Math.max(1, autoFillCycle.length),
+      planWord: t("Panel.AltPlan", "Plan"),
+      ofLabel: t("Panel.AltPlanOf", "of {total}", { total: Math.max(1, autoFillCycle.length) }),
+      previousLabel: t("Panel.AltPlanPrevious", "Previous plan"),
+      nextLabel: t("Panel.AltPlanNext", "Next plan"),
       tooltip: t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
       ariaLabel: t("Panel.AutoFillCycleAria", "Cycle Auto-fill plan"),
     },
@@ -235,10 +273,10 @@ export function clearPanelPreparedContext(panel) {
 }
 
 export function preparePanelContext(panel) {
-  const context = withResourceHorizon(
+  const context = trackedActionContext(withResourceHorizon(
     readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant }),
     panel.resourceHorizon,
-  );
+  ));
   panel._context = context;
   panel._syncTurnIntentContext?.(context);
 
@@ -303,9 +341,10 @@ export function preparePanelContext(panel) {
     ...entry,
     action: withBuilderActionFields(entry?.action),
   }));
-  const draftStepActions = needsProjectedCandidates
-    ? projectedDraftStepActions(context, activeDraft)
-    : null;
+  // Grouped steps (Flurry, Sudden Charge, etc.) use synthetic child keys that
+  // are absent from the raw candidate list. Resolve them even with Browse shut;
+  // keep the broader per-step projection work scoped to Browse/debug views.
+  const draftStepActions = projectedDraftStepActions(context, activeDraft, { groupedOnly: !needsProjectedCandidates });
   const autoFillPlans = preparationCache?.autoFillPlans
     // The panel cycle is for strong tactical alternatives. Exhaustive action coverage belongs in
     // Browse; forcing every low-ranked legal action into a plan made every real context refresh

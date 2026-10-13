@@ -2,72 +2,87 @@
   {{#if builder}}
     {{#*inline "actionRows"}}
       {{#each actions}}
-        <div class="combater-alt-step combater-action-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}} {{#if userExcluded}}is-excluded{{/if}}" {{#if canDragFavorite}}data-drag-row="{{favoriteEntryKey}}"{{/if}}>
+        <div class="combater-alt-step combater-action-row combater-browser-row {{#if favorite}}is-favorite{{/if}} {{#if disabled}}is-disabled{{/if}} {{#if userExcluded}}is-excluded{{/if}} {{#if overBudget}}is-over{{/if}} {{#if expanded}}is-expanded{{/if}}" {{#if canDragFavorite}}data-drag-row="{{favoriteEntryKey}}"{{/if}}>
           {{#unless readonly}}
           <button type="button" class="combater-run combater-favorite {{#if favorite}}is-active{{/if}}" data-favorite-action="{{key}}" data-tooltip="{{favoriteTitle}}" aria-label="{{favoriteTitle}}">
             <i class="{{#if favorite}}fa-solid fa-star{{else}}fa-regular fa-star{{/if}}"></i>
           </button>
           {{/unless}}
-          <div class="combater-alt-step-body">
-            <h4>
-              <button type="button" class="combater-alt-promote" data-open-action="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.OpenDetails"}}">
-                {{#if img}}<img class="combater-action-img" src="{{img}}" alt="">{{/if}}
-                <span>{{name}}</span>
-              </button>
-            </h4>
-            {{#if userExcluded}}<span class="combater-target is-warning"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> {{localize "PF2E_COMBATER.Browser.HiddenForPlayers"}}</span>{{/if}}
-            {{#if targetLabel}}<span class="combater-target" data-tooltip="{{targetLabel}}">{{targetLabel}}</span>{{/if}}
-            {{#if disabledReason}}<span class="combater-target is-warning" data-tooltip="{{disabledReason}}">{{disabledReason}}</span>{{/if}}
-            {{#if hasDetailChips}}
-              <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
-                {{#each detailChips}}
-                  <span class="combater-detail-chip {{class}}"{{#if tooltipHtml}} data-tooltip-html="{{tooltipHtml}}"{{else}} data-tooltip="{{tooltip}}"{{/if}}>{{label}}</span>
-                {{/each}}
-              </div>
-            {{/if}}
-            <p>{{reason}}</p>
-          </div>
+          {{#if img}}<img class="combater-browser-icon" src="{{img}}" alt="">{{else}}<span class="combater-browser-icon"></span>{{/if}}
+          <button type="button" class="combater-browser-main" data-expand-action="{{key}}" aria-expanded="{{#if expanded}}true{{else}}false{{/if}}" aria-label="{{@root.labels.expand}}: {{name}}">
+            <span class="combater-browser-name">{{name}}</span>
+            <span class="combater-browser-why">{{#if userExcluded}}<span class="is-warning"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> {{localize "PF2E_COMBATER.Browser.HiddenForPlayers"}}</span> · {{/if}}{{#if rowTarget}}<span class="is-target">{{rowTarget}}</span> · {{/if}}{{#if rowWarning}}<span class="is-warning">{{rowWarning}}</span>{{else}}{{reason}}{{/if}}</span>
+          </button>
+          <span class="combater-browser-odds"{{#if oddsTooltipHtml}} data-tooltip-html="{{oddsTooltipHtml}}"{{else}}{{#if oddsTooltip}} data-tooltip="{{oddsTooltip}}"{{/if}}{{/if}}>{{odds}}</span>
           {{#unless readonly}}
-          <button type="button" class="combater-run" data-exclude-action="{{key}}" data-tooltip="{{#if userExcluded}}{{localize "PF2E_COMBATER.Browser.RestoreAction"}}{{else}}{{localize "PF2E_COMBATER.Browser.HideAction"}}{{/if}}" aria-label="{{#if userExcluded}}{{localize "PF2E_COMBATER.Browser.RestoreAction"}}{{else}}{{localize "PF2E_COMBATER.Browser.HideAction"}}{{/if}}">
-            <i class="fa-solid {{#if userExcluded}}fa-eye{{else}}fa-eye-slash{{/if}}"></i>
-          </button>
-          {{#unless blockedByExclusion}}
-          <button type="button" class="combater-run combater-add-action" data-add-action="{{key}}" data-tooltip="{{#if overBudget}}{{disabledReason}}{{else}}{{disabledTitle}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
-            <i class="fa-solid fa-plus"></i>
-          </button>
-          {{#unless hideUncounted}}
-          <button type="button" class="combater-run combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}">
-            <i class="fa-solid fa-bolt"></i>
-          </button>
+            {{#unless blockedByExclusion}}
+            <button type="button" class="combater-run combater-add-action {{#if overBudget}}is-over{{/if}}" data-add-action="{{key}}" data-tooltip="{{addTooltip}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>
+              <i class="fa-solid fa-plus"></i>
+            </button>
+            {{/unless}}
+            {{#if canDragFavorite}}
+              <span class="combater-chip-tool combater-step-drag" data-drag-favorite="{{favoriteEntryKey}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}">
+                <i class="fa-solid fa-grip-vertical"></i>
+              </span>
+            {{/if}}
           {{/unless}}
-          {{/unless}}
-          {{#if canDragFavorite}}
-            <span class="combater-chip-tool combater-step-drag" data-drag-favorite="{{favoriteEntryKey}}" draggable="true" data-tooltip="{{localize "PF2E_COMBATER.Panel.DragToReorder"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DragToReorderAria" name=name}}">
-              <i class="fa-solid fa-grip-vertical"></i>
-            </span>
+          {{#if expanded}}
+            <div class="combater-browser-detail">
+              {{#if targetLabel}}<p class="combater-browser-detail-target">{{targetLabel}}</p>{{/if}}
+              {{#if hasExtraChips}}
+                <div class="combater-detail-chips" aria-label="{{localize "PF2E_COMBATER.Browser.ActionDetailsAria"}}">
+                  {{#each extraChips}}
+                    <span class="combater-detail-chip {{class}}"{{#if tooltipHtml}} data-tooltip-html="{{tooltipHtml}}"{{else}} data-tooltip="{{tooltip}}"{{/if}}>{{label}}</span>
+                  {{/each}}
+                </div>
+              {{/if}}
+              <div class="combater-browser-detail-actions">
+                {{#unless readonly}}
+                  {{#unless blockedByExclusion}}{{#unless hideUncounted}}
+                  <button type="button" class="combater-add-uncounted" data-add-uncounted="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.AddUncounted"}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddUncountedAria" name=name}}"><i class="fa-solid fa-bolt"></i> {{@root.labels.addUncounted}}</button>
+                  {{/unless}}{{/unless}}
+                  <button type="button" data-exclude-action="{{key}}" data-tooltip="{{#if userExcluded}}{{localize "PF2E_COMBATER.Browser.RestoreAction"}}{{else}}{{localize "PF2E_COMBATER.Browser.HideAction"}}{{/if}}"><i class="fa-solid {{#if userExcluded}}fa-eye{{else}}fa-eye-slash{{/if}}"></i> {{#if userExcluded}}{{@root.labels.restore}}{{else}}{{@root.labels.hide}}{{/if}}</button>
+                {{/unless}}
+                <button type="button" data-open-action="{{key}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.OpenDetails"}}"><i class="fa-solid fa-book-open"></i> {{@root.labels.openSheet}}</button>
+              </div>
+            </div>
           {{/if}}
-          {{/unless}}
         </div>
       {{else}}
-        <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
+        {{#if isFavoritesSection}}
+          <p class="combater-empty combater-favorites-hint">{{@root.labels.favoritesHint}}</p>
+        {{else}}
+          <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
+        {{/if}}
       {{/each}}
     {{/inline}}
     <div class="combater-browser-header">
       <nav class="combater-tabs" aria-label="{{localize "PF2E_COMBATER.Browser.TabsAria"}}">
         {{#each builder.tabsList}}
-          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}" {{#if searchQuery}}disabled{{/if}}>
+          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">
             <img class="combater-tab-glyph" src="{{glyphIcon}}" alt="">
             <span>{{label}}</span>
+            <span class="combater-tab-count">{{count}}</span>
           </button>
         {{/each}}
       </nav>
-      <div class="combater-search">
-        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="{{localize "PF2E_COMBATER.Browser.SearchPlaceholder" label=builder.activeTabLabel}}" aria-label="{{localize "PF2E_COMBATER.Browser.SearchAria" label=builder.activeTabLabel}}" autocomplete="off">
+      <div class="combater-browser-toolbar">
+        <div class="combater-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="{{localize "PF2E_COMBATER.Browser.SearchPlaceholder" label=builder.activeTabLabel}}" aria-label="{{localize "PF2E_COMBATER.Browser.SearchAria" label=builder.activeTabLabel}}" autocomplete="off">
+        </div>
         {{#unless readonly}}
-        <button type="button" class="combater-run" data-show-excluded aria-pressed="{{showExcluded}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.ShowHidden"}}" aria-label="{{localize "PF2E_COMBATER.Browser.ShowHidden"}}"><i class="fa-solid fa-eye-slash"></i></button>
+        <button type="button" class="combater-browser-toggle" data-show-excluded aria-pressed="{{showExcluded}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.ShowHidden"}}"><i class="fa-solid fa-eye-slash"></i> {{hiddenLabel}}</button>
         {{/unless}}
+        <button type="button" class="combater-browser-toggle" data-browser-sort data-tooltip="{{sortTooltip}}"><i class="fa-solid fa-arrow-down-wide-short"></i> {{sortLabel}}</button>
       </div>
+      {{#if browserBar}}
+      <div class="combater-browser-bar {{#if browserBar.over}}is-over{{/if}}">
+        {{#if browserBar.pips.length}}<span class="combater-browser-pips" aria-hidden="true">{{#each browserBar.pips}}<span class="action-glyph">1</span>{{/each}}</span>{{/if}}
+        <span><strong>{{browserBar.remainingLabel}}</strong>{{#if browserBar.overLabel}} · {{browserBar.overLabel}}{{/if}}</span>
+        {{#if browserBar.sharedTarget}}<span class="combater-browser-bar-target">{{browserBar.sharedTargetLabel}} <strong>{{browserBar.sharedTarget}}</strong></span>{{/if}}
+      </div>
+      {{/if}}
     </div>
 
     <section class="combater-body">

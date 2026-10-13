@@ -1,11 +1,5 @@
 <div class="combater-intel-shell {{#if editable}}is-editable{{else}}is-readonly{{/if}}">
-  <header class="combater-intel-hero">
-    <div class="combater-intel-hero-icon"><i class="fa-solid fa-brain"></i></div>
-    <div>
-      <h2>{{title}}</h2>
-      <p>{{help}}</p>
-    </div>
-  </header>
+  <p class="combater-intel-help">{{help}}</p>
 
   {{#if hasEntries}}
     <form class="combater-intel-body" data-intel-form>
@@ -18,184 +12,175 @@
               {{else}}
                 <span class="combater-intel-img-placeholder"><i class="fa-solid fa-user-secret"></i></span>
               {{/if}}
-              <div>
+              <div class="combater-intel-target-text">
                 <h3>{{name}}</h3>
                 <span
+                  class="combater-intel-progress-label"
                   data-intel-status
-                  data-intel-known-label="{{knownLabel}}"
-                  data-intel-none-label="{{noneLabel}}"
-                  data-intel-selected-label="{{selectedLabel}}"
-                >{{#if hasRevealed}}{{knownLabel}}{{else}}{{noneLabel}}{{/if}}</span>
+                  data-intel-progress-template="{{progressTemplate}}"
+                  data-intel-total="{{progressTotal}}"
+                >{{progressLabel}}</span>
+                <span class="combater-intel-meter" aria-hidden="true"><span data-intel-meter style="width: {{progressPercent}}%"></span></span>
               </div>
-              {{#if canResetAttempts}}
-                <button
-                  type="button"
-                  class="combater-intel-reset-attempts"
-                  data-intel-reset-attempts="{{index}}"
-                  data-tooltip="{{resetAttemptsTooltip}}"
-                  aria-label="{{resetAttemptsLabel}}"
-                >
-                  <i class="fa-solid fa-rotate-left"></i>
-                  <span>{{resetAttemptsLabel}}</span>
-                </button>
+              {{#if ../editable}}
+                <div class="combater-intel-reveal-switch" role="radiogroup" aria-label="{{revealStyleLabel}}" data-tooltip="{{revealStyleLabel}}">
+                  {{#each revealModeOptions}}
+                    <label class="combater-intel-reveal-option {{#if checked}}is-selected{{/if}}" data-tooltip="{{hint}}">
+                      <input type="radio" name="{{inputName}}" value="{{id}}" data-intel-reveal-mode {{#if checked}}checked{{/if}}>
+                      <span>{{shortLabel}}</span>
+                    </label>
+                  {{/each}}
+                </div>
               {{/if}}
             </header>
 
             {{#if ../editable}}
               <div class="combater-intel-editor">
-                <section class="combater-intel-reveal-style">
-                  <div class="combater-intel-reveal-style-head">
-                    <span>{{revealStyleLabel}}</span>
+                <div class="combater-intel-category-list">
+                  {{#each categories}}
+                    <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category="{{id}}">
+                      <header class="combater-intel-category-head">
+                        <button
+                          type="button"
+                          class="combater-intel-category-mark"
+                          data-intel-reveal-category
+                          data-tooltip="{{revealAllLabel}}"
+                          aria-label="{{revealAllLabel}}"
+                        >
+                          <i class="fa-solid {{markIcon}}"></i>
+                        </button>
+                        <span class="combater-intel-category-text">
+                          <strong>{{label}}</strong>
+                        </span>
+                      </header>
+                      <div class="combater-intel-facts" data-intel-false-list>
+                        {{#each facts}}
+                          <label class="combater-intel-fact {{#if checked}}is-known{{/if}} {{#if isNone}}is-none{{/if}}" data-intel-fact>
+                            <input type="checkbox" name="{{inputName}}" value="{{id}}" {{#if checked}}checked{{/if}}>
+                            <span class="combater-intel-fact-mark">
+                              <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
+                            </span>
+                            <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
+                          </label>
+                        {{/each}}
+                        {{#each falseInformation}}
+                          <span
+                            class="combater-intel-false-chip {{#if revealed}}is-revealed{{else}}is-prepared{{/if}}"
+                            data-intel-false-record-entry="{{entryIndex}}"
+                            data-intel-false-record="{{id}}"
+                            data-intel-false-category="{{category}}"
+                            data-intel-false-revealed="{{revealed}}"
+                            data-intel-false-fact-id="{{factId}}"
+                            data-intel-false-fact-label="{{chipFactLabel}}"
+                            data-intel-false-amount="{{value}}"
+                            {{#if sourceLabel}}data-tooltip="{{sourceLabel}}"{{/if}}
+                          >
+                            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                            <span data-intel-false-chip-label>{{chipLabel}}</span>
+                            {{#if canReveal}}
+                              <button type="button" class="combater-intel-toggle-false {{#if revealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="{{revealLabel}}" data-tooltip="{{revealLabel}}">
+                                <i class="fa-solid {{#if revealed}}fa-eye{{else}}fa-eye-slash{{/if}}"></i>
+                              </button>
+                            {{/if}}
+                            <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
+                              <i class="fa-solid fa-xmark"></i>
+                            </button>
+                          </span>
+                        {{/each}}
+                      </div>
+                      <button
+                        type="button"
+                        class="combater-intel-add-false"
+                        data-intel-add-false
+                        data-tooltip="{{addFalseInformationLabel}}"
+                        aria-label="{{addFalseInformationLabel}}"
+                      >
+                        <i class="fa-solid fa-plus"></i><span>{{addFalseShortLabel}}</span>
+                      </button>
+                      <div class="combater-intel-false-draft" data-intel-false-draft hidden>
+                        <span class="combater-intel-false-draft-label"><i class="fa-solid fa-triangle-exclamation"></i> {{falseInformationLabel}}</span>
+                        <select data-intel-false-fact aria-label="{{falseInformationLabel}}">
+                          <option value="">Choose false {{label}} fact</option>
+                          {{#each falseOptions}}<option value="{{id}}">{{label}}</option>{{/each}}
+                        </select>
+                        {{#if falseHasValue}}
+                          <label class="combater-intel-false-value">
+                            <span>{{#if falseIsDc}}DC{{else}}Value{{/if}}</span>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" data-intel-false-value aria-label="{{#if falseIsDc}}DC{{else}}Value{{/if}}">
+                          </label>
+                        {{/if}}
+                        <button type="button" class="combater-intel-false-confirm" data-intel-false-confirm data-tooltip="{{addFalseConfirmLabel}}" aria-label="{{addFalseConfirmLabel}}"><i class="fa-solid fa-plus"></i></button>
+                        <button type="button" class="combater-intel-false-cancel" data-intel-false-cancel data-tooltip="{{cancelFalseLabel}}" aria-label="{{cancelFalseLabel}}"><i class="fa-solid fa-xmark"></i></button>
+                      </div>
+                      <template data-intel-false-template>
+                        <span
+                          class="combater-intel-false-chip {{#if falseDefaultRevealed}}is-revealed{{else}}is-prepared{{/if}}"
+                          data-intel-false-record
+                          data-intel-false-revealed="{{falseDefaultRevealed}}"
+                          data-falsedc="{{falseIsDc}}"
+                        >
+                          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                          <span data-intel-false-chip-label></span>
+                          {{#if canRevealFalseInformation}}
+                            <button type="button" class="combater-intel-toggle-false {{#if falseDefaultRevealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="Toggle misinformation visibility" data-tooltip="Toggle misinformation visibility">
+                              <i class="fa-solid {{#if falseDefaultRevealed}}fa-eye{{else}}fa-eye-slash{{/if}}"></i>
+                            </button>
+                          {{/if}}
+                          <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
+                            <i class="fa-solid fa-xmark"></i>
+                          </button>
+                        </span>
+                      </template>
+                    </section>
+                  {{/each}}
+                </div>
+                {{#unless @root.singleEntry}}
+                <div class="combater-intel-entry-tools">
+                  <button
+                    type="button"
+                    class="combater-intel-reveal-all"
+                    data-intel-reveal-all
+                    data-tooltip="{{revealAllTooltip}}"
+                    aria-label="{{revealAllLabel}}"
+                  >
+                    <i class="fa-solid fa-check-double"></i>
+                    <span>{{revealAllLabel}}</span>
+                  </button>
+                  {{#if canResetAttempts}}
                     <button
                       type="button"
-                      class="combater-intel-reveal-all"
-                      data-intel-reveal-all
-                      data-tooltip="{{revealAllTooltip}}"
-                      aria-label="{{revealAllLabel}}"
+                      class="combater-intel-reset-attempts"
+                      data-intel-reset-attempts="{{index}}"
+                      data-tooltip="{{resetAttemptsTooltip}}"
+                      aria-label="{{resetAttemptsLabel}}"
                     >
-                      <i class="fa-solid fa-check-double"></i>
-                      <span>{{revealAllLabel}}</span>
+                      <i class="fa-solid fa-rotate-left"></i>
+                      <span>{{resetAttemptsLabel}}</span>
                     </button>
-                  </div>
-                  <div class="combater-intel-reveal-options">
-                    {{#each revealModeOptions}}
-                      <label class="combater-intel-reveal-option {{#if checked}}is-selected{{/if}}">
-                        <input type="radio" name="{{inputName}}" value="{{id}}" data-intel-reveal-mode {{#if checked}}checked{{/if}}>
-                        <strong>{{label}}</strong>
-                        <small>{{hint}}</small>
-                      </label>
-                    {{/each}}
-                  </div>
-                </section>
-                <div class="combater-intel-category-columns">
-                  {{#each categoryColumns}}
-                    <div class="combater-intel-category-column">
-                      {{#each this}}
-                        <section class="combater-intel-category {{#if checked}}is-known{{/if}}" data-intel-category="{{id}}">
-                          <header class="combater-intel-category-head">
-                            <button
-                              type="button"
-                              class="combater-intel-category-mark"
-                              data-intel-reveal-category
-                              data-tooltip="{{revealAllLabel}}"
-                              aria-label="{{revealAllLabel}}"
-                            >
-                              <i class="fa-solid {{markIcon}}"></i>
-                            </button>
-                            <span class="combater-intel-category-text">
-                              <strong>{{label}}</strong>
-                            </span>
-                          </header>
-                          <div class="combater-intel-facts">
-                            {{#each facts}}
-                              <label class="combater-intel-fact {{#if checked}}is-known{{/if}}" data-intel-fact>
-                                <input type="checkbox" name="{{inputName}}" value="{{id}}" {{#if checked}}checked{{/if}}>
-                                <span class="combater-intel-fact-mark">
-                                  <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
-                                </span>
-                                <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
-                              </label>
-                            {{/each}}
-                          </div>
-                          <section class="combater-intel-false-section">
-                            <header class="combater-intel-false-section-head">
-                              <span><i class="fa-solid fa-triangle-exclamation"></i> {{falseInformationLabel}}</span>
-                              <button
-                                type="button"
-                                class="combater-intel-add-false"
-                                data-intel-add-false
-                                data-tooltip="{{addFalseInformationLabel}}"
-                                aria-label="{{addFalseInformationLabel}}"
-                              >
-                                <i class="fa-solid fa-plus"></i>
-                              </button>
-                            </header>
-                            <div class="combater-intel-false-list" data-intel-false-list>
-                              {{#each falseInformation}}
-                                <div
-                                  class="combater-intel-false-record {{#if ../falseHasValue}}has-value{{/if}} {{#if canReveal}}can-reveal{{/if}} {{#if revealed}}is-revealed{{else}}is-prepared{{/if}}"
-                                  data-intel-false-record-entry="{{entryIndex}}"
-                                  data-intel-false-record="{{id}}"
-                                  data-intel-false-category="{{category}}"
-                                  data-intel-false-revealed="{{revealed}}"
-                                  {{#if sourceLabel}}data-tooltip="{{sourceLabel}}"{{/if}}
-                                >
-                                  {{#if legacy}}
-                                    <span>{{text}}</span>
-                                  {{else}}
-                                    <select data-intel-false-fact>
-                                      <option value="">Choose false {{../label}} fact</option>
-                                      {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
-                                    </select>
-                                    {{#if ../falseHasValue}}
-                                      <label class="combater-intel-false-value">
-                                        <span>{{#if ../falseIsDc}}DC{{else}}Value{{/if}}</span>
-                                        <input type="text" inputmode="numeric" pattern="[0-9]*" value="{{value}}" data-intel-false-value aria-label="{{#if ../falseIsDc}}DC{{else}}Value{{/if}}">
-                                      </label>
-                                    {{/if}}
-                                  {{/if}}
-                                  {{#if canReveal}}
-                                    <button type="button" class="combater-intel-toggle-false {{#if revealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="{{revealLabel}}" data-tooltip="{{revealLabel}}">
-                                      <i class="fa-solid {{#if revealed}}fa-eye-slash{{else}}fa-eye{{/if}}"></i>
-                                    </button>
-                                  {{/if}}
-                                  <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
-                                    <i class="fa-solid fa-trash"></i>
-                                  </button>
-                                </div>
-                              {{/each}}
-                            </div>
-                            <template data-intel-false-template>
-                              <div class="combater-intel-false-record {{#if falseHasValue}}has-value{{/if}} {{#if canRevealFalseInformation}}can-reveal{{/if}} {{#if falseDefaultRevealed}}is-revealed{{else}}is-prepared{{/if}}" data-intel-false-record data-intel-false-revealed="{{falseDefaultRevealed}}">
-                                <select data-intel-false-fact>
-                                  <option value="">Choose false {{label}} fact</option>
-                                  {{#each falseOptions}}<option value="{{id}}">{{label}}</option>{{/each}}
-                                </select>
-                                {{#if falseHasValue}}
-                                  <label class="combater-intel-false-value">
-                                    <span>{{#if falseIsDc}}DC{{else}}Value{{/if}}</span>
-                                    <input type="text" inputmode="numeric" pattern="[0-9]*" data-intel-false-value aria-label="{{#if falseIsDc}}DC{{else}}Value{{/if}}">
-                                  </label>
-                                {{/if}}
-                                {{#if canRevealFalseInformation}}
-                                  <button type="button" class="combater-intel-toggle-false {{#if falseDefaultRevealed}}is-revealed{{/if}}" data-intel-toggle-false aria-label="Toggle misinformation visibility" data-tooltip="Toggle misinformation visibility">
-                                    <i class="fa-solid {{#if falseDefaultRevealed}}fa-eye-slash{{else}}fa-eye{{/if}}"></i>
-                                  </button>
-                                {{/if}}
-                                <button type="button" class="combater-intel-remove-false" data-intel-remove-false aria-label="Delete false information" data-tooltip="Delete false information">
-                                  <i class="fa-solid fa-trash"></i>
-                                </button>
-                              </div>
-                            </template>
-                          </section>
-                        </section>
-                      {{/each}}
-                    </div>
-                  {{/each}}
+                  {{/if}}
                 </div>
+                {{/unless}}
               </div>
             {{else}}
-              {{#if hasRevealed}}
-                <div class="combater-intel-revealed">
-                  {{#each categories}}
+              <div class="combater-intel-revealed">
+                {{#each categories}}
+                  <section class="combater-intel-revealed-section {{#unless hasValues}}is-unknown{{/unless}}">
+                    <h4>{{label}}</h4>
                     {{#if hasValues}}
-                      <section class="combater-intel-revealed-section">
-                        <h4>{{label}}</h4>
-                        <ul>
-                          {{#each revealedItems}}
-                            <li class="{{#if isFalse}}is-false-information{{/if}}" {{#if tooltip}}data-tooltip="{{tooltip}}"{{/if}}>
-                              {{#if isFalse}}<i class="fa-solid fa-triangle-exclamation"></i>{{/if}}
-                              <span>{{label}}</span>
-                            </li>
-                          {{/each}}
-                        </ul>
-                      </section>
+                      <ul>
+                        {{#each revealedItems}}
+                          <li class="{{#if isFalse}}is-false-information{{/if}}" {{#if tooltip}}data-tooltip="{{tooltip}}"{{/if}}>
+                            {{#if isFalse}}<i class="fa-solid fa-triangle-exclamation"></i>{{/if}}
+                            <span>{{label}}</span>
+                          </li>
+                        {{/each}}
+                      </ul>
+                    {{else}}
+                      <span class="combater-intel-unknown">{{unknownLabel}}</span>
                     {{/if}}
-                  {{/each}}
-                </div>
-              {{else}}
-                <p class="combater-intel-empty">{{../noRevealedData}}</p>
-              {{/if}}
+                  </section>
+                {{/each}}
+              </div>
             {{/if}}
           </article>
         {{/each}}
@@ -207,10 +192,24 @@
 
   <footer class="combater-intel-actions">
     {{#if editable}}
+      {{#with singleEntry}}
+        <span class="combater-intel-entry-tools is-footer">
+          <button type="button" class="combater-intel-reveal-all" data-intel-reveal-all data-tooltip="{{revealAllTooltip}}" aria-label="{{revealAllLabel}}">
+            <i class="fa-solid fa-check-double"></i>
+            <span>{{revealAllLabel}}</span>
+          </button>
+          {{#if canResetAttempts}}
+            <button type="button" class="combater-intel-reset-attempts" data-intel-reset-attempts="{{index}}" data-tooltip="{{resetAttemptsTooltip}}" aria-label="{{resetAttemptsLabel}}">
+              <i class="fa-solid fa-rotate-left"></i>
+              <span>{{resetAttemptsLabel}}</span>
+            </button>
+          {{/if}}
+        </span>
+      {{/with}}
       <button type="button" class="combater-intel-secondary" data-intel-close>{{cancelLabel}}</button>
-      <button type="button" class="combater-intel-primary" data-intel-save>
+      <button type="button" class="combater-intel-primary" data-intel-save data-save-label="{{saveLabel}}" data-save-changes-label="{{saveChangesLabel}}">
         <i class="fa-solid fa-floppy-disk"></i>
-        <span>{{saveLabel}}</span>
+        <span data-intel-save-label>{{saveLabel}}</span>
       </button>
     {{else}}
       <button type="button" class="combater-intel-primary" data-intel-close>{{closeLabel}}</button>

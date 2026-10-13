@@ -20,13 +20,13 @@ function latestRecordedMovementId(document) {
 async function moveTokenTo(document, point) {
   const elevation = Number.isFinite(Number(point?.elevation)) ? { elevation: Number(point.elevation) } : {};
   if (typeof document.update === "function") {
-    await document.update({ x: point.x, y: point.y, ...elevation });
+    await document.update({ x: point.x, y: point.y, ...elevation }, { isUndo: true });
     return;
   }
   if (typeof document.move === "function") {
     await document.move(
       { x: point.x, y: point.y, ...elevation, action: "walk", explicit: true, checkpoint: true, snapped: true },
-      { method: "api" },
+      { method: "api", isUndo: true },
     );
     return;
   }

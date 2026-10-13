@@ -4,7 +4,7 @@ export {
   projectContextForDraftStepOrigin,
 } from "./projection.js";
 
-export { actionBuilderKey } from "./shared.js";
+export { actionBuilderKey, resolveBuilderAction } from "./shared.js";
 
 export {
   backingStrikeOverrideFields,

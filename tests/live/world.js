@@ -73,6 +73,11 @@ async function click(root, selector) {
     `Missing live UI control: ${selector}`,
   );
   if (element.disabled) throw Error(`Live UI control is disabled: ${selector}`);
+  const menu = element.closest('[data-panel-utilities-menu]');
+  if (menu && !menu.matches(':popover-open')) {
+    root().querySelector('[data-panel-utilities]')?.click();
+    await waitFor(() => menu.matches(':popover-open'), 'Window options did not open');
+  }
   element.click();
   await wait(250);
   return element;
@@ -374,6 +379,60 @@ async function addFirstBrowserAction(query = '') {
 export async function runFeature({ name, fixture }) {
   const details = {};
   switch (name) {
+    case 'turn-controls-delay': {
+      await openPanel();
+      const combat = game.combats.get(fixture.combat);
+      const { handleTurnControl, turnIdentity, delayedTurn } = await import('../../scripts/state/turn-controls.js');
+      const actor = combat.combatant;
+      const targets = combat.turns.filter((entry) => entry !== actor && !entry.isDefeated);
+      requireCondition(targets.length >= 2, 'Delay test requires two other combatants');
+      const chosen = targets.at(-1);
+      requireCondition(panelElement()?.querySelector('[data-turn-control="end"]'), 'End turn button missing');
+      requireCondition(panelElement()?.querySelector('[data-turn-control="delay"]'), 'Delay button missing');
+      await handleTurnControl({ ...turnIdentity(combat), action: 'delay', afterId: chosen.id });
+      requireCondition(delayedTurn(actor)?.afterId === chosen.id, 'Delay target not saved');
+      requireCondition(combat.combatant.id !== actor.id, 'Delay did not advance the turn');
+      requireCondition(combat.turns.indexOf(actor) === combat.turns.indexOf(chosen) + 1, 'Native order did not place actor after chosen turn');
+      await waitFor(() => panelElement()?.querySelector(`[data-delayed-id="${actor.id}"]`), 'GM return control missing');
+      await handleTurnControl({ ...turnIdentity(combat), action: 'return', delayedId: actor.id });
+      await waitFor(() => combat.combatant.id === actor.id && !delayedTurn(actor), 'GM return did not resume the delayed creature');
+      requireCondition(combat.flags[MODULE].actionTurn.combatantId === actor.id, 'Resumed turn tracker belongs to another creature');
+      details.returned = actor.id;
+      break;
+    }
+    case 'chat-action-tracker': {
+      await openPanel();
+      const panel = applications().find((app) => app.id === `${MODULE}-panel`);
+      const actor = canvas.tokens.get(fixture.enemy).actor;
+      const combat = game.combats.get(fixture.combat);
+      const remaining = () => panel._context?.actionTracker?.budget?.normalActions;
+      await waitFor(() => panelElement()?.querySelector('.combater-action-tracker'), 'Action tracker did not render');
+      requireCondition(remaining() === 3, 'New turn should have three actions');
+      const [action] = await actor.createEmbeddedDocuments('Item', [{
+        name: 'Tracker Test Activity', type: 'action',
+        system: { actionType: { value: 'action' }, actions: { value: 2 }, traits: { value: [] }, description: { value: '<p>Test activity.</p>' } },
+      }]);
+      const message = await action.toMessage();
+      await waitFor(() => remaining() === 1, 'Native two-action card did not spend two actions');
+      requireCondition(panel._autoFillPlans.every((plan) => plan.totalCost <= 1), 'Auto-fill exceeded remaining actions');
+      await click(panelElement, '[data-tracker-adjust="-1"][data-tracker-pool="normal"]');
+      await waitFor(() => remaining() === 2, 'Manual refund did not update tracker');
+      await click(panelElement, '[data-tracker-adjust="1"][data-tracker-pool="normal"]');
+      await waitFor(() => remaining() === 1, 'Manual spend did not update tracker');
+      await message.delete();
+      await waitFor(() => remaining() === 3, 'Deleting card did not refund actions');
+      const [quickened] = await actor.createEmbeddedDocuments('Item', [game.pf2e.ConditionManager.getCondition('quickened').toObject()]);
+      await panel.refresh('item-create');
+      requireCondition(panel._context.actionTracker.budget.quickenedActions === 0, 'Mid-turn quickened granted an action early');
+      await combat.nextRound();
+      await waitFor(() => panel._context?.actionTracker?.budget?.quickenedActions === 1, 'Next turn did not gain quickened action');
+      requireCondition(panelElement()?.querySelector('[data-quickened-allowance]'), 'Quickened allowance control missing');
+      details.normal = remaining();
+      details.quickened = panel._context.actionTracker.budget.quickenedActions;
+      details.nativeCost = message.flags[MODULE].actionSpend.cost;
+      await quickened.delete();
+      break;
+    }
     case 'environment-contract': {
       const module = game.modules.get(MODULE);
       requireCondition(module?.api?.runLiveEngineMatrix, 'Public live engine matrix API missing');
@@ -384,6 +443,32 @@ export async function runFeature({ name, fixture }) {
         `Live engine matrix failed: ${report?.failures?.join('; ')}`,
       );
       details.engineCases = report.results?.map((entry) => entry.id);
+      break;
+    }
+    case 'canvas-action-tracker': {
+      await openPanel();
+      const panel = applications().find((app) => app.id === `${MODULE}-panel`);
+      const token = canvas.tokens.get(fixture.enemy).document;
+      const actor = token.actor;
+      const speed = actor.system.movement?.speeds?.land?.value ?? actor.system.attributes.speed.value;
+      const remaining = () => panel._context?.actionTracker?.budget?.normalActions;
+      await waitFor(() => remaining() === 3, 'Canvas tracker did not start with three actions');
+      const origin = { x: token.x, y: token.y, elevation: token.elevation };
+      const distance = speed + canvas.grid.distance;
+      const id = foundry.utils.randomID();
+      const moved = await token.move({
+        ...origin, x: origin.x + distance / canvas.grid.distance * canvas.grid.size,
+        action: 'walk',
+      }, { id, method: 'drag', animate: false });
+      requireCondition(moved, 'Native canvas movement failed');
+      await waitFor(() => remaining() === 1, 'Multi-action canvas Stride did not spend two actions');
+      requireCondition(panel._autoFillPlans.every((plan) => plan.totalCost <= 1), 'Auto-fill ignored canvas movement spending');
+      details.distance = distance;
+      details.remainingAfterMove = remaining();
+      requireCondition(await token.revertRecordedMovement(id), 'Native movement undo failed');
+      await waitFor(() => remaining() === 3, 'Native movement undo did not refund actions');
+      requireCondition(token.x === origin.x && token.y === origin.y, 'Canvas movement undo did not restore position');
+      details.remainingAfterUndo = remaining();
       break;
     }
     case 'panel-open-gm':

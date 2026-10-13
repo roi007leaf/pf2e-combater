@@ -6,6 +6,7 @@ import {
   computeAreaMarker,
   isUnreachableStrikeStep,
   projectContextForDraftDestination,
+  resolveBuilderAction,
 } from "../../engine/action/builder/index.js";
 import { requiresDestinationForAction, requiresTargetForAction } from "../../engine/action/requirements.js";
 import { currentTargetSelection, executeDraftStep, plannedTargetSelection, setTokenTargets } from "../../engine/action/executor.js";
@@ -17,6 +18,7 @@ import { withTurnIntent } from "../../engine/planner/turn-intent.js";
 import { swapDraftSteps } from "../../engine/draft-reorder.js";
 import { reorderActionFavorite, toggleActionFavorite } from "../../state/action-favorites.js";
 import { readCombatContext } from "../../state/combat-context.js";
+import { trackedActionContext } from "../../state/action-tracker.js";
 import {
   hasSharedDraftPlan,
   readDraftPlan,
@@ -1200,7 +1202,9 @@ export function actionKeyForPanelStep(panel, step) {
   // Out-of-range Strikes are absent from Browse, but their canonical keys still
   // resolve from rejected candidates. A shared item UUID can otherwise alias
   // them to Draw/Sheathe, which disappears once Ready Weapon executes.
-  if (step?.source === "strike" && !step?.activityProfile?.requiresDistinctTargets) return key;
+  if (step?.source === "strike" && !step?.activityProfile?.requiresDistinctTargets) {
+    return resolveBuilderAction(key, (lookupKey) => panel._findBuilderAction(lookupKey))?.key ?? key;
+  }
 
   // A distinct-target atom (e.g. a Kraken's Double Attack) borrows its backing weapon's real
   // item reference so Execute can actually roll it (see double-attack-backing-strike plan) --
@@ -1232,10 +1236,10 @@ export function actionKeyForPanelStep(panel, step) {
 }
 
 function rebuildPanelAutoFillContext(panel, draft = null, targetKey = "") {
-  const context = withResourceHorizon(
+  const context = trackedActionContext(withResourceHorizon(
     readCombatContext(panel.refreshSource, { combatant: panel._selectedCombatant }),
     panel.resourceHorizon,
-  );
+  ));
   if (!context) return null;
   panel._syncTurnIntentContext?.(context);
   const intentContext = withTurnIntent(context, panel._turnIntent);
@@ -1424,6 +1428,16 @@ export async function fillPanelDraftGap(panel, { plan, draft, plans = null }) {
 // (turn-start position for a fresh Auto-fill, or the draft-projected position for a gap fill) and
 // checking reach against prefixSteps (the draft steps that will already precede these, if any).
 export function atomizePanelAutoFillSteps(panel, autoFill, movementContext, prefixSteps = []) {
+  if (autoFill.steps.some((step) => step.quickenedNextTurn)) {
+    const current = atomizePanelAutoFillSteps(panel, {
+      ...autoFill, steps: autoFill.steps.filter((step) => !step.quickenedNextTurn),
+    }, movementContext, prefixSteps);
+    const preview = atomizePanelAutoFillSteps(panel, {
+      ...autoFill, steps: autoFill.steps.filter((step) => step.quickenedNextTurn)
+        .map((step) => ({ ...step, quickenedNextTurn: false })),
+    }, panel._context);
+    return [...current, ...preview.map((step) => ({ ...step, quickenedNextTurn: true }))];
+  }
   // Auto-fill's whole point is a ready-to-execute plan: the recommendation already chose a
   // target and (for movement) a destination, so pre-fill both regardless of who's using it or
   // what kind of actor it is -- a GM who doesn't want players pre-filled can already turn off

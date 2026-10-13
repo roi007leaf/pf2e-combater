@@ -3,7 +3,7 @@ import { SETTINGS, playerAccessAllowed, settingOrDefault } from "../settings.js"
 import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder/index.js";
 import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
-import { actionBudget } from "../engine/action/budget.js";
+import { actionBudget, quickenedEligible, stepAlreadySpent } from "../engine/action/budget.js";
 import { toggleActionExclusion } from "../state/action-exclusions.js";
 import { choosePanelSummon } from "./panel/summon-workflow.js";
 import { buildTurnPlans } from "../engine/planner.js";
@@ -91,6 +91,7 @@ import {
   setPanelAwaitingGm,
 } from "./panel/execution-workflow.js";
 import { activatePanelRenderBindings } from "./panel/event-bindings.js";
+import { captureUpcomingTurns } from "./panel/upcoming-turns.js";
 import {
   panelIntelLedgerView,
   preparePanelContext,
@@ -137,6 +138,8 @@ import { pf2eActionName, t } from "../i18n.js";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 const RESET_PIN_REFRESH_SOURCES = new Set([
+  "chat-actions",
+  "action-execution",
   "bestiary-update",
   "actor-update",
   "button",
@@ -385,31 +388,38 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const intentContext = withTurnIntent(this._context, this._turnIntent);
     const focusedContext = contextWithCurrentAutoFillTargets(intentContext, this._turnIntent?.lockedTargetIds ?? []);
     const context = projectContextForDraftDestination(focusedContext, lockedDraft);
-    const usedNormal = draftNormalActionCost(lockedDraft);
+    const usedActions = draftNormalActionCost(lockedDraft, context);
+    const budget = actionBudget(context);
+    const eligible = lockedDraft.steps.filter((step) => !stepAlreadySpent(context, step)
+      && quickenedEligible(step.action ?? step, step.actionCost ?? step.cost, context)).length;
+    const usedQuickened = Math.min(budget.quickenedActions, eligible);
+    const usedNormal = usedActions - usedQuickened;
     const cacheKey = [
       this._turnIntentContextKey,
       this._autoFillTargetKey,
       this.resourceHorizon,
       JSON.stringify(this._turnIntent),
       usedNormal,
+      usedQuickened,
       planStateSignature(createPlanState(focusedContext, { steps: lockedDraft.steps })),
     ].join("|");
     if (this._fillGapPlanCacheKey === cacheKey && Array.isArray(this._fillGapPlanCache)) {
       return this._fillGapPlanCache;
     }
-    const remainingTotal = Math.max(0, actionBudget(context).normalActions - usedNormal);
-    if (remainingTotal <= 0) {
+    const remainingTotal = Math.max(0, budget.totalActions - usedActions);
+    if (remainingTotal <= 0 && !context.actionTracker?.quickenedPending) {
       this._fillGapPlanCache = [];
       this._fillGapPlanCacheKey = cacheKey;
       return this._fillGapPlanCache;
     }
-    const remainingContext = usedNormal > 0
+    const remainingContext = usedActions > 0
       ? {
         ...context,
         actionsSpent: {
           ...(context.actionsSpent ?? {}),
           normal: (context.actionsSpent?.normal ?? 0) + usedNormal,
-          total: (context.actionsSpent?.total ?? 0) + usedNormal,
+          quickened: (context.actionsSpent?.quickened ?? 0) + usedQuickened,
+          total: (context.actionsSpent?.total ?? 0) + usedActions,
         },
       }
       : context;
@@ -424,6 +434,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     );
     this._fillGapPlanCacheKey = cacheKey;
     return this._fillGapPlanCache;
+  }
+
+  async _preRender(context, options) {
+    await super._preRender(context, options);
+    this._upcomingBeforeRender = captureUpcomingTurns(this.element);
   }
 
   _onRender(context, options) {
@@ -514,6 +529,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     const view = {
       ...baseView,
       bulkTokenCount: selectedNpcTokens.length > 1 ? selectedNpcTokens.length : 0,
+      actorName: this._context?.actor?.name ?? "",
     };
     if (!view.visible) return;
 
@@ -868,7 +884,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _openLoadoutAdvisor() {
     if (!this._context || this._builder?.readonly === true) return;
-    await openLoadoutWindow(loadoutWindowView(this._loadoutAdvice), {
+    await openLoadoutWindow(loadoutWindowView(this._loadoutAdvice, this._context?.actor?.name), {
       onChoose: (adviceId) => this._applyLoadoutAdvice(adviceId),
     });
   }
@@ -881,7 +897,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _openEffectClock() {
     if (!this._context) return;
-    await openEffectClockWindow(effectClockWindowView(this._effectClock), {
+    await openEffectClockWindow(effectClockWindowView(this._effectClock, this._context?.actor?.name), {
       onOpen: (uuid) => this._openEffectClockDocument(uuid),
     });
   }

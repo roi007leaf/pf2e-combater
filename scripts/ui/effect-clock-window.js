@@ -7,7 +7,7 @@ function randomId(prefix) {
   return `${prefix}-${globalThis.foundry?.utils?.randomID?.() ?? Date.now()}`;
 }
 
-export function effectClockWindowView(clock) {
+export function effectClockWindowView(clock, actorName = "") {
   const groups = (clock?.groups ?? []).map((group) => ({
     ...group,
     entries: (group?.entries ?? []).map((entry) => ({
@@ -18,7 +18,9 @@ export function effectClockWindowView(clock) {
   const urgentCount = Number(clock?.urgentCount ?? 0);
   const totalCount = Number(clock?.totalCount ?? 0);
   return {
-    title: t("EffectClock.Title", "Effect Clock"),
+    title: actorName ? t("EffectClock.TitleFor", "Effect clock · {name}", { name: actorName }) : t("EffectClock.Title", "Effect Clock"),
+    closeLabel: t("Dialog.Close", "Close"),
+    openLabel: t("EffectClock.Open", "Open details"),
     help: t("EffectClock.Help", "Turn-aware timing for PF2e effects, conditions, and turn-boundary events. Native PF2e duration rules remain authoritative."),
     summary: urgentCount > 0
       ? t("EffectClock.UrgentSummary", "{urgent} of {total} tracked events need attention this turn.", { urgent: urgentCount, total: totalCount })

@@ -1,6 +1,74 @@
 {
   "PF2E_COMBATER": {
+    "UpcomingTurns": {
+      "PanHint": "クリックすると、この戦闘員の位置に画面を移動します。",
+      "PanUnavailable": "この戦闘員のトークンは現在のシーンで表示されていません。",
+      "Label": "この後のターン",
+      "Next": "次のターン",
+      "Then": "その次",
+      "Round": "ラウンド{round}"
+    },
+    "TurnControls": {
+      "End": "ターン終了",
+      "EndNamed": "{name}のターン終了",
+      "Delay": "遅延",
+      "BringIn": "今すぐ復帰",
+      "Unknown": "不明なクリーチャー",
+      "NotCurrent": "このターンは既に終了しています。",
+      "Unavailable": "ターン操作には接続中のGMが必要です。",
+      "CannotDelay": "この状態では遅延できません。",
+      "TrackerRequired": "ターンのアクショントラッカーの初期化をお待ちください。",
+      "DelayAtStart": "遅延はアクションを消費する前のターン開始時に使用できます。",
+      "InvalidTarget": "復帰する位置を他のクリーチャーの後から選んでください。",
+      "GmOnly": "遅延中のクリーチャーを復帰させられるのはGMだけです。",
+      "NotDelayed": "このクリーチャーはもう遅延していません。",
+      "NotOwner": "自分のターンのみ操作できます。",
+      "InvalidRequest": "不明なターン操作です。",
+      "NoNext": "ターンを行える他のクリーチャーがいません。",
+      "BringInHint": "現在のターンを終了し、{name}を今すぐ復帰させます。",
+      "DelayHint": "どのクリーチャーのターンの後に復帰するか選んでください。",
+      "EndHint": "{name}の現在のターンを終了します。",
+      "WaitingAfter": "遅延中 · {name}の後",
+      "WaitingHint": "選択した位置でターンを再開します。遅延中はリアクションを使用できません。",
+      "NextRound": "次のラウンド",
+      "Initiative": "イニシアチブ",
+      "Order": "行動順 {order}",
+      "DelayTitle": "{name}のターンを遅延",
+      "DelayPrompt": "誰のターンの後に復帰しますか？"
+    },
+    "ActionTracker": {
+      "NextTurn": "次のターン",
+      "ExpectedAction": "{count}アクション",
+      "ExpectedActions": "{count}アクション",
+      "ForecastHint": "現在の状態に基づく、次のターン開始時の予想アクション数です。自動入力はこの数を使用します。",
+      "StunnedDuration": "朦朧",
+      "NextTurnRecommendationHint": "次のターンの加速アクションの提案です。自分のターン開始時に再び自動入力してください。",
+      "SaveFailed": "アクションは完了しましたが、トラッカーの更新に失敗しました。手動で調整してください。",
+      "Label": "残りアクション",
+      "Quickened": "加速状態",
+      "QuickenedActionHint": "加速状態による用途制限付きの追加アクションを使用します。",
+      "QuickenedActionUsedHint": "加速状態による用途制限付きの追加アクションを使用しました。",
+      "QuickenedPending": "加速状態 · 次のターン",
+      "QuickenedPendingHint": "このターン中に加速状態を得ました。次の自分のターン開始時に回復するアクション数に反映されます。",
+      "Allowed": "使用可能：{actions}。クリックして編集。",
+      "AllowedReadOnly": "使用可能：{actions}。",
+      "SetActions": "アクション設定",
+      "GmSetup": "GMによる設定待ち",
+      "Unknown": "自動入力で追加アクションを使用するには、GMが使用可能なアクションを設定する必要があります。それまでは手動で消費してください。",
+      "Hint": "このターンのチャットカードと実行済みアクションを追跡します。参照用に投稿した場合は＋で戻し、投稿していないアクションは−で消費します。",
+      "Spend": "アクションを1回消費",
+      "Refund": "アクションを1回戻す",
+      "AllowanceTitle": "加速状態のアクション",
+      "AllowanceHint": "使用できる単一アクションをコンマ区切りで入力してください（例：strike, stride または step）。この加速状態が続く間、設定が保存されます。空欄にすると手動で管理します。",
+      "Save": "保存",
+      "Slowed": "減速状態 {value}",
+      "Stunned": "朦朧状態 {value}"
+    },
     "Settings": {
+      "ShowTurnNavigation": {
+        "Name": "ターン操作を表示",
+        "Hint": "自分のCombaterウィンドウに、次のターンの一覧、ターン終了、遅延の操作を表示します。"
+      },
       "AutoOpen": {
         "Name": "ターン開始時に自動で開く",
         "Hint": "戦闘員のターンが開始したときに、PF2e Combaterパネルを開く。"
@@ -99,6 +167,9 @@
       "LimitedUse": "制限付き使用"
     },
     "Panel": {
+      "WindowOptions": "ウィンドウの操作",
+      "PlanSetup": "計画の設定",
+      "PlanToolbar": "計画を作成",
       "PlannedSequenceAria": "計画されたアクション手順",
       "Done": "完了",
       "Failed": "失敗",

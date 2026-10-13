@@ -44,6 +44,7 @@
 }
 
 .pf2e-combater .combater-shell {
+  container: combater-shell / inline-size;
   overflow: hidden;
   border: 1px solid var(--combater-line);
   border-radius: 8px;
@@ -132,14 +133,10 @@
 }
 
 .pf2e-combater .combater-compact {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "identity"
-    "actions"
-    "plan";
-  gap: 7px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
   padding: 11px 10px 10px;
   cursor: move;
 }
@@ -152,6 +149,87 @@
   align-items: start;
   min-width: 0;
 }
+
+.pf2e-combater .combater-top-row {
+  grid-area: identity;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pf2e-combater .combater-top-row > .combater-identity { flex: 1 1 120px; }
+
+.pf2e-combater .combater-upcoming { flex: 0 0 auto; margin-left: auto; cursor: default; }
+
+.pf2e-combater .combater-upcoming-track {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
+}
+
+.pf2e-combater .combater-upcoming-turn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 78px;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  box-shadow: none;
+  text-shadow: none;
+  cursor: pointer;
+  transform-origin: top left;
+  padding: 5px 4px;
+  border: 1px solid #405971;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #243443, #1b232c);
+  color: #e5f1ff;
+}
+.pf2e-combater .combater-upcoming-turn:hover:not(.is-leaving) { border-color: #a8c9ed; background: #2c4053; }
+.pf2e-combater .combater-upcoming-turn:focus-visible { outline: 2px solid #a8c9ed; outline-offset: 1px; }
+.pf2e-combater .combater-upcoming-turn.is-leaving { position: absolute; pointer-events: none; }
+
+.pf2e-combater .combater-upcoming-label {
+  color: #a8c9ed;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+.pf2e-combater .combater-upcoming-portrait {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #7da8d3;
+  border-radius: 7px;
+  object-fit: contain;
+  object-position: center;
+  background: #151c23;
+}
+
+.pf2e-combater .combater-upcoming-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.pf2e-combater .combater-upcoming-round { color: #b7aea0; font-size: 9px; line-height: 11px; }
+.pf2e-combater .combater-upcoming-turn.is-following { width: 62px; border-color: #363f49; background: #1d2228; color: #c5cbd3; }
+.pf2e-combater .is-following .combater-upcoming-portrait { width: 30px; height: 30px; border-color: #536272; }
+.pf2e-combater .is-following .combater-upcoming-label { color: #a7b4c4; }
+.pf2e-combater .is-following .combater-upcoming-name { font-size: 10px; }
 
 .pf2e-combater .combater-portrait {
   width: 44px;
@@ -565,6 +643,18 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+.pf2e-combater .combater-exec-badge.is-next-turn {
+  color: #f5d68c;
+  background: rgb(245 214 140 / 8%);
+  border: 1px dashed #a89055;
+}
+
+.pf2e-combater .combater-exec-badge.is-quickened {
+  color: #ffe1a0;
+  border-color: #a47f36;
+  background: #47391e;
 }
 
 .pf2e-combater .combater-exec-badge.is-done {
@@ -3876,3 +3966,1003 @@
 .combater-dg-badge { font-size: 34px; font-weight: 700; paint-order: stroke; stroke: #000; stroke-width: 6; }
 .combater-dg-badge.combater-dg-pass { fill: #3cb371; }
 .combater-dg-badge.combater-dg-fail { fill: #d9534f; }
+.pf2e-combater .combater-action-tracker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #6088ac;
+  border-left: 3px solid #91c8ff;
+  border-radius: 7px;
+  background: linear-gradient(110deg, #21354c, #182433);
+  box-shadow: inset 0 1px 0 rgb(174 211 255 / 10%), 0 2px 7px rgb(0 0 0 / 25%);
+  color: #edf5ff;
+  font-size: 13px;
+}
+.pf2e-combater .combater-tracker-label { font-weight: 700; }
+.pf2e-combater .combater-action-tracker > strong {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.pf2e-combater .combater-action-tracker button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 26px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #6985a5;
+  border-radius: 5px;
+  background: #30465f;
+  color: #f1f7ff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 24px;
+}
+.pf2e-combater .combater-action-tracker button:hover:not(:disabled) { background: #44688d; border-color: #a4d1ff; }
+.pf2e-combater .combater-action-tracker button:focus-visible { outline: 2px solid #b5d4ff; }
+.pf2e-combater .combater-action-tracker button:disabled { opacity: 0.45; cursor: default; }
+.pf2e-combater .combater-tracker-pips { display: inline-flex; align-items: center; gap: 2px; color: #b8deff; }
+.pf2e-combater .combater-tracker-pips .action-glyph {
+  font-family: "Pathfinder2eActions", sans-serif;
+  font-size: 18px;
+  font-weight: normal;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.pf2e-combater .combater-tracker-pips .is-spent { color: #6e8299; }
+.pf2e-combater .combater-tracker-pips .is-quickened { color: #f5d68c; }
+.pf2e-combater .combater-tracker-pips .is-quickened.is-spent { color: #8f805d; }
+.pf2e-combater .combater-tracker-quickened-group { display: inline-flex; align-items: center; gap: 6px; }
+.pf2e-combater .combater-action-tracker .combater-tracker-quickened { color: #f5d68c; font-size: 13px; }
+.pf2e-combater .combater-action-tracker .combater-tracker-quickened.needs-configuration { border-color: #c6a357; background: #453c29; }
+.pf2e-combater .combater-action-tracker .combater-tracker-quickened:disabled { opacity: 1; }
+.pf2e-combater .combater-tracker-quickened.is-pending {
+  padding: 4px 6px;
+  border: 1px dashed #a89055;
+  border-radius: 5px;
+  background: rgb(245 214 140 / 6%);
+  line-height: 16px;
+}
+.pf2e-combater .combater-action-tracker small { color: #bec9d8; }
+.pf2e-combater .combater-action-tracker.is-current {
+  border-color: #528e6c;
+  border-left-color: #86d9a4;
+  background: linear-gradient(110deg, #203d30, #182c23);
+  box-shadow: inset 0 1px 0 rgb(174 255 203 / 10%), 0 2px 7px rgb(0 0 0 / 25%);
+  color: #edfff2;
+}
+.pf2e-combater .combater-action-tracker.is-current button { border-color: #65987a; background: #2e503c; }
+.pf2e-combater .combater-action-tracker.is-current button:hover:not(:disabled) { background: #426d52; border-color: #a4efbd; }
+.pf2e-combater .combater-action-tracker.is-current button:focus-visible { outline-color: #b5efc8; }
+.pf2e-combater .combater-action-tracker.is-current .combater-tracker-pips { color: #b8f0ce; }
+.pf2e-combater .combater-action-tracker.is-current .combater-tracker-pips .is-spent:not(.is-quickened) { color: #6f927e; }
+.pf2e-combater .combater-action-tracker.is-current small { color: #bed8c8; }
+.pf2e-combater .combater-turn-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pf2e-combater .combater-turn-controls.is-header { flex: 0 1 auto; max-width: 100%; margin: 0 0 0 auto; }
+.pf2e-combater .combater-turn-button { flex: 0 1 auto; min-height: 30px; width: auto; padding: 5px 11px; border: 1px solid; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 18px; }
+.pf2e-combater .combater-turn-button.is-end { color: #e8edf3; border-color: #5a6573; background: #2a313a; }
+.pf2e-combater .combater-turn-split { display: inline-flex; align-items: stretch; }
+.pf2e-combater .combater-turn-split .is-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pf2e-combater .combater-turn-split .is-more { flex: 0 0 auto; padding: 5px 8px; border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; color: #b7c1ce; border-color: #5a6573; background: #2a313a; font-size: 11px; }
+.pf2e-combater .combater-turn-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 5px;
+  width: 250px;
+  max-width: calc(100vw - 16px);
+  border: 1px solid #4b5664;
+  border-radius: 7px;
+  background: #20262e;
+  color: #e5ecf4;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.pf2e-combater .combater-turn-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; height: auto; min-height: 30px; margin: 0; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 13px; text-align: left; line-height: 1.3; }
+.pf2e-combater .combater-turn-menu button > i { margin-top: 2px; width: 14px; color: #e6c77e; }
+.pf2e-combater .combater-turn-menu button > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pf2e-combater .combater-turn-menu small { color: #aab7c6; font-size: 11px; font-weight: 400; }
+.pf2e-combater .combater-turn-menu .action-glyph { font-size: 12px; color: #e6c77e; }
+.pf2e-combater .combater-turn-menu button:hover:not(:disabled),
+.pf2e-combater .combater-turn-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+.pf2e-combater .combater-turn-menu button:disabled { opacity: .6; cursor: not-allowed; }
+.pf2e-combater .combater-readied { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 7px 9px; border: 1px solid #8a6d32; border-radius: 6px; background: #2c261b; color: #f5d68c; }
+.pf2e-combater .combater-readied > i { flex: 0 0 auto; }
+.pf2e-combater .combater-readied-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+.pf2e-combater .combater-readied-text strong { font-size: 13px; }
+.pf2e-combater .combater-readied-text small { color: #d8c79f; font-size: 12px; overflow-wrap: anywhere; }
+.pf2e-combater .combater-turn-button.is-ready-use { color: #ffe8b8; border-color: #b18b49; background: #493b23; }
+.pf2e-combater .combater-turn-button.is-ready-clear { padding: 5px 8px; color: #c9b993; border-color: #6d6658; background: #2b2924; }
+.pf2e-combater .combater-turn-button.is-return { color: #c4e4ff; border-color: #558dc1; background: #243e55; }
+.pf2e-combater .combater-turn-button:hover:not(:disabled), .pf2e-combater .combater-turn-button:focus-visible { filter: brightness(1.2); box-shadow: 0 0 0 1px currentColor; }
+.pf2e-combater .combater-turn-button:disabled { opacity: .45; cursor: not-allowed; }
+.pf2e-combater .combater-turn-waiting { margin-right: auto; color: #f5d68c; font-size: 12px; }
+
+.pf2e-combater .combater-planning { gap: 8px; }
+.pf2e-combater .combater-planning.has-upcoming {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "setup upcoming" "toolbar upcoming";
+  align-items: center;
+  column-gap: 10px;
+}
+.pf2e-combater .combater-planning.has-upcoming:not(:has(.combater-setup-row)) { grid-template-areas: "toolbar upcoming"; }
+.pf2e-combater .combater-planning .combater-upcoming { grid-area: upcoming; align-self: center; }
+.pf2e-combater .combater-setup-row { grid-area: setup; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; min-width: 0; }
+.pf2e-combater .combater-setup-row button {
+  width: auto;
+  min-height: 25px;
+  height: 25px;
+  padding: 3px 6px;
+  border-color: transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #b7c1ce;
+  font-size: 11px;
+  font-weight: 500;
+}
+.pf2e-combater .combater-setup-row button:is(.is-active, .is-override, .is-burst) { border-color: #756744; background: #2c291f; color: #e6c77e; }
+.pf2e-combater .combater-setup-row button:hover { border-color: #536171; background: #252d36; color: #edf2f8; }
+.pf2e-combater .combater-setup-row button:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
+.pf2e-combater .combater-plan-toolbar { grid-area: toolbar; justify-content: flex-start; gap: 6px; }
+.pf2e-combater .combater-plan-toolbar > button { flex: 0 1 auto; width: auto; height: 32px; min-height: 32px; border-radius: 6px; font-size: 12px; }
+.pf2e-combater .combater-plan-toolbar .combater-header-autofill { padding: 5px 11px; border-color: #b98c40; background: #604718; color: #ffe0a0; }
+.pf2e-combater .combater-plan-toolbar .combater-header-autofill:hover { background: #785922; border-color: #e6bb64; }
+.pf2e-combater .combater-plan-toolbar .combater-header-alternatives { border-color: #49515d; background: #252a31; color: #c5cedb; }
+.pf2e-combater .combater-plan-toolbar .combater-header-browse { border-color: #495b6e; background: #222c36; color: #b7cee6; }
+.pf2e-combater .combater-plan-toolbar .combater-header-browse.is-active { border-color: #79aee8; background: #283d52; color: #d3e7ff; }
+.pf2e-combater .combater-plan-toolbar > button:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
+.pf2e-combater .combater-utilities { flex: 0 0 auto; margin-left: auto; }
+.pf2e-combater .combater-plan-toolbar .combater-utilities-toggle { width: 30px; height: 32px; border-color: transparent; background: transparent; }
+.pf2e-combater .combater-utilities-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 5px;
+  min-width: 170px;
+  max-width: calc(100vw - 16px);
+  border: 1px solid #4b5664;
+  border-radius: 7px;
+  background: #20262e;
+  color: #e5ecf4;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.pf2e-combater .combater-utilities-menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 30px; margin: 0; padding: 6px 9px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 12px; text-align: left; }
+.pf2e-combater .combater-utilities-menu button:hover,
+.pf2e-combater .combater-utilities-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+.pf2e-combater .combater-turn-status { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
+.pf2e-combater .combater-turn-status .combater-action-tracker { flex: 1 1 240px; min-width: 0; }
+.pf2e-combater .combater-turn-status .combater-header-clock { flex: 0 0 auto; margin-left: auto; height: 28px; min-height: 28px; padding: 4px 7px; border-radius: 5px; border-color: #49535e; background: #20262c; color: #b5c3d0; }
+.pf2e-combater .combater-turn-status .combater-header-clock.is-active { border-color: #756744; background: #2c291f; color: #e6c77e; }
+.pf2e-combater .combater-turn-status .combater-header-clock.is-urgent { border-color: #b56e45; background: #35241d; color: #f1b27e; }
+.pf2e-combater .combater-turn-status .combater-header-clock:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
+@container combater-shell (max-width: 480px) {
+  .pf2e-combater .combater-planning.has-upcoming { grid-template-areas: "setup upcoming" "toolbar toolbar"; }
+  .pf2e-combater .combater-planning.has-upcoming:not(:has(.combater-setup-row)) { grid-template-areas: "toolbar upcoming"; }
+}
+
+.application.pf2e-combater-delay-dialog {
+  max-width: calc(100vw - 32px);
+  color: #e4e9ef;
+  background: #191d22;
+  border: 1px solid #46505c;
+  border-radius: 8px;
+}
+.pf2e-combater-delay-dialog .window-header { background: #12161b; border-bottom: 1px solid #353d48; }
+.pf2e-combater-delay-dialog .window-content { padding: 14px; background: #191d22; }
+.pf2e-combater-delay-dialog .dialog-form { gap: 14px; }
+.pf2e-combater-delay-dialog .combater-delay-targets { min-width: 0; margin: 0; padding: 0; border: 0; }
+.pf2e-combater-delay-dialog .combater-delay-targets legend { margin-bottom: 10px; padding: 0; color: #e4e9ef; font-size: 14px; font-weight: 600; }
+.pf2e-combater-delay-dialog .combater-delay-choices { display: flex; flex-direction: column; gap: 6px; max-height: min(380px, 55vh); overflow-y: auto; padding: 3px; }
+.pf2e-combater-delay-dialog .combater-delay-choice {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 42px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  margin: 0;
+  padding: 9px 10px;
+  flex-shrink: 0;
+  border: 1px solid #3b444f;
+  border-radius: 6px;
+  background: #222830;
+  color: #e4e9ef;
+  cursor: pointer;
+}
+.pf2e-combater-delay-dialog .combater-delay-choice:hover { border-color: #a28b60; background: #2c3035; }
+.pf2e-combater-delay-dialog .combater-delay-choice:has(input:checked) { border-color: #c8a25c; background: #373124; box-shadow: inset 3px 0 #c8a25c; }
+.pf2e-combater-delay-dialog .combater-delay-choice:has(input:focus-visible) { outline: 2px solid #a9d4ff; outline-offset: 1px; }
+.pf2e-combater-delay-dialog .combater-delay-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pf2e-combater-delay-dialog .combater-delay-order { color: #aab7c6; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pf2e-combater-delay-dialog .combater-delay-portrait { display: block; width: 42px; height: 42px; object-fit: contain; border: 1px solid #59616b; border-radius: 5px; background: #15191e; }
+.pf2e-combater-delay-dialog .combater-delay-identity { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.pf2e-combater-delay-dialog .combater-delay-name { font-size: 14px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.pf2e-combater-delay-dialog .combater-delay-round { padding: 1px 5px; border: 1px solid #555d67; border-radius: 3px; color: #bdcadb; font-size: 10px; line-height: 14px; }
+.pf2e-combater-delay-dialog .combater-delay-initiative { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 48px; }
+.pf2e-combater-delay-dialog .combater-delay-initiative small { color: #aab7c6; font-size: 10px; line-height: 13px; }
+.pf2e-combater-delay-dialog .combater-delay-initiative strong { color: #f1dfb9; font-size: 19px; line-height: 23px; font-variant-numeric: tabular-nums; }
+.pf2e-combater-delay-dialog .combater-delay-check { width: 14px; height: 14px; border: 1px solid #737d89; border-radius: 50%; }
+.pf2e-combater-delay-dialog .combater-delay-choice:has(input:checked) .combater-delay-check { border-color: #e2bf78; background: #e2bf78; box-shadow: inset 0 0 0 3px #373124; }
+.pf2e-combater-ready-dialog .combater-ready-form { display: flex; flex-direction: column; gap: 12px; }
+.pf2e-combater-ready-dialog .combater-ready-rule { margin: 0; color: #c3cdd9; font-size: 13px; line-height: 1.45; }
+.pf2e-combater-ready-dialog .combater-ready-field { display: flex; flex-direction: column; gap: 4px; }
+.pf2e-combater-ready-dialog .combater-ready-field[hidden] { display: none; }
+.pf2e-combater-ready-dialog .combater-ready-field > span { color: #e4e9ef; font-size: 13px; font-weight: 600; }
+.pf2e-combater-ready-dialog .combater-ready-field small { color: #aab7c6; font-size: 11px; }
+.pf2e-combater-delay-dialog .form-footer button { min-height: 34px; padding: 5px 12px; border: 1px solid #b18b49; border-radius: 5px; background: #493b23; color: #ffe1a0; font-size: 13px; font-weight: 600; }
+.pf2e-combater-delay-dialog .form-footer button:hover { background: #5b4726; border-color: #e2bf78; }
+.pf2e-combater-delay-dialog .form-footer button:focus-visible { outline: 2px solid #a9d4ff; outline-offset: 2px; }
+
+/* ---- Panel redesign: turn-order strip, plan setup menu, budget bar, step rows, run footer ---- */
+
+/* Turn order: a compact strip instead of portrait cards. */
+.pf2e-combater .combater-upcoming { margin: 0 0 6px; }
+.pf2e-combater .combater-upcoming-track { gap: 6px; padding: 1px; overflow-x: auto; }
+.pf2e-combater .combater-upcoming-track > li { flex: 0 0 auto; }
+.pf2e-combater .combater-upcoming-turn,
+.pf2e-combater .combater-upcoming-turn.is-following {
+  flex-direction: row;
+  gap: 6px;
+  width: auto;
+  max-width: 190px;
+  padding: 2px 10px 2px 2px;
+  border: 1px solid #363f49;
+  border-radius: 999px;
+  background: #1d2228;
+  color: #c5cbd3;
+}
+.pf2e-combater .combater-upcoming-turn.is-next { border-color: #4f7396; color: #e5f1ff; }
+.pf2e-combater .combater-upcoming-portrait,
+.pf2e-combater .is-following .combater-upcoming-portrait { width: 22px; height: 22px; border-radius: 50%; border-color: #536272; object-fit: cover; }
+.pf2e-combater .combater-upcoming-label,
+.pf2e-combater .is-following .combater-upcoming-label { order: -1; padding-left: 6px; color: #8d9aab; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.pf2e-combater .combater-upcoming-name,
+.pf2e-combater .is-following .combater-upcoming-name { font-size: 12px; }
+
+/* Plan setup: one dropdown instead of five loose chips. */
+.pf2e-combater .combater-setup-row { flex-wrap: nowrap; }
+.pf2e-combater .combater-setup-row .combater-profile-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 3px 9px;
+  border: 1px solid #3c4552;
+  border-radius: 999px;
+  background: #20262e;
+  color: #c5cfdb;
+  font-size: 12px;
+}
+.pf2e-combater .combater-profile-caret { font-size: 9px; opacity: .7; }
+.pf2e-combater .combater-profile-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 5px;
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  border: 1px solid #4b5664;
+  border-radius: 7px;
+  background: #20262e;
+  color: #e5ecf4;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.pf2e-combater .combater-setup-row .combater-profile-menu button {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.pf2e-combater .combater-setup-row .combater-profile-menu button:hover,
+.pf2e-combater .combater-setup-row .combater-profile-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+
+/* Alternative plans: previous / Plan N of M / next. */
+.pf2e-combater .combater-plan-toolbar .combater-header-alternatives {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid #49515d;
+  border-radius: 6px;
+  background: #252a31;
+  color: #c5cedb;
+  font-size: 12px;
+}
+.pf2e-combater .combater-header-alternatives button { width: 26px; height: 30px; min-height: 30px; padding: 0; border: 0; background: transparent; color: #9aa7b6; }
+.pf2e-combater .combater-header-alternatives button:hover { color: #fff; }
+.pf2e-combater .combater-alt-position { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pf2e-combater .combater-alt-position strong { color: #fff; }
+
+/* Action budget: numbered diamonds tied to the plan's numbered steps. */
+.pf2e-combater .combater-tracker-pips { gap: 7px; }
+.pf2e-combater .combater-pip { position: relative; display: inline-grid; place-items: center; color: #7fd1a0; transition: text-shadow .12s; }
+.pf2e-combater .combater-pip .action-glyph {
+  font-family: "Pathfinder2eActions", sans-serif;
+  font-size: 22px;
+  font-weight: normal;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.pf2e-combater .combater-tracker-pips:has(.combater-pip-owner) { gap: 9px; }
+.pf2e-combater .combater-pip-owner {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: #0f1d16;
+  color: #c8f5d9;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+.pf2e-combater .combater-pip.is-spent { color: #4a5560; }
+.pf2e-combater .combater-pip.is-quickened { color: #f0c96f; }
+.pf2e-combater .combater-pip.is-quickened .combater-pip-owner { color: #ffe3a3; }
+.pf2e-combater .combater-pip.is-quickened.is-spent { color: #8f805d; }
+.pf2e-combater .combater-pip.is-lit { color: #c8f5d9; text-shadow: 0 0 6px rgb(200 245 217 / 85%); }
+.pf2e-combater .combater-pip.is-quickened.is-lit { color: #ffe3a3; text-shadow: 0 0 6px rgb(255 227 163 / 85%); }
+.pf2e-combater .combater-tracker-text { display: flex; flex-direction: column; flex: 1 1 auto; gap: 1px; min-width: 0; line-height: 1.2; }
+.pf2e-combater .combater-tracker-text strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.pf2e-combater .combater-tracker-text .combater-tracker-label { font-weight: 600; }
+.pf2e-combater .combater-tracker-text small.is-over { color: #f1b27e; }
+.pf2e-combater .combater-action-tracker .combater-tracker-adjust-toggle { margin-left: auto; font-size: 12px; }
+.pf2e-combater .combater-tracker-adjust-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 8px 10px;
+  width: 230px;
+  border: 1px solid #4b5664;
+  border-radius: 7px;
+  background: #20262e;
+  color: #e5ecf4;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.pf2e-combater .combater-tracker-stepper { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 13px; }
+.pf2e-combater .combater-tracker-stepper-controls { display: inline-flex; align-items: center; gap: 6px; }
+.pf2e-combater .combater-tracker-stepper output { min-width: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.pf2e-combater .combater-tracker-adjust-menu button {
+  width: auto;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid #4b5664;
+  border-radius: 5px;
+  background: #2a313a;
+  color: #e5ecf4;
+  font-size: 14px;
+}
+.pf2e-combater .combater-tracker-adjust-menu .combater-tracker-quickened { color: #f5d68c; font-size: 13px; }
+.pf2e-combater .combater-tracker-adjust-menu button:disabled { opacity: .45; }
+
+/* Step rows: number badge, attack bonus, quiet traits, secondary tools behind the more button. */
+.pf2e-combater .combater-step-number { position: relative; display: grid; flex: 0 0 auto; place-items: center; width: 20px; height: 20px; }
+.pf2e-combater .combater-step-number::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 3px;
+  background: #24402f;
+  box-shadow: inset 0 0 0 1px #6fc493;
+  transform: rotate(45deg);
+}
+.pf2e-combater .combater-step-number > span { position: relative; color: #8fe0b0; font-size: 10px; font-weight: 800; line-height: 1; }
+.pf2e-combater .combater-header-step.status-done .combater-step-number::before { background: #3a424c; box-shadow: none; }
+.pf2e-combater .combater-header-step.status-done .combater-step-number > span { color: #9aa5b1; }
+.pf2e-combater .combater-plan-strip .combater-detail-chip.is-trait,
+.pf2e-combater .combater-plan-strip .combater-detail-chip.is-trait-overflow {
+  border-color: #3a414b;
+  background: #262b32;
+  color: #aeb7c2;
+}
+.pf2e-combater .combater-detail-chip.is-trait-overflow { cursor: help; }
+.pf2e-combater .combater-map-cycle.has-bonus { display: inline-flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 0; min-width: 42px; height: auto; padding: 2px 6px; line-height: 1.05; }
+.pf2e-combater .combater-map-cycle.has-bonus .combater-attack-bonus { color: #f1f5fa; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pf2e-combater .combater-map-cycle.has-bonus .combater-map-value { color: #8d9aab; font-size: 9px; }
+.pf2e-combater .combater-step-more-tools { display: none; grid-column: 1 / -1; flex-wrap: wrap; gap: 4px; padding: 2px 0 2px 34px; }
+.pf2e-combater .combater-header-step.is-tools-open .combater-step-more-tools { display: flex; }
+.pf2e-combater .combater-header-step.is-tools-open .combater-step-more-toggle { border-color: #79aee8; color: #d3e7ff; }
+.pf2e-combater .combater-step-more-tools .combater-chip-tool.has-label { display: inline-flex; gap: 5px; width: auto; padding: 0 8px; font-size: 11px; }
+.pf2e-combater .combater-step-why summary { border-color: transparent; background: transparent; color: var(--combater-muted); font-weight: 500; }
+.pf2e-combater .combater-step-why summary > .fa-lightbulb { color: #e6c77e; }
+.pf2e-combater .combater-step-why-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+.pf2e-combater .combater-step-why-stars { display: inline-flex; gap: 1px; color: #e6c77e; font-size: 9px; }
+.pf2e-combater .combater-step-why-stars .is-off { color: #4b5361; }
+
+/* Shared target, shown once above the steps. */
+.pf2e-combater .combater-shared-target { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; color: #9aa7b6; font-size: 12px; }
+.pf2e-combater .combater-shared-target-name { width: auto; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; background: none; color: #eef3f8; font-size: 12px; font-weight: 700; }
+.pf2e-combater button.combater-shared-target-name { text-decoration: underline dotted; cursor: pointer; }
+
+/* Sticky run footer. */
+.pf2e-combater .combater-run-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-top: 1px solid #303640;
+  background: var(--combater-bg);
+}
+.pf2e-combater .combater-run-row { display: flex; gap: 6px; }
+.pf2e-combater .combater-run-next {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid #6fc493;
+  border-radius: 7px;
+  background: #3f8a5f;
+  color: #f2fff7;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pf2e-combater .combater-run-next > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf2e-combater .combater-run-next:hover:not(:disabled) { background: #4b9f6e; }
+.pf2e-combater .combater-run-next:disabled { border-color: #4a5560; background: #2a313a; color: #8d9aab; cursor: not-allowed; }
+.pf2e-combater .combater-run-all {
+  flex: 0 0 auto;
+  width: auto;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #2f5a41;
+  border-radius: 7px;
+  background: #1f3a2b;
+  color: #8fe0b0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pf2e-combater .combater-run-all:hover:not(:disabled) { background: #28503a; }
+.pf2e-combater .combater-run-footer .combater-plan-preference { justify-content: flex-end; margin: 0; }
+.pf2e-combater .combater-run-footer .combater-plan-preference-button { width: 24px; height: 24px; min-height: 24px; font-size: 11px; }
+.pf2e-combater .combater-plan-strip .combater-chip:has(> .combater-step-number) { grid-template-columns: auto auto minmax(0, 1fr); column-gap: 6px; }
+.pf2e-combater .combater-plan-strip .combater-chip > .combater-step-number { align-self: center; }
+
+/* ---- Action browser redesign: counted tabs, toolbar, budget bar, one-line rows ---- */
+.pf2e-combater .combater-tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #2a2f37;
+  color: #8d9aab;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.pf2e-combater .combater-tabs button.active .combater-tab-count { background: #2f4a63; color: #d3e7ff; }
+.pf2e-combater.combater-browser .combater-browser-toolbar { display: flex; align-items: center; gap: 6px; margin: 8px 10px 6px; }
+.pf2e-combater.combater-browser .combater-browser-toolbar .combater-search { flex: 1 1 auto; min-width: 0; margin: 0; padding: 5px 9px; }
+.pf2e-combater.combater-browser .combater-browser-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--combater-line);
+  border-radius: 6px;
+  background: var(--combater-surface);
+  color: var(--combater-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pf2e-combater.combater-browser .combater-browser-toggle[aria-pressed="true"] { border-color: #79aee8; color: #d3e7ff; }
+.pf2e-combater .combater-browser-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 10px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--combater-line);
+  border-radius: 6px;
+  background: var(--combater-surface);
+  color: var(--combater-muted);
+  font-size: 12px;
+}
+.pf2e-combater .combater-browser-bar strong { color: var(--combater-ink); }
+.pf2e-combater .combater-browser-bar.is-over { border-color: #6b4a26; background: #2a2219; color: #e8c9a0; }
+.pf2e-combater .combater-browser-bar.is-over strong { color: #ffd9a8; }
+.pf2e-combater .combater-browser-pips { display: inline-flex; gap: 1px; color: #7fd1a0; }
+.pf2e-combater .combater-browser-pips .action-glyph { font-family: "Pathfinder2eActions", sans-serif; font-size: 15px; font-weight: normal; line-height: 1; }
+.pf2e-combater .combater-browser-bar-target { margin-left: auto; }
+
+.pf2e-combater .combater-action-row.combater-browser-row {
+  grid-template-columns: auto 26px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  contain-intrinsic-size: 40px;
+}
+.pf2e-combater .combater-action-row.combater-browser-row:has([data-drag-favorite]) { grid-template-columns: auto 26px minmax(0, 1fr) auto auto auto; }
+.pf2e-combater .combater-action-row.combater-browser-row:not(:has([data-favorite-action])) { grid-template-columns: 26px minmax(0, 1fr) auto auto; }
+.pf2e-combater .combater-browser-row:hover { background: rgb(255 255 255 / 4%); }
+.pf2e-combater .combater-browser-icon { width: 26px; height: 26px; border: 0; border-radius: 5px; background: #31353d; object-fit: cover; }
+.pf2e-combater .combater-browser-row.is-over .combater-browser-icon,
+.pf2e-combater .combater-browser-row.is-over .combater-browser-name { opacity: .6; }
+.pf2e-combater .combater-browser-row.is-excluded { opacity: .6; }
+.pf2e-combater button.combater-browser-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.pf2e-combater .combater-browser-name { max-width: 100%; overflow: hidden; color: var(--combater-ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.pf2e-combater .combater-browser-why { max-width: 100%; overflow: hidden; color: var(--combater-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.pf2e-combater .combater-browser-why .is-target { color: #8ec3f5; }
+.pf2e-combater .combater-browser-why .is-warning { color: #f1a07e; }
+.pf2e-combater .combater-browser-row.is-expanded .combater-browser-why { white-space: normal; }
+.pf2e-combater .combater-browser-odds { min-width: 34px; color: #c9b6f5; font-size: 12px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.pf2e-combater .combater-browser-row .combater-add-action.is-over:disabled { border-color: #6b4a26; color: #e8a35a; opacity: .8; }
+.pf2e-combater .combater-browser-detail { grid-column: 3 / -1; display: flex; flex-direction: column; gap: 6px; padding: 2px 0 4px; }
+.pf2e-combater .combater-action-row.combater-browser-row:not(:has([data-favorite-action])) .combater-browser-detail { grid-column: 2 / -1; }
+.pf2e-combater .combater-browser-detail p { margin: 0; color: var(--combater-muted); font-size: 12px; line-height: 1.45; }
+.pf2e-combater .combater-browser-detail-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.pf2e-combater .combater-browser-detail-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--combater-line);
+  border-radius: 5px;
+  background: #2a2f37;
+  color: #c5cfdb;
+  font-size: 11px;
+}
+.pf2e-combater .combater-browser-detail-actions button:hover { border-color: #79aee8; color: #fff; }
+.pf2e-combater .combater-favorites-hint { margin: 0; padding: 6px 8px; border: 1px dashed var(--combater-line); border-radius: 6px; font-size: 12px; }
+.pf2e-combater.combater-browser .combater-tabs { gap: 0; padding: 0 4px; }
+.pf2e-combater.combater-browser .combater-tabs button { flex: 1 1 auto; gap: 4px; padding: 8px 3px 6px; font-size: 11.5px; white-space: nowrap; overflow-wrap: normal; }
+.pf2e-combater.combater-browser .combater-tab-count { min-width: 14px; padding: 0 4px; font-size: 9px; line-height: 13px; }
+.pf2e-combater .combater-action-section:has(.combater-favorites-hint) { padding: 6px; }
+.pf2e-combater .combater-action-section:has(.combater-favorites-hint) .combater-alt-head { display: none; }
+.pf2e-combater .combater-action-section:has(.combater-favorites-hint) .combater-alt-details { margin: 0; padding: 0; border: 0; }
+
+/* ---- Window redesign: shared help line ---- */
+.combater-intel-help,
+.combater-tactic-help,
+.combater-loadout-help,
+.combater-effect-clock-help {
+  margin: 0;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--combater-line);
+  color: var(--combater-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* ---- Intel: creature header row, one row per category ---- */
+.pf2e-combater-intel-window .combater-intel-shell.is-editable .combater-intel-entry,
+.pf2e-combater-intel-window .combater-intel-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pf2e-combater-intel-window .combater-intel-target-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.pf2e-combater-intel-window .combater-intel-target-text { display: flex; flex: 1 1 160px; flex-direction: column; gap: 3px; min-width: 0; }
+.pf2e-combater-intel-window .combater-intel-target-text h3 { margin: 0; font-size: 16px; }
+.pf2e-combater-intel-window .combater-intel-progress-label { color: var(--combater-muted); font-size: 12px; }
+.pf2e-combater-intel-window .combater-intel-meter { display: block; width: 150px; max-width: 100%; height: 5px; overflow: hidden; border-radius: 3px; background: #2b3037; }
+.pf2e-combater-intel-window .combater-intel-meter > span { display: block; height: 100%; background: #5fbf8a; transition: width .15s; }
+.pf2e-combater-intel-window .combater-intel-reveal-switch { display: inline-flex; overflow: hidden; border: 1px solid var(--combater-line); border-radius: 7px; background: var(--combater-surface); }
+.pf2e-combater-intel-window .combater-intel-reveal-switch .combater-intel-reveal-option {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 1px solid var(--combater-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--combater-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pf2e-combater-intel-window .combater-intel-reveal-switch .combater-intel-reveal-option:first-child { border-left: 0; }
+.pf2e-combater-intel-window .combater-intel-reveal-switch .combater-intel-reveal-option.is-selected { background: #2f4a63; color: #e5f1ff; }
+.pf2e-combater-intel-window .combater-intel-reveal-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pf2e-combater-intel-window .combater-intel-reveal-switch .combater-intel-reveal-option:has(input:focus-visible) { outline: 2px solid var(--combater-focus); outline-offset: -2px; }
+
+.pf2e-combater-intel-window .combater-intel-category-list { overflow: hidden; border: 1px solid var(--combater-line); border-radius: 8px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-top: 1px solid var(--combater-line);
+  border-radius: 0;
+  background: var(--combater-surface);
+}
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category:first-child { border-top: 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category.is-known { background: #1f2a24; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 1px solid #5b6472;
+  border-radius: 4px;
+  background: #15171b;
+  color: #c8f5d9;
+  font-size: 10px;
+}
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category-mark .fa-plus { visibility: hidden; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category.is-known .combater-intel-category-mark { border-color: #4f9c70; background: #24402f; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-category-text strong { font-size: 13px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-facts { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact.is-none span[data-intel-fact-label] { font-style: italic; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-add-false {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid var(--combater-line);
+  border-radius: 6px;
+  background: #2a2f37;
+  color: #b9865a;
+  font-size: 11px;
+}
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-add-false:hover { border-color: #b9865a; color: #f1b27e; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-section { grid-column: 1 / -1; margin: 0; padding: 6px 0 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-section:not(:has(.combater-intel-false-record)) { display: none; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-section-head { margin: 0 0 4px; color: #e8c9a0; font-size: 11px; }
+.pf2e-combater-intel-window .combater-intel-entry-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.pf2e-combater-intel-window .combater-intel-entry-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--combater-muted);
+  font-size: 12px;
+}
+.pf2e-combater-intel-window .combater-intel-entry-tools button:hover { border-color: var(--combater-line); color: var(--combater-ink); }
+
+/* Player view: every topic listed, unknown ones muted. */
+.pf2e-combater-intel-window .combater-intel-revealed { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--combater-line); border-radius: 8px; }
+.pf2e-combater-intel-window .combater-intel-revealed .combater-intel-revealed-section {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 7px 10px;
+  border-top: 1px solid var(--combater-line);
+  background: var(--combater-surface);
+}
+.pf2e-combater-intel-window .combater-intel-revealed .combater-intel-revealed-section:first-child { border-top: 0; }
+.pf2e-combater-intel-window .combater-intel-revealed .combater-intel-revealed-section h4 { margin: 0; color: var(--combater-ink); font-size: 13px; }
+.pf2e-combater-intel-window .combater-intel-revealed .combater-intel-revealed-section ul { margin: 0; }
+.pf2e-combater-intel-window .combater-intel-unknown { color: #7d838d; font-size: 12px; font-style: italic; }
+
+/* ---- Tactic: switch, 7-step scales, single scoped Save ---- */
+.pf2e-combater-tactic-window .combater-tactic-custom-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: none;
+  padding: 8px 10px;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-surface);
+  cursor: pointer;
+}
+.pf2e-combater-tactic-window .combater-tactic-custom-copy { flex: 1 1 auto; min-width: 0; }
+.pf2e-combater-tactic-window .combater-tactic-custom-card input[role="switch"] {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 18px;
+  margin: 0;
+  border-radius: 999px;
+  background: #3a414b;
+  opacity: 1;
+  appearance: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.pf2e-combater-tactic-window .combater-tactic-custom-card input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #cfd5dd;
+  transition: left .15s;
+}
+.pf2e-combater-tactic-window .combater-tactic-custom-card input[role="switch"]:checked { background: #3f8a5f; }
+.pf2e-combater-tactic-window .combater-tactic-custom-card input[role="switch"]:checked::after { left: 18px; }
+.pf2e-combater-tactic-window .combater-tactic-custom-card input[role="switch"]:focus-visible { outline: 2px solid var(--combater-focus); outline-offset: 2px; }
+.pf2e-combater-tactic-window .combater-tactic-slider { grid-template-columns: minmax(120px, 1fr) minmax(0, 238px); gap: 10px; align-items: center; }
+.pf2e-combater-tactic-window .combater-tactic-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.pf2e-combater-tactic-window .combater-tactic-step { position: relative; display: block; margin: 0; cursor: pointer; }
+.pf2e-combater-tactic-window .combater-tactic-step input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pf2e-combater-tactic-window .combater-tactic-step span {
+  display: grid;
+  place-items: center;
+  height: 22px;
+  border-radius: 4px;
+  background: #2b3037;
+  color: #7d838d;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.pf2e-combater-tactic-window .combater-tactic-step.is-mid span { box-shadow: inset 0 0 0 1px #4b5361; }
+.pf2e-combater-tactic-window .combater-tactic-step:hover span { color: var(--combater-ink); }
+.pf2e-combater-tactic-window .combater-tactic-step input:checked + span { background: #2f4a63; color: #e5f1ff; }
+.pf2e-combater-tactic-window .combater-tactic-step.is-negative input:checked + span { background: #4a2a2a; color: #ffd2cf; }
+.pf2e-combater-tactic-window .combater-tactic-step input:focus-visible + span { outline: 2px solid var(--combater-focus); outline-offset: 1px; }
+.pf2e-combater-tactic-window .combater-tactic-scale { display: flex; justify-content: space-between; width: min(238px, 100%); margin-left: auto; color: #7d838d; font-size: 10px; }
+.pf2e-combater-tactic-window .combater-tactic-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pf2e-combater-tactic-window .combater-tactic-actions-gap { flex: 1 1 auto; }
+.pf2e-combater-tactic-window .combater-tactic-scope { display: inline-flex; align-items: center; gap: 8px; color: var(--combater-muted); font-size: 12px; }
+.pf2e-combater-tactic-window .combater-tactic-scope-options { display: inline-flex; overflow: hidden; border: 1px solid var(--combater-line); border-radius: 7px; background: var(--combater-surface); }
+.pf2e-combater-tactic-window .combater-tactic-scope-option { position: relative; margin: 0; cursor: pointer; }
+.pf2e-combater-tactic-window .combater-tactic-scope-option + .combater-tactic-scope-option { border-left: 1px solid var(--combater-line); }
+.pf2e-combater-tactic-window .combater-tactic-scope-option input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pf2e-combater-tactic-window .combater-tactic-scope-option span { display: block; padding: 5px 10px; color: var(--combater-muted); white-space: nowrap; }
+.pf2e-combater-tactic-window .combater-tactic-scope-option input:checked + span { background: #2f4a63; color: #e5f1ff; }
+.pf2e-combater-tactic-window .combater-tactic-scope-option input:focus-visible + span { outline: 2px solid var(--combater-focus); outline-offset: -2px; }
+.pf2e-combater-tactic-window .combater-tactic-link { width: auto; border-color: transparent; background: transparent; color: var(--combater-muted); }
+.pf2e-combater-tactic-window .combater-tactic-link:hover { color: var(--combater-ink); }
+.pf2e-combater-tactic-window .combater-tactic-actions .combater-tactic-primary { border-color: #6fc493; background: #3f8a5f; color: #f2fff7; }
+
+/* ---- Turn intent: one column of switch cards with a labelled Keep pill ---- */
+.pf2e-combater-turn-intent-window .combater-turn-intent-list { display: flex; flex-direction: column; gap: 6px; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-right: 10px;
+  border: 1px solid var(--combater-line);
+  border-radius: 8px;
+  background: var(--combater-surface);
+}
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision:has(input[role="switch"]:checked) { border-color: #4f9c70; background: #1d2c24; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision .combater-turn-intent-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  height: auto;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+}
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"] {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  margin: 0;
+  border-radius: 999px;
+  background: #3a414b;
+  appearance: none;
+  cursor: pointer;
+}
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #cfd5dd;
+  transition: left .15s;
+}
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"]:checked { background: #3f8a5f; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"]:checked::after { left: 18px; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"]:disabled { opacity: .4; cursor: not-allowed; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-option input[role="switch"]:focus-visible { outline: 2px solid var(--combater-focus); outline-offset: 2px; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-switch-spacer { width: 34px; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-field select { width: 100%; margin-top: 4px; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision .combater-turn-intent-lock,
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision:not(:has(.combater-turn-intent-option input:checked)) .combater-turn-intent-lock {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--combater-line);
+  border-radius: 999px;
+  font-size: 11px;
+  opacity: 1;
+}
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision:not(:has(.combater-turn-intent-option input:checked)) .combater-turn-intent-lock { opacity: .35; pointer-events: none; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-decision .combater-turn-intent-lock.is-active { border-color: #79aee8; background: #233547; color: #d3e7ff; }
+.pf2e-combater-turn-intent-window .combater-turn-intent-clear { border-color: transparent; background: transparent; color: var(--combater-muted); }
+
+/* ---- Loadout: one-line swap, Best badge, compact add ---- */
+.pf2e-combater-loadout-window .combater-loadout-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+}
+.pf2e-combater-loadout-window .combater-loadout-swap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.pf2e-combater-loadout-window .combater-loadout-swap > .fa-arrow-right { color: var(--combater-muted); font-size: 11px; }
+.pf2e-combater-loadout-window .combater-loadout-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.pf2e-combater-loadout-window .combater-loadout-item img { width: 22px; height: 22px; border: 0; border-radius: 4px; object-fit: cover; }
+.pf2e-combater-loadout-window .combater-loadout-item.is-held span { color: var(--combater-muted); text-decoration: line-through; text-decoration-color: #6f737c; }
+.pf2e-combater-loadout-window .combater-loadout-item.is-draw strong { font-size: 13px; }
+.pf2e-combater-loadout-window .combater-loadout-best { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: #4a3c1c; color: #ffd98a; font-size: 11px; font-weight: 700; }
+.pf2e-combater-loadout-window .combater-loadout-add { width: auto; height: 28px; min-height: 28px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.pf2e-combater-loadout-window .combater-loadout-reasons { grid-column: 1 / -1; margin: 0; }
+
+/* ---- Effect clock: rows share one list per group ---- */
+.pf2e-combater-effect-clock-window .combater-effect-clock-list { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--combater-line); border-radius: 8px; background: var(--combater-surface); }
+.pf2e-combater-effect-clock-window .combater-effect-clock-list .combater-effect-clock-entry {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--combater-line);
+  border-radius: 0;
+  box-shadow: none;
+}
+.pf2e-combater-effect-clock-window .combater-effect-clock-list .combater-effect-clock-entry:first-child { border-top: 0; }
+.pf2e-combater .combater-reaction-used { display: inline-flex; align-items: center; gap: 5px; margin-right: auto; padding: 2px 9px; border: 1px solid #6b4a26; border-radius: 999px; background: #2a2219; color: #f1b27e; font-size: 12px; }
+/* Intel: match the approved mockup more closely. */
+.pf2e-combater-intel-window .combater-intel-shell .combater-intel-entry,
+.pf2e-combater-intel-window .combater-intel-shell .combater-intel-entry.has-revealed { padding: 0; border: 0; background: transparent; }
+.pf2e-combater-intel-window .combater-intel-shell.is-editable .combater-intel-category-list .combater-intel-category { min-height: 0; padding: 6px 10px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid var(--combater-line);
+  border-radius: 999px;
+  background: #2b3037;
+  color: var(--combater-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact:hover { border-color: #5b6472; color: var(--combater-ink); }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact.is-known { border-color: #4f9c70; background: #24402f; color: #c8f5d9; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact-mark { width: auto; height: auto; border: 0; color: inherit; font-size: 10px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact:not(.is-known) .combater-intel-fact-mark { display: none; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact:has(input:focus-visible) { outline: 2px solid var(--combater-focus); outline-offset: 1px; }
+.pf2e-combater-intel-window .combater-intel-actions { align-items: center; }
+.pf2e-combater-intel-window .combater-intel-entry-tools.is-footer { display: inline-flex; margin-right: auto; }
+/* Intel: planted false facts read as one compact line under their row. */
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-add-false { display: inline-flex; gap: 5px; width: auto; padding: 0 9px; font-size: 11px; white-space: nowrap; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-section { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; border-top: 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-section-head { margin: 0; white-space: nowrap; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-list { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record,
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record.has-value,
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record.can-reveal {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 2px 4px 2px 8px;
+  border: 1px dashed #7a4a2c;
+  border-radius: 999px;
+  background: #241c15;
+}
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record.is-revealed { border-style: solid; border-color: #b9865a; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record select { width: auto; min-width: 110px; color: #f1b27e; font-size: 12px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-value { display: inline-flex; grid-column: auto; grid-row: auto; gap: 4px; font-size: 10px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-value [data-intel-false-value] { width: 46px; min-width: 46px; max-width: 46px; height: 22px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record button { width: 22px; height: 22px; min-height: 22px; padding: 0; border: 0; background: transparent; font-size: 11px; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record select { flex: 0 0 auto; width: 120px; min-width: 0; }
+.pf2e-combater-intel-window .combater-intel-false-state { color: #b7aea0; font-size: 11px; white-space: nowrap; }
+.pf2e-combater-intel-window .combater-intel-false-record.is-revealed .combater-intel-false-state { color: #ffc68a; font-weight: 700; }
+.pf2e-combater-intel-window .combater-intel-category-list .combater-intel-false-record .combater-intel-toggle-false { color: #e8c9a0; }
+/* Intel: planted false facts are orange chips beside the real facts; + False fact opens an inline draft. */
+.pf2e-combater-intel-window .combater-intel-false-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 3px 1px 9px;
+  border: 1px dashed #9a6a3c;
+  border-radius: 999px;
+  background: #2a2016;
+  color: #f1b27e;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pf2e-combater-intel-window .combater-intel-false-chip.is-revealed { border-style: solid; border-color: #d08a4c; background: #3a2817; color: #ffc68a; }
+.pf2e-combater-intel-window .combater-intel-false-chip > .fa-triangle-exclamation { font-size: 10px; }
+.pf2e-combater-intel-window .combater-intel-false-chip button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  opacity: .8;
+}
+.pf2e-combater-intel-window .combater-intel-false-chip button:hover { background: rgb(255 255 255 / 10%); opacity: 1; }
+.pf2e-combater-intel-window .combater-intel-false-draft {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px dashed #7a4a2c;
+  border-radius: 8px;
+  background: #241c15;
+  color: #e8c9a0;
+  font-size: 12px;
+}
+.pf2e-combater-intel-window .combater-intel-false-draft[hidden] { display: none; }
+.pf2e-combater-intel-window .combater-intel-false-draft select { width: auto; min-width: 140px; height: 26px; color-scheme: dark; }
+.pf2e-combater-intel-window .combater-intel-false-draft .combater-intel-false-value { display: inline-flex; align-items: center; gap: 4px; color: var(--combater-muted); font-size: 11px; }
+.pf2e-combater-intel-window .combater-intel-false-draft [data-intel-false-value] { width: 52px; height: 26px; }
+.pf2e-combater-intel-window .combater-intel-false-draft button { display: grid; place-items: center; width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 6px; font-size: 11px; }
+.pf2e-combater-intel-window .combater-intel-false-draft .combater-intel-false-confirm { border: 1px solid #d08a4c; background: #4a3520; color: #ffc68a; }
+.pf2e-combater-intel-window .combater-intel-false-draft .combater-intel-false-cancel { border: 1px solid var(--combater-line); background: transparent; color: var(--combater-muted); }

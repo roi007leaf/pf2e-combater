@@ -4,7 +4,6 @@
 // which lagged the canvas the whole time the panel was open.
 const GEOMETRY_KEYS = new Set(["x", "y", "elevation", "width", "height"]);
 const MOVEMENT_KEYS = new Set(["x", "y", "elevation"]);
-const MAX_MOVEMENT_ACTION_SPENDS = 3;
 const tokenSnapshots = new Map();
 const movementActionSpends = new Map();
 const movementActionDistances = new Map();
@@ -74,13 +73,13 @@ function numeric(value, fallback = 0) {
 
 function tokenPosition(token) {
   const document = tokenDocument(token);
-  const x = snapshotValue(token?.x, document.x);
-  const y = snapshotValue(token?.y, document.y);
+  const x = snapshotValue(document.x, token?.x);
+  const y = snapshotValue(document.y, token?.y);
   if (x === null || y === null) return null;
   return {
     x: numeric(x, 0),
     y: numeric(y, 0),
-    elevation: numeric(snapshotValue(token?.elevation, document.elevation), 0),
+    elevation: numeric(snapshotValue(document.elevation, token?.elevation), 0),
   };
 }
 
@@ -249,6 +248,10 @@ export function markMovementActionSpent(token, {
   if (changed && !tokenUpdateAffectsMovement(changed)) return false;
   if (!combat?.started || !combat?.combatant) return false;
   if (!tokenMatchesCombatant(token, combat.combatant)) return false;
+  if (options?.combaterActionSpend || options?.isUndo || changed?.action === "displace") {
+    origins.delete(tokenKey(token));
+    return false;
+  }
 
   const key = combatTurnKey(combat);
   if (!key) return false;
@@ -258,7 +261,6 @@ export function markMovementActionSpent(token, {
   if (tokenId) origins.delete(tokenId);
   const to = movementTargetPosition(token, changed);
   const previous = Number(spends.get(key) ?? 0);
-  if (previous >= MAX_MOVEMENT_ACTION_SPENDS) return false;
   const speed = movementSpeedFeet(combat);
   const movementDistance = movementDistanceFeet({ combat, from, to, changed, options });
   if (!Number.isFinite(movementDistance) || movementDistance <= 0) return false;
@@ -266,10 +268,7 @@ export function markMovementActionSpent(token, {
   const totalDistance = Number(distances.get(key) ?? 0) + movementDistance;
   distances.set(key, totalDistance);
 
-  const count = Math.min(
-    movementSpendCountForDistance(totalDistance, speed),
-    MAX_MOVEMENT_ACTION_SPENDS,
-  );
+  const count = movementSpendCountForDistance(totalDistance, speed);
   if (count <= previous) return false;
   spends.set(key, count);
   return true;

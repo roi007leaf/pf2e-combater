@@ -49,10 +49,13 @@ export function turnIntentWindowView(context, value, candidates = []) {
   return {
     intent,
     captureTargetIds: selection.ids,
-    title: t("TurnIntent.Title", "Turn Intent"),
-    help: t("TurnIntent.Help", "Constraints for this combatant. Lock individual choices to keep them between turns until the encounter ends."),
+    title: context?.actor?.name
+      ? t("TurnIntent.TitleFor", "Turn intent · {name}", { name: context.actor.name })
+      : t("TurnIntent.Title", "Turn Intent"),
+    help: t("TurnIntent.HelpShort", "Rules Auto-fill must follow. \"Keep\" carries a rule into later turns until the encounter ends."),
     targetLabel,
     canLockTarget: selection.ids.length > 0,
+    lockTargetDisabled: selection.ids.length === 0,
     lockTarget: intent.lockedTargetIds.length > 0,
     actionOptions: actionOptions(candidates, intent.requiredActionKey),
   };
@@ -138,14 +141,29 @@ export class TurnIntentWindow extends HandlebarsApplicationMixin(ApplicationV2) 
         setLockState(button, active);
       });
     }
+    // Apply names how many rules are on, so an empty Apply is visibly a no-op.
+    const syncApply = () => {
+      const button = this.element.querySelector("[data-turn-intent-save]");
+      const label = button?.querySelector("[data-turn-intent-apply-label]");
+      if (!label) return;
+      const form = this.element.querySelector("[data-turn-intent-form]");
+      const count = form.querySelectorAll('input[type="checkbox"]:checked').length
+        + (form.elements.namedItem("requiredActionKey")?.value ? 1 : 0);
+      label.textContent = count > 0
+        ? String(button.dataset.applyCountLabel ?? "").replace("{count}", count)
+        : button.dataset.applyLabel;
+    };
     for (const decision of this.element.querySelectorAll(".combater-turn-intent-decision")) {
       decision.querySelector('input[type="checkbox"]')?.addEventListener("change", (event) => {
         if (!event.currentTarget.checked) {
           const button = decision.querySelector("[data-turn-intent-lock]");
           if (button) setLockState(button, false);
         }
+        syncApply();
       });
     }
+    this.element.querySelector("[name='requiredActionKey']")?.addEventListener("change", syncApply);
+    syncApply();
     this.element.querySelector("[data-turn-intent-cancel]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[data-turn-intent-clear]")?.addEventListener("click", (event) =>
       this._finish(normalizeTurnIntent(), event.currentTarget));

@@ -130,7 +130,11 @@ export function traitChips(action) {
       .filter(Boolean),
   )];
   const chips = [];
-  for (const trait of traits) pushChip(chips, pf2eTrait(trait), "", "trait");
+  for (const trait of traits) {
+    const before = chips.length;
+    pushChip(chips, pf2eTrait(trait), "", "trait");
+    if (chips.length > before) chips[chips.length - 1].slug = trait;
+  }
   for (const effect of attackEffects) pushChip(chips, pf2eAttackEffect(effect), "", "trait");
   return chips;
 }

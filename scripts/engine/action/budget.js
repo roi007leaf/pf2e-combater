@@ -50,16 +50,15 @@ function spentNormalActions(context) {
   return Number.isFinite(spent) && spent > 0 ? spent : 0;
 }
 
-export function actionBudget(context) {
-  const profile = context?.profile ?? context?.actor?.profile ?? {};
+export function turnActionPool(profile = {}) {
   const slowed = profileStateValue(profile, "slowed");
   const stunned = profileStateValue(profile, "stunned");
   const quickened = profileStateValue(profile, "quickened");
-  const spent = spentNormalActions(context);
   // Choose to lose the restricted quickened action before unrestricted normal actions.
-  const quickenedLost = quickened > 0 && slowed > 0 ? 1 : 0;
+  const lost = profile.stunnedDuration ? BASE_ACTIONS + (quickened > 0 ? 1 : 0) : Math.max(slowed, stunned);
+  const quickenedLost = quickened > 0 && lost > 0 ? 1 : 0;
   const quickenedActions = quickened > 0 ? 1 - quickenedLost : 0;
-  const normalActions = Math.max(0, BASE_ACTIONS - (slowed - quickenedLost) - stunned - spent);
+  const normalActions = Math.max(0, BASE_ACTIONS - (lost - quickenedLost));
 
   return {
     normalActions,
@@ -67,7 +66,27 @@ export function actionBudget(context) {
     totalActions: normalActions + quickenedActions,
     slowed,
     stunned,
+    stunnedDuration: profile.stunnedDuration === true,
     quickened,
-    spent,
   };
+}
+
+export function actionBudget(context) {
+  const pool = context?.turnActionPool ?? turnActionPool(context?.profile ?? context?.actor?.profile ?? {});
+  const spent = spentNormalActions(context);
+  const quickenedSpent = Math.max(0, Number(context?.actionsSpent?.quickened) || 0);
+  const normalActions = Math.max(0, pool.normalActions - spent);
+  const quickenedActions = Math.max(0, pool.quickenedActions - quickenedSpent);
+  return { ...pool, normalActions, quickenedActions, totalActions: normalActions + quickenedActions, spent };
+}
+
+export function quickenedEligible(action, cost, context = {}) {
+  if (Number(cost) !== 1) return false;
+  const allowed = context.quickenedAllowed ?? ["strike", "stride"];
+  const slug = action?.source === "strike" ? "strike" : action?.slug;
+  return allowed.includes(slug);
+}
+
+export function stepAlreadySpent(context, step) {
+  return Boolean(step?.instanceId && context?.actionTracker?.executionIds?.includes(step.instanceId));
 }

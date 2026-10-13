@@ -421,7 +421,7 @@ function trackStepDuration(context, state, step) {
 }
 
 export function advancePlanState(context, currentState, step) {
-  if (!usableStep(step)) return currentState;
+  if (!usableStep(step) || step.quickenedNextTurn) return currentState;
   let state = reserveResource(currentState, step);
   state = applyStepConditions(context, state, step);
   state = trackStepDuration(context, state, step);

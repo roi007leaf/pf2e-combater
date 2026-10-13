@@ -4,6 +4,7 @@ const SETTINGS = {
   autoOpen: "autoOpen",
   compactDefault: "compactDefault",
   rememberPanelPosition: "rememberPanelPosition",
+  showTurnNavigation: "showTurnNavigation",
   enableSpellRecommendations: "enableSpellRecommendations",
   hideUntrainedSkillActions: "hideUntrainedSkillActions",
   includeUnknownCustomActions: "includeUnknownCustomActions",
@@ -42,6 +43,16 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     config: true,
     type: Boolean,
     default: true,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.showTurnNavigation, {
+    name: "PF2E_COMBATER.Settings.ShowTurnNavigation.Name",
+    hint: "PF2E_COMBATER.Settings.ShowTurnNavigation.Hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => Hooks.callAll("pf2e-combater.turnNavigationChanged"),
   });
 
   game.settings.register(MODULE_ID, SETTINGS.enableSpellRecommendations, {

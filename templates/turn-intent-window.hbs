@@ -1,62 +1,70 @@
+{{#*inline "keepButton"}}
+  <button type="button" class="combater-turn-intent-lock {{#if active}}is-active{{/if}}" data-turn-intent-lock="{{key}}" aria-label="Keep {{label}} between turns" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-tooltip="Keep this rule for later turns" {{#if disabled}}disabled{{/if}}><i class="fa-solid {{#if active}}fa-lock{{else}}fa-lock-open{{/if}}"></i><span>Keep</span></button>
+{{/inline}}
 <form class="combater-turn-intent-form" data-turn-intent-form>
   <p class="combater-turn-intent-help">{{help}}</p>
 
-  <div class="combater-turn-intent-decision">
-    <label class="combater-turn-intent-option {{#unless canLockTarget}}is-disabled{{/unless}}">
-      <input type="checkbox" name="lockTarget" {{#if lockTarget}}checked{{/if}} {{#unless canLockTarget}}disabled{{/unless}}>
-      <span>
-        <strong>Lock target</strong>
-        <small>{{targetLabel}}</small>
-      </span>
-    </label>
-    <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.lockedTargetIds}}is-active{{/if}}" data-turn-intent-lock="lockedTargetIds" aria-label="Keep target choice between turns" aria-pressed="{{#if intent.decisionLocks.lockedTargetIds}}true{{else}}false{{/if}}" data-tooltip="Keep target choice between turns" {{#unless canLockTarget}}disabled{{/unless}}><i class="fa-solid {{#if intent.decisionLocks.lockedTargetIds}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
-  </div>
+  <div class="combater-turn-intent-list">
+    <div class="combater-turn-intent-decision">
+      <label class="combater-turn-intent-option {{#unless canLockTarget}}is-disabled{{/unless}}">
+        <input type="checkbox" role="switch" name="lockTarget" {{#if lockTarget}}checked{{/if}} {{#unless canLockTarget}}disabled{{/unless}}>
+        <span>
+          <strong>Lock target</strong>
+          <small>{{targetLabel}}</small>
+        </span>
+      </label>
+      {{> keepButton key="lockedTargetIds" label="target choice" active=intent.decisionLocks.lockedTargetIds disabled=lockTargetDisabled}}
+    </div>
 
-  <label class="combater-turn-intent-field">
-    <span>Require action</span>
-    <select name="requiredActionKey">
-      <option value="">Any action</option>
-      {{#each actionOptions}}
-        <option value="{{key}}" {{#if selected}}selected{{/if}}>{{name}}</option>
-      {{/each}}
-    </select>
-  </label>
+    <div class="combater-turn-intent-decision is-field">
+      <label class="combater-turn-intent-option combater-turn-intent-field">
+        <span class="combater-turn-intent-switch-spacer" aria-hidden="true"></span>
+        <span>
+          <strong>Must include</strong>
+          <select name="requiredActionKey">
+            <option value="">Any action</option>
+            {{#each actionOptions}}
+              <option value="{{key}}" {{#if selected}}selected{{/if}}>{{name}}</option>
+            {{/each}}
+          </select>
+        </span>
+      </label>
+    </div>
 
-  <div class="combater-turn-intent-grid">
     <div class="combater-turn-intent-decision">
       <label class="combater-turn-intent-option">
-        <input type="checkbox" name="noSpellSlots" {{#if intent.noSpellSlots}}checked{{/if}}>
-        <span><strong>No spell slots</strong><small>Cantrips and focus spells remain available.</small></span>
+        <input type="checkbox" role="switch" name="noSpellSlots" {{#if intent.noSpellSlots}}checked{{/if}}>
+        <span><strong>No spell slots</strong><small>Cantrips and focus spells still allowed.</small></span>
       </label>
-      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.noSpellSlots}}is-active{{/if}}" data-turn-intent-lock="noSpellSlots" aria-label="Keep No spell slots between turns" aria-pressed="{{#if intent.decisionLocks.noSpellSlots}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.noSpellSlots}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+      {{> keepButton key="noSpellSlots" label="No spell slots" active=intent.decisionLocks.noSpellSlots}}
     </div>
     <div class="combater-turn-intent-decision">
       <label class="combater-turn-intent-option">
-        <input type="checkbox" name="stayRanged" {{#if intent.stayRanged}}checked{{/if}}>
-        <span><strong>Stay ranged</strong><small>Exclude melee attacks and maneuvers.</small></span>
+        <input type="checkbox" role="switch" name="stayRanged" {{#if intent.stayRanged}}checked{{/if}}>
+        <span><strong>Stay ranged</strong><small>No melee attacks or maneuvers.</small></span>
       </label>
-      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.stayRanged}}is-active{{/if}}" data-turn-intent-lock="stayRanged" aria-label="Keep Stay ranged between turns" aria-pressed="{{#if intent.decisionLocks.stayRanged}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.stayRanged}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+      {{> keepButton key="stayRanged" label="Stay ranged" active=intent.decisionLocks.stayRanged}}
     </div>
     <div class="combater-turn-intent-decision">
       <label class="combater-turn-intent-option">
-        <input type="checkbox" name="endInCover" {{#if intent.endInCover}}checked{{/if}}>
-        <span><strong>End in cover</strong><small>Require movement and route it toward cover.</small></span>
+        <input type="checkbox" role="switch" name="endInCover" {{#if intent.endInCover}}checked{{/if}}>
+        <span><strong>End in cover</strong><small>Moves, and ends the turn behind cover.</small></span>
       </label>
-      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.endInCover}}is-active{{/if}}" data-turn-intent-lock="endInCover" aria-label="Keep End in cover between turns" aria-pressed="{{#if intent.decisionLocks.endInCover}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.endInCover}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+      {{> keepButton key="endInCover" label="End in cover" active=intent.decisionLocks.endInCover}}
     </div>
     <div class="combater-turn-intent-decision">
       <label class="combater-turn-intent-option">
-        <input type="checkbox" name="preserveFinalAction" {{#if intent.preserveFinalAction}}checked{{/if}}>
-        <span><strong>Preserve final action</strong><small>Auto-fill spends one fewer normal action.</small></span>
+        <input type="checkbox" role="switch" name="preserveFinalAction" {{#if intent.preserveFinalAction}}checked{{/if}}>
+        <span><strong>Save an action</strong><small>Plan one fewer normal action.</small></span>
       </label>
-      <button type="button" class="combater-turn-intent-lock {{#if intent.decisionLocks.preserveFinalAction}}is-active{{/if}}" data-turn-intent-lock="preserveFinalAction" aria-label="Keep Preserve final action between turns" aria-pressed="{{#if intent.decisionLocks.preserveFinalAction}}true{{else}}false{{/if}}" data-tooltip="Keep this choice between turns"><i class="fa-solid {{#if intent.decisionLocks.preserveFinalAction}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
+      {{> keepButton key="preserveFinalAction" label="Save an action" active=intent.decisionLocks.preserveFinalAction}}
     </div>
   </div>
 
   <footer class="combater-turn-intent-actions">
-    <button type="button" data-turn-intent-clear><i class="fa-solid fa-eraser"></i> Clear</button>
+    <button type="button" class="combater-turn-intent-clear" data-turn-intent-clear><i class="fa-solid fa-eraser"></i> Clear all</button>
     <span></span>
     <button type="button" data-turn-intent-cancel>Cancel</button>
-    <button type="button" class="is-primary" data-turn-intent-save><i class="fa-solid fa-check"></i> Apply</button>
+    <button type="button" class="is-primary" data-turn-intent-save data-apply-label="Apply" data-apply-count-label="Apply · {count} rules"><i class="fa-solid fa-check"></i> <span data-turn-intent-apply-label>Apply</span></button>
   </footer>
 </form>

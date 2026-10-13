@@ -25,9 +25,10 @@ import {
   resolveTarget,
 } from "../execution/targets.js";
 import { attachRevertOp, executionPatch } from "../execution/results.js";
-import { executionAction } from "../execution/state.js";
+import { executionAction, executionReadinessForStep } from "../execution/state.js";
 import { t } from "../../i18n.js";
 import { preparePlannedSummon, validateSummonPlan } from "../../integrations/summons-assistant.js";
+import { beginTrackedExecution, recordTrackedExecution } from "../../state/action-tracker.js";
 
 export { canvasTokenById, currentTargetSelection, plannedTargetSelection, setTokenTargets, targetTokenId, tokenId } from "../execution/targets.js";
 export { executionReadinessForStep, nextPendingExecutionStep, resetDraftExecution } from "../execution/state.js";
@@ -36,7 +37,19 @@ export function actorDocument(context) {
   return contextActorDocument(context, { allowActorFallback: true });
 }
 
-export async function executeDraftStep({ context, step, action = step?.action ?? step, event = null, choices = {} } = {}) {
+export async function executeDraftStep(options = {}) {
+  if (options.step?.quickenedNextTurn) return { ...executionReadinessForStep(options.step), patch: {} };
+  const end = beginTrackedExecution(options.context, options.step ?? {});
+  try {
+    const result = await executeDraftStepImpl(options);
+    await recordTrackedExecution(options.context, { ...options.step, action: options.action ?? options.step?.action }, result);
+    return result;
+  } finally {
+    end();
+  }
+}
+
+async function executeDraftStepImpl({ context, step, action = step?.action ?? step, event = null, choices = {} } = {}) {
   if (!step || !action) return { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoActionSelected", "No action selected.") }), error: t("Exec.NoActionSelected", "No action selected.") };
 
   const resolvedAction = executionAction(step, action);

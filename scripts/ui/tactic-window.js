@@ -26,14 +26,30 @@ function optionModel(option, selected) {
   };
 }
 
+const STEP_VALUES = [-3, -2, -1, 0, 1, 2, 3];
+
+function stepLabel(value) {
+  if (value > 0) return `+${value}`;
+  return value < 0 ? `−${Math.abs(value)}` : "0";
+}
+
 function sliderModel(prefix, slider, values) {
   const id = String(slider.id);
+  const value = clampSlider(values?.[id]);
   return {
     ...slider,
     id,
     inputName: `${prefix}.${id}`,
-    value: clampSlider(values?.[id]),
+    value,
+    steps: STEP_VALUES.map((step) => ({ value: step, label: stepLabel(step), checked: step === value, mid: step === 0, negative: step < 0 })),
   };
+}
+
+function windowTitle(view) {
+  if (view?.title) return view.title;
+  return view?.actorName
+    ? t("Tactic.ConfigureTitleFor", "Auto-fill tactic · {name}", { name: view.actorName })
+    : t("Tactic.ConfigureTitle", "Auto-fill tactic");
 }
 
 function windowContext(view) {
@@ -43,13 +59,13 @@ function windowContext(view) {
   const bulkTokenCount = Math.max(0, Number(view?.bulkTokenCount) || 0);
   const bulkTokens = bulkTokenCount > 1;
   return {
-    title: view?.title ?? t("Tactic.ConfigureTitle", "Auto-fill tactic"),
-    help: view?.help ?? t("Tactic.Help", "Set this actor's tactical profile. Auto-fill and shuffle weight actions and targets from it."),
+    title: windowTitle(view),
+    help: view?.help ?? t("Tactic.HelpShort", "How Auto-fill picks actions and targets for this creature."),
     showAdvanced: view?.showAdvanced === true,
     roleLabel: t("Tactic.Role", "Role"),
     temperamentLabel: t("Tactic.Temperament", "Temperament"),
-    customLabel: t("Tactic.CustomizePreset", "Customize preset"),
-    customHelp: t("Tactic.CustomHelp", "Adjust the selected preset with custom priorities."),
+    customLabel: t("Tactic.FineTune", "Fine-tune priorities"),
+    customHelp: t("Tactic.FineTuneHelp", "Nudge the preset up or down per priority."),
     actionStyleLabel: t("Tactic.ActionStyle", "Action style"),
     targetStyleLabel: t("Tactic.TargetStyle", "Target style"),
     roles: (Array.isArray(view?.roles) ? view.roles : []).map((option) => optionModel(option, role)),
@@ -57,6 +73,20 @@ function windowContext(view) {
     customEnabled: view?.showAdvanced === true && view?.customEnabled === true,
     actionSliders: TACTIC_ACTION_SLIDERS.map((slider) => sliderModel("action", slider, custom.action)),
     targetSliders: TACTIC_TARGET_SLIDERS.map((slider) => sliderModel("target", slider, custom.target)),
+    sliderGroups: [
+      { label: t("Tactic.ActionStyle", "Action style"), sliders: TACTIC_ACTION_SLIDERS.map((slider) => sliderModel("action", slider, custom.action)) },
+      { label: t("Tactic.TargetStyle", "Target style"), sliders: TACTIC_TARGET_SLIDERS.map((slider) => sliderModel("target", slider, custom.target)) },
+    ],
+    avoidLabel: t("Tactic.ScaleAvoid", "Avoid"),
+    presetLabel: t("Tactic.ScalePreset", "Preset"),
+    preferLabel: t("Tactic.ScalePrefer", "Prefer"),
+    scopeLabel: t("Tactic.SaveFor", "Save for"),
+    scopeTokenLabel: bulkTokens
+      ? t("Tactic.ScopeSelected", "{count} selected NPCs", { count: bulkTokenCount })
+      : t("Tactic.ScopeToken", "This token"),
+    scopeActorLabel: t("Tactic.ScopeActor", "All tokens of this actor"),
+    saveLabel: t("Tactic.Save", "Save"),
+    resetShortLabel: t("Tactic.Reset", "Reset"),
     cancelLabel: t("Dialog.Cancel", "Cancel"),
     resetLabel: bulkTokens
       ? t("Tactic.ResetSelectedOverrides", "Reset {count} selected overrides", { count: bulkTokenCount })
@@ -98,7 +128,7 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   get title() {
-    return this._view?.title ?? t("Tactic.ConfigureTitle", "Auto-fill tactic");
+    return windowTitle(this._view);
   }
 
   async _prepareContext(options) {
@@ -148,13 +178,12 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     this._syncCustomVisibility();
     this.element.querySelector("[data-tactic-close]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[name='customEnabled']")?.addEventListener("change", () => this._syncCustomVisibility());
-    this.element.querySelector("[data-tactic-save-actor]")?.addEventListener("click", (event) =>
-      this._save({ mode: "actor", value: this._readForm() }, event.currentTarget));
-    this.element.querySelector("[data-tactic-save-token]")?.addEventListener("click", (event) =>
-      this._save({
-        mode: Number(this._view?.bulkTokenCount) > 1 ? "tokens" : "token",
-        value: this._readForm(),
-      }, event.currentTarget));
+    // One Save button; the scope switch picks the token override or the actor default.
+    this.element.querySelector("[data-tactic-save]")?.addEventListener("click", (event) => {
+      const scope = this.element.querySelector("[name='tacticSaveScope']:checked")?.value;
+      const tokenMode = Number(this._view?.bulkTokenCount) > 1 ? "tokens" : "token";
+      this._save({ mode: scope === "actor" ? "actor" : tokenMode, value: this._readForm() }, event.currentTarget);
+    });
     this.element.querySelector("[data-tactic-reset]")?.addEventListener("click", (event) =>
       this._save({ mode: Number(this._view?.bulkTokenCount) > 1 ? "reset-tokens" : "reset" }, event.currentTarget));
   }

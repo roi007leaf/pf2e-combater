@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.0.0]
+
+A redesigned Combater: a live action tracker, turn controls with Delay and Ready, and a cleaner layout for the panel and every window.
+
+### Added
+
+- **Live action tracker.** **Actions left** counts recognized PF2e chat cards and action rolls alongside actions executed through Combater, and Auto-fill and Browse plan against the remaining budget. Damage rolls, saves, rerolls, free actions and reactions spend nothing. Spend/refund controls correct reference-only or unposted cards, and deleting a tracked card removes its spend. Receipts survive panel closes and reloads.
+- **Canvas movement counts as actions.** Dragging a token spends actions from Foundry's recorded path cost and the actor's Speed (35 feet at Speed 25 costs two actions). Continuing the same path shares its allowance, native undo refunds it, and displacement or teleport distance is not a Stride.
+- **Condition-aware turn budget.** Slowed, stunned and quickened shape the pool. Newly applied valued stunned spends remaining actions (the restricted quickened action first) and reduces its value by what was actually lost. Haste gained mid-turn shows **Quickened · next turn**, and Auto-fill can add one allowed recommendation for it.
+- **Quickened restrictions.** Haste automatically allows Strike or Stride; for other sources the GM sets the allowed actions per Quickened condition. Players can spend and refund but not change restrictions.
+- **Next-turn forecast.** Outside its turn, a creature's tracker shows the expected action total for its next turn, and Auto-fill plans against it.
+- **Turn controls.** **End turn** sits in the panel header with a **▾** menu for **Delay** and **Ready**. Each option explains in place why it is unavailable. Player turn controls require socketlib and a connected GM.
+- **Delay.** At turn start, choose a creature to return after; Combater moves initiative, advances combat, and keeps the plan and remaining actions for the return. The GM can **Bring in now** any waiting creature. PF2e turn effects run only once.
+- **Ready.** Spend 2 actions to prepare a Strike, Stride, Step, Raise a Shield, Interact or a custom action, then end the turn. A readied Strike keeps the MAP it had when readied. Fleeing and Confused prevent Ready.
+- **Readied token marker.** A readied creature's token shows an amber ring and bullseye badge until its next turn. Player characters' markers are visible to everyone; GM creatures' only to the GM.
+- **Use readied action.** **Use** rolls a readied Strike at its stored MAP (or announces another action) and marks the creature's reaction as used until its next turn; **Discard** spends nothing. When PF2e Reaction Checker is active, its reaction state is updated as well.
+- **Turn-order strip.** The next two creatures appear under the header, following initiative and Delay; click one to pan to its token.
+- **Show turn navigation** client setting to hide the turn-order strip and turn controls.
+- **Run next / Run all** footer in the panel. Run all executes remaining steps in order and stops at the first step that needs a choice, waits for the GM, or fails.
+- **False facts as chips.** In the Intel editor, **+ False fact** opens an inline editor; **+** adds the planted fact as an orange chip next to that category's real facts. The GM can show or hide each one to players from the editor.
+
+### Changed
+
+- **Panel plan:** steps are numbered, and the action diamonds in the budget bar (now the PF2e action glyph) carry the same numbers; hovering a step lights the actions it uses. A "planned" count warns when the plan exceeds the budget.
+- **Panel steps:** Strikes show their attack bonus (e.g. +14) with MAP underneath; only decision-relevant traits (Agile, Nonlethal, Reach…) stay inline, the rest collapse into a "+N" chip; a target shared by every step is shown once above the plan; plan scores show as 1–3 stars with the top reason. Secondary step tools (target, weapon, movement, duplicate, remove) moved behind **⋯**.
+- **Panel header:** Tactic, resources, Intel, Intent and Loadout are one plan-setup dropdown; alternative plans read **‹ Plan N of M ›** with previous/next arrows; budget spend/refund controls moved into an **Adjust** popover; End turn is no longer red.
+- **Action browser:** tabs show counts and stay usable while searching; one budget line replaces the per-row "Not enough actions remaining" warning, and the shared best target is shown once; actions are one-line rows with a success-chance column and an **+** button, and clicking a row reveals its details plus **Add as uncounted**, **Hide from Auto-fill** and **Open sheet**; empty Favorites is a one-line hint; a **Best / A–Z** sort and a labelled **Hidden** toggle were added.
+- **Intel (GM):** the creature is a header row with revealed-fact progress and an **Exact DCs / Bands** switch; each category is one row with a select-all checkbox and plain fact pills; "None" reads "No weaknesses" and similar; **Save** counts pending changes; **Reveal all** and **Reset RK attempts** moved to the footer.
+- **Intel (players):** every topic is listed, and unknown ones read **Unknown**.
+- **Tactic:** priorities use −3…+3 step scales labelled Avoid / Preset / Prefer; **Fine-tune priorities** is a switch; one **Save** with a **This token / All tokens of this actor** scope replaces the separate token and actor save buttons.
+- **Turn intent:** one column of switch cards; the keep-between-turns lock is a labelled **Keep** pill, dimmed until its rule is on; **Apply** counts active rules; "Preserve final action" is now **Save an action**.
+- **Loadout:** the top pick shows a **Best** badge instead of a fit score, each swap reads as one line (old item struck through → new item), and the button reads **Add swap to plan**.
+- **Effect clock:** the first group is **This turn**, rows within a group share one list, and the repeated summary line is gone.
+- All windows drop the large title banner for one line of help text, and window titles name the creature.
+
 ## [1.5.8]
 
 ### Fixed

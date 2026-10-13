@@ -7,6 +7,7 @@ import { revertMovement } from "../revert/movement.js";
 import { revertSlot } from "../revert/spell-slot.js";
 import { t } from "../../i18n.js";
 import { revertNpcReloadState } from "../npc-reload-state.js";
+import { refundTrackedExecution } from "../../state/action-tracker.js";
 
 async function applyRevertOp(op, scope) {
   switch (op?.kind) {
@@ -47,6 +48,7 @@ export async function revertDraftStep({ context, step } = {}) {
   // so a step whose real-world effect wasn't actually undone stays distinguishable from a clean
   // revert even after the notification disappears -- it can still be re-executed either way.
   const resetPatch = () => ({ execution: { status: "pending", revertWarnings: warnings } });
+  if (step?.execution?.status === "done") await refundTrackedExecution(context, step);
   if (step?.execution?.status !== "done" || !Array.isArray(revert?.ops)) {
     return { status: "reverted", patch: resetPatch(), warnings };
   }

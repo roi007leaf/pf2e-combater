@@ -1,7 +1,17 @@
 import { SETTINGS, settingOrDefault } from "../../settings.js";
+import { activateActionTrackerBindings } from "./action-tracker.js";
+import { activateTurnControlBindings } from "./turn-controls.js";
+import { activateUpcomingTurnBindings } from "./upcoming-turns.js";
+import { activatePanelUtilityBindings } from "./utility-menu.js";
+import { activatePlanLayoutBindings } from "./plan-layout.js";
 
 export function activatePanelRenderBindings(panel, element) {
   if (!element) return;
+  activateActionTrackerBindings(panel, element);
+  activateTurnControlBindings(panel, element);
+  activateUpcomingTurnBindings(panel, element);
+  activatePanelUtilityBindings(element);
+  activatePlanLayoutBindings(panel, element);
 
   panel._activateDrag(element);
   panel._activateActionListScrollPerformance(element);

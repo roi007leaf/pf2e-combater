@@ -17,6 +17,7 @@ import { isSustainAction, sustainedSpellDraftFields } from "./view-model.js";
 import { t } from "../../i18n.js";
 import { drawableSwapItems, heldSwapItems, swapItemById } from "../../engine/equipment-items.js";
 import { promptSwapSelection } from "../../engine/execution/equipment.js";
+import { recordTrackedExecution } from "../../state/action-tracker.js";
 
 function escapeHtml(value) {
   return foundry?.utils?.escapeHTML
@@ -333,10 +334,11 @@ export async function applyPanelExecutionResult(panel, step, result, event) {
   if (!panel._context || !step?.instanceId) return;
 
   const current = panel._findActiveStep(step.instanceId) ?? step;
+  await recordTrackedExecution(panel._contextForDraftStep?.(step.instanceId) ?? panel._context, step, result);
   await panel._persistActiveDraftStep({ ...current, ...(result.patch ?? {}) });
   clearActionPreview();
   if (result.status === "failed" && result.error) globalThis.ui?.notifications?.warn?.(result.error);
-  await panel.render({ force: true });
+  await panel.refresh("action-execution");
 }
 
 export async function revertPanelDraftStep(panel, instanceId) {
@@ -350,7 +352,7 @@ export async function revertPanelDraftStep(panel, instanceId) {
   await panel._persistActiveDraftStep({ ...current, ...(result.patch ?? {}) });
   clearActionPreview();
   for (const warning of result.warnings ?? []) globalThis.ui?.notifications?.warn?.(warning);
-  await panel.render({ force: true });
+  await panel.refresh("action-execution");
 }
 
 export async function resetPanelExecution(panel) {
@@ -362,5 +364,5 @@ export async function resetPanelExecution(panel) {
   });
   await panel._writeActiveDraftPlan(draft);
   for (const warning of warnings ?? []) globalThis.ui?.notifications?.warn?.(warning);
-  await panel.render({ force: true });
+  await panel.refresh("action-execution");
 }

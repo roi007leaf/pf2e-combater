@@ -3,12 +3,12 @@
 // against the current candidate pool. buildActionBuilderModel is the single entry point external
 // callers use.
 import { confidenceLabel } from "../../confidence.js";
-import { actionBudget } from "../budget.js";
+import { actionBudget, quickenedEligible, stepAlreadySpent } from "../budget.js";
 import { actionIncludes, isDestinationActionSlug, requiresDestinationForAction } from "../requirements.js";
 import { draftStepIsUsable } from "./projection.js";
 import { t } from "../../../i18n.js";
 import { actionExclusionKey, readActionExclusions } from "../../../state/action-exclusions.js";
-import { actionBuilderKey, actionName, scoreValue } from "./shared.js";
+import { actionBuilderKey, actionName, resolveBuilderAction, scoreValue } from "./shared.js";
 import {
   actionIncludedParts,
   builderActivationAction,
@@ -29,7 +29,6 @@ export const ACTION_BUILDER_TABS = [
 const TAB_BY_COST = new Map(ACTION_BUILDER_TABS.map((tab) => [tab.cost, tab]));
 const TAB_IDS = ACTION_BUILDER_TABS.map((tab) => tab.id);
 // Quickened's extra action is restricted to Strike and Stride (Haste's wording). Step is NOT allowed.
-const QUICKENED_BUILDER_SLUGS = new Set(["strike", "stride"]);
 
 function normalizeCost(cost) {
   if (cost === "reaction") return "reaction";
@@ -51,16 +50,16 @@ function tabForCost(cost) {
   return TAB_BY_COST.get(normalizeCost(cost)) ?? TAB_BY_COST.get(1);
 }
 
-function draftUsage(steps) {
+function draftUsage(steps, context) {
   const usableSteps = Array.isArray(steps) ? steps : [];
   return usableSteps.reduce((usage, step) => {
-    if (step?.stale) return usage;
+    if (step?.stale || step?.quickenedNextTurn || stepAlreadySpent(context, step)) return usage;
     const cost = draftStepCost(step);
     if (cost === "reaction") {
       usage.reaction += 1;
     } else if (cost > 0) {
       usage.normal += cost;
-      if (quickenedEligible(step?.action, cost)) usage.quickenedEligibleCost += cost;
+      if (quickenedEligible(step?.action, cost, context)) usage.quickenedEligibleCost += cost;
     }
     return usage;
   }, { normal: 0, reaction: 0, quickenedEligibleCost: 0 });
@@ -76,10 +75,6 @@ function firstValidCost(...costs) {
     if (normalized !== null) return normalized;
   }
   return 0;
-}
-
-function quickenedEligible(action, cost) {
-  return cost === 1 && (QUICKENED_BUILDER_SLUGS.has(action?.slug) || action?.source === "strike");
 }
 
 // Quickened Casting (and similar "reduce your next spell's action cost" setups) is flagged by the
@@ -226,7 +221,7 @@ function actionUnavailableReason(action) {
 // left, or a reaction already planned). The normal-plan "+" refuses these; the
 // off-budget uncounted "+" ignores it. `disabled` stays false either way so
 // the row remains visible and interactive (e.g. hover preview, uncounted add).
-function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned }) {
+function disabledState(action, cost, { normalRemaining, quickenedRemaining, reactionPlanned, context }) {
   if (action?.minionPlanFull === true) {
     return {
       disabled: false,
@@ -256,7 +251,7 @@ function disabledState(action, cost, { normalRemaining, quickenedRemaining, reac
     };
   }
 
-  const remainingActions = quickenedEligible(action, cost)
+  const remainingActions = quickenedEligible(action, cost, context)
     ? normalRemaining + quickenedRemaining
     : normalRemaining;
   if (typeof cost === "number" && cost > 0 && cost > remainingActions) {
@@ -276,12 +271,12 @@ function favoriteEntryKey(favorites, key, baseKey, baseKeyCounts) {
   return null;
 }
 
-function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned }) {
+function decorateAction(action, { key, baseKey, favorites, baseKeyCounts, normalRemaining, quickenedRemaining, reactionPlanned, context }) {
   const cost = normalizeCost(action?.tabCost ?? action?.actionCost ?? action?.cost);
   const budgetCost = normalizeCost(action?.budgetCost ?? action?.actionCost ?? action?.cost);
   const tab = tabForCost(cost);
   const availabilityWarning = action?.available === false || action?.disabled === true ? actionUnavailableReason(action) : "";
-  const disabled = disabledState(action, budgetCost, { normalRemaining, quickenedRemaining, reactionPlanned });
+  const disabled = disabledState(action, budgetCost, { normalRemaining, quickenedRemaining, reactionPlanned, context });
   const confidence = action?.confidence ?? "low";
   const favoriteEntry = favoriteEntryKey(favorites, key, baseKey, baseKeyCounts);
   return {
@@ -414,9 +409,9 @@ function emptyTabs() {
   ]));
 }
 
-function quickenedShelfActions(actions) {
+function quickenedShelfActions(actions, context) {
   return actions
-    .filter((action) => quickenedEligible(action, action.cost))
+    .filter((action) => quickenedEligible(action, action.cost, context))
     .toSorted((left, right) => {
       if (left.disabled !== right.disabled) return left.disabled ? 1 : -1;
       const scoreDelta = scoreValue(right) - scoreValue(left);
@@ -471,7 +466,8 @@ function draftStepActionOverride(step, draftStepActions) {
 
 function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions = null) {
   const key = step?.actionKey ?? step?.key ?? actionBuilderKey(step);
-  const resolvedAction = actionByKey.get(key) ?? (uniqueBaseKeys.has(key) ? actionByKey.get(uniqueBaseKeys.get(key)) : null) ?? null;
+  const resolvedAction = resolveBuilderAction(key, (lookupKey) =>
+    actionByKey.get(lookupKey) ?? (uniqueBaseKeys.has(lookupKey) ? actionByKey.get(uniqueBaseKeys.get(lookupKey)) : null));
   const baseAction = draftStepActionOverride(step, draftStepActions) ?? resolvedAction;
   // A re-resolved action loses the per-step movement type the player pinned (fly/burrow/...). Carry
   // it back onto the action so the destination picker, executor, and cost engine all Stride on the
@@ -488,6 +484,7 @@ function decorateDraftStep(step, actionByKey, uniqueBaseKeys, draftStepActions =
     action,
     cost: plannedCost,
     actionCost: plannedCost,
+    usesQuickened: false,
     stale,
     warning: stale
       ? t("Disabled.NoLongerAvailable", "Action is no longer available.")
@@ -544,10 +541,10 @@ export function buildActionBuilderModel({
   );
   const rawDraftResolution = draftResolutionMap(keyedActions, draftOnlyActions, fallbackDraftActions);
   const resolvedDraftSteps = resolveDraftSteps(draft, rawDraftResolution.actionByKey, rawDraftResolution.uniqueBaseKeys, draftStepActions);
-  const usage = draftUsage(resolvedDraftSteps);
-  // Anticipate Haste-style quickened during planning: the condition isn't applied until the spell
-  // executes, so a drafted quickening spell aimed at the current combatant grants the extra action now.
-  const anticipatedQuickened = !budget.quickened && draftAnticipatesQuickened(resolvedDraftSteps, context) ? 1 : 0;
+  const usage = draftUsage(resolvedDraftSteps, context);
+  // Exploration drafts retain their projected pool. A tracked combat turn uses only
+  // actions actually regained at its start; self-cast Haste grants nothing immediately.
+  const anticipatedQuickened = !context?.actionTracker && !budget.quickened && draftAnticipatesQuickened(resolvedDraftSteps, context) ? 1 : 0;
   const quickenedActions = Math.max(budget.quickenedActions ?? 0, anticipatedQuickened);
   const quickenedUsed = Math.min(quickenedActions, usage.quickenedEligibleCost);
   const normalUsed = usage.normal - quickenedUsed;
@@ -560,6 +557,7 @@ export function buildActionBuilderModel({
   const reactionPlanned = usage.reaction > 0;
   const decoratedActions = sortedKeyedActions
     .map(({ action, key, baseKey }) => decorateAction(action, {
+      context,
       key,
       baseKey,
       favorites: favoriteSet,
@@ -573,6 +571,7 @@ export function buildActionBuilderModel({
   const decoratedDraftFallbackActions = keyedDraftFallbackActions
     .filter(({ key }) => !decoratedActions.some((action) => action.key === key))
     .map(({ action, key, baseKey }) => decorateAction(action, {
+      context,
       key,
       baseKey,
       favorites: favoriteSet,
@@ -585,6 +584,7 @@ export function buildActionBuilderModel({
     .filter(({ key }) => !decoratedActions.some((action) => action.key === key)
       && !decoratedDraftFallbackActions.some((action) => action.key === key))
     .map(({ action, key, baseKey }) => decorateAction(action, {
+      context,
       key,
       baseKey,
       favorites: favoriteSet,
@@ -609,7 +609,17 @@ export function buildActionBuilderModel({
     decoratedDraftOnlyActions,
     decoratedDraftFallbackActions,
   );
-  const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions);
+  let quickenedToAssign = quickenedUsed;
+  const spentQuickenedIds = new Set(context?.actionTracker?.quickenedExecutionIds ?? []);
+  const draftSteps = resolveDraftSteps(draft, actionByKey, decoratedDraftResolution.uniqueBaseKeys, draftStepActions)
+    .map((step) => {
+      // The budget spends the restricted allowance first. Mark that same first
+      // eligible row, recalculating after edits instead of persisting a stale tag.
+      const plannedQuickened = quickenedToAssign > 0 && !step.stale && !step.quickenedNextTurn
+        && !stepAlreadySpent(context, step) && quickenedEligible(step.action, draftStepCost(step), context);
+      if (plannedQuickened) quickenedToAssign -= 1;
+      return { ...step, usesQuickened: plannedQuickened || spentQuickenedIds.has(step.instanceId) };
+    });
 
   for (const action of decoratedActions.filter((entry) => entry.userExcluded ? revealExcluded : entry.hideFromBuilder !== true)) {
     tabs[action.tabId].all.push(action);
@@ -630,7 +640,7 @@ export function buildActionBuilderModel({
       ...decoratedActions.filter((entry) => !entry.blockedByExclusion),
       ...decoratedDraftFallbackActions.filter((entry) => !entry.blockedByExclusion),
       ...decoratedDraftOnlyActions.filter((entry) => !entry.blockedByExclusion),
-    ]);
+    ], context);
   }
 
   return {
