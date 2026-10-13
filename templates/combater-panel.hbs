@@ -333,6 +333,7 @@
           </div>
           <div class="combater-meta-row">
             <div class="combater-header-badges">
+              {{#if turnControls.reactionUsedLabel}}<span class="combater-reaction-used" data-tooltip="{{turnControls.reactionUsedHint}}"><i class="fa-solid fa-rotate-left"></i> {{turnControls.reactionUsedLabel}}</span>{{/if}}
               {{#if builder}}
                 {{#unless actionTracker.visible}}
                   <span class="combater-action-count" data-tooltip="{{builder.totalSummary}}. {{builder.reactionSummary}}.">{{builder.poolSummary}}</span>
@@ -374,18 +375,20 @@
     </div>
 
     {{#if turnControls.readied}}
-      <div class="combater-readied" data-tooltip="{{turnControls.readied.hint}}">
+      <div class="combater-readied {{#if turnControls.readied.hasMovement}}has-movement{{/if}}" data-tooltip="{{turnControls.readied.hint}}"{{#if turnControls.readied.hasMovement}} data-readied-preview="{{turnControls.readied.id}}"{{/if}}>
         <i class="fa-solid fa-bullseye"></i>
         <span class="combater-readied-text"><strong>{{turnControls.readied.title}}</strong></span>
         {{#if turnControls.readied.canUse}}
+          {{#if turnControls.readied.hasMovement}}
+            <button type="button" class="combater-turn-button is-ready-move" data-turn-control="ready-move" data-readied-id="{{turnControls.readied.id}}" aria-label="{{turnControls.readied.moveLabel}}" data-tooltip="{{turnControls.readied.moveLabel}}"><i class="fa-solid fa-location-crosshairs"></i></button>
+          {{/if}}
           <button type="button" class="combater-turn-button is-ready-use" data-turn-control="ready-use" data-readied-id="{{turnControls.readied.id}}"><i class="fa-solid fa-bolt"></i> {{turnControls.readied.useLabel}}</button>
           <button type="button" class="combater-turn-button is-ready-clear" data-turn-control="ready-clear" data-readied-id="{{turnControls.readied.id}}" aria-label="{{turnControls.readied.clearLabel}}" data-tooltip="{{turnControls.readied.clearLabel}}"><i class="fa-solid fa-xmark"></i></button>
         {{/if}}
       </div>
     {{/if}}
-    {{#if (or turnControls.waitingLabel turnControls.delayed.length turnControls.reactionUsedLabel)}}
+    {{#if (or turnControls.waitingLabel turnControls.delayed.length)}}
       <div class="combater-turn-controls">
-        {{#if turnControls.reactionUsedLabel}}<span class="combater-reaction-used" data-tooltip="{{turnControls.reactionUsedHint}}"><i class="fa-solid fa-rotate-left"></i> {{turnControls.reactionUsedLabel}}</span>{{/if}}
         {{#if turnControls.waitingLabel}}<span class="combater-turn-waiting" data-tooltip="{{turnControls.waitingHint}}"><i class="fa-solid fa-hourglass-half"></i> {{turnControls.waitingLabel}}</span>{{/if}}
         {{#each turnControls.delayed}}
           <button type="button" class="combater-turn-button is-return" data-turn-control="return" data-delayed-id="{{id}}" data-tooltip="{{tooltip}}"><i class="fa-solid fa-arrow-right-to-bracket"></i> {{name}} · {{../turnControls.bringInLabel}}</button>

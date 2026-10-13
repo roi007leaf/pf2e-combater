@@ -5090,3 +5090,7 @@
 .pf2e-combater-turn-intent-window .combater-turn-intent-decision.is-field .combater-turn-intent-option { grid-template-columns: minmax(0, 1fr); }
 .pf2e-combater-tactic-window .combater-pick-grid.is-compact { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); }
 .pf2e-combater-tactic-window .combater-pick-text small { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
+.pf2e-combater .combater-readied.has-movement { cursor: help; }
+.pf2e-combater .combater-readied.has-movement:hover { border-color: #d6a84a; background: #362e1f; }
+.pf2e-combater .combater-turn-button.is-ready-move { padding: 5px 8px; color: #ffe8b8; border-color: #8a6d32; background: #2c261b; }
+.pf2e-combater .combater-header-badges .combater-reaction-used { margin-right: 0; padding: 1px 8px; font-size: 11px; }

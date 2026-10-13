@@ -260,6 +260,13 @@ try {
   assert.deepEqual(readiedAction(combat.combatants.get("a")).movement, {
     slug: "stride", destination: { x: 150, y: 250, elevation: 5 }, movementPlan: { id: "plan", waypoints: [{ x: 150, y: 250 }] },
   }, "a readied Stride stores its destination and route");
+  assert.equal(turnControlsView(context(combat, "a"), combat, gm).readied.hasMovement, true, "the readied banner previews a stored route on hover");
+  await assert.rejects(act(combat, "ready-move", { readiedId: "a", movement: { destination: { x: 1, y: 2 } } }, "p-b"), /own turn/);
+  await act(combat, "ready-move", { readiedId: "a", movement: { slug: "teleport", destination: { x: 300, y: 350 }, movementPlan: null } }, "p-a");
+  assert.deepEqual(readiedAction(combat.combatants.get("a")).movement, { slug: "stride", destination: { x: 300, y: 350 }, movementPlan: null },
+    "changing the destination replaces the route and keeps the readied action's own movement type");
+  assert.equal(readiedAction(combat.combatants.get("a")).label, "Stride");
+  await assert.rejects(act(combat, "ready-move", { readiedId: "a", movement: { destination: { x: "nope" } } }, "p-a"), /Choose a destination/);
   combat = fixture();
   await act(combat, "ready", { label: "Interact", movement: { slug: "teleport", destination: { x: 1, y: 2 } } });
   assert.equal(readiedAction(combat.combatants.get("a")).movement, null, "only Stride and Step can carry a readied destination");
@@ -277,7 +284,10 @@ try {
   await combat.nextTurn();
   await combat.nextTurn();
   assert.equal(combat.combatant.id, "a");
+  combat.combatant.flags["pf2e-reaction"].state = true; // Reaction Checker resets at turn start.
   assert.equal(reactionUsed(combat.combatant), false, "the reaction returns at the creature's next turn");
+  combat.combatants.get("b").flags["pf2e-reaction"] = { state: false };
+  assert.equal(reactionUsed(combat.combatants.get("b")), true, "a reaction spent outside Combater (Reaction Checker) also counts");
   delete globalThis.game.modules;
 
   combat = fixture();

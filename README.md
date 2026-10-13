@@ -38,7 +38,9 @@ turn starts (visible to everyone for player characters, GM-only for GM creatures
 panel shows **Readied · <action>** with **Use** and **Discard**. **Use** rolls a readied Strike
 at its stored MAP and spends the creature's reaction; **Reaction used** shows until its next
 turn. A readied **Stride** or **Step** asks for its destination on the canvas when you ready it,
-and **Use** moves the token there. When PF2e Reaction Checker is active, its reaction state is updated too.
+and **Use** moves the token there; the banner's ⌖ button changes the destination, and hovering
+the banner previews the route. Tokens that used their reaction show an orange ↺ badge until
+their next turn (PF2e Reaction Checker's spent reactions count too). When PF2e Reaction Checker is active, its reaction state is updated too.
 
 Outside your turn, the tracker shows **Next turn** with the expected action total and
 current slowed, stunned, and quickened conditions. Auto-fill uses that upcoming budget,

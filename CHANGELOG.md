@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.2]
+
+### Added
+
+- **Change a readied destination.** A readied Stride or Step shows a ⌖ button on its banner that reopens the destination picker; the new route replaces the old one.
+- **Hover to preview a readied route.** Hovering the "Readied · Stride" banner draws the stored path and destination on the canvas, like hovering a planned move.
+- **Reaction-used token badge.** Tokens that spent their reaction show an orange ↺ badge (top-left) until their next turn, visible to everyone for player characters and to the GM for GM creatures.
+- Reactions recorded as spent by PF2e Reaction Checker also show the badge and the "Reaction used" pill, including reactions used outside Combater.
+
+### Changed
+
+- "Reaction used" sits beside the creature's name instead of on its own row.
+
+### Fixed
+
+- Readying Stride or Step now lets you pick the destination; a background panel refresh no longer cancels the picker immediately. The picker shows the reachable area, path preview and hover ghost like planned movement.
+
 ## [2.0.1]
 
 ### Added

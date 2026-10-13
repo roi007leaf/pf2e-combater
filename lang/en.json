@@ -74,7 +74,9 @@
       "ReadyNoMap": "No MAP",
       "ReadyConfirm": "Ready (2 actions)",
       "ReadyPickDestination": "Choose where {action} will move when the trigger happens.",
-      "ReadiedMoveFailed": "The readied movement could not be completed."
+      "ReadiedMoveFailed": "The readied movement could not be completed.",
+      "ReadiedMove": "Change destination",
+      "ReadyMoveInvalid": "Choose a destination on the canvas."
     },
     "ActionTracker": {
       "NextTurn": "Next turn",

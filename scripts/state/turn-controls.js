@@ -8,7 +8,7 @@ export const DELAY_FLAG = "delayedTurn";
 export const READY_FLAG = "readiedAction";
 export const READY_COST = 2;
 export const REACTION_FLAG = "reactionUsed";
-const REACTION_CHECKER_ID = "pf2e-reaction";
+export const REACTION_CHECKER_ID = "pf2e-reaction";
 const queues = new Map();
 
 export function delayedTurn(combatant) {
@@ -19,8 +19,12 @@ export function readiedAction(combatant) {
   return combatant?.flags?.[MODULE_ID]?.[READY_FLAG] ?? null;
 }
 
+// Our own marker, or PF2e Reaction Checker reporting the reaction spent (it
+// resets that at the creature's turn start), so reactions used outside Combater count too.
 export function reactionUsed(combatant) {
-  return Boolean(combatant?.flags?.[MODULE_ID]?.[REACTION_FLAG]);
+  if (combatant?.flags?.[MODULE_ID]?.[REACTION_FLAG]) return true;
+  const checker = globalThis.game?.modules?.get?.(REACTION_CHECKER_ID);
+  return Boolean(checker?.active && combatant?.flags?.[REACTION_CHECKER_ID]?.state === false);
 }
 
 // Spends the creature's reaction: our own marker, plus PF2e Reaction Checker's
@@ -175,6 +179,18 @@ async function performTurnControl(request, senderId) {
   if (!globalThis.game?.user?.isGM || (activeGM && activeGM.id !== globalThis.game.user.id)
     || !user?.active || !combat?.started || combat.id !== request.combatId) {
     throw Error(t("TurnControls.Unavailable", "An active GM is required for turn controls."));
+  }
+  if (request.action === "ready-move") {
+    const holder = combat.combatants.get(request.readiedId);
+    const ready = readiedAction(holder);
+    if (!ready?.movement) throw Error(t("TurnControls.NotReadied", "This creature has no readied action."));
+    if (!ownsTurn(holder, user)) throw Error(t("TurnControls.NotOwner", "You can only control your own turn."));
+    const movement = readyMovement({ ...request.movement, slug: ready.movement.slug });
+    if (!movement) throw Error(t("TurnControls.ReadyMoveInvalid", "Choose a destination on the canvas."));
+    // Replace the route outright: a document update would merge into the old plan's keys.
+    await holder.update({ [`flags.${MODULE_ID}.${READY_FLAG}.-=movement`]: null }, { turnEvents: false });
+    await holder.update({ [`flags.${MODULE_ID}.${READY_FLAG}.movement`]: movement }, { turnEvents: false });
+    return true;
   }
   if (request.action === "ready-clear") {
     const holder = combat.combatants.get(request.readiedId);

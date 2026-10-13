@@ -7,6 +7,9 @@ import {
 } from "../../state/turn-controls.js";
 import { bindPopoverMenu } from "./utility-menu.js";
 import { chooseDestination } from "../destination-picker.js";
+import { clearActionPreview } from "../action/preview.js";
+import { showHoverGhost, showMovementPreview } from "../movement-preview.js";
+import { cancelPanelPickers } from "./picker-workflow.js";
 import { executeMovement } from "../../engine/execution/movement.js";
 
 export function turnControlsView(context, combat = globalThis.game?.combat, user = globalThis.game?.user) {
@@ -31,6 +34,8 @@ export function turnControlsView(context, combat = globalThis.game?.combat, user
   const ready = readiedAction(selected);
   const readied = ready ? {
     id: selected.id, label: ready.label,
+    hasMovement: Boolean(ready.movement?.destination),
+    moveLabel: t("TurnControls.ReadiedMove", "Change destination"),
     title: t("TurnControls.ReadiedTitle", "Readied · {action}", { action: ready.label }),
     hint: t("TurnControls.ReadiedHint", "Use it as a reaction when the declared trigger happens, before this creature's next turn."),
     canUse: connected && ownsTurn(selected, user),
@@ -221,17 +226,50 @@ function readyMovementAction(panel, slug) {
     ?? { id: slug, slug, name: pf2eActionName(slug), actionCost: 1, requiresDestination: true };
 }
 
+// Registered on the panel like the minion-step picker: background refreshes
+// leave a picker in progress alone only while panel._destinationPicker is set.
 function pickReadyDestination(panel, slug) {
   return new Promise((resolve) => {
+    const context = panel?._context;
+    const action = { ...readyMovementAction(panel, slug), requiresDestination: true };
+    const pickerId = `ready:${context?.combatant?.id ?? "token"}:${slug}`;
+    const previewStep = (preview = {}) => ({
+      ...action,
+      ...(preview.destination ? { destination: preview.destination } : {}),
+      ...(preview.movementPlan ? { movementPlan: preview.movementPlan } : {}),
+      ...(Number.isFinite(preview.elevation) ? { plannedElevation: preview.elevation } : {}),
+    });
+    const finish = (result) => {
+      if (panel?._destinationPicker?.instanceId === pickerId) panel._destinationPicker = null;
+      clearActionPreview();
+      resolve(result);
+    };
+    cancelPanelPickers(panel);
+    if (panel) panel._destinationPicker = { instanceId: pickerId, native: false, minion: true, context, action };
     globalThis.ui?.notifications?.info?.(t("TurnControls.ReadyPickDestination", "Choose where {action} will move when the trigger happens.", { action: pf2eActionName(slug) }));
     const picker = chooseDestination({
-      context: panel?._context,
-      action: readyMovementAction(panel, slug),
+      context,
+      action,
       enableWaypoints: true,
-      onChoose: (destination, metadata = {}) => resolve({ slug, destination, movementPlan: metadata.movementPlan ?? null }),
-      onCancel: () => resolve(null),
+      onPreview: (destination, metadata = {}) => {
+        if (metadata.hoverOnly) {
+          showHoverGhost(context, { ...action, ...(metadata.movementPlan ? { movementPlan: metadata.movementPlan } : {}) }, destination);
+          return;
+        }
+        const preview = { destination, movementPlan: metadata.movementPlan ?? null, elevation: metadata.elevation };
+        if (panel) panel._destinationPicker = { instanceId: pickerId, native: false, minion: true, context, action, preview };
+        showMovementPreview(context, previewStep(preview));
+      },
+      onChoose: (destination, metadata = {}) => finish({ slug, destination, movementPlan: metadata.movementPlan ?? null }),
+      onCancel: () => finish(null),
     });
-    if (!picker) resolve(null);
+    if (!picker) {
+      globalThis.ui?.notifications?.warn?.(t("Notify.NoDestinationPicker", "Canvas destination picker is not available."));
+      finish(null);
+      return;
+    }
+    if (panel) panel._destinationPicker = { instanceId: pickerId, native: picker.native === true, minion: true, context, action };
+    if (!picker.native) showMovementPreview(context, previewStep());
   });
 }
 
@@ -298,7 +336,28 @@ async function sendTurnControl(request) {
   return result;
 }
 
+// Hovering a readied Stride/Step draws its stored route, like hovering a planned move.
+function bindReadiedPreview(panel, element) {
+  const banner = element.querySelector("[data-readied-preview]");
+  if (!banner) return;
+  banner.addEventListener("pointerenter", () => {
+    const combatant = globalThis.game?.combat?.combatants?.get?.(banner.dataset.readiedPreview);
+    const movement = readiedAction(combatant)?.movement;
+    if (!movement?.destination) return;
+    showMovementPreview(readiedContext(panel, combatant), {
+      ...readyMovementAction(panel, movement.slug),
+      requiresDestination: true,
+      destination: movement.destination,
+      ...(movement.movementPlan ? { movementPlan: movement.movementPlan } : {}),
+    });
+  });
+  const clear = (event) => panel._clearActionPreviewUnlessPicking?.(event);
+  banner.addEventListener("pointerleave", clear);
+  banner.addEventListener("pointercancel", clear);
+}
+
 export function activateTurnControlBindings(panel, element) {
+  bindReadiedPreview(panel, element);
   bindPopoverMenu(element, element.querySelector("[data-turn-menu-toggle]"), element.querySelector("[data-turn-menu]"),
     { closeOn: "button[data-turn-control]" });
   for (const button of element.querySelectorAll("[data-turn-control]")) {
@@ -345,7 +404,15 @@ export function activateTurnControlBindings(panel, element) {
           Object.assign(request, ready);
           announce = { combatant: combat.combatant, ready };
         } else if (request.action === "return") request.delayedId = button.dataset.delayedId;
-        else if (request.action === "ready-use" || request.action === "ready-clear") {
+        else if (request.action === "ready-move") {
+          const combatant = combat?.combatants?.get?.(button.dataset.readiedId);
+          const slug = readiedAction(combatant)?.movement?.slug;
+          if (!slug) return;
+          const movement = await pickReadyDestination(panel, slug);
+          if (!movement) return;
+          request.readiedId = button.dataset.readiedId;
+          request.movement = movement;
+        } else if (request.action === "ready-use" || request.action === "ready-clear") {
           const combatant = combat?.combatants?.get?.(button.dataset.readiedId);
           if (request.action === "ready-use" && !(await useReadied(panel, combatant, event))) return;
           request.used = request.action === "ready-use";
