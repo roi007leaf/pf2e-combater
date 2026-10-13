@@ -449,19 +449,19 @@ try {
   );
   assert.equal(remoteResult.completed, true);
   assert.equal(dialogCalls, 1);
-  assert.match(outcomeDialog.content, /Standard DC/);
-  assert.match(outcomeDialog.content, />26</);
-  assert.match(outcomeDialog.content, /Religion/);
-  assert.match(outcomeDialog.content, /Undead Lore/);
-  assert.match(outcomeDialog.content, /class="rank-1">Trained</, "GM outcome table should carry proficiency-rank colors");
-  assert.match(outcomeDialog.content, /d20: <strong>12/);
-  assert.match(outcomeDialog.content, /rk-degree-failure/, "applicable standard row should show failure color");
-  assert.match(outcomeDialog.content, /rk-broad-failure/, "Lore row should color broad-DC result");
-  assert.match(outcomeDialog.content, /rk-specific-success/, "Lore row should color specific-DC result");
-  assert.match(outcomeDialog.content, /Broad Lore DC 24: Failure/);
-  assert.match(outcomeDialog.content, /Specific Lore DC 21: Success/);
-  assert.match(outcomeDialog.content, /Calculated roll outcomes/);
-  assert.match(outcomeDialog.content, /Depends on skill and Lore applicability/);
+  assert.match(outcomeDialog.content, /pf2e-combater-rk-verdict/);
+  assert.match(outcomeDialog.content, /<b>DC 26<\/b>/, "the standard DC is shown as a card");
+  assert.match(outcomeDialog.content, /data-rk-check="religion"/, "an applicable skill is listed");
+  assert.match(outcomeDialog.content, /data-rk-check="undead-lore"/, "an applicable Lore is listed");
+  assert.doesNotMatch(outcomeDialog.content, /data-rk-check="arcana"/, "skills that don't apply are not listed as checks");
+  assert.match(outcomeDialog.content, /skills don't apply: [^<]*Arcana/, "they're summarized instead");
+  assert.match(outcomeDialog.content, /class="rk-rank rank-1">Trained</, "proficiency keeps its rank color");
+  assert.match(outcomeDialog.content, /<div class="rk-die"><b>12<\/b>/);
+  assert.match(outcomeDialog.content, /rk-dc-pick rk-degree-failure[\s\S]*?>DC 26 · Fail</, "standard DC button shows its degree");
+  assert.match(outcomeDialog.content, /rk-degree-failure[\s\S]*?Broad 24 · Fail/, "broad Lore DC result");
+  assert.match(outcomeDialog.content, /rk-degree-success is-picked[\s\S]*?Specific 21 · Success/, "the best result is picked by default");
+  assert.match(outcomeDialog.content, /data-rk-check="undead-lore"[^>]*>[\s\S]*?rk-best-tag/, "the best check is listed first and tagged");
+  assert.match(outcomeDialog.content, /Suggested:[\s\S]*?Success[\s\S]*?Undead Lore 15 vs specific Lore DC 21|Suggested:[\s\S]*?Success[\s\S]*?Undead Lore \d+ vs specific Lore DC 21/);
   const chatDecorations = recallKnowledgeChatRowDecorations(
     recallKnowledgeRollRows(remoteActor, 12, { target: remoteTarget }),
     { skills: ["religion"], standardDc: 26, broadLoreDc: 24, specificLoreDc: 21 },
@@ -479,9 +479,12 @@ try {
   const outcomeButtons = new Map(outcomeDialog.buttons.map((button) => [button.action, button]));
   assert.match(outcomeButtons.get("success").class, /rk-calculated-outcome/);
   assert.match(outcomeButtons.get("failure").class, /rk-calculated-outcome/);
+  assert.match(outcomeButtons.get("success").class, /is-suggested/, "the best result is the suggested outcome");
+  assert.doesNotMatch(outcomeButtons.get("failure").class, /is-suggested/);
   assert.equal(outcomeButtons.get("success").icon, "fa-solid fa-dice-d20");
-  assert.equal(outcomeButtons.get("criticalsuccess").class, undefined);
-  assert.equal(outcomeButtons.get("criticalfailure").class, undefined);
+  assert.equal(outcomeButtons.get("failure").icon, undefined);
+  assert.doesNotMatch(outcomeButtons.get("criticalsuccess").class, /rk-calculated-outcome/);
+  assert.match(outcomeButtons.get("criticalfailure").class, /rk-outcome rk-degree-criticalfailure/);
   assert.equal(recallKnowledgeAttemptState(remoteActor, remoteTarget).blocked, true);
   assert.equal(Object.hasOwn(remoteResult, "dc"), false, "GM socket result must not return the hidden DC");
   assert.equal(Object.hasOwn(remoteResult, "outcome"), false, "GM socket result must not return the secret outcome");

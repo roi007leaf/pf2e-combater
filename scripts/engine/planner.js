@@ -292,11 +292,25 @@ function isSpellshapeSetup(step) {
   return step?.activityProfile?.spellshape === true || step?.activityProfile?.rangeBuff === true;
 }
 
-function planSpellshapesAreUseful(steps) {
+const REACH_SPELL_FEET = 30;
+
+// Reach Spell adds 30 ft (a touch spell becomes 30 ft). It's only worth the action when the spell
+// it modifies can't reach its target without it but can with it -- never before a 500 ft spell.
+export function rangeBuffHelpsSpell(context, spell) {
+  const range = maxRange(spell);
+  const distance = Number(targetForCandidate(context, spell)?.distance);
+  if (!Number.isFinite(range)) return true; // unknown range: can't rule it out (matches the scoring gate)
+  if (!Number.isFinite(distance)) return false;
+  const boosted = range <= 5 ? REACH_SPELL_FEET : range + REACH_SPELL_FEET;
+  return distance > range && distance <= boosted;
+}
+
+function planSpellshapesAreUseful(context, steps) {
   return steps.every((step, index) => {
     if (!isSpellshapeSetup(step)) return true;
     const nextStep = steps[index + 1];
-    return Boolean(nextStep && isSpellAction(nextStep) && !isSpellshapeSetup(nextStep));
+    if (!(nextStep && isSpellAction(nextStep) && !isSpellshapeSetup(nextStep))) return false;
+    return step?.activityProfile?.rangeBuff !== true || rangeBuffHelpsSpell(context, nextStep);
   });
 }
 
@@ -963,7 +977,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       steps.length
       && turnIntentPlanAllowed(context?.turnIntent, steps)
       && planReloadsAreUseful(steps)
-      && planSpellshapesAreUseful(orderPlanSteps(steps))
+      && planSpellshapesAreUseful(context, orderPlanSteps(steps))
       && planAttackRollSetupsAreUseful(orderPlanSteps(steps))
       && planAreasHitEnemies(context, orderPlanSteps(steps), reservedSteps, areaHitCache)
     ) {

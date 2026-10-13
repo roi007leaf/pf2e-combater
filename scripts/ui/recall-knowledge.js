@@ -35,11 +35,13 @@ function dialogApi() {
   return globalThis.foundry?.applications?.api?.DialogV2 ?? null;
 }
 
-async function buttonChoice({ title, content, choices, contentIsHtml = false, classes = [] }) {
+async function buttonChoice({ title, content, choices, contentIsHtml = false, classes = [], icon = null, width = null, render = null }) {
   const dialog = dialogApi();
   if (typeof dialog?.wait !== "function") return null;
   const options = {
-    window: { title },
+    window: { title, ...(icon ? { icon } : {}) },
+    ...(width ? { position: { width, height: "auto" } } : {}),
+    ...(typeof render === "function" ? { render } : {}),
     content: contentIsHtml ? String(content ?? "") : `<p>${escapeHtml(content)}</p>`,
     buttons: [
       ...choices.map((choice) => ({
@@ -356,78 +358,171 @@ export function registerRecallKnowledgeChatHooks() {
   return true;
 }
 
-function recallKnowledgeDcHtml(results) {
-  if (!results.length) return "-";
-  return results.map((result) => {
-    const outcomeLabel = DEGREE_LABELS[result.outcome] ?? "";
-    const label = [result.label, result.dc].filter((part) => part !== "").join(" ");
-    const tooltip = [result.label ? `${result.label} Lore DC ${result.dc}` : `DC ${result.dc}`, outcomeLabel]
-      .filter(Boolean)
-      .join(": ");
-    return `<span class="rk-dc-chip rk-degree-${escapeHtml(result.outcome)}" data-tooltip="${escapeHtml(tooltip)}">${escapeHtml(label)}</span>`;
-  }).join(" ");
+const DEGREE_ORDER = ["criticalfailure", "failure", "success", "criticalsuccess"];
+const DEGREE_SHORT = {
+  criticalsuccess: () => t("RecallKnowledge.DegreeShort.CriticalSuccess", "Crit success"),
+  success: () => t("RecallKnowledge.DegreeShort.Success", "Success"),
+  failure: () => t("RecallKnowledge.DegreeShort.Failure", "Fail"),
+  criticalfailure: () => t("RecallKnowledge.DegreeShort.CriticalFailure", "Crit fail"),
+};
+
+function dcLabel(result) {
+  return result.kind === "standard"
+    ? t("RecallKnowledge.DcStandard", "DC {dc}", { dc: result.dc })
+    : t("RecallKnowledge.DcLore", "{kind} {dc}", { kind: result.label, dc: result.dc });
 }
 
-function recallKnowledgeCalculatedOutcomeHtml(calculatedOutcomes) {
-  if (!calculatedOutcomes.length) return "";
-  const singular = calculatedOutcomes.length === 1;
-  const rows = calculatedOutcomes.map((entry) => `<li>
-    <span class="rk-calculated-degree rk-degree-${escapeHtml(entry.outcome)}">${escapeHtml(entry.label)}</span>
-    <span>${escapeHtml(entry.sources.join("; "))}</span>
-  </li>`).join("");
-  return `<aside class="rk-calculated-outcomes" aria-label="Calculated Recall Knowledge outcome">
-    <p><strong>${singular ? "Calculated roll outcome" : "Calculated roll outcomes"}:</strong>
-      ${singular ? escapeHtml(calculatedOutcomes[0].label) : "Depends on skill and Lore applicability."}</p>
-    <ul>${rows}</ul>
-  </aside>`;
+function suggestionText(row, result) {
+  return result.kind === "standard"
+    ? t("RecallKnowledge.SuggestStandard", "{skill} {total} vs DC {dc}", { skill: row.label, total: row.total, dc: result.dc })
+    : t("RecallKnowledge.SuggestLore", "{skill} {total} vs {kind} Lore DC {dc}", { skill: row.label, total: row.total, kind: result.label.toLowerCase(), dc: result.dc });
 }
 
-function recallKnowledgeOutcomeContent({ actor, target, question, rows, dieResult, matrix }) {
-  const questionLabel = recallKnowledgeQuestion(question)?.label ?? question ?? "Recall Knowledge";
-  const standardSkills = (matrix?.skills ?? []).map((slug) => {
-    const row = rows.find((entry) => entry.slug === slug);
-    return row?.label ?? slug;
-  }).join(", ");
-  const body = rows.map((row) => {
-    const dcResults = recallKnowledgeDcResults(row, matrix, dieResult);
-    const degreeSummary = dcResults
-      .map((result) => `${result.label || row.label}: ${DEGREE_LABELS[result.outcome] ?? result.outcome}`)
-      .join("; ");
-    return `<tr class="${recallKnowledgeDegreeClasses(dcResults)}"${degreeSummary ? ` data-tooltip="${escapeHtml(degreeSummary)}"` : ""}>
-      <td>${escapeHtml(row.label)}</td>
-      <td class="rank-${Math.max(0, Math.min(4, Number(row.rank) || 0))}">${escapeHtml(row.rankLabel)}</td>
-      <td>${escapeHtml(row.modifierLabel)}</td>
-      <td><strong>${escapeHtml(row.total)}</strong></td>
-      <td>${recallKnowledgeDcHtml(dcResults)}</td>
-    </tr>`;
-  }).join("");
-  const calculatedOutcomes = recallKnowledgeCalculatedOutcomes(rows, matrix, dieResult);
-  return `<div class="pf2e-combater-rk-adjudication">
-    <p><strong>${escapeHtml(actor?.name)}</strong> recalls knowledge about <strong>${escapeHtml(target?.name)}</strong>.</p>
-    <p>Question: ${escapeHtml(questionLabel)}. Attempt ${escapeHtml(matrix?.attempt)}. d20: <strong>${escapeHtml(dieResult)}</strong>.</p>
-    <p>Applicable standard skills: ${escapeHtml(standardSkills || "None")}. Standard DC: <strong>${escapeHtml(matrix?.standardDc ?? "-")}</strong>.</p>
-    <p>Lore DCs: broad <strong>${escapeHtml(matrix?.broadLoreDc ?? "-")}</strong>; specific <strong>${escapeHtml(matrix?.specificLoreDc ?? "-")}</strong>.</p>
-    <table><thead><tr><th>Skill</th><th>Proficiency</th><th>Mod.</th><th>Result</th><th>DC</th></tr></thead><tbody>${body}</tbody></table>
-    ${recallKnowledgeCalculatedOutcomeHtml(calculatedOutcomes)}
-    <p>Select final degree of success. Highlighted buttons match the calculated roll; the GM can override for applicability.</p>
+// The GM's decision, laid out: the three DCs, only the checks that apply (best first, each with a
+// button per DC it can be checked against), the rest collapsed, and a suggested outcome from the
+// best applicable result. Pure, so it can be tested without Foundry.
+export function recallKnowledgeOutcomeView({ actor, target, question, rows, dieResult, matrix } = {}) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const checks = allRows.map((row) => {
+    const results = recallKnowledgeDcResults(row, matrix, dieResult).filter((result) => DEGREE_LABELS[result.outcome]);
+    const best = results.reduce((top, result) => (!top || DEGREE_ORDER.indexOf(result.outcome) > DEGREE_ORDER.indexOf(top.outcome) ? result : top), null);
+    return { row, results, best };
+  }).filter((entry) => entry.results.length);
+  checks.sort((left, right) => DEGREE_ORDER.indexOf(right.best.outcome) - DEGREE_ORDER.indexOf(left.best.outcome)
+    || (Number(right.row.total) || 0) - (Number(left.row.total) || 0));
+  const top = checks[0] ?? null;
+  const applicable = new Set(checks.map((entry) => entry.row.slug));
+  const standardSkills = (matrix?.skills ?? []).map((slug) => allRows.find((entry) => entry.slug === slug)?.label ?? slug);
+  return {
+    actorName: actor?.name ?? "",
+    targetName: target?.name ?? "",
+    question: recallKnowledgeQuestion(question)?.label ?? question ?? "Recall Knowledge",
+    attempt: matrix?.attempt ?? 1,
+    dieResult,
+    dcs: [
+      Number.isFinite(matrix?.standardDc) ? { label: standardSkills.join(", ") || t("RecallKnowledge.Standard", "Standard"), dc: matrix.standardDc, note: t("RecallKnowledge.StandardNote", "standard") } : null,
+      Number.isFinite(matrix?.broadLoreDc) ? { label: t("RecallKnowledge.BroadLore", "Broad Lore"), dc: matrix.broadLoreDc } : null,
+      Number.isFinite(matrix?.specificLoreDc) ? { label: t("RecallKnowledge.SpecificLore", "Specific Lore"), dc: matrix.specificLoreDc } : null,
+    ].filter(Boolean),
+    checks: checks.map((entry, index) => ({
+      slug: entry.row.slug,
+      label: entry.row.label,
+      rank: Math.max(0, Math.min(4, Number(entry.row.rank) || 0)),
+      rankLabel: entry.row.rankLabel,
+      modifierLabel: entry.row.modifierLabel,
+      total: entry.row.total,
+      best: index === 0,
+      dcs: entry.results.map((result) => ({
+        kind: result.kind,
+        dc: result.dc,
+        outcome: result.outcome,
+        label: `${dcLabel(result)} · ${DEGREE_SHORT[result.outcome]()}`,
+        picked: index === 0 && result === entry.best,
+        suggestion: suggestionText(entry.row, result),
+      })),
+    })),
+    other: allRows.filter((row) => !applicable.has(row.slug)).map((row) => row.label),
+    suggestion: top ? { outcome: top.best.outcome, label: DEGREE_LABELS[top.best.outcome], text: suggestionText(top.row, top.best) } : null,
+  };
+}
+
+export function recallKnowledgeOutcomeContent(details) {
+  const view = recallKnowledgeOutcomeView(details);
+  const dcCards = view.dcs.map((entry) => `<div class="rk-dc-card"><small>${escapeHtml(entry.label)}</small>
+      <b>DC ${escapeHtml(entry.dc)}</b>${entry.note ? ` <span>${escapeHtml(entry.note)}</span>` : ""}</div>`).join("");
+  const checks = view.checks.map((check) => `<div class="rk-check${check.best ? " is-best" : ""}" data-rk-check="${escapeHtml(check.slug)}">
+      <span class="rk-check-name"><strong>${escapeHtml(check.label)}</strong>
+        <span class="rk-rank rank-${check.rank}">${escapeHtml(check.rankLabel)}</span>
+        ${check.best ? `<span class="rk-best-tag">${escapeHtml(t("RecallKnowledge.Best", "Best"))}</span>` : ""}</span>
+      <span class="rk-check-total"><b>${escapeHtml(check.total)}</b><small>${escapeHtml(check.modifierLabel)}</small></span>
+      <span class="rk-check-dcs">${check.dcs.map((dc) => `<button type="button" class="rk-dc-pick rk-degree-${escapeHtml(dc.outcome)}${dc.picked ? " is-picked" : ""}"
+          data-rk-pick data-outcome="${escapeHtml(dc.outcome)}" data-suggestion="${escapeHtml(dc.suggestion)}"
+          aria-pressed="${dc.picked ? "true" : "false"}">${dc.picked ? '<i class="fa-solid fa-check"></i> ' : ""}${escapeHtml(dc.label)}</button>`).join("")}</span>
+    </div>`).join("");
+  const other = view.other.length
+    ? `<details class="rk-other"><summary>${escapeHtml(t("RecallKnowledge.OtherSkills", "{count} skills don't apply: {names}", { count: view.other.length, names: view.other.join(", ") }))}</summary></details>`
+    : "";
+  const suggestion = view.suggestion
+    ? `<p class="rk-suggestion" data-rk-suggestion><i class="fa-solid fa-dice-d20"></i>
+        <span>${escapeHtml(t("RecallKnowledge.Suggested", "Suggested:"))} <b class="rk-degree-${escapeHtml(view.suggestion.outcome)}" data-rk-suggested-label>${escapeHtml(view.suggestion.label)}</b>
+        — <span data-rk-suggested-text>${escapeHtml(view.suggestion.text)}</span></span></p>`
+    : `<p class="rk-suggestion">${escapeHtml(t("RecallKnowledge.NoApplicable", "No applicable check. Choose the outcome."))}</p>`;
+  return `<div class="pf2e-combater-rk-verdict">
+    <div class="rk-who">
+      <div class="rk-who-text">
+        <strong>${escapeHtml(view.actorName)} → ${escapeHtml(view.targetName)}</strong>
+        <span class="rk-chips"><span class="rk-chip">${escapeHtml(view.question)}</span>
+          <span class="rk-chip">${escapeHtml(t("RecallKnowledge.Attempt", "Attempt {number}", { number: view.attempt }))}</span></span>
+      </div>
+      <div class="rk-die"><b>${escapeHtml(view.dieResult)}</b><small>d20</small></div>
+    </div>
+    ${view.dcs.length ? `<div class="rk-dc-cards">${dcCards}</div>` : ""}
+    ${view.checks.length ? `<div class="rk-section-title"><span>${escapeHtml(t("RecallKnowledge.ApplicableChecks", "Applicable checks"))}</span>
+      <em>${escapeHtml(t("RecallKnowledge.PickHint", "Click the DC that applies"))}</em></div>
+    <div class="rk-checks">${checks}</div>` : ""}
+    ${other}
+    ${suggestion}
+    <p class="rk-gm-hint">${escapeHtml(t("RecallKnowledge.GmHint", "The GM decides which check applies; the outcome is only suggested."))}</p>
   </div>`;
+}
+
+// Clicking a DC makes it the applicable check: the suggestion and the highlighted outcome follow.
+export function bindRecallKnowledgeVerdict(_event, dialog) {
+  const root = dialog?.element ?? dialog;
+  const content = root?.querySelector?.(".pf2e-combater-rk-verdict");
+  if (!content) return;
+  const highlight = (outcome) => {
+    for (const button of root.querySelectorAll("footer button[data-action]")) {
+      const suggested = button.dataset.action === outcome;
+      button.classList.toggle("is-suggested", suggested);
+      const icon = button.querySelector(".fa-dice-d20");
+      if (suggested && !icon) button.insertAdjacentHTML("afterbegin", '<i class="fa-solid fa-dice-d20"></i> ');
+      if (!suggested) icon?.remove();
+    }
+  };
+  for (const pick of content.querySelectorAll("[data-rk-pick]")) {
+    pick.addEventListener("click", () => {
+      for (const other of content.querySelectorAll("[data-rk-pick]")) {
+        const picked = other === pick;
+        other.classList.toggle("is-picked", picked);
+        other.setAttribute("aria-pressed", picked ? "true" : "false");
+        other.querySelector(".fa-check")?.remove();
+      }
+      pick.insertAdjacentHTML("afterbegin", '<i class="fa-solid fa-check"></i> ');
+      const label = content.querySelector("[data-rk-suggested-label]");
+      if (label) {
+        label.textContent = DEGREE_LABELS[pick.dataset.outcome] ?? pick.dataset.outcome;
+        label.className = `rk-degree-${pick.dataset.outcome}`;
+      }
+      const text = content.querySelector("[data-rk-suggested-text]");
+      if (text) text.textContent = pick.dataset.suggestion ?? "";
+      highlight(pick.dataset.outcome);
+    });
+  }
 }
 
 export function promptRecallKnowledgeOutcome(details) {
   const calculatedOutcomes = recallKnowledgeCalculatedOutcomes(details?.rows, details?.matrix, details?.dieResult);
   const calculatedIds = new Set(calculatedOutcomes.map((entry) => entry.outcome));
+  const suggested = recallKnowledgeOutcomeView(details).suggestion?.outcome ?? null;
   return buttonChoice({
     title: t("RecallKnowledge.OutcomeTitle", "Recall Knowledge Outcome"),
+    icon: "fa-solid fa-book-open",
+    width: 620,
     content: recallKnowledgeOutcomeContent(details),
     contentIsHtml: true,
     classes: ["pf2e-combater-rk-outcome-dialog"],
+    render: bindRecallKnowledgeVerdict,
     choices: Object.entries(DEGREE_LABELS).map(([id, label]) => ({
       id,
       label,
-      ...(calculatedIds.has(id) ? {
-        class: `rk-calculated-outcome rk-degree-${id}`,
-        icon: "fa-solid fa-dice-d20",
-      } : {}),
+      class: [
+        "rk-outcome",
+        `rk-degree-${id}`,
+        calculatedIds.has(id) ? "rk-calculated-outcome" : "",
+        id === suggested ? "is-suggested" : "",
+      ].filter(Boolean).join(" "),
+      ...(id === suggested ? { icon: "fa-solid fa-dice-d20" } : {}),
     })),
   });
 }

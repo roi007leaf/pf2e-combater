@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadRecordedTurnScenarios } from "../../dev/recorded-turns.mjs";
-import { buildTurnPlans } from "../planner.js";
+import { buildTurnPlans, rangeBuffHelpsSpell } from "../planner.js";
 import { runPlannerQualityLab } from "../planner/quality-lab.js";
 import { buildRecordedTurn } from "../planner/turn-snapshot.js";
 import { advancePlanState, createPlanState, projectContextFromPlanState } from "../plan-state.js";
@@ -342,6 +342,17 @@ assert.equal(targetAcPenalty({ conditions: { slugs: ["frightened", "sickened"], 
   } finally {
     globalThis.canvas = previousCanvas;
   }
+}
+
+// Reach Spell only helps a spell whose target is just beyond its range (or a touch spell).
+{
+  const at = (distance) => ({ targets: [{ id: "foe", name: "Foe", distance }], battlefield: { targets: [{ id: "foe", name: "Foe", distance }], enemies: [{ id: "foe", name: "Foe", distance }] } });
+  const spell = (range) => ({ id: "s", slug: "s", source: "spell-curated", targetingProfile: { enemy: true, maxRange: range }, suggestedTarget: { id: "foe", name: "Foe" } });
+  assert.equal(rangeBuffHelpsSpell(at(40), spell(500)), false, "a 500 ft spell never needs Reach Spell");
+  assert.equal(rangeBuffHelpsSpell(at(40), spell(30)), true, "30 ft spell, target at 40 ft: Reach Spell makes it");
+  assert.equal(rangeBuffHelpsSpell(at(70), spell(30)), false, "still out of range at 60 ft");
+  assert.equal(rangeBuffHelpsSpell(at(20), spell(5)), true, "a touch spell becomes 30 ft");
+  assert.equal(rangeBuffHelpsSpell(at(20), { id: "x", source: "spell-curated" }), true, "unknown range can't be ruled out");
 }
 
 console.log("Auto-fill engine audit tests passed.");

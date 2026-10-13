@@ -1454,7 +1454,29 @@
       "Question": "What information are you trying to recall?",
       "OutcomeTitle": "Recall Knowledge Outcome",
       "OutcomeMissing": "Roll outcome could not be read automatically. Choose the result shown in chat.",
-      "DubiousKnowledgeGM": "Dubious Knowledge: give one correct and one erroneous answer manually. Planner Intel stays unchanged so it cannot reveal which answer is true."
+      "DubiousKnowledgeGM": "Dubious Knowledge: give one correct and one erroneous answer manually. Planner Intel stays unchanged so it cannot reveal which answer is true.",
+      "DegreeShort": {
+        "CriticalSuccess": "Crit success",
+        "Success": "Success",
+        "Failure": "Fail",
+        "CriticalFailure": "Crit fail"
+      },
+      "DcStandard": "DC {dc}",
+      "DcLore": "{kind} {dc}",
+      "SuggestStandard": "{skill} {total} vs DC {dc}",
+      "SuggestLore": "{skill} {total} vs {kind} Lore DC {dc}",
+      "Standard": "Standard",
+      "StandardNote": "standard",
+      "BroadLore": "Broad Lore",
+      "SpecificLore": "Specific Lore",
+      "Best": "Best",
+      "OtherSkills": "{count} skills don't apply: {names}",
+      "Suggested": "Suggested:",
+      "NoApplicable": "No applicable check. Choose the outcome.",
+      "Attempt": "Attempt {number}",
+      "ApplicableChecks": "Applicable checks",
+      "PickHint": "Click the DC that applies",
+      "GmHint": "The GM decides which check applies; the outcome is only suggested."
     },
     "RecordTurn": {
       "TopIsRight": "Auto-fill got it right",

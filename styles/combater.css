@@ -5183,3 +5183,62 @@
 .pf2e-combater-tactic-window .combater-tactic-learned li button { display: grid; place-items: center; width: 20px; height: 20px; min-height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #8d9aab; font-size: 10px; }
 .pf2e-combater-tactic-window .combater-tactic-learned li button:hover { background: rgb(255 255 255 / 8%); color: #fff; }
 .pf2e-combater-tactic-window .combater-tactic-learned-empty { margin: 0; color: #8d9aab; font-size: 12px; }
+
+/* ---- Recall Knowledge outcome: the GM's verdict ---- */
+.pf2e-combater-rk-outcome-dialog .window-content { padding: 12px 14px; }
+.pf2e-combater-rk-verdict { display: grid; gap: 10px; font-size: 13px; }
+.pf2e-combater-rk-verdict p { margin: 0; }
+.pf2e-combater-rk-verdict .rk-who { display: flex; align-items: center; gap: 12px; }
+.pf2e-combater-rk-verdict .rk-who-text { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.pf2e-combater-rk-verdict .rk-who-text strong { font-size: 15px; }
+.pf2e-combater-rk-verdict .rk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pf2e-combater-rk-verdict .rk-chip { padding: 1px 8px; border: 1px solid #3a414b; border-radius: 999px; background: #22262c; color: #c7d0db; font-size: 11px; }
+.pf2e-combater-rk-verdict .rk-die { display: grid; place-items: center; align-content: center; width: 50px; height: 50px; border: 1px solid #8a6d32; border-radius: 10px; background: #241f16; }
+.pf2e-combater-rk-verdict .rk-die b { color: #f0c96f; font-size: 20px; line-height: 1; }
+.pf2e-combater-rk-verdict .rk-die small { color: #b9a473; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.pf2e-combater-rk-verdict .rk-dc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.pf2e-combater-rk-verdict .rk-dc-card { padding: 5px 9px; border: 1px solid #343a43; border-radius: 7px; background: #1d2025; }
+.pf2e-combater-rk-verdict .rk-dc-card small { display: block; overflow: hidden; color: #8d9aab; font-size: 10px; letter-spacing: .06em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.pf2e-combater-rk-verdict .rk-dc-card b { font-size: 16px; }
+.pf2e-combater-rk-verdict .rk-dc-card span { color: #8d9aab; font-size: 11px; }
+.pf2e-combater-rk-verdict .rk-section-title { display: flex; align-items: baseline; justify-content: space-between; color: #aab7c6; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.pf2e-combater-rk-verdict .rk-section-title em { color: #8d9aab; font-style: normal; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.pf2e-combater-rk-verdict .rk-checks { display: grid; gap: 5px; max-height: 330px; overflow-y: auto; }
+.pf2e-combater-rk-verdict .rk-check { display: grid; grid-template-columns: minmax(0, 1fr) 40px 270px; align-items: center; gap: 10px; padding: 5px 8px 5px 10px; border: 1px solid #343a43; border-left: 3px solid #4b5361; border-radius: 7px; background: #1f2227; }
+.pf2e-combater-rk-verdict .rk-check.is-best { border-color: #8a6d32; border-left-color: #e3a24f; background: #262119; }
+.pf2e-combater-rk-verdict .rk-check-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pf2e-combater-rk-verdict .rk-check-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf2e-combater-rk-verdict .rk-rank { flex: none; padding: 0 6px; border-radius: 4px; background: #2a2e35; color: #aab7c6; font-size: 10px; font-weight: 700; }
+.pf2e-combater-rk-verdict .rk-rank.rank-1 { background: #1f2c3a; color: #8ec3f5; }
+.pf2e-combater-rk-verdict .rk-rank.rank-2 { background: #2b2140; color: #c3a6f5; }
+.pf2e-combater-rk-verdict .rk-rank.rank-3 { background: #3a2c14; color: #f0c96f; }
+.pf2e-combater-rk-verdict .rk-rank.rank-4 { background: #3a1f1a; color: #f1a07e; }
+.pf2e-combater-rk-verdict .rk-best-tag { flex: none; padding: 0 6px; border-radius: 4px; background: #e3a24f; color: #1b1308; font-size: 10px; font-weight: 700; }
+.pf2e-combater-rk-verdict .rk-check-total { text-align: right; line-height: 1.1; }
+.pf2e-combater-rk-verdict .rk-check-total b { font-size: 17px; }
+.pf2e-combater-rk-verdict .rk-check-total small { display: block; color: #8d9aab; font-size: 10px; }
+.pf2e-combater-rk-verdict .rk-check-dcs { display: flex; justify-content: flex-end; gap: 5px; }
+.pf2e-combater-rk-verdict .rk-dc-pick { display: inline-flex; flex: none; align-items: center; gap: 5px; width: auto; height: 24px; min-height: 24px; margin: 0; padding: 0 8px; border: 1px solid #3a414b; border-radius: 6px; background: #22262c; color: #c7d0db; font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; cursor: pointer; }
+.pf2e-combater-rk-verdict .rk-dc-pick i { font-size: 9px; }
+.pf2e-combater-rk-verdict .rk-dc-pick.rk-degree-criticalsuccess { border-color: #2e5a40; background: #16281e; color: #8fe0b0; }
+.pf2e-combater-rk-verdict .rk-dc-pick.rk-degree-success { border-color: #2f5a4a; background: #172622; color: #a9e6c4; }
+.pf2e-combater-rk-verdict .rk-dc-pick.rk-degree-failure { border-color: #7a4f22; background: #2e2116; color: #f1b06c; }
+.pf2e-combater-rk-verdict .rk-dc-pick.rk-degree-criticalfailure { border-color: #5a2a2a; background: #2a1717; color: #e08a84; }
+.pf2e-combater-rk-verdict .rk-dc-pick.is-picked { outline: 2px solid #f0c96f; outline-offset: 1px; }
+.pf2e-combater-rk-verdict .rk-other { padding: 5px 10px; border: 1px dashed #343a43; border-radius: 7px; color: #8d9aab; font-size: 12px; }
+.pf2e-combater-rk-verdict .rk-other summary { cursor: default; list-style: none; }
+.pf2e-combater-rk-verdict .rk-suggestion { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #343a43; border-radius: 8px; background: #1b1e23; }
+.pf2e-combater-rk-verdict .rk-suggestion > i { color: #f0c96f; }
+.pf2e-combater-rk-verdict .rk-suggestion b.rk-degree-criticalsuccess { color: #8fe0b0; }
+.pf2e-combater-rk-verdict .rk-suggestion b.rk-degree-success { color: #a9e6c4; }
+.pf2e-combater-rk-verdict .rk-suggestion b.rk-degree-failure { color: #f1b06c; }
+.pf2e-combater-rk-verdict .rk-suggestion b.rk-degree-criticalfailure { color: #e08a84; }
+.pf2e-combater-rk-verdict .rk-gm-hint { color: #8d9aab; font-size: 11px; }
+.pf2e-combater-rk-outcome-dialog footer.form-footer { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome { height: 34px; border: 1px solid #3a414b; border-radius: 7px; background: #22262c; font-weight: 600; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome.rk-degree-criticalsuccess { color: #8fe0b0; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome.rk-degree-success { color: #a9e6c4; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome.rk-degree-failure { color: #f1b06c; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome.rk-degree-criticalfailure { color: #e08a84; }
+.pf2e-combater-rk-outcome-dialog footer button.rk-outcome.is-suggested { border-color: #e3a24f; background: #3a2a15; color: #ffd08a; box-shadow: 0 0 0 1px rgb(227 162 79 / 35%); }
+.pf2e-combater-rk-outcome-dialog footer button[data-action="cancel"] { height: 34px; border: 1px solid #3a414b; border-radius: 7px; background: transparent; color: #aab7c6; }

@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.6]
+
+### Changed
+
+- **Recall Knowledge outcome redesign.** The GM's verdict window shows who recalls about whom, the question, attempt and d20; the standard, broad Lore and specific Lore DCs as cards; and only the checks that apply, best first, each with a coloured button per DC it can be checked against. Click the DC that applies and the suggested outcome follows. Skills that don't apply fold into one line, and the window is 620 px wide instead of nearly full screen.
+
+### Fixed
+
+- Auto-fill suggested Reach Spell before spells that already reach their target (e.g. a 500 ft Blast of Air). Reach Spell is now only planned when the spell after it needs the extra 30 ft, or is a touch spell.
+
 ## [2.0.5]
 
 ### Added
