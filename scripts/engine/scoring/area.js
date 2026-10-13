@@ -421,6 +421,9 @@ export function scoredAreaPlacement(action, context, { enemyValues = [], allyVal
     return emptyPlacement(action, entitiesInArea(action, enemyValues), entitiesInArea(action, allyValues));
   }
 
+  // A burst you place catches you too if it reaches your square.
+  const self = context?.token?.center ? context.token : null;
+  if (self && !allyValues.includes(self) && action?.targetingProfile?.enemiesOnly !== true) allyValues = [...allyValues, self];
   const placements = burstAreaPlacements(action, context, origin, enemyValues, allyValues, maxCastRange);
   return bestPlacementWithOptions(action, placements, enemyValues, allyValues)
     ?? emptyPlacement(action);

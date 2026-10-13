@@ -133,6 +133,13 @@ function partyDebuffValue(context, points) {
   return Math.round(points * (8 + allies * 3));
 }
 
+// The defensive side of the same scale: an AC point is worth more the more enemies can attack you
+// this round, and more again when you're low.
+function selfDefenseValue(profile, threats, points) {
+  const value = points * (6 + Math.min(3, threats) * 6);
+  return Math.round(hpPercent(profile) < 0.5 ? value * 1.5 : value);
+}
+
 // Re-applying a condition the target already has wastes the action: enough to outweigh any role
 // bonus (a Debuffer's +36) so it never leads a plan.
 const REDUNDANT_DEBUFF_PENALTY = 45;
@@ -159,25 +166,27 @@ function demoralizeTactic(acc, { context, target }) {
   acc.reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
 }
 
-function tripTactic(acc, { target }) {
+function tripTactic(acc, { context, target }) {
   if (!target) return;
   if (hasCondition(target, "prone")) {
     acc.score = HARD_BLOCK_SCORE;
     acc.reasons.push(t("ScoreReason.AlreadyProne", "{name} is already prone.", { name: target.name }));
     return;
   }
-  acc.score += 18;
+  // Prone: off-guard (-2 AC) to the party's attacks until it spends an action to Stand.
+  acc.score += Math.round(partyDebuffValue(context, 2) * 0.6) + 6;
   acc.reasons.push(t("ScoreReason.TargetIsStandingAnd", "Target is standing and can be knocked prone."));
 }
 
-function grappleTactic(acc, { target }) {
+function grappleTactic(acc, { context, target }) {
   if (!target) return;
   if (hasCondition(target, "grabbed") || hasCondition(target, "restrained")) {
     acc.score -= REDUNDANT_DEBUFF_PENALTY;
     acc.reasons.push(t("ScoreReason.AlreadyGrabbed", "{name} is already grabbed.", { name: target.name }));
     return;
   }
-  acc.score += 16;
+  // Grabbed: off-guard to the party and it can't move away.
+  acc.score += Math.round(partyDebuffValue(context, 2) * 0.6) + 4;
   acc.reasons.push(t("ScoreReason.TargetIsNotGrabbed", "Target is not grabbed."));
 }
 
@@ -258,23 +267,28 @@ function recallKnowledgeTactic(acc, { context, target }) {
   acc.reasons.push(t("ScoreReason.IdentifyDefenses", "Identify {target} defenses and weaknesses.", { target: target.name }));
 }
 
-function raiseAShieldTactic(acc, { profile, pressure }) {
+// Enemies that can hit you in melee right now (their reach, 5 ft by default).
+function meleeThreatCount(context, pressure) {
+  const byDistance = contextEnemies(context).filter((enemy) => enemy?.hpPercent !== 0
+    && Number(enemy?.distance ?? Infinity) <= (Number(enemy?.meleeReach ?? enemy?.reach) || 5)).length;
+  return Math.max(byDistance, pressure.meleeThreats?.length ?? 0);
+}
+
+function raiseAShieldTactic(acc, { context, profile, pressure }) {
   if (!profile.hasShield) return;
-  acc.score += hpPercent(profile) < 0.5 ? 24 : 12;
+  // +2 AC against everyone who can attack you before your next turn.
+  const threats = meleeThreatCount(context, pressure) + (pressure.hasOpenEnemyLine ? 1 : 0);
+  acc.score += selfDefenseValue(profile, threats, 2);
   acc.reasons.push(t("ScoreReason.ShieldEquipped", "Shield equipped."));
-  if (pressure.inMeleeThreat || pressure.hasOpenEnemyLine) {
-    acc.score += 12;
-    acc.reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
-  }
+  if (threats > 0) acc.reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
 }
 
 function takeCoverTactic(acc, { profile, pressure }) {
-  acc.score += hpPercent(profile) < 0.5 ? 18 : 10;
+  // Cover (+2 AC) only matters against attacks that come from range.
+  const rangedThreats = pressure.hasOpenEnemyLine ? 2 : 0;
+  acc.score += selfDefenseValue(profile, rangedThreats, 2);
   acc.reasons.push(t("ScoreReason.CoverIsAvailable", "Cover is available."));
-  if (pressure.hasOpenEnemyLine) {
-    acc.score += 18;
-    acc.reasons.push(t("ScoreReason.OpenEnemyLineMakes", "Open enemy line makes cover valuable."));
-  }
+  if (rangedThreats) acc.reasons.push(t("ScoreReason.OpenEnemyLineMakes", "Open enemy line makes cover valuable."));
 }
 
 function escapeTactic(acc) {
@@ -431,6 +445,23 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
   return null;
 }
 
+const UNARMED_WITH_WEAPON_PENALTY = 60;
+
+function isBasicUnarmed(item) {
+  return item?.slug === "basic-unarmed" || item?.id === "xxPF2ExUNARMEDxx";
+}
+
+function hasDrawableWeapon(context) {
+  const actor = contextActorDocument(context);
+  // Monks fight with their fists on purpose.
+  if (!actor || actor.type === "npc" || actor.class?.slug === "monk") return false;
+  return (actor.itemTypes?.weapon ?? []).some((weapon) => {
+    const carry = String(weapon?.system?.equipped?.carryType ?? "");
+    const category = String(weapon?.system?.category ?? "");
+    return category !== "unarmed" && ["worn", "held"].includes(carry) && weapon?.system?.quantity !== 0;
+  });
+}
+
 export function scoreRoleTactics(context, action, { role, profile, target, criticalChance = null, backingStrike = null, extraStrikeValue = 0 } = {}) {
   const reasons = [...(action.reasons ?? [])];
   const targetDamageAdjustment = damageAdjustment(context, action, target);
@@ -446,6 +477,12 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
 
   if (Number(action.interactDrawCost) > 0) {
     reasons.push(t("ScoreReason.IncludesInteractToDraw", "Includes Interact to draw or retrieve the consumable."));
+  }
+
+  // A fist is the fallback for an empty hand, not the plan when a real weapon is one Draw away.
+  if (isBasicUnarmed(action.item) && hasDrawableWeapon(context)) {
+    score -= UNARMED_WITH_WEAPON_PENALTY;
+    reasons.push(t("ScoreReason.DrawWeaponInstead", "A weapon is a Draw away; a fist is the fallback."));
   }
 
   if (action.source === "strike" && inRange(action, target)) {
@@ -513,6 +550,11 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
   if (makesAttackRoll(action) && hasCondition(profile, "prone")) {
     score -= 6;
     reasons.push(t("ScoreReason.ProneAttackPenalty", "Attacking while prone takes a -2 circumstance penalty."));
+  }
+
+  if (action.activityProfile?.retreat === true) {
+    score += selfDefenseValue(profile, Number(action.activityProfile.threatsEscaped) || 1, 2);
+    reasons.push(t("ScoreReason.RetreatOutOfReach", "Gets out of reach of {count} enemies.", { count: Number(action.activityProfile.threatsEscaped) || 1 }));
   }
 
   if (["step", "stride", "stand-stride"].includes(action.slug) && action.source === "generic" && target) {

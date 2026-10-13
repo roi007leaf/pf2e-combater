@@ -192,6 +192,30 @@ export function bestReachableAttackCenter(context, target, distanceFeet, reachFe
     )[0] ?? null;
 }
 
+// Where a plain Stride/Step toward `target` should end on the real canvas: the best attack square
+// if one is in reach this move, otherwise the reachable square that gets closest. Null when there
+// is no canvas geometry or no square gets closer.
+export function plannedMoveDestination(context, target, distanceFeet, reachFeet) {
+  const origin = centerPoint(context?.token);
+  const targetCenter = centerPoint(target);
+  if (!origin || !targetCenter || !(distanceFeet > 0)) return null;
+  const attack = bestReachableAttackCenter(context, target, distanceFeet, reachFeet);
+  if (attack) return attack;
+  const metrics = movementGridMetrics();
+  const token = canvasTokenById(context?.token?.id ?? context?.token?.uuid);
+  const start = distanceFromCenterToTarget(context, origin, target);
+  let best = null;
+  let bestDistance = start;
+  for (const center of movementReachableCenters(origin, distanceFeet, metrics, token, context)) {
+    const distance = distanceFromCenterToTarget(context, center, target);
+    if (distance < bestDistance) {
+      best = center;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 export function canReturnToOrigin(context, fromCenter, distanceFeet) {
   const origin = centerPoint(context?.token);
   if (!origin || !fromCenter) return false;

@@ -15,6 +15,7 @@ import {
   isMoveAndStrike,
 } from "./projections.js";
 import { footprintPathDistanceFeet, movementFootprintForToken } from "../../rules/token-geometry.js";
+import { contextActorDocument } from "../actor-context.js";
 
 export const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride"]);
 
@@ -65,7 +66,20 @@ function targetNeedsRepeatedStride(context, candidate, attackPathAvailable = fal
 
 export function isRepeatablePlanningAction(context, candidate, attackPathAvailable = false) {
   if (targetNeedsRepeatedStride(context, candidate, attackPathAvailable)) return true;
-  return candidate.source === "strike";
+  return candidate.source === "strike" || isRepeatableSwarmAttack(context, candidate);
+}
+
+// A swarm's 1-action damage ability (Swarming Bites) is its whole offense and has no frequency:
+// it can use it every action, like a Strike.
+function isRepeatableSwarmAttack(context, candidate) {
+  if (Number(candidate?.actionCost) !== 1 || !["save-damage", "damage"].includes(candidate?.role)) return false;
+  if (String(candidate?.source ?? "").startsWith("spell")) return false;
+  const raw = contextActorDocument(context)?.system?.traits?.value;
+  const traits = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [];
+  if (!traits.includes("swarm")) return false;
+  const item = candidate?.item;
+  if (item?.system?.frequency) return false;
+  return !/can['’]t use .* again|once per/i.test(String(item?.system?.description?.value ?? ""));
 }
 
 function allowsPostChargeTumbleThrough(context) {
@@ -206,6 +220,14 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
   ) {
     return true;
   }
+
+  // A drawn weapon stays in hand: drawing the same rapier twice wastes an action (thrown weapons
+  // and bombs draw another one, so they can repeat).
+  const drawnItemId = (step) => step?.activityProfile?.drawsWeapon === true
+    && !candidateTraitSlugs(step).some((trait) => trait === "bomb" || trait.startsWith("thrown"))
+    ? step?.item?.id ?? null : null;
+  const drawn = drawnItemId(candidate);
+  if (drawn && steps.some((step) => drawnItemId(step) === drawn)) return true;
 
   // PF2e: one flourish per turn, and one composition per turn.
   const isFlourish = (step) => candidateTraitSlugs(step).includes("flourish");

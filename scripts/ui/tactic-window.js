@@ -210,6 +210,8 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     const form = this._form();
     const enabled = form?.elements?.namedItem?.("customEnabled")?.checked === true;
     form?.classList.toggle("is-custom", enabled);
+    // Re-fit to the new content; the CSS caps it at the screen and scrolls the rest.
+    if (this.rendered) this.setPosition({ height: "auto" });
   }
 
   async _save(decision, button) {

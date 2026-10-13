@@ -4,6 +4,10 @@ function numeric(value, fallback = 0) {
 }
 
 export function movementFootprintForToken(value) {
+  // Already a footprint (reachableAttackCenters passes one): a Large creature is 2x2, not 1x1.
+  if (Number(value?.widthCells) > 0 && Number(value?.heightCells) > 0) {
+    return { widthCells: Number(value.widthCells), heightCells: Number(value.heightCells) };
+  }
   const token = value?.token ?? value ?? {};
   const document = token.document ?? token;
   return {

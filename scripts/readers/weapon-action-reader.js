@@ -91,11 +91,12 @@ function drawStrikeTarget(context, weapon, range, readyStrikes) {
     : readyStrikes.filter((ready) => !isRangedStrike(ready));
   const targets = contextTargets(context);
   const enemies = contextEnemies(context);
-  return [...targets, ...enemies].find((target) =>
-    canAttackTarget(target)
-    && !readyStrikeCanReach(sameKindStrikes, target)
-    && (target?.distance ?? Infinity) <= range.max,
-  ) ?? null;
+  const open = [...targets, ...enemies].filter((target) => canAttackTarget(target) && !readyStrikeCanReach(sameKindStrikes, target));
+  const inRange = open.find((target) => (target?.distance ?? Infinity) <= range.max);
+  if (inRange || isRangedStrike({ range, item: weapon })) return inRange ?? null;
+  // A sheathed melee weapon still beats a fist after a Stride: offer it to the approach planner.
+  return sameKindStrikes.some((ready) => ready?.item?.slug !== "basic-unarmed") ? null
+    : open.toSorted((left, right) => (left?.distance ?? Infinity) - (right?.distance ?? Infinity))[0] ?? null;
 }
 
 function readDrawStrikeActivities(actor, context, readyStrikes) {
@@ -110,6 +111,8 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
       if (!target) return [];
 
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
+      // Out of reach: unavailable here, so the approach planner puts a Stride in front of it.
+      const reaches = (target?.distance ?? Infinity) <= range.max;
       return [{
         id: `draw-strike-${weapon.id ?? slug}`,
         name: t("Action.DrawStrike", "Draw {weapon} -> Strike", { weapon: weapon.name }),
@@ -120,7 +123,8 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
         confidence: "medium",
         executable: "open-item",
         detected: true,
-        available: true,
+        available: reaches,
+        ...(reaches ? {} : { unavailableReason: t("Avail.NoEnemyInReach", "No enemy in reach.") }),
         item: weapon,
         preferredTarget: target,
         role: "damage",
@@ -291,6 +295,8 @@ function readReloadWeaponActions(actor) {
 }
 
 export function readWeaponActions(actor, context, readyStrikes) {
+  // NPC Strikes are always ready in PF2e; inventory weapons stored as "worn" need no Draw.
+  if (actor?.type === "npc" || actor?.isOfType?.("npc") === true) return readReloadWeaponActions(actor);
   return [
     ...readDrawStrikeActivities(actor, context, readyStrikes),
     ...readDrawWeaponActions(actor),

@@ -145,3 +145,35 @@ export function previousAutoFillPlan(plans, currentPlanId) {
   const index = currentIndex >= 0 ? currentIndex : 0;
   return cycle[(index - 1 + cycle.length) % cycle.length] ?? cycle[0];
 }
+
+function stepKey(step) {
+  return String(step?.actionKey ?? step?.id ?? step?.slug ?? step?.name ?? "");
+}
+
+function stepLabel(steps) {
+  return steps.map((step) => step?.name ?? "?").join(", ");
+}
+
+// "Why this plan": the strongest genuinely different alternative and what was swapped for it --
+// the steps only this plan has against the steps only the alternative has.
+export function planComparison(selected, plans) {
+  if (!selected?.steps?.length || !Array.isArray(plans)) return null;
+  const mine = new Set(selected.steps.map(stepKey));
+  const alternative = plans
+    .filter((plan) => plan && plan !== selected && plan.id !== selected.id && plan.steps?.length)
+    .find((plan) => {
+      const theirs = new Set(plan.steps.map(stepKey));
+      return [...mine].some((key) => !theirs.has(key)) && [...theirs].some((key) => !mine.has(key));
+    });
+  if (!alternative) return null;
+  const theirs = new Set(alternative.steps.map(stepKey));
+  const kept = selected.steps.filter((step) => !theirs.has(stepKey(step)));
+  const dropped = alternative.steps.filter((step) => !mine.has(stepKey(step)));
+  const margin = Math.round((Number(selected.score) || 0) - (Number(alternative.score) || 0));
+  return {
+    alternative: alternative.summary ?? stepLabel(alternative.steps),
+    margin,
+    chosen: stepLabel(kept),
+    instead: stepLabel(dropped),
+  };
+}

@@ -1212,7 +1212,8 @@ export function actionKeyForPanelStep(panel, step) {
   // Out-of-range Strikes are absent from Browse, but their canonical keys still
   // resolve from rejected candidates. A shared item UUID can otherwise alias
   // them to Draw/Sheathe, which disappears once Ready Weapon executes.
-  if (step?.source === "strike" && !step?.activityProfile?.requiresDistinctTargets) {
+  // The Strike atom of a Stride -> Strike combo keeps the combo's source, so check the slug too.
+  if ((step?.source === "strike" || step?.slug === "strike") && !step?.activityProfile?.requiresDistinctTargets) {
     return resolveBuilderAction(key, (lookupKey) => panel._findBuilderAction(lookupKey))?.key ?? key;
   }
 
@@ -1239,10 +1240,18 @@ export function actionKeyForPanelStep(panel, step) {
       // -- silently mis-keying a step to whichever OTHER item-less candidate happened to sort
       // first that pass, e.g. a Stride step re-resolving to Drop Prone's own (false) "Actor is
       // Prone" availability warning. Only compare when the step actually carries a real uuid.
-      || (step?.item?.uuid && candidate.item?.uuid === step.item.uuid));
+      || (step?.item?.uuid && candidate.item?.uuid === step.item.uuid && sameItemUse(candidate, step)));
     if (action) return action.key;
   }
   return key;
+}
+
+// Sharing a weapon's item doesn't make a Strike a Sheathe or a Draw.
+function sameItemUse(candidate, step) {
+  const use = (action) => action?.activityProfile?.sheathesWeapon === true ? "sheathe"
+    : action?.activityProfile?.drawsWeapon === true && !action?.activityProfile?.includesStrike ? "draw"
+      : "use";
+  return use(candidate) === use(step);
 }
 
 function rebuildPanelAutoFillContext(panel, draft = null, targetKey = "") {

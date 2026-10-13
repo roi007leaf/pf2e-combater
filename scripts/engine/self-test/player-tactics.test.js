@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { computePlayerTacticPersonality, tacticPersonalityAdjustment, tacticPersonalityPlanAdjustment } from "../../rules/tactic-personality.js";
 import { scoreCandidate } from "../scoring.js";
-import { attacksTowardMap, buildTurnPlans } from "../planner.js";
+import { attacksTowardMap, buildTurnPlans, mapPenalty } from "../planner.js";
 import { appliesProne } from "../planner/projections.js";
 import { FIGHTER_ACTIONS } from "../../catalog/class-actions/fighter.js";
 import { readStrikeStepAwayActivities } from "../../readers/positional/step-away-reader.js";
@@ -11,6 +11,15 @@ import { advancePlanState, createPlanState, projectContextFromPlanState } from "
 import { GUARDIAN_ACTIONS } from "../../catalog/class-actions/guardian.js";
 import { targetAlreadyHasBuff } from "../scoring/buffs.js";
 import { classifySystemAction } from "../action/classifier.js";
+import { endPositionDanger } from "../planner/danger.js";
+import { nextTurnReadiness } from "../planner/lookahead.js";
+import { planComparison } from "../../ui/plan-selection.js";
+import { isRepeatablePlanningAction } from "../planner/conflicts.js";
+import { stepSatisfiesPreviousRequirement } from "../planner/rules.js";
+import { damageAverage } from "../scoring/facts.js";
+import { rechargeAvailability, rechargeFormula } from "../npc-recharge-state.js";
+import { movementFootprintForToken } from "../../rules/token-geometry.js";
+import { MODULE_ID } from "../../constants.js";
 
 // Player tactic audit regressions (one block per finding group).
 
@@ -278,4 +287,96 @@ function strideSwordFor() {
   assert.equal(skirmish?.activityProfile?.fixedDistance, 5);
 }
 
+// ---- The enemy's turn, the next turn, and "why this plan" ------------------------------------
+{
+  const twoOrcs = (hp = 1, temperament = "auto") => ({
+    ...rolePc("auto", { profile: { hpPercent: hp }, enemies: [
+      { id: "a", name: "Orc A", distance: 30, hpPercent: 1, conditions: { slugs: [], values: {} } },
+      { id: "b", name: "Orc B", distance: 30, hpPercent: 1, conditions: { slugs: [], values: {} } },
+    ] }),
+    _temperament: temperament,
+  });
+  const strideAt = (id) => ({ id: `stride-${id}`, slug: "stride", name: "Stride", source: "generic", actionCost: 1, suggestedTarget: { id, name: id } });
+  const context = twoOrcs();
+  const start = createPlanState(context);
+  const toA = [strideAt("a")];
+  const danger = endPositionDanger(context, start, toA);
+  assert.equal(danger.delta, 1, "striding up to Orc A puts one more enemy in reach");
+  assert.ok(danger.scoreDelta < 0);
+  const hurt = twoOrcs(0.25);
+  assert.ok(endPositionDanger(hurt, createPlanState(hurt), toA).scoreDelta < danger.scoreDelta, "it matters more at low HP");
+  assert.ok(endPositionDanger(context, start, toA, "berserker").scoreDelta > danger.scoreDelta, "a berserker cares less");
+  assert.equal(endPositionDanger(context, start, [{ id: "rk", slug: "recall-knowledge", source: "generic", actionCost: 1 }]).scoreDelta, 0, "not moving changes nothing");
+
+  const sword = { id: "strike-sword", slug: "strike", source: "strike", actionCost: 1, range: { max: 5 }, attackTrait: true };
+  const ready = nextTurnReadiness(context, start, toA, [sword]);
+  assert.ok(ready.saved >= 1 && ready.scoreDelta > 0, `closing in saves Strides next turn (${JSON.stringify(ready)})`);
+
+  const plan = (summary, score, names) => ({ id: summary, summary, score, steps: names.map((name) => ({ id: name, name })) });
+  const chosen = plan("Stride -> Rapier -> Rapier", 300, ["Stride -> Rapier", "Rapier"]);
+  const comparison = planComparison(chosen, [chosen, plan("Rapier-ish", 299, ["Stride -> Rapier", "Rapier"]), plan("Shortbow -> Shortbow -> Recall Knowledge", 262, ["Shortbow", "Shortbow MAP", "Recall Knowledge"])]);
+  assert.equal(comparison.alternative, "Shortbow -> Shortbow -> Recall Knowledge", "compares against a genuinely different plan");
+  assert.equal(comparison.margin, 38);
+  assert.equal(comparison.chosen, "Stride -> Rapier, Rapier");
+}
+
 console.log("Player tactic audit tests passed.");
+
+
+// ---- NPC audit + live test fixes -------------------------------------------------------------
+{
+  // Damage with only a formula ("9d6") still has an average.
+  assert.equal(damageAverage({ id: "breath", damageProfile: { formula: "9d6", type: "poison" } }), 31.5);
+  assert.equal(damageAverage({ id: "bite", damageProfile: { formula: "2d8+4" } }), 13);
+
+  // Breath Weapon recharge: recognised in the text, gated until the stored round.
+  const breath = { id: "breath", name: "Breath Weapon", system: { description: { value: "<p>The dragon can't use Breath Weapon again for [[/gmr 1d4 #Recharge Breath Weapon]]{1d4 rounds}.</p>" } } };
+  const crumble = { id: "crumble", name: "Crumble", system: { description: { value: "<p>The living landslide can't Crumble again for 1d6 rounds.</p>" } } };
+  const shieldSpell = { id: "shield", name: "Shield", system: { description: { value: "<p>You can't cast it again for 10 minutes.</p>" } } };
+  assert.equal(rechargeFormula(breath), "1d4");
+  assert.equal(rechargeFormula(crumble), "1d6");
+  assert.equal(rechargeFormula(shieldSpell), null, "a 10-minute limit isn't a round recharge");
+  const dragon = { type: "npc", flags: { [MODULE_ID]: { npcRecharge: { breath: { combatId: "c1", readyRound: 4 } } } } };
+  assert.equal(rechargeAvailability(dragon, breath, { id: "c1", round: 3 }).available, false, "still recharging on round 3");
+  assert.equal(rechargeAvailability(dragon, breath, { id: "c1", round: 4 }).available, true, "back on round 4");
+  assert.equal(rechargeAvailability(dragon, breath, { id: "other", round: 1 }).available, true, "a new combat starts fresh");
+
+  // Draconic Frenzy: two claws and a wing are three Strikes toward MAP; still one executable step.
+  const frenzy = classifySystemAction({ id: "frenzy", name: "Draconic Frenzy", slug: "draconic-frenzy", actionCost: 2,
+    description: "The dragon makes two claw Strikes and one wing Strike in any order." }, { actionCost: 2, type: "action" });
+  assert.equal(frenzy.activityProfile.countedStrikes, 3);
+  assert.equal(attacksTowardMap({ ...frenzy, source: "system-inferred", attackTrait: true, traits: ["attack"] }), 3);
+
+  // Grab / Knockdown riders follow a Strike that lists them, and roll no attack of their own.
+  const grab = classifySystemAction({ id: "grab", name: "Grab", slug: "grab", actionCost: 1,
+    system: { description: { value: "<p>@Localize[PF2E.NPC.Abilities.Glossary.Grab]</p>" } } }, { actionCost: 1, type: "action" });
+  const jaws = { slug: "strike", source: "strike", item: { system: { attackEffects: { value: ["grab"] } } } };
+  const claw = { slug: "strike", source: "strike", item: { system: { attackEffects: { value: [] } } } };
+  assert.equal(stepSatisfiesPreviousRequirement(jaws, "strike-with-grab"), true);
+  assert.equal(stepSatisfiesPreviousRequirement(claw, "strike-with-grab"), false, "Claw doesn't list Grab");
+  assert.equal(mapPenalty({ ...grab, source: "system-inferred", attackTrait: true, traits: ["attack"] }, 1), 0, "Grab makes no attack roll");
+
+  // Swallow Whole: "Small, ..." swallows Small or smaller.
+  const swallow = classifySystemAction({ id: "swallow", name: "Swallow Whole", slug: "swallow-whole", actionCost: 1,
+    system: { description: { value: "<p>Small, @Damage[(1d8+4)[bludgeoning]], Rupture 12</p><hr /><p>@Localize[PF2E.NPC.Abilities.Glossary.SwallowWhole]</p>" } } }, { actionCost: 1, type: "action" });
+  assert.equal(swallow.activityProfile.maxTargetSize, "small");
+
+  // A swarm repeats its in-space damage ability like a Strike; anything else doesn't repeat.
+  const swarmContext = { actor: { document: { type: "npc", system: { traits: { value: ["swarm", "animal"] } } } } };
+  const stings = { id: "stings", name: "Swarming Stings", actionCost: 1, role: "save-damage", source: "system-inferred",
+    item: { system: { description: { value: "<p>Each enemy in the swarm's space takes 2d8 piercing damage.</p>" } } } };
+  assert.equal(isRepeatablePlanningAction(swarmContext, stings), true);
+  assert.equal(isRepeatablePlanningAction({ actor: { document: { type: "npc", system: { traits: { value: ["animal"] } } } } }, stings), false);
+
+  // A footprint passed straight through stays 2x2 (Large creatures were measured as 1x1).
+  assert.deepEqual(movementFootprintForToken({ widthCells: 2, heightCells: 2 }), { widthCells: 2, heightCells: 2 });
+
+  // Low HP makes walking into reach cost more (the danger model read a field that doesn't exist).
+  const hurt = rolePc("auto", { profile: { hp: { value: 5, max: 50, percent: 0.1 } }, enemies: [{ id: "orc", name: "Orc", distance: 30, hpPercent: 1, conditions: { slugs: [], values: {} } }] });
+  const healthy = rolePc("auto", { profile: { hp: { value: 50, max: 50, percent: 1 } }, enemies: [{ id: "orc", name: "Orc", distance: 30, hpPercent: 1, conditions: { slugs: [], values: {} } }] });
+  const charge = { id: "sc", slug: "sudden-charge", name: "Sudden Charge", source: "class-curated", actionCost: 2, suggestedTarget: { id: "orc", name: "Orc" },
+    activityProfile: { includes: ["stride", "stride", "strike"], includesStrike: true, strideCount: 2, strikeReach: 5 } };
+  const hurtDanger = endPositionDanger(hurt, createPlanState(hurt), [charge], "cautious");
+  const healthyDanger = endPositionDanger(healthy, createPlanState(healthy), [charge], "cautious");
+  assert.ok(hurtDanger.scoreDelta < healthyDanger.scoreDelta, `ending next to the orc costs more at 10% HP (${hurtDanger.scoreDelta} vs ${healthyDanger.scoreDelta})`);
+}

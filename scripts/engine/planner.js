@@ -40,6 +40,9 @@ import {
 } from "./planner/projections.js";
 import { planSignature } from "./planner/plan-signature.js";
 import { createPlanRescorer } from "./planner/rescoring.js";
+import { plannedMoveDestination } from "../readers/action/reach.js";
+import { endPositionDanger, planEndState } from "./planner/danger.js";
+import { nextTurnReadiness } from "./planner/lookahead.js";
 import { scoreCandidate } from "./scoring.js";
 import {
   advancePlanState,
@@ -94,7 +97,7 @@ const DIVERSITY_LOOKAHEAD = 12;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const ORPHAN_SETUP_PENALTY = 20;
-const MAX_APPROACH_CANDIDATES = 3;
+const MAX_APPROACH_CANDIDATES = 5;
 const DIVERSE_CANDIDATE_CATEGORIES = [
   "strike",
   "class",
@@ -433,6 +436,8 @@ function candidateSetupKeys(candidate) {
 
 function setupPriority(step, allSteps) {
   if (step?.slug === "escape") return -3;
+  // Backing off ends the turn: attack first, then get out of reach.
+  if (step?.activityProfile?.retreat === true) return 4;
   if (requiresPreviousAction(step)) return 1;
 
   if (includesStand(step)) return -2;
@@ -469,6 +474,8 @@ function stepDependsOnStep(step, source) {
 
   const projectedSource = step?.activityProfile?.requiresProjectedAfterKey;
   if (projectedSource && actionKey(source) === projectedSource) return true;
+  const orderSource = step?.activityProfile?.orderAfterKey;
+  if (orderSource && actionKey(source) === orderSource) return true;
 
   return targetConditionRequirementOptions(step).some((group) =>
     stepSatisfiesTargetConditionRequirement(source, group),
@@ -517,6 +524,7 @@ function orderPlanSteps(steps) {
 
 export function mapPenalty(candidate, attackIndex) {
   if (!isAttackAction(candidate)) return 0;
+  if (candidate.activityProfile?.noAttackRoll === true) return 0;
   if (attackIndex <= 0) return 0;
   // PF2e's MAP stops getting worse after the second extra attack, so a 3rd+ attack in one turn
   // is still capped at the same penalty as the 2nd.
@@ -534,7 +542,8 @@ export function attacksTowardMap(candidate) {
   if (Number.isFinite(value)) return Math.max(0, value);
   // Hunted Shot / Flurry of Blows: each of its Strikes takes and advances MAP on its own.
   if (candidate.activityProfile?.mapAppliesPerStrike === true) {
-    return Math.max(1, (candidate.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length);
+    return Math.max(1, Number(candidate.activityProfile?.countedStrikes)
+      || (candidate.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length);
   }
   return 1;
 }
@@ -640,18 +649,23 @@ function strikeWeaponKey(action) {
 function approachPool(approachCandidates, eligibleCandidates, context, budget, searchPool) {
   // Nothing can close the distance without a plain move (or Reach Spell, for a spell) in the search.
   if (!searchPool.some(isPlainMovement) && !searchPool.some((candidate) => candidate?.activityProfile?.rangeBuff === true)) return [];
-  const compositeWeapons = new Set(eligibleCandidates
-    .filter((candidate) => candidate?.activityProfile?.includesStrike && Number(candidate?.activityProfile?.strideCount) > 0)
-    .map(strikeWeaponKey).filter(Boolean));
-  return (approachCandidates ?? [])
+  // A weapon with a Stride -> Strike combo still earns its second Strike once the combo is in reach.
+  const eligible = (approachCandidates ?? [])
     .filter((candidate) => candidate?.needsApproach)
-    .filter((candidate) => !compositeWeapons.has(strikeWeaponKey(candidate)))
     .filter((candidate) => autoFillEligibleCandidate(context, candidate))
     .filter((candidate) => turnIntentCandidateAllowed(context?.turnIntent, candidate))
     .filter((candidate) => Number.isFinite(candidate.actionCost) && candidate.actionCost >= 0 && candidate.actionCost < budget.totalActions)
-    .toSorted((left, right) => Number(right.source === "strike") - Number(left.source === "strike")
-      || (Number(right.score) || 0) - (Number(left.score) || 0))
-    .slice(0, MAX_APPROACH_CANDIDATES);
+    .toSorted((left, right) => (Number(right.score) || 0) - (Number(left.score) || 0));
+  // Out-of-range spells score -999 from here, so a flat top-N fills up with Feint and Trip. Take the
+  // best of each kind in turn: Strikes, spells, everything else.
+  const kind = (candidate) => candidate.source === "strike" || candidate?.activityProfile?.includesStrike ? 0
+    : String(candidate.source ?? "").startsWith("spell") ? 1 : 2;
+  const queues = [0, 1, 2].map((key) => eligible.filter((candidate) => kind(candidate) === key));
+  const picked = [];
+  while (picked.length < MAX_APPROACH_CANDIDATES && queues.some((queue) => queue.length)) {
+    for (const queue of queues) if (queue.length && picked.length < MAX_APPROACH_CANDIDATES) picked.push(queue.shift());
+  }
+  return picked;
 }
 
 // The candidate's target as it stands on the projected board (allies too: a heal's patient).
@@ -666,12 +680,22 @@ function projectedTargetOf(context, candidate) {
   return targetForCandidate(context, candidate);
 }
 
+function isSwarmContext(context) {
+  const raw = contextActorDocument(context)?.system?.traits?.value;
+  return (raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : []).includes("swarm");
+}
+
 function approachReaches(context, candidate) {
+  // Swarming Bites hits whoever the swarm is on top of; no particular target.
+  if (candidate?.activityProfile?.inOwnSpace === true) {
+    return contextEnemies(context).some((enemy) => Number(enemy?.distance) <= 0);
+  }
   const target = projectedTargetOf(context, candidate);
   const strides = Number(candidate?.activityProfile?.strideCount) || 0;
   const speed = Number(context?.profile?.speed ?? context?.actor?.profile?.speed) || 25;
   const reach = Number(candidate?.activityProfile?.strikeReach) || currentAttackRange(candidate) || 5;
   const range = strides > 0 ? speed * strides + reach
+    : candidate?.activityProfile?.inOwnSpace === true ? 0
     : Number(candidate?.targetingProfile?.maxRange) > 0 ? Number(candidate.targetingProfile.maxRange)
       : currentAttackRange(candidate) ?? 5;
   return Number(target?.distance ?? Infinity) <= range;
@@ -770,7 +794,16 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null,
   const evaluation = evaluatePlan(context, orderedSteps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
-  const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget);
+  // The enemy's turn: how many more (or fewer) enemies can hit you where this plan ends.
+  const endState = simulation ? planEndState(context, simulation.initialState, orderedSteps) : null;
+  const danger = simulation
+    ? endPositionDanger(context, simulation.initialState, orderedSteps, resolvedTactic?.effectiveTemperament ?? resolvedTactic?.temperament, endState)
+    : { delta: 0, scoreDelta: 0 };
+  // Next turn: Strides saved before you can attack again (a positioning turn has value).
+  const readiness = simulation
+    ? nextTurnReadiness(context, simulation.initialState, orderedSteps, sortedCandidates, endState)
+    : { saved: 0, scoreDelta: 0 };
+  const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget) + danger.scoreDelta + readiness.scoreDelta;
   const tacticPlanAdjustment = tacticPersonalityPlanAdjustment(context, orderedSteps, resolvedTactic, sortedCandidates);
   const componentScoreDelta = orderedSteps.reduce(
     (total, step) => total + (Number(step?.preference?.scoreDelta) || 0),
@@ -788,6 +821,8 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null,
     totalCost,
     actionBudget: budget,
     orphanSetups: orphanSetupSteps(orderedSteps, sortedCandidates).length,
+    danger,
+    readiness,
     score: tacticalScore + tacticPlanAdjustment.scoreDelta - componentScoreDelta + preferenceScoreDelta,
     tactic: tacticPlanAdjustment,
     preference: {
@@ -1106,10 +1141,41 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       }
       if (candidate.needsApproach) {
         if (!approachReaches(projectedContext, linkedCandidate)) continue;
+        // Name whoever the swarm ends up on, not the far-off target it was first scored against.
+        const underneath = linkedCandidate.activityProfile?.inOwnSpace === true
+          ? contextEnemies(projectedContext).find((enemy) => Number(enemy?.distance) <= 0) : null;
+        const reference = underneath ? { id: underneath.id, name: underneath.name, type: "enemy" } : null;
         linkedCandidate = {
           ...linkedCandidate,
+          ...(reference ? { suggestedTarget: reference, preferredTarget: reference } : {}),
           activityProfile: { ...(linkedCandidate.activityProfile ?? {}), requiresProjectedAfterKey: actionKey(mover) },
         };
+      }
+      // In reach only because an earlier step moved us (a Knockdown after Stride -> Jaws): it must
+      // stay after that move when the plan is put in execution order.
+      if (!candidate.needsApproach && !linkedCandidate.activityProfile?.requiresProjectedAfterKey && !linkedCandidate.activityProfile?.orderAfterKey) {
+        const moved = steps.findLast(isMovementStep);
+        if (moved && (linkedCandidate.targetingProfile?.enemy === true || isAttackAction(linkedCandidate))) {
+          const range = currentAttackRange(linkedCandidate) ?? (Number(context.profile?.reach ?? context.profile?.meleeReach) || 5);
+          const now = Number(projectedTargetOf(projectedContext, linkedCandidate)?.distance);
+          const before = Number(projectedTargetOf(context, linkedCandidate)?.distance);
+          if (now <= range && before > range) {
+            linkedCandidate = { ...linkedCandidate, activityProfile: { ...(linkedCandidate.activityProfile ?? {}), orderAfterKey: actionKey(moved) } };
+          }
+        }
+      }
+      // On a real canvas, a plain Stride/Step gets an actual destination square, so distances to
+      // every creature, danger and next-turn readiness use real geometry (and the draft step
+      // arrives with it preset).
+      if (isPlainMovement(linkedCandidate) && !linkedCandidate.destination && projectedContext.token?.center) {
+        const target = projectedTargetOf(projectedContext, linkedCandidate);
+        const step = /(?:^|-)step$/.test(normalizeSlug(linkedCandidate.slug ?? linkedCandidate.id));
+        const speed = Number(projectedContext.profile?.speed ?? projectedContext.actor?.profile?.speed) || 25;
+        // A swarm attacks the creatures in its own space: it Strides onto them, not next to them.
+        const reach = isSwarmContext(projectedContext) ? 0
+          : Number(projectedContext.profile?.reach ?? projectedContext.profile?.meleeReach) || 5;
+        const destination = target ? plannedMoveDestination(projectedContext, target, step ? 5 : speed, reach) : null;
+        if (destination) linkedCandidate = { ...linkedCandidate, destination: { x: destination.x, y: destination.y }, plannedDestination: true };
       }
       if (entityHasAnyCondition(projectedContext.profile ?? projectedContext.actor?.profile, ["restrained"]) && linkedCandidate.slug !== "escape") continue;
       if (!readMovementAvailability(projectedContext, linkedCandidate).available) continue;

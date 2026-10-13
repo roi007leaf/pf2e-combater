@@ -101,6 +101,19 @@ export function isNonCantripSpell(candidate) {
 }
 
 
+// Grab, Knockdown, Push: only a Strike whose damage entry lists the ability (Jaws, not Claw).
+// Unknown attack effects (no item data) don't block.
+function strikeListsAttackEffect(step, effect) {
+  const effects = step?.item?.system?.attackEffects?.value;
+  // A Frenzy-style ability makes several of the creature's Strikes; which one hit isn't known.
+  if (Number(step?.activityProfile?.countedStrikes) >= 2) return false;
+  if (!Array.isArray(effects)) return true;
+  return effects.some((value) => {
+    const slug = normalizeSlug(value);
+    return slug === effect || slug === `improved-${effect}`;
+  });
+}
+
 export function stepSatisfiesPreviousRequirement(step, requirement) {
   if (!step) return false;
   const key = normalizeSlug(requirement);
@@ -108,6 +121,7 @@ export function stepSatisfiesPreviousRequirement(step, requirement) {
   if (key === "spell" || key === "spell-cast") return isSpellAction(step);
   if (key === "non-cantrip-spell") return isNonCantripSpell(step);
   if (key === "strike" || key === "after-strike") return isStrikeLikeCandidate(step);
+  if (key.startsWith("strike-with-")) return isStrikeLikeCandidate(step) && strikeListsAttackEffect(step, key.slice("strike-with-".length));
   if (key === "attack") return isAttackAction(step);
   if (key === "quickened-casting") return isActionDiscountCandidate(step);
   if (key === "lingering-composition") return isCompositionExtenderCandidate(step);
@@ -131,7 +145,7 @@ export function contextSatisfiesPreviousRequirements(context, requirements) {
     const key = normalizeSlug(requirement);
     if (key === "non-cantrip-spell") return events.has("non-cantrip-spell");
     if (key === "spell" || key === "spell-cast") return events.has("spell-cast");
-    if (key === "strike" || key === "after-strike") return events.has("after-strike");
+    if (key === "strike" || key === "after-strike" || key.startsWith("strike-with-")) return events.has("after-strike");
     return events.has(key);
   });
 }

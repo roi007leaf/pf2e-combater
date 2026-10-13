@@ -318,6 +318,21 @@ function readMapAttacks(text) {
   return null;
 }
 
+// "two claw Strikes and one wing Strike" -> 3. Zero when the text doesn't spell out its Strikes.
+function readCountedStrikes(text) {
+  let total = 0;
+  for (const match of text.matchAll(/\b(\d+|one|two|three|four|five|six)\s+(?:[a-z'-]+\s+){0,2}strikes?\b/gi)) {
+    const raw = match[1].toLowerCase();
+    total += MAP_WORD_NUMBERS[raw] ?? Number(raw) ?? 0;
+  }
+  return Math.min(6, total);
+}
+
+function swallowSize(action) {
+  const match = rawDescription(action).replace(/<[^>]+>/g, " ").match(/^\s*(tiny|small|medium|large|huge|gargantuan)\b/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
 function readDistinctStrikeCount(text) {
   let match = text.match(/\b(\d+|one|two|three|four|five|six)\s+different\s+(?:creatures?|targets?|enem(?:y|ies)|foes?)\b/i);
   if (!match) match = text.match(/\bup to\s+(\d+|one|two|three|four|five|six)\s+times\b/i);
@@ -703,16 +718,17 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
-  if (hasLocalize(action, "glossary.push") || hasName(action, /\bpush\b/)) {
+  if ((hasLocalize(action, "glossary.push") || hasLocalize(action, "glossary.improvedpush")) || hasName(action, /\bpush\b/)) {
     return inferred("control", {
       activityProfile: {
         ...baseProfile(["control"]),
         forcedMovement: true,
-        requiresPreviousStrike: /\blast action\b.*\bstrike\b|\bsuccessful strike\b/.test(text),
+        requiresPreviousStrike: (hasLocalize(action, "glossary.push") || hasLocalize(action, "glossary.improvedpush")) || /\blast action\b.*\bstrike\b|\bsuccessful strike\b/.test(text),
+        ...((hasLocalize(action, "glossary.push") || hasLocalize(action, "glossary.improvedpush")) ? { previousActionRequirements: ["after-strike", "strike-with-push"], noAttackRoll: true, mapAttacks: 0 } : {}),
       },
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
-      confidence: hasLocalize(action, "glossary.push") ? "high" : "medium",
+      confidence: (hasLocalize(action, "glossary.push") || hasLocalize(action, "glossary.improvedpush")) ? "high" : "medium",
       reasons: [t("ActReason.PushCanMoveA", "Push can move a target after a hit.")],
     });
   }
@@ -1032,7 +1048,9 @@ function classifySystemActionBase(action, parsedCost) {
         appliesCondition: "grabbed",
         npcFamily: "grab-rider",
         requiresPreviousStrike,
-        previousActionRequirements: requiresPreviousStrike ? ["after-strike"] : [],
+        // Grab follows a Strike that lists it, and makes no attack roll of its own.
+        previousActionRequirements: requiresPreviousStrike ? ["after-strike", "strike-with-grab"] : [],
+        ...(requiresPreviousStrike ? { noAttackRoll: true, mapAttacks: 0 } : {}),
       },
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
@@ -1064,6 +1082,8 @@ function classifySystemActionBase(action, parsedCost) {
         npcFamily: "swallow-whole",
         requiresTargetCondition: "grabbed",
         containsTarget: true,
+        // "Small, 1d8+4 bludgeoning, Rupture 12": swallows that size or smaller.
+        ...(swallowSize(action) ? { maxTargetSize: swallowSize(action) } : {}),
       },
       targetingProfile: { enemy: true, reach: true },
       saveProfile,
@@ -1094,11 +1114,14 @@ function classifySystemActionBase(action, parsedCost) {
     });
   }
 
-  if (hasLocalize(action, "glossary.knockdown") || hasName(action, /\bknockdown\b/)) {
+  if ((hasLocalize(action, "glossary.knockdown") || hasLocalize(action, "glossary.improvedknockdown")) || hasName(action, /\bknockdown\b/)) {
+    // The NPC ability is a rider on a Strike that lists Knockdown, not a Strike of its own.
+    const rider = (hasLocalize(action, "glossary.knockdown") || hasLocalize(action, "glossary.improvedknockdown")) || /\blast action\b.*\bstrike\b/.test(text);
     return inferred("control", {
       activityProfile: {
-        ...baseProfile(mentionsStrike ? ["strike", "control"] : ["control"]),
+        ...baseProfile(mentionsStrike && !rider ? ["strike", "control"] : ["control"]),
         appliesCondition: "prone",
+        ...(rider ? { requiresPreviousStrike: true, previousActionRequirements: ["after-strike", "strike-with-knockdown"], noAttackRoll: true, mapAttacks: 0 } : {}),
       },
       targetingProfile: { enemy: true, reach: true },
       gatingProfile,
@@ -1389,9 +1412,17 @@ function classifySystemActionBase(action, parsedCost) {
         ...(mapAttacks === null ? { mapAppliesPerStrike: true } : {}),
       }
       : {};
+    // Draconic Frenzy: "makes two claw Strikes and one wing Strike" is three Strikes, not one.
+    // Execution stays the creature's own ability; the count is for scoring.
+    const countedStrikes = !mentionsDifferentTargets && !weaponRequirement && !mentionsUnarmedStrikes
+      ? readCountedStrikes(text) : 0;
+    const countedStrikeProfile = countedStrikes >= 2
+      ? { countedStrikes, ...(mapAttacks === null ? { mapAppliesPerStrike: true } : {}) }
+      : {};
     return inferred("multiattack", {
       activityProfile: {
         ...baseAttackProfile(),
+        ...countedStrikeProfile,
         multiStrike: true,
         delayedMap: mentionsDelayedMap,
         ...(mapAttacks !== null ? { mapAttacks } : {}),

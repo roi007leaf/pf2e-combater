@@ -19,6 +19,8 @@ function readSkillStat(skill, { fallbackRank = 0 } = {}) {
   return {
     rank: rankValue(skill?.rank, fallbackRank),
     mod: numericValue(skill?.mod ?? skill?.totalModifier ?? skill?.value, 0),
+    // NPC skills have no rank; PF2e marks the ones in the stat block as proficient.
+    ...(typeof skill?.proficient === "boolean" ? { proficient: skill.proficient } : {}),
   };
 }
 

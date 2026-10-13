@@ -301,7 +301,10 @@
       "AltPlanNext": "Next plan",
       "AutoFillCycleTooltip": "Left-click next plan; right-click previous. Current: {current}/{total}.",
       "AutoFillCycleAria": "Cycle Auto-fill plan",
-      "RunAllFailed": "Run all stopped."
+      "RunAllFailed": "Run all stopped.",
+      "PlanChosenOver": "Chosen over {alternative} ({margin}): {chosen} instead of {instead}.",
+      "PlanEndsNearEnemies": "Ends within reach of {count} more enemies.",
+      "PlanEndsAwayFromEnemies": "Ends out of reach of {count} enemies."
     },
     "Summon": {
       "Choose": "Choose summoned creature and plan placement",
@@ -489,7 +492,8 @@
       "ElementalBlastNamed": "Elemental Blast ({element})",
       "ThrownStrike": "{name} (Thrown)",
       "MeleeStrike": "{name} (Melee)",
-      "StrikeStepAway": "{strike} -> Step Away"
+      "StrikeStepAway": "{strike} -> Step Away",
+      "Retreat": "Stride Away"
     },
     "Reason": {
       "StandThenStride": "Stand, then Stride toward {name}.",
@@ -519,7 +523,9 @@
       "InteractItem": "Draw, retrieve, or manipulate an item.",
       "ReloadFree": "{weapon} reloads as part of firing (no action).",
       "ReloadBeforeStrike": "Reload before firing {name}.",
-      "StrikeStepAway": "Strike {target}, then Step out of reach."
+      "StrikeStepAway": "Strike {target}, then Step out of reach.",
+      "Retreat": "Badly hurt: Stride out of every enemy's reach.",
+      "StrideAwayStrikeOther": "Stride away from {escaping}, then Strike {target} with {strike}."
     },
     "Label": {
       "Target": "Target: {name}",
@@ -788,7 +794,9 @@
       "InnateNoUses": "Innate spell has no uses remaining.",
       "ItemSpellNoUses": "Item spell has no uses remaining.",
       "NoFocusPoints": "No focus points remaining.",
-      "NoMatchingSpellcasting": "No spellcasting entry can cast this item's spell."
+      "NoMatchingSpellcasting": "No spellcasting entry can cast this item's spell.",
+      "Recharging": "Recharging: usable again on round {round}.",
+      "CannotManeuver": "Swarms and troops can't make Athletics maneuvers."
     },
     "SpellRes": {
       "Prepared": "Prepared {available}/{total}",
@@ -1003,7 +1011,9 @@
       "LimitedUse": "Limited use ({per}); worth saving.",
       "OutOfReachThisTurn": "{name} can't reach an enemy from here.",
       "NoValidHealingRecipient": "No creature here can receive {name}.",
-      "HealsDyingAlly": "Brings {name} back up."
+      "HealsDyingAlly": "Brings {name} back up.",
+      "DrawWeaponInstead": "A weapon is a Draw away; a fist is the fallback.",
+      "RetreatOutOfReach": "Gets out of reach of {count} enemies."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",
@@ -1534,6 +1544,9 @@
       "LearnedEmpty": "Nothing learned yet. Rate plans or edit what Auto-fill suggests.",
       "Forget": "Forget",
       "ForgetAll": "Forget all"
+    },
+    "Chat": {
+      "Recharge": "{item} recharges in {rounds} rounds (usable again on round {round})."
     }
   }
 }

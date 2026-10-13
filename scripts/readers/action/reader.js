@@ -51,6 +51,7 @@ import {
   heldMeleeBackingStrikesFromOptions,
 } from "../../engine/backing-strike.js";
 import { triggerMatchesContext } from "../../rules/event-context.js";
+import { rechargeAvailability } from "../../engine/npc-recharge-state.js";
 import { pf2eActionName, t } from "../../i18n.js";
 
 export { readActionCost } from "../item-action-reader.js";
@@ -61,6 +62,19 @@ export { hasEnemyWithinRange } from "../../engine/target-pool.js";
 // from the same curated catalog as known spells. Left in here too, they'd also match the generic
 // Activate-block text parsing below and show up a second time as a plain, undifferentiated item.
 const EMBEDDED_SPELL_CONSUMABLE_CATEGORIES = new Set(["scroll", "wand", "spell-gem"]);
+
+
+const IN_OWN_SPACE_PATTERN = /\beach (?:enemy|creature) in (?:the swarm's|its) space\b/i;
+
+function enemyInOwnSpace(context) {
+  return contextEnemies(context).some((enemy) => Number(enemy?.distance) <= 0 && canAttackTarget(enemy));
+}
+
+function isNpcGlossaryAbility(actor, item) {
+  if (actor?.type !== "npc") return false;
+  return /@Localize\[PF2E\.NPC\.Abilities\.Glossary\./i.test(String(item?.system?.description?.value ?? ""));
+}
+
 function isEmbeddedSpellConsumable(item) {
   if (item?.type !== "consumable" || !item.system?.spell) return false;
   const category = String(item.system?.category ?? "").toLowerCase();
@@ -595,14 +609,17 @@ function readActorItemActions(actor, context) {
     if (!item) return [];
     const slug = slugify(item.slug ?? item.system?.slug ?? item.name);
     if (slug === "elemental-blast" && actorHasElementalBlastConfigs(actor)) return [];
-    const curated = findCustomAction(slug);
+    // An NPC's Knockdown or Grab ("@Localize[PF2E.NPC.Abilities.Glossary.X]") isn't the fighter feat.
+    const curated = isNpcGlossaryAbility(actor, item) ? null : findCustomAction(slug);
     const parsedCost = readActionCost(item);
     const inferred = curated ? null : classifySystemAction(item, parsedCost);
     const tactic = curated ?? inferred;
     const actionCost = curated?.actionCost ?? parsedCost.actionCost;
     const baseName = curated?.name ?? item.name;
     const name = parsedCost.interactDrawCost > 0 ? `Interact -> ${baseName}` : baseName;
-    const itemAvailability = readItemAvailability(item);
+    const baseItemAvailability = readItemAvailability(item);
+    const recharge = baseItemAvailability.available ? rechargeAvailability(actor, item, context?.combat ?? globalThis.game?.combat) : null;
+    const itemAvailability = recharge && !recharge.available ? recharge : baseItemAvailability;
     const trigger = readTrigger(item);
     const triggerAvailability = readTriggerAvailability(trigger, context);
     const traits = traitSlugs(item);
@@ -621,6 +638,12 @@ function readActorItemActions(actor, context) {
     }, context);
     const shieldBlockAvailability = readShieldBlockAvailability(slug, item, context);
     const resourceRecoveryAvailability = readResourceRecoveryAvailability({ activityProfile }, context);
+    // Swarming Bites/Stings: "each enemy in the swarm's space" -- no target, no range. It only
+    // hits enemies the swarm is on top of (0 ft); otherwise it's an approach action: move in first.
+    const inOwnSpace = IN_OWN_SPACE_PATTERN.test(String(item?.system?.description?.value ?? ""));
+    const inSpaceAvailability = inOwnSpace && !enemyInOwnSpace(context)
+      ? availability(false, t("Avail.NoTargetWithin", "No target within {range} feet.", { range: 0 }))
+      : availability(true, "");
     // Reactions are standing options the player should see on their own turn — the trigger
     // fires later, so it describes WHEN to use the reaction rather than gating availability.
     // Triggered free actions stay gated (their trigger marks a fleeting moment to act).
@@ -633,7 +656,8 @@ function readActorItemActions(actor, context) {
       && movementAvailability.available
       && genericAvailability.available
       && requirementAvailability.available
-      && resourceRecoveryAvailability.available;
+      && resourceRecoveryAvailability.available
+      && inSpaceAvailability.available;
 
     if (!tactic && parsedCost.passive) return [];
     if (!curated && actionCost === null) return [];
@@ -658,12 +682,16 @@ function readActorItemActions(actor, context) {
         || movementAvailability.reason
         || genericAvailability.reason
         || requirementAvailability.reason
-        || resourceRecoveryAvailability.reason,
+        || resourceRecoveryAvailability.reason
+        || inSpaceAvailability.reason,
+      ...(inOwnSpace ? { maxRange: 0 } : {}),
       item,
       trigger,
       role: tactic?.role ?? "unknown",
-      activityProfile,
-      targetingProfile: tactic?.targetingProfile ?? null,
+      activityProfile: inOwnSpace ? { ...activityProfile, inOwnSpace: true, strikeReach: 0 } : activityProfile,
+      targetingProfile: inOwnSpace
+        ? { ...(tactic?.targetingProfile ?? {}), enemy: true, maxRange: 0, inOwnSpace: true }
+        : tactic?.targetingProfile ?? null,
       saveProfile: tactic?.saveProfile ?? null,
       damageProfile: tactic?.damageProfile ?? null,
       gatingProfile: tactic?.gatingProfile ?? null,

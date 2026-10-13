@@ -105,6 +105,21 @@ function appliedConditions(candidate, activity, slug) {
   return conditions;
 }
 
+// "9d6" -> 31.5, "2d8+4" -> 13. Null when there's no usable formula.
+function formulaAverage(formula) {
+  const text = String(formula ?? "").replace(/\s+/g, "");
+  if (!/\d/.test(text)) return null;
+  let total = 0;
+  let found = false;
+  for (const [, sign, count, faces, flat] of text.matchAll(/([+-]?)(?:(\d+)d(\d+)|(\d+))/g)) {
+    const value = faces ? Number(count) * (Number(faces) + 1) / 2 : Number(flat);
+    if (!Number.isFinite(value)) continue;
+    total += sign === "-" ? -value : value;
+    found = true;
+  }
+  return found && total > 0 ? total : null;
+}
+
 function previousRequirements(candidate, activity) {
   const gating = candidate?.gatingProfile ?? candidate?.action?.gatingProfile ?? {};
   const eventTriggers = normalizedValues(gating?.eventTriggers);
@@ -267,7 +282,8 @@ function computeActionFacts(candidate) {
   const priorRequirements = previousRequirements(candidate, activity);
   const grabRider = activity?.npcFamily === "grab-rider"
     || (activity?.includesGrab === true && priorRequirements.some((value) => ["strike", "after-strike"].includes(value)));
-  const rawDamageAverage = numberOrNull(candidate?.damageProfile?.average, activity?.averageDamage, candidate?.averageDamage);
+  const rawDamageAverage = numberOrNull(candidate?.damageProfile?.average, activity?.averageDamage, candidate?.averageDamage,
+    formulaAverage(candidate?.damageProfile?.formula));
   const damageAverage = rawDamageAverage !== null && rawDamageAverage > 0
     ? rawDamageAverage * (activity?.damageScalesWithActions ? Math.max(1, numberOrNull(candidate?.actionCost) ?? 1) : 1)
     : null;

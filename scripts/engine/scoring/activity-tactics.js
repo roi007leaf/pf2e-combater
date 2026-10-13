@@ -198,7 +198,7 @@ export function scoreActivityProfileTactics(context, action, {
       nextScore += extraStrikeValue;
       nextReasons.unshift(t("ScoreReason.MakesSeveralStrikes", "{p0} makes {count} Strikes for one action.", {
         p0: action.name,
-        count: (action.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length,
+        count: Number(action.activityProfile?.countedStrikes) || (action.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length,
       }));
     } else if (reachableEnemies.length >= 2) {
       nextScore += 76;

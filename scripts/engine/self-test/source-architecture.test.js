@@ -3498,8 +3498,8 @@ assert.ok(
 );
 assert.ok(
   panelContextWorkflowSource.includes("projectedDraftStepActions(context, activeDraft, { groupedOnly: !needsProjectedCandidates })")
-    && panelDraftHelpersSource.includes("(groupedOnly && !step.groupId)"),
-  "main panel must resolve grouped draft actions while deferring ordinary per-step scans until debug/browser UI needs them",
+    && panelDraftHelpersSource.includes("const project = !groupedOnly || step?.groupId || afterMove;"),
+  "main panel must resolve grouped and after-a-move draft actions while deferring other per-step scans until debug/browser UI needs them",
 );
 assert.ok(
   /return steps\.filter\(\(step, index\) => \{[\s\S]*?if \(!isStrikeLikeAutoFillStep\(panel, step\)\) return true;[\s\S]*?findProjectedDraftAction/.test(panelDraftWorkflowSource),

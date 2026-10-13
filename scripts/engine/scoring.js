@@ -3,7 +3,7 @@ import { canUseIntelCategory } from "../rules/intel-ledger.js";
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
 import { tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
 import { resourceHorizonAdjustment } from "../rules/resource-horizon.js";
-import { backingStrikeForAction, backingStrikesForAction } from "./backing-strike.js";
+import { backingStrikeForAction, backingStrikesForAction, bestReadyStrikeFromOptions } from "./backing-strike.js";
 import {
   actionTraitSlugs,
   canUseTargetDefenses,
@@ -69,7 +69,8 @@ function npcStrikeItemBonus(action) {
 // discounted for the MAP that extra Strike takes.
 function extraStrikeValue(context, action, backingStrike, target, siblingSpells) {
   if (!action.activityProfile?.multiStrike || !backingStrike || !target) return 0;
-  const strikes = (action.activityProfile.includes ?? []).filter((atom) => atom === "strike").length;
+  const strikes = Number(action.activityProfile.countedStrikes)
+    || (action.activityProfile.includes ?? []).filter((atom) => atom === "strike").length;
   if (strikes < 2) return 0;
   const strikeScore = Number(scoreCandidate(context, { ...backingStrike, preferredTarget: target }, siblingSpells, []).score);
   if (!Number.isFinite(strikeScore) || strikeScore <= 0) return 0;
@@ -115,7 +116,10 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     : null;
   const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
     ? action.activityProfile?.backingStrike ?? backingStrikeForAction(action, siblingActions)
-    : null;
+    // Frenzy-style counted Strikes: value them like the creature's best melee Strike.
+    : action.activityProfile?.countedStrikes >= 2
+      ? bestReadyStrikeFromOptions(siblingActions, (strike) => strike?.item?.system?.range == null && !(Number(strike?.range?.increment) > 0))
+      : null;
   const backingStrikes = action.activityProfile?.requiresDualBackingStrike
     ? action.activityProfile?.backingStrikes ?? backingStrikesForAction(action, siblingActions)
     : null;

@@ -167,6 +167,10 @@ function areaDamageTactic(acc, { context, action, profile }) {
     acc.score += enemiesInArea.length === 1
       ? 14
       : 34 + enemiesInArea.length * 18;
+    // Every creature caught takes the damage: worth it per enemy (a basic save averages a bit over
+    // half), so a 9d6 breath over three PCs outweighs two single Strikes.
+    const average = damageAverage(action);
+    if (Number.isFinite(average) && average > 0) acc.score += Math.round(Math.min(30, average) * 0.6 * enemiesInArea.length);
     const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
     acc.reasons.unshift(t("ScoreReason.CanHit", "{p0} can hit {p1} {p2}{p3}.", { p0: action.name, p1: enemiesInArea.length, p2: plural(enemiesInArea.length, "enemy", "enemies"), p3: centerName }));
   } else {

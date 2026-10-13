@@ -11,6 +11,7 @@ import {
   targetThreatReach,
 } from "../action/reach.js";
 import { compareTacticalCenters } from "../../rules/battlefield-analysis.js";
+import { aggroTargetValue } from "../../rules/aggro.js";
 import { isVisionerActive, readVisionerCoverState } from "../../integrations/visioner.js";
 import { t } from "../../i18n.js";
 import {
@@ -51,10 +52,24 @@ function rangedRetreatStrikePlan(context, profile, strike) {
         return (left.cost ?? Infinity) - (right.cost ?? Infinity);
       })[0] ?? null;
 
-    if (attackCenter) return { target, attackCenter, threatReach };
+    if (attackCenter) return { target: shotTarget(context, strike, attackCenter, reach, target), escaping: target, attackCenter, threatReach };
   }
 
   return null;
+}
+
+// Who to escape and whom to shoot are different questions: from the new square, shoot whoever the
+// aggro model ranks highest among the enemies the Strike reaches (the escaped one by default).
+function shotTarget(context, strike, center, reach, escaping) {
+  let best = escaping;
+  let bestValue = aggroTargetValue(context, strike, "damage", escaping);
+  for (const target of uniqueTargets(context)) {
+    if (target === escaping || !canAttackTarget(target)) continue;
+    if (!(distanceFromCenterToTarget(context, center, target) <= reach)) continue;
+    const value = aggroTargetValue(context, strike, "damage", target);
+    if (value > bestValue) { best = target; bestValue = value; }
+  }
+  return best;
 }
 
 export function readRangedRetreatStrikeActivities(context, readyStrikes) {
@@ -65,7 +80,7 @@ export function readRangedRetreatStrikeActivities(context, readyStrikes) {
   return readyStrikes.flatMap((strike) => {
     const plan = rangedRetreatStrikePlan(context, profile, strike);
     if (!plan) return [];
-    const { target, attackCenter, threatReach } = plan;
+    const { target, escaping, attackCenter, threatReach } = plan;
 
     const targetKeyValue = targetKey(target);
     if (targetKeyValue && seenTargets.has(targetKeyValue)) return [];
@@ -105,7 +120,9 @@ export function readRangedRetreatStrikeActivities(context, readyStrikes) {
       },
       attackTrait: true,
       setupFor: [],
-      reasons: [t("Reason.StrideAwayStrike", "Stride away from {target}, then Strike with {strike}.", { target: target.name, strike: strike.name })],
+      reasons: [escaping === target
+        ? t("Reason.StrideAwayStrike", "Stride away from {target}, then Strike with {strike}.", { target: target.name, strike: strike.name })
+        : t("Reason.StrideAwayStrikeOther", "Stride away from {escaping}, then Strike {target} with {strike}.", { escaping: escaping.name, target: target.name, strike: strike.name })],
     }];
   });
 }

@@ -227,7 +227,8 @@ function computeAggroProfile(context, target) {
     return profile;
   }
 
-  if (hasItemMatching(actor, HEALING_WORDS, ["spell", "action", "feat", "feature", "consumable"])) {
+  // A Healing Potion in the pack doesn't make the fighter the party healer.
+  if (hasItemMatching(actor, HEALING_WORDS, ["spell", "action", "feat", "feature"])) {
     addRole(profile, "healer", 42, t("Aggro.Healer", "Target can heal or recover allies."));
   }
 

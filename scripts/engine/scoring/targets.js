@@ -291,8 +291,24 @@ function targetMatchesTraitRequirements(context, action, target) {
   return true;
 }
 
+const SIZE_ORDER = ["tiny", "sm", "small", "med", "medium", "lg", "large", "huge", "grg", "gargantuan"];
+function sizeRank(size) {
+  const index = SIZE_ORDER.indexOf(String(size ?? "").toLowerCase());
+  return index < 0 ? null : [0, 1, 1, 2, 2, 3, 3, 4, 5, 5][index];
+}
+
+// Swallow Whole and the like: only creatures of the listed size or smaller. Unknown size passes.
+function targetFitsSize(action, target) {
+  const max = sizeRank(action?.activityProfile?.maxTargetSize);
+  if (max === null) return true;
+  const actor = target?.token?.actor ?? target?.token?.document?.actor ?? target?.actor?.document ?? null;
+  const size = sizeRank(target?.size ?? actor?.system?.traits?.size?.value);
+  return size === null || size <= max;
+}
+
 function canAffectTarget(context, action, target) {
   if (!targetMatchesTraitRequirements(context, action, target)) return false;
+  if (!targetFitsSize(action, target)) return false;
   if (action?.slug === "demoralize" && hasDemoralizeImmunity(target)) return false;
   if (isExtractElementAction(action) && !canExtractElementFromTarget(context, action, target)) return false;
   if (isExploitVulnerabilityAction(action) && hasExploitVulnerabilityMark(target)) return false;
@@ -320,7 +336,12 @@ function canAffectTarget(context, action, target) {
 function targetSelectionRange(context, action) {
   const max = maxRange(action);
   if (Number.isFinite(max) && max !== Infinity) return max;
-  if (action?.targetingProfile?.reach === true) return profileReach(context?.profile ?? context?.actor?.profile);
+  const profile = context?.profile ?? context?.actor?.profile;
+  // Trip, Shove, Grapple...: only someone in reach, never the distant caster with the most aggro.
+  if (action?.requiresEnemyInReach === true || action?.targetingProfile?.requiresEnemyInReach === true) {
+    return Number(profile?.maneuverReach?.[action.slug]) || profileReach(profile);
+  }
+  if (action?.targetingProfile?.reach === true) return profileReach(profile);
   return max;
 }
 

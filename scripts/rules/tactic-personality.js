@@ -880,7 +880,7 @@ function weaponItemIsRanged(item) {
   return Number(range?.increment ?? range?.max ?? range) > 0;
 }
 
-function actionCategories(action, explicitRole) {
+export function actionCategories(action, explicitRole) {
   const role = actionRole(action, explicitRole);
   const traits = traitSet(action);
   const categories = new Set();
@@ -923,7 +923,9 @@ function actionCategories(action, explicitRole) {
   if (["buff", "healing", "summon", "support"].includes(role) || profile.spellBuff === true || profile.companion === true) categories.add("support");
   if (role === "buff" || profile.spellBuff === true) categories.add("buff");
   if (role === "healing") categories.add("healing");
-  if (["mobility", "mobility-attack"].includes(role) || ["stride", "step", "crawl", "tumble-through"].includes(slug)) categories.add("mobility");
+  // Moving in to hit isn't "mobility" for a coward or cautious creature; backing off to shoot is.
+  if (role === "mobility" || (role === "mobility-attack" && (ranged || action?.activityProfile?.retreatAfterStrike === true))
+    || ["stride", "step", "crawl", "tumble-through"].includes(slug)) categories.add("mobility");
   // Moving in to hit is a melee approach; moving away to shoot is ranged play.
   if (role === "mobility-attack" && !ranged) categories.add("mobilityAttack");
   if (spell) categories.add("spell");

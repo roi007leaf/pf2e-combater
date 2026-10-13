@@ -28,6 +28,7 @@ function skillEntry(profile, slug) {
 
   const rank = Number(skill.rank ?? skill.proficiency?.rank);
   return {
+    ...(typeof skill.proficient === "boolean" ? { proficient: skill.proficient } : {}),
     mod,
     rank: Number.isFinite(rank) ? rank : null,
   };
@@ -53,7 +54,8 @@ export function trainedSkillRequirement(profile, action) {
     return null;
   }
 
-  if (npc && (!skill || skill.rank === null)) {
+  // An NPC skill missing from the stat block is untrained (Basilisk's Intimidation +1).
+  if (npc && (!skill || skill.rank === null) && skill?.proficient !== false) {
     return null;
   }
 

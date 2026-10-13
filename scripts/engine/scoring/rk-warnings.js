@@ -229,14 +229,14 @@ function hasReactiveStrike(entity) {
   });
 }
 
-function reactiveStrikeKnown(context, entity) {
+export function reactiveStrikeKnown(context, entity) {
   if (isGM(context)) return hasReactiveStrike(entity);
   return entity?.reactiveStrikeKnown === true
     || entity?.knownReactiveStrike === true
     || entity?.revealedReactiveStrike === true;
 }
 
-function movingActionMayProvoke(source) {
+export function movingActionMayProvoke(source) {
   const slug = String(source?.slug ?? source?.action?.slug ?? "").toLowerCase();
   if (slug === "step" || slug === "crawl") return false;
   return source?.requiresDestination === true

@@ -1397,6 +1397,10 @@
   --combater-focus: #79aee8;
   min-width: min(360px, calc(100vw - 24px));
   max-width: min(720px, calc(100vw - 24px));
+  /* The frame never outgrows the screen; its content scrolls inside it. */
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
   color: var(--combater-ink);
 }
 
@@ -1405,8 +1409,10 @@
 .pf2e-combater-turn-intent-window .window-content,
 .pf2e-combater-loadout-window .window-content,
 .pf2e-combater-effect-clock-window .window-content {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: calc(100vh - 96px);
-  overflow: auto;
+  overflow: hidden auto;
   padding: 0;
   background: #121418;
 }
@@ -1415,6 +1421,12 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Keep its full height inside the flex-column .window-content (which scrolls), or it shrinks
+   to the window and its overflow:hidden clips the bottom of the form. */
+.combater-tactic-shell {
+  flex-shrink: 0;
 }
 
 .combater-tactic-shell,

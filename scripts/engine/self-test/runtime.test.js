@@ -13606,7 +13606,11 @@ assert.equal(ordinaryMultiStrikeResult.activityProfile.multiStrike, true);
 assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresBackingStrike, undefined, "an ordinary same-target multi-strike ability with no weapon-class or two-weapon requirement in its text must NOT get any of the new flags -- it stays exactly as it classified before this plan");
 assert.equal(ordinaryMultiStrikeResult.activityProfile.backingStrikeFilter, undefined);
 assert.equal(ordinaryMultiStrikeResult.activityProfile.requiresDualBackingStrike, undefined);
-assert.equal(ordinaryMultiStrikeResult.activityProfile.mapAppliesPerStrike, undefined);
+// Its Strikes are counted (Draconic Frenzy style) so the extra Strike is valued, each at its own MAP,
+// but it stays one step that executes the creature's own ability.
+assert.equal(ordinaryMultiStrikeResult.activityProfile.countedStrikes, 2);
+assert.equal(ordinaryMultiStrikeResult.activityProfile.mapAppliesPerStrike, true);
+assert.equal(builderAtomicActionsForStep({ ...ordinaryMultiStrikeAction, ...ordinaryMultiStrikeResult }).length, 1);
 
 const twinTakedownShapedAtoms = builderAtomicActionsForStep({
   ...twinTakedownShapedAction,
@@ -14583,7 +14587,7 @@ assert.equal(grabClassification.role, "grab");
 assert.equal(grabClassification.activityProfile.includesGrab, true);
 assert.equal(grabClassification.activityProfile.appliesCondition, "grabbed");
 assert.equal(grabClassification.activityProfile.npcFamily, "grab-rider");
-assert.deepEqual(grabClassification.activityProfile.previousActionRequirements, ["after-strike"]);
+assert.deepEqual(grabClassification.activityProfile.previousActionRequirements, ["after-strike", "strike-with-grab"]);
 
 const arcaneSlamClassification = classifySystemAction({
   name: "Arcane Slam",

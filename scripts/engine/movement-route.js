@@ -257,7 +257,15 @@ function contextEnemies(context) {
   return context?.enemies ?? context?.battlefield?.enemies ?? [];
 }
 
+// A swarm can share a space with other creatures (and attacks the ones it's on top of).
+function moverIsSwarm(context) {
+  const actor = context?.actor?.document ?? context?.token?.document?.actor ?? context?.token?.actor ?? null;
+  const raw = actor?.system?.traits?.value;
+  return (raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : []).includes("swarm");
+}
+
 function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
+  if (moverIsSwarm(context)) return false;
   const candidatePlacement = movementPlacementForCenter(center, footprint, gridSize);
   const others = [...contextAllies(context), ...contextEnemies(context)];
   return others.some((other) => {
@@ -270,6 +278,7 @@ function centerOccupiedByOtherToken(context, center, footprint, gridSize) {
 }
 
 function centerOccupiedByEnemyToken(context, center, footprint, gridSize) {
+  if (moverIsSwarm(context)) return false;
   const candidatePlacement = movementPlacementForCenter(center, footprint, gridSize);
   return contextEnemies(context).some((enemy) => {
     if (sameEntity(enemy, context?.allowedOverlapTarget)) return false;

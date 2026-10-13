@@ -223,6 +223,15 @@ export function readActionRequirementAvailability(action, context) {
   return availability(true, "");
 }
 
+const ATHLETICS_MANEUVERS = new Set(["trip", "grapple", "shove", "disarm", "reposition"]);
+
+// A rat swarm can't Trip anyone; a troop's attacks are its own abilities.
+function cannotManeuver(context) {
+  const raw = context?.actor?.document?.system?.traits?.value;
+  const traits = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [];
+  return traits.includes("swarm") || traits.includes("troop");
+}
+
 function readGenericActionAvailabilityForAction(action, context) {
   const profile = contextProfile(context);
   const targets = contextTargets(context);
@@ -243,6 +252,9 @@ function readGenericActionAvailabilityForAction(action, context) {
   }
   if (!movementAvailability.available) {
     return movementAvailability;
+  }
+  if (ATHLETICS_MANEUVERS.has(action.slug) && cannotManeuver(context)) {
+    return availability(false, t("Avail.CannotManeuver", "Swarms and troops can't make Athletics maneuvers."));
   }
   if (action.slug === "raise-a-shield") {
     if (!profile.hasShield) return availability(false, t("Avail.NoShield", "No shield equipped."));

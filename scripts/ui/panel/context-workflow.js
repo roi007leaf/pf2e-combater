@@ -31,7 +31,7 @@ import {
 } from "../../rules/resource-horizon.js";
 import { projectedDraftStepActions } from "./draft-helpers.js";
 import { contextWithCurrentAutoFillTargets, currentAutoFillTargetKey } from "./auto-fill-context.js";
-import { autoFillCyclePlans, selectDisplayPlan } from "../plan-selection.js";
+import { autoFillCyclePlans, planComparison, selectDisplayPlan } from "../plan-selection.js";
 import {
   debugAction,
   decorateBuilder,
@@ -134,6 +134,21 @@ export function viewPanelContext(panel, context) {
   const autoFillCycle = autoFillCyclePlans(activePlans);
   const autoFillCycleIndex = autoFillCycle.findIndex((plan) => plan?.id === selectedAutoFill?.id);
   const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
+  const comparison = planComparison(selectedAutoFill, autoFillCycle);
+  const comparisonText = comparison
+    ? t("Panel.PlanChosenOver", "Chosen over {alternative} ({margin}): {chosen} instead of {instead}.", {
+      alternative: comparison.alternative,
+      margin: comparison.margin >= 0 ? `+${comparison.margin}` : String(comparison.margin),
+      chosen: comparison.chosen,
+      instead: comparison.instead,
+    })
+    : "";
+  const danger = selectedAutoFill?.danger;
+  const dangerText = danger?.delta > 0
+    ? t("Panel.PlanEndsNearEnemies", "Ends within reach of {count} more enemies.", { count: danger.delta })
+    : danger?.delta < 0
+      ? t("Panel.PlanEndsAwayFromEnemies", "Ends out of reach of {count} enemies.", { count: -danger.delta })
+      : "";
   const draftSteps = panel._builder?.draft?.steps ?? [];
   const planPreference = deterministicPlanPreferenceAdjustment(context, panel._builder?.draft);
   const resourceHorizon = resourceHorizonView(panel.resourceHorizon);
@@ -238,7 +253,12 @@ export function viewPanelContext(panel, context) {
       ofLabel: t("Panel.AltPlanOf", "of {total}", { total: Math.max(1, autoFillCycle.length) }),
       previousLabel: t("Panel.AltPlanPrevious", "Previous plan"),
       nextLabel: t("Panel.AltPlanNext", "Next plan"),
-      tooltip: t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
+      tooltip: [
+        comparisonText,
+        dangerText,
+        t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
+      ].filter(Boolean).join(" "),
+      comparison: comparisonText,
       ariaLabel: t("Panel.AutoFillCycleAria", "Cycle Auto-fill plan"),
     },
     hasContext: Boolean(context),

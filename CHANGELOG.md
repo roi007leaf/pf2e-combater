@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.0.8]
+
+### Added
+
+- **Auto-fill thinks about the enemy's turn.** Plans that end next to more enemies cost more (more so at low HP or with a cautious temperament), and plans that step out of reach are worth something. Striding away from an enemy with Reactive Strike counts its free attack.
+- **Auto-fill looks one turn ahead.** A plan that ends where you can attack next round beats one that leaves you Striding again.
+- **"Why this plan?"** The Plan cycle tooltip says which plan this one beat and by how much, and whether it ends near or away from enemies.
+- **Breath weapons recharge.** When an NPC uses an ability that "can't be used again for 1d4 rounds", Combater rolls the delay, whispers the GM when it's back, and Auto-fill won't plan it until then.
+- **Wounded creatures retreat.** A cautious or cowardly creature below 40% HP can Stride out of every enemy's reach after attacking.
+
+### Changed
+
+- **Moves use real squares.** A planned Stride ends on an actual square next to its target, so distances, danger and the draft's destination all match the map.
+- **Area damage is valued per creature caught.** Dragons breathe on a cluster and bite a lone target; Fireball weighs everyone it hits.
+- **Draconic Frenzy** and other "two claw Strikes and one wing Strike" abilities count as all their Strikes, including for the multiple attack penalty.
+- **Swarms** fly onto their enemies and use Swarming Bites (and similar) every action; they only hit creatures in their own space.
+- **Ranged creatures that back off** shoot the best target in range, not the one they stepped away from.
+- Characters with sheathed weapons plan to draw one instead of punching; NPCs never spend actions drawing weapons.
+- Self-defence (Raise a Shield, Take Cover), Trip and Grapple are valued by how many enemies threaten you and by the party's follow-up.
+- Out-of-range spells and Strikes get a fair look when the planner considers moving first.
+
+### Fixed
+
+- Trip, Shove, Grapple and other maneuvers aimed at a distant caster instead of someone in reach.
+- Grab, Knockdown and Push planned after a Strike that doesn't list them, counting toward the multiple attack penalty, or ordered before the move that brings them in reach. NPC Knockdown is no longer mistaken for the fighter feat.
+- Swallow Whole planned on creatures too big to swallow.
+- Swarms and troops making Athletics maneuvers; untrained NPC skills (a Basilisk's Demoralize) used for trained-only actions.
+- A Healing Potion making the fighter the party "healer" for enemy targeting.
+- Bursts ignoring the caster's own square.
+- Large and bigger creatures' attack squares were measured half a square off.
+- In the panel: the Strike of a Stride -> Strike showing as "Sheathe", steps after a Stride warning "No target in range", and a swarm's destination drawn as blocked.
+- The NPC tactic window couldn't scroll with Fine-tune on.
+
 ## [2.0.7]
 
 ### Changed

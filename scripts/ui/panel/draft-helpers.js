@@ -276,8 +276,13 @@ export function findProjectedDraftAction(context, draft, step) {
 export function projectedDraftStepActions(context, draft, { groupedOnly = false } = {}) {
   if (!context) return {};
   const actions = {};
+  // A step after a planned move is judged from where that move ends: the Strike after a Stride
+  // is in reach there even though it isn't from the current square.
+  let afterMove = false;
   for (const step of Array.isArray(draft?.steps) ? draft.steps : []) {
-    if (!step?.instanceId || (groupedOnly && !step.groupId)) continue;
+    const project = !groupedOnly || step?.groupId || afterMove;
+    if (step?.destination && step?.execution?.status !== "done") afterMove = true;
+    if (!step?.instanceId || !project) continue;
     const action = findProjectedDraftAction(context, draft, step);
     if (action) actions[step.instanceId] = action;
   }
