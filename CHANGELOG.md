@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.3]
+
+### Added
+
+- **Sundry reaction tracking.** A creature with Sundry's "Effect: Reaction Used" shows the "Reaction used" pill and the ↺ token badge. Using a readied action also reports the reaction to Sundry, so its effect and counter stay in step.
+
+### Changed
+
+- The End turn button has a muted red tint.
+
 ## [2.0.2]
 
 ### Added

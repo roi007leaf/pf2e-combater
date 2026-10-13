@@ -1,5 +1,5 @@
 import { MODULE_ID } from "../constants.js";
-import { REACTION_CHECKER_ID, reactionUsed, readiedAction } from "../state/turn-controls.js";
+import { REACTION_CHECKER_ID, REACTION_USED_EFFECT_SLUG, reactionUsed, readiedAction } from "../state/turn-controls.js";
 
 // Canvas markers for turn state: a readied action (dashed amber ring plus a
 // bullseye badge, top-right) and a spent reaction (orange circular-arrow badge,
@@ -137,4 +137,10 @@ export function registerReadyMarkerHooks() {
   hooks.on("updateCombatant", (_combatant, changed) => {
     if (changesTurnFlags(changed)) syncAll();
   });
+  // Sundry's "Reaction Used" effect lives on the actor, not the combatant.
+  for (const event of ["createItem", "updateItem", "deleteItem"]) {
+    hooks.on(event, (item) => {
+      if ((item?.slug ?? item?.system?.slug) === REACTION_USED_EFFECT_SLUG) syncAll();
+    });
+  }
 }

@@ -125,8 +125,8 @@ bonus at each step. Declare the trigger at the table. Fleeing and Confused preve
   and path preview as planned movement. Hover the banner to preview the route; **⌖** changes it.
 - **Use** rolls a readied Strike at its stored MAP, or moves the token along the readied route, and
   **spends the creature's reaction**: the token gets an orange **↺ badge** and the panel shows
-  **Reaction used** until its next turn. Reactions recorded by PF2e Reaction Checker count too, and
-  Combater updates that module's state when it spends one.
+  **Reaction used** until its next turn. Reactions recorded by PF2e Reaction Checker or Sundry count
+  too, and Combater updates both modules when it spends one.
 - Markers are visible to everyone for player characters and only to the GM for GM creatures.
 
 ## Combat options without the panel
@@ -576,7 +576,7 @@ editable, and **Browse** lets you build the turn by hand instead.
 - Pathfinder 2e system
 - socketlib module enabled in the world
 
-**Optional integrations:** PF2e Reaction Checker (shared reaction state), PF2e Summons Assistant
+**Optional integrations:** PF2e Reaction Checker and Sundry (shared reaction state), PF2e Summons Assistant
 (summon planning), Bestiary Tracking (shared party knowledge), PF2e Avoid Notice (Defend and Rage
 automation hand-off).
 

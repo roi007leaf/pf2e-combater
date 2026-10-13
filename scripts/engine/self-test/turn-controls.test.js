@@ -290,6 +290,25 @@ try {
   assert.equal(reactionUsed(combat.combatants.get("b")), true, "a reaction spent outside Combater (Reaction Checker) also counts");
   delete globalThis.game.modules;
 
+  // Sundry tracks reactions as an actor effect; read it, and report ours to its API.
+  combat = fixture();
+  combat.combatants.get("c").actor.itemTypes.effect = [{ slug: "effect-reaction-used", system: { badge: { value: 1 } } }];
+  assert.equal(reactionUsed(combat.combatants.get("c")), true, "Sundry's Reaction Used effect counts as a spent reaction");
+  combat.combatants.get("c").actor.itemTypes.effect[0].isExpired = true;
+  assert.equal(reactionUsed(combat.combatants.get("c")), false, "an expired Sundry effect does not");
+  const sundryCalls = [];
+  globalThis.game.modules = new Map([["sundry", { active: true }]]);
+  globalThis.sundry = { api: { reactionUsed: async (actors) => { sundryCalls.push(actors.map((actor) => actor.id)); } } };
+  await act(combat, "ready", ready);
+  await act(combat, "ready-clear", { readiedId: "a" }, "p-a");
+  assert.deepEqual(sundryCalls, [], "discarding a readied action tells Sundry nothing");
+  combat = fixture();
+  globalThis.game.modules = new Map([["sundry", { active: true }]]);
+  await act(combat, "ready", ready);
+  await act(combat, "ready-clear", { readiedId: "a", used: true }, "p-a");
+  assert.deepEqual(sundryCalls, [["a"]], "using a readied action is reported to Sundry's reaction tracker");
+  delete globalThis.sundry;
+
   combat = fixture();
   const readySnapshot = combat.flags[MODULE_ID].actionTurn;
   globalThis.game.messages = [{ id: "hit", flags: { [MODULE_ID]: { actionSpend: { turnKey: readySnapshot.key, cost: 1, slug: "strike" } } } }];

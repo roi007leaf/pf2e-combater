@@ -9,6 +9,8 @@ export const READY_FLAG = "readiedAction";
 export const READY_COST = 2;
 export const REACTION_FLAG = "reactionUsed";
 export const REACTION_CHECKER_ID = "pf2e-reaction";
+export const SUNDRY_ID = "sundry";
+export const REACTION_USED_EFFECT_SLUG = "effect-reaction-used";
 const queues = new Map();
 
 export function delayedTurn(combatant) {
@@ -19,12 +21,29 @@ export function readiedAction(combatant) {
   return combatant?.flags?.[MODULE_ID]?.[READY_FLAG] ?? null;
 }
 
-// Our own marker, or PF2e Reaction Checker reporting the reaction spent (it
-// resets that at the creature's turn start), so reactions used outside Combater count too.
+function hasReactionUsedEffect(actor) {
+  return collectionValues(actor?.itemTypes?.effect)
+    .some((item) => (item.slug ?? item.system?.slug) === REACTION_USED_EFFECT_SLUG && !item.isExpired && !item.system?.expired);
+}
+
+// Our own marker, PF2e Reaction Checker reporting the reaction spent, or Sundry's
+// "Reaction Used" effect — the other two reset at the creature's turn start, so
+// reactions used outside Combater count too.
 export function reactionUsed(combatant) {
   if (combatant?.flags?.[MODULE_ID]?.[REACTION_FLAG]) return true;
   const checker = globalThis.game?.modules?.get?.(REACTION_CHECKER_ID);
-  return Boolean(checker?.active && combatant?.flags?.[REACTION_CHECKER_ID]?.state === false);
+  if (checker?.active && combatant?.flags?.[REACTION_CHECKER_ID]?.state === false) return true;
+  return hasReactionUsedEffect(combatant?.actor);
+}
+
+// Sundry tracks reactions as an actor effect with a use counter; ask it to count ours.
+async function notifySundryReaction(actor) {
+  if (!actor || !globalThis.game?.modules?.get?.(SUNDRY_ID)?.active) return;
+  try {
+    await globalThis.sundry?.api?.reactionUsed?.([actor]);
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Sundry reaction tracking failed`, error);
+  }
 }
 
 // Spends the creature's reaction: our own marker, plus PF2e Reaction Checker's
@@ -199,6 +218,7 @@ async function performTurnControl(request, senderId) {
     // Using a readied action is a reaction; discarding it spends nothing.
     const spent = request.used === true ? reactionSpendChanges(holder, combat.round) : {};
     await holder.update({ [`flags.${MODULE_ID}.-=${READY_FLAG}`]: null, ...spent }, { turnEvents: false });
+    if (request.used === true) await notifySundryReaction(holder.actor);
     return true;
   }
   const expected = turnIdentity(combat);

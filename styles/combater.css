@@ -5094,3 +5094,9 @@
 .pf2e-combater .combater-readied.has-movement:hover { border-color: #d6a84a; background: #362e1f; }
 .pf2e-combater .combater-turn-button.is-ready-move { padding: 5px 8px; color: #ffe8b8; border-color: #8a6d32; background: #2c261b; }
 .pf2e-combater .combater-header-badges .combater-reaction-used { margin-right: 0; padding: 1px 8px; font-size: 11px; }
+/* End turn: muted red tint marks the turn-ending control without reading as a danger action. */
+.pf2e-combater .combater-turn-split .combater-turn-button.is-end,
+.pf2e-combater .combater-turn-split .combater-turn-button.is-more { color: #ffd9d6; border-color: #8a4b4b; background: #3d2426; }
+.pf2e-combater .combater-turn-split .combater-turn-button.is-more { color: #e8b8b4; }
+.pf2e-combater .combater-turn-split .combater-turn-button.is-end:hover:not(:disabled),
+.pf2e-combater .combater-turn-split .combater-turn-button.is-more:hover:not(:disabled) { border-color: #c66360; background: #52292c; filter: none; }
