@@ -309,7 +309,7 @@ export async function executeMovement({ context, step, action, choices }) {
       ...(expectedAfter ? { expectedAfter: expectedMovementPoint(expectedAfter) } : {}),
     }])
     : null;
-  if (!canMoveOnCurrentTurn(context, token)) {
+  if (choices?.reaction !== true && !canMoveOnCurrentTurn(context, token)) {
     return {
       status: "failed",
       patch: executionPatch({ destination, ...(movementPlan ? { movementPlan } : {}) }, "failed", { error: t("Exec.MoveOnlyOnTurn", "Token can only move on its turn.") }),

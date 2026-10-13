@@ -132,7 +132,16 @@ try {
   combat.turns[1].hidden = false;
   combat.turns[1].token.object.visible = false;
   assert.equal(await panToUpcomingCombatant("b", combat.id), false, "a listed combatant can still be outside token vision");
+  game.user = gm;
+  assert.equal(await panToUpcomingCombatant("b", combat.id), true, "the GM can pan to a token outside their current vision");
+  game.user = player;
   combat.turns[1].token.object.visible = true;
+  const unlinked = { ...combat.turns[1] };
+  combat.turns[1] = { ...unlinked, sceneId: undefined, tokenId: "token-b", token: undefined };
+  globalThis.canvas.tokens = { get: (id) => (id === "token-b" ? { visible: true, center: { x: 150, y: 200 } } : null) };
+  assert.equal(await panToUpcomingCombatant("b", combat.id), true, "a token on the canvas pans even when the combatant lacks scene references");
+  combat.turns[1] = unlinked;
+  delete globalThis.canvas.tokens;
   combat.turns[1].sceneId = "other-scene";
   assert.equal(await panToUpcomingCombatant("b", combat.id), false);
   combat.turns[1].sceneId = "scene";
@@ -143,7 +152,7 @@ try {
   assert.equal(await panToUpcomingCombatant("b", combat.id), false);
   showNavigation = false;
   assert.equal(await panToUpcomingCombatant("c", combat.id), false);
-  assert.equal(pans.length, 3, "unavailable and hidden navigation never moves the camera");
+  assert.equal(pans.length, 5, "unavailable and hidden navigation never moves the camera");
   assert.equal(warnings.length, 4);
 } finally {
   globalThis.game = previous.game;

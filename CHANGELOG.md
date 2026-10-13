@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.1]
+
+### Added
+
+- **Ready dialog cards.** Ready now shows the actions as cards with their art (weapon images for Strikes, PF2e icons for basic actions) and the attack penalty as three cards with the Strike's real bonus at each step (e.g. +14 / +9 / +4, agile −4 / −8).
+- **Readied Stride and Step keep a destination.** After choosing Stride or Step, pick the square on the canvas with the same picker and reachable area as planned movement. **Use** moves the token along that route off-turn and spends its reaction.
+- **Card pickers everywhere.** Swap Items, Tactic role and temperament, Turn Intent's "Must include" (now searchable), Choose template, and Sustain a Spell use image/icon cards instead of dropdowns or plain buttons.
+- **Quickened allowed actions** are toggle cards (Strike, Stride, Step, Raise a Shield, Interact, Sustain and the creature's own single actions) instead of a typed list; unusual actions can still be typed in.
+
+### Fixed
+
+- Clicking a creature in the turn-order strip no longer reports "token not visible on the current scene" when the token is on the scene. The GM can always pan to it.
+- The Ready option in the End turn menu shows the two-action glyph instead of a plain "2".
+- The action diamonds' step numbers no longer crowd the "planned" text.
+- Long action names on Ready cards wrap to two lines instead of being cut off.
+- Missing English strings for nested keys (for example swap items, sustain and effect clock labels) are now included.
+
 ## [2.0.0]
 
 A redesigned Combater: a live action tracker, turn controls with Delay and Ready, and a cleaner layout for the panel and every window.

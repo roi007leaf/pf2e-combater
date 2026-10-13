@@ -63,7 +63,18 @@
       "NotReadied": "This creature has no readied action.",
       "ReadyRuleNoTrigger": "Spend 2 actions and end your turn. Declare the trigger at the table; if it happens before your next turn starts, use the action as a reaction.",
       "ReactionUsed": "Reaction used",
-      "ReactionUsedHint": "Regained at the start of this creature's next turn."
+      "ReactionUsedHint": "Regained at the start of this creature's next turn.",
+      "ReadyStrikeDetail": "Strike · {bonus}",
+      "ReadyStrikeShort": "Strike",
+      "ReadyBasic": "Basic action",
+      "ReadyOtherDetail": "Describe it",
+      "ReadyAttack1": "1st attack",
+      "ReadyAttack2": "2nd attack",
+      "ReadyAttack3": "3rd attack",
+      "ReadyNoMap": "No MAP",
+      "ReadyConfirm": "Ready (2 actions)",
+      "ReadyPickDestination": "Choose where {action} will move when the trigger happens.",
+      "ReadiedMoveFailed": "The readied movement could not be completed."
     },
     "ActionTracker": {
       "NextTurn": "Next turn",
@@ -93,7 +104,9 @@
       "Slowed": "Slowed {value}",
       "Stunned": "Stunned {value}",
       "Planned": "{planned} of {total} planned",
-      "Adjust": "Adjust action budget"
+      "Adjust": "Adjust action budget",
+      "AllowanceCards": "Pick the single actions this Quickened condition allows. Saved while the condition remains; pick none to track it manually.",
+      "AllowanceOther": "Other action slugs (comma separated)"
     },
     "Settings": {
       "ShowTurnNavigation": {
@@ -497,7 +510,8 @@
       "SustainExtend": "Spend 1 action to extend a sustained spell's duration.",
       "DrawOrRetrieve": "Draw or retrieve {name}.",
       "InteractItem": "Draw, retrieve, or manipulate an item.",
-      "ReloadFree": "{weapon} reloads as part of firing (no action)."
+      "ReloadFree": "{weapon} reloads as part of firing (no action).",
+      "ReloadBeforeStrike": "Reload before firing {name}."
     },
     "Label": {
       "Target": "Target: {name}",
@@ -518,17 +532,23 @@
       "Close": "Close",
       "ChooseTemplate": {
         "Title": "Choose template",
-        "Content": "This action has more than one area template. Choose which to place:"
+        "Content": "This action has more than one area template. Choose which to place:",
+        "Confirm": "Place"
       },
       "SustainSpell": {
         "Title": "Sustain a Spell",
-        "Content": "Choose which sustained spell to sustain."
+        "Content": "Choose which sustained spell to sustain.",
+        "WithTemplate": "Sustained · area on the map",
+        "Effect": "Sustained effect",
+        "Confirm": "Sustain"
       },
       "SwapItems": {
         "Title": "Swap Items",
         "Content": "Choose one held item to put away and one worn item to draw.",
         "PutAway": "Put away",
-        "Draw": "Draw"
+        "Draw": "Draw",
+        "Held": "Held",
+        "Worn": "Worn"
       },
       "Retch": {
         "Title": "Retch result",
@@ -569,7 +589,8 @@
       "WaitingRetchGM": "Waiting for the GM to judge your Retch save.",
       "RetchFailed": "Retch could not be resolved; see the console.",
       "PlanSharedBy": "PF2e Combater: {user} shared {actor} plan.",
-      "ExecuteFailed": "Could not execute the step; see the console."
+      "ExecuteFailed": "Could not execute the step; see the console.",
+      "NoRecommendedArea": "Recommended area placement is unavailable."
     },
     "Choice": {
       "destination": "destination",
@@ -634,7 +655,8 @@
       "ThisActionCap": "This action",
       "ManualUndo": "Undo {action} manually; its chat output could not be tracked.",
       "ThisAction": "this action",
-      "NoRegionApi": "Region creation API is not available."
+      "NoRegionApi": "Region creation API is not available.",
+      "Reloaded": "Reloaded {name}."
     },
     "ActReason": {
       "ReactionCanPunishA": "Reaction can punish a provoking enemy.",
@@ -1183,7 +1205,33 @@
       "ScopeToken": "This token",
       "ScopeActor": "All tokens of this actor",
       "Save": "Save",
-      "Reset": "Reset"
+      "Reset": "Reset",
+      "RoleHint": {
+        "Auto": "Read from the creature",
+        "MeleeStriker": "Close in and hit hard",
+        "RangedStriker": "Attack from range",
+        "SpellDamage": "Damage with spells",
+        "Healer": "Keep allies standing",
+        "Buffer": "Boost allies",
+        "Debuffer": "Weaken enemies",
+        "Boss": "Big threat, uses its best tricks",
+        "Lieutenant": "Leads and supports the boss",
+        "Minion": "Simple, expendable attacks",
+        "Brute": "Soak hits, deal heavy damage",
+        "Skirmisher": "Hit and reposition",
+        "Artillery": "Stay back, area damage",
+        "Controller": "Lock down the battlefield",
+        "Defender": "Protect allies, hold the line",
+        "Support": "Help allies succeed"
+      },
+      "TemperamentHint": {
+        "Auto": "From the creature",
+        "Aggressive": "Presses the attack",
+        "Cautious": "Avoids risk",
+        "Opportunist": "Goes for openings",
+        "Berserker": "Ignores its own safety",
+        "Coward": "Flees when hurt"
+      }
     },
     "Intel": {
       "Label": "Intel",
@@ -1247,7 +1295,8 @@
       "SaveChanges": "Save · {count} changes",
       "HelpShort": "Tick facts the party learned. Auto-fill uses a hidden defense only after its fact is ticked.",
       "AddFalseShort": "False fact",
-      "AddFalseConfirm": "Add this false fact"
+      "AddFalseConfirm": "Add this false fact",
+      "OpenFailed": "Could not open Recall Knowledge intel."
     },
     "MinionPlan": {
       "Minion": "Companion",
@@ -1270,7 +1319,12 @@
       "TargetLabel": "vs {target}",
       "CycleStep": "Click to change this minion action. Right-click or Shift-click for previous.",
       "ChooseTarget": "Use current Foundry target for this minion action.",
-      "ExecuteStep": "Execute this minion action."
+      "ExecuteStep": "Execute this minion action.",
+      "Seek": "Seek",
+      "Stand": "Stand",
+      "Leap": "Leap",
+      "DropProne": "Drop Prone",
+      "UnsupportedExecute": "This minion action still needs manual handling."
     },
     "Aggro": {
       "FinisherTarget": "Target is close to being removed.",
@@ -1310,7 +1364,11 @@
       "NoTargets": "No targets selected",
       "TitleFor": "Turn intent · {name}",
       "Title": "Turn Intent",
-      "HelpShort": "Rules Auto-fill must follow. \"Keep\" carries a rule into later turns until the encounter ends."
+      "HelpShort": "Rules Auto-fill must follow. \"Keep\" carries a rule into later turns until the encounter ends.",
+      "CostReaction": "Reaction",
+      "CostFree": "Free action",
+      "CostOne": "1 action",
+      "CostMany": "{count} actions"
     },
     "Loadout": {
       "ActiveLabel": "Loadout {count}",
@@ -1325,7 +1383,9 @@
       "TitleFor": "Loadout · {name}",
       "Title": "Loadout Advisor",
       "HelpShort": "Gear swaps that suit the current battlefield.",
-      "Empty": "Current held gear already fits visible battlefield conditions."
+      "Empty": "Current held gear already fits visible battlefield conditions.",
+      "SwapUnavailable": "Swap Items is no longer available.",
+      "ItemsChanged": "Loadout changed; refresh advisor recommendations."
     },
     "EffectClock": {
       "ActiveLabel": "Clock {count}",
@@ -1365,6 +1425,19 @@
       "FrightenedTiming": "Decreases by 1",
       "FrightenedDetail": "Normally decreases by 1 when this turn ends.",
       "Group": "This turn"
+    },
+    "RecallKnowledge": {
+      "TargetRequired": "Choose a creature target before using Recall Knowledge.",
+      "Blocked": "A failed Recall Knowledge check prevents further attempts against this creature.",
+      "GMUnavailable": "Recall Knowledge requires an active GM and socketlib.",
+      "DocumentsUnavailable": "Recall Knowledge actor or target is unavailable.",
+      "WaitingGM": "Roll sent. Waiting for the GM to adjudicate Recall Knowledge.",
+      "IntelRevealed": "GM added {count} Recall Knowledge fact(s) to Intel.",
+      "QuestionTitle": "Recall Knowledge Question",
+      "Question": "What information are you trying to recall?",
+      "OutcomeTitle": "Recall Knowledge Outcome",
+      "OutcomeMissing": "Roll outcome could not be read automatically. Choose the result shown in chat.",
+      "DubiousKnowledgeGM": "Dubious Knowledge: give one correct and one erroneous answer manually. Planner Intel stays unchanged so it cannot reveal which answer is true."
     }
   }
 }

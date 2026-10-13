@@ -1,5 +1,35 @@
 import { adjustTrackedActions, setQuickenedAllowance } from "../../state/action-tracker.js";
-import { t } from "../../i18n.js";
+import { pf2eActionName, t } from "../../i18n.js";
+import { CARD_DIALOG_CLASS, cardPickerHtml, checkedValues } from "../card-picker.js";
+
+const QUICKENED_COMMON = [
+  { slug: "strike", icon: "fa-hand-fist", tone: "red" },
+  { slug: "stride", icon: "fa-person-walking", tone: "green" },
+  { slug: "step", icon: "fa-shoe-prints", tone: "green" },
+  { slug: "raise-a-shield", icon: "fa-shield-halved", tone: "blue" },
+  { slug: "interact", icon: "fa-hand", tone: "gold" },
+  { slug: "sustain", icon: "fa-hourglass-half", tone: "blue" },
+];
+
+// Common single actions first, then the creature's own one-action options.
+function quickenedOptions(panel, allowed) {
+  const seen = new Set();
+  const options = [];
+  const push = (slug, label, extra = {}) => {
+    if (!slug || seen.has(slug)) return;
+    seen.add(slug);
+    options.push({ value: slug, label, checked: allowed.has(slug), ...extra });
+  };
+  for (const entry of QUICKENED_COMMON) push(entry.slug, pf2eActionName(entry.slug), { icon: entry.icon, tone: entry.tone });
+  for (const candidate of panel?._candidates ?? []) {
+    const cost = Number(candidate?.actionCost ?? candidate?.cost);
+    const slug = candidate?.source === "strike" ? "strike" : candidate?.slug;
+    if (cost !== 1 || !slug) continue;
+    push(slug, candidate.name ?? pf2eActionName(slug), { img: candidate.img ?? candidate.item?.img ?? "", icon: "fa-bolt" });
+    if (options.length >= 18) break;
+  }
+  return options;
+}
 
 export function actionTrackerView(context) {
   const tracker = context?.actionTracker;
@@ -76,11 +106,25 @@ export function activateActionTrackerBindings(panel, element) {
     const dialog = globalThis.foundry?.applications?.api?.DialogV2;
     if (!dialog?.prompt) return;
     const escape = globalThis.foundry.utils.escapeHTML;
-    const allowed = context.actionTracker.quickenedAllowed.join(", ");
+    const allowed = new Set(context.actionTracker.quickenedAllowed);
+    const options = quickenedOptions(panel, allowed);
+    const listed = new Set(options.map((option) => option.value));
+    const extra = [...allowed].filter((slug) => !listed.has(slug)).join(", ");
     const input = await dialog.prompt({
-      window: { title: t("ActionTracker.AllowanceTitle", "Quickened actions") },
-      content: `<p>${escape(t("ActionTracker.AllowanceHint", "Enter allowed single actions, separated by commas (for example: strike, stride or step). Saved while this Quickened condition remains. Leave empty for manual tracking."))}</p><input name="slugs" type="text" value="${escape(allowed)}">`,
-      ok: { label: t("ActionTracker.Save", "Save"), callback: (_event, button) => button.form.elements.slugs.value },
+      classes: [CARD_DIALOG_CLASS],
+      position: { width: 480, height: "auto" },
+      window: { title: t("ActionTracker.AllowanceTitle", "Quickened actions"), icon: "fa-solid fa-bolt" },
+      content: `<div class="combater-card-dialog-body">
+        <p>${escape(t("ActionTracker.AllowanceCards", "Pick the single actions this Quickened condition allows. Saved while the condition remains; pick none to track it manually."))}</p>
+        ${cardPickerHtml({ name: "quickenedSlug", type: "checkbox", options, compact: true })}
+        <label class="combater-chip-field"><span>${escape(t("ActionTracker.AllowanceOther", "Other action slugs (comma separated)"))}</span>
+          <input name="slugs" type="text" value="${escape(extra)}" placeholder="demoralize, seek"></label>
+      </div>`,
+      ok: {
+        label: t("ActionTracker.Save", "Save"),
+        icon: "fa-solid fa-check",
+        callback: (_event, button) => [...checkedValues(button.form, "quickenedSlug"), button.form.elements.slugs.value].join(","),
+      },
       rejectClose: false,
     });
     if (typeof input !== "string") return;

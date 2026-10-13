@@ -17,18 +17,30 @@
     </div>
 
     <div class="combater-turn-intent-decision is-field">
-      <label class="combater-turn-intent-option combater-turn-intent-field">
-        <span class="combater-turn-intent-switch-spacer" aria-hidden="true"></span>
-        <span>
+      <div class="combater-turn-intent-option combater-turn-intent-field">
+        <span class="combater-turn-intent-must">
           <strong>Must include</strong>
-          <select name="requiredActionKey">
-            <option value="">Any action</option>
-            {{#each actionOptions}}
-              <option value="{{key}}" {{#if selected}}selected{{/if}}>{{name}}</option>
-            {{/each}}
-          </select>
+          <span class="combater-pick-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" data-turn-intent-search placeholder="Search actions" aria-label="Search actions" autocomplete="off"></span>
+          <span class="combater-pick-scroll">
+            <span class="combater-pick-grid" data-turn-intent-actions role="radiogroup" aria-label="Must include">
+              <label class="combater-pick-card is-gold" data-pick-search="any action">
+                <input type="radio" name="requiredActionKey" value="" {{#unless intent.requiredActionKey}}checked{{/unless}}>
+                <span class="combater-pick-art"><i class="fa-solid fa-shuffle" aria-hidden="true"></i></span>
+                <span class="combater-pick-text"><strong>Any action</strong><small>No requirement</small></span>
+                <i class="fa-solid fa-circle-check combater-pick-check" aria-hidden="true"></i>
+              </label>
+              {{#each actionOptions}}
+                <label class="combater-pick-card" data-pick-search="{{name}}">
+                  <input type="radio" name="requiredActionKey" value="{{key}}" {{#if selected}}checked{{/if}}>
+                  <span class="combater-pick-art">{{#if img}}<img src="{{img}}" alt="">{{else}}<i class="fa-solid fa-bolt" aria-hidden="true"></i>{{/if}}</span>
+                  <span class="combater-pick-text"><strong>{{name}}</strong>{{#if detail}}<small>{{detail}}</small>{{/if}}</span>
+                  <i class="fa-solid fa-circle-check combater-pick-check" aria-hidden="true"></i>
+                </label>
+              {{/each}}
+            </span>
+          </span>
         </span>
-      </label>
+      </div>
     </div>
 
     <div class="combater-turn-intent-decision">

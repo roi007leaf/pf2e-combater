@@ -222,6 +222,7 @@ export function readSustainedSpellEntries(context, actions = readSpellActions(co
       name: spellName(action),
       spellSlug: id,
       spellUuid: action?.item?.uuid ?? action?.uuid ?? null,
+      img: action?.item?.img ?? action?.img ?? null,
       effectIds: matchingEffects.map((effect) => effect.id),
       effects: matchingEffects,
       templateRefs,

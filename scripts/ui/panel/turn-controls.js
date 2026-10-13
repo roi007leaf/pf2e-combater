@@ -6,6 +6,8 @@ import {
   reactionUsed, readiedAction, readyUnavailableReason, turnCombatantName, turnIdentity,
 } from "../../state/turn-controls.js";
 import { bindPopoverMenu } from "./utility-menu.js";
+import { chooseDestination } from "../destination-picker.js";
+import { executeMovement } from "../../engine/execution/movement.js";
 
 export function turnControlsView(context, combat = globalThis.game?.combat, user = globalThis.game?.user) {
   if (!settingOrDefault(SETTINGS.showTurnNavigation, true)) return { visible: false };
@@ -68,57 +70,134 @@ function readyStrikes(actor) {
     && action.ready !== false && action.slug);
 }
 
+const READY_BASIC_ICONS = {
+  stride: "fa-person-walking",
+  step: "fa-shoe-prints",
+  "raise-a-shield": "fa-shield-halved",
+  interact: "fa-hand",
+};
+
+function strikeIsAgile(action) {
+  const traits = [
+    ...(action?.traits ?? []).map((trait) => trait?.name ?? trait),
+    ...(action?.item?.system?.traits?.value ?? []),
+  ].map((trait) => String(trait).toLowerCase());
+  return traits.includes("agile");
+}
+
+function signed(value) {
+  return value >= 0 ? `+${value}` : `−${Math.abs(value)}`;
+}
+
 // Ready takes a single action or free action. Strikes come first: they are the
 // common case and the only ones whose MAP must be remembered.
 export function readyChoices(actor) {
-  const strikes = readyStrikes(actor).map((action) => ({
-    value: `strike:${action.slug}`, strike: action.slug, label: action.label ?? action.name ?? action.slug,
-    text: t("TurnControls.ReadyStrike", "Strike: {weapon}", { weapon: action.label ?? action.name ?? action.slug }),
-  }));
+  const strikes = readyStrikes(actor).map((action) => {
+    const label = action.label ?? action.name ?? action.slug;
+    const total = Number(action.totalModifier);
+    const step = strikeIsAgile(action) ? 4 : 5;
+    const bonuses = Number.isFinite(total) ? [total, total - step, total - step * 2].map(signed) : [];
+    return {
+      value: `strike:${action.slug}`, strike: action.slug, label,
+      text: t("TurnControls.ReadyStrike", "Strike: {weapon}", { weapon: label }),
+      img: action.imageUrl ?? action.item?.img ?? "",
+      detail: bonuses.length
+        ? t("TurnControls.ReadyStrikeDetail", "Strike · {bonus}", { bonus: bonuses[0] })
+        : t("TurnControls.ReadyStrikeShort", "Strike"),
+      bonuses,
+      mapSteps: step === 4 ? ["0", "−4", "−8"] : ["0", "−5", "−10"],
+    };
+  });
   const basics = ["stride", "step", ...(actor?.heldShield ? ["raise-a-shield"] : []), "interact"].map((slug) => {
     const label = pf2eActionName(slug);
-    return { value: `action:${slug}`, strike: null, label, text: label };
+    const ownItem = (actor?.itemTypes?.action ?? []).find?.((item) => (item.slug ?? item.system?.slug) === slug);
+    const img = ownItem?.img ?? globalThis.game?.pf2e?.actions?.get?.(slug)?.img ?? "";
+    return {
+      value: `action:${slug}`, strike: null, label, text: label, img: /default-icons/.test(img) ? "" : img,
+      icon: READY_BASIC_ICONS[slug] ?? "fa-bolt", detail: t("TurnControls.ReadyBasic", "Basic action"),
+    };
   });
-  return [...strikes, ...basics, { value: "other", strike: null, label: "", text: t("TurnControls.ReadyOther", "Another action…") }];
+  return [...strikes, ...basics, {
+    value: "other", strike: null, label: "", text: t("TurnControls.ReadyOther", "Another action…"),
+    icon: "fa-pen", detail: t("TurnControls.ReadyOtherDetail", "Describe it"),
+  }];
+}
+
+function readyCardHtml(choice, checked) {
+  const art = choice.img
+    ? `<img src="${escapeHtml(choice.img)}" alt="">`
+    : `<i class="fa-solid ${escapeHtml(choice.icon ?? "fa-bolt")}" aria-hidden="true"></i>`;
+  const classes = ["combater-ready-card", choice.strike ? "is-strike" : "", choice.value === "other" ? "is-other" : ""].filter(Boolean).join(" ");
+  return `<label class="${classes}">
+    <input type="radio" name="choice" value="${escapeHtml(choice.value)}"${checked ? " checked" : ""}
+      data-bonuses="${escapeHtml((choice.bonuses ?? []).join(","))}" data-map-steps="${escapeHtml((choice.mapSteps ?? []).join(","))}">
+    <span class="combater-ready-card-art">${art}</span>
+    <span class="combater-ready-card-text"><strong>${escapeHtml(choice.value === "other" ? choice.text : choice.label)}</strong><small>${escapeHtml(choice.detail ?? "")}</small></span>
+    <i class="fa-solid fa-circle-check combater-ready-card-check" aria-hidden="true"></i>
+  </label>`;
 }
 
 async function promptReady(combat) {
   const combatant = combat.combatant;
   const choices = readyChoices(combatant?.actor);
   const attacks = Math.min(2, attacksThisTurn(combat));
-  const maps = [
-    t("TurnControls.ReadyMap0", "No penalty (first attack)"),
-    t("TurnControls.ReadyMap1", "−5 / agile −4 (second attack)"),
-    t("TurnControls.ReadyMap2", "−10 / agile −8 (third attack)"),
+  const attackNames = [
+    t("TurnControls.ReadyAttack1", "1st attack"),
+    t("TurnControls.ReadyAttack2", "2nd attack"),
+    t("TurnControls.ReadyAttack3", "3rd attack"),
   ];
+  const mapCards = attackNames.map((name, index) => `<label class="combater-ready-map">
+        <input type="radio" name="mapIndex" value="${index}"${index === attacks ? " checked" : ""}>
+        <strong data-ready-map-bonus="${index}"></strong><span>${escapeHtml(name)}</span><small data-ready-map-step="${index}"></small>
+      </label>`).join("");
   const content = `<div class="combater-ready-form">
     <p class="combater-ready-rule">${escapeHtml(t("TurnControls.ReadyRuleNoTrigger", "Spend 2 actions and end your turn. Declare the trigger at the table; if it happens before your next turn starts, use the action as a reaction."))}</p>
-    <label class="combater-ready-field"><span>${escapeHtml(t("TurnControls.ReadyAction", "Action"))}</span>
-      <select name="choice">${choices.map((choice, index) => `<option value="${escapeHtml(choice.value)}"${index === 0 ? " selected" : ""}>${escapeHtml(choice.text)}</option>`).join("")}</select></label>
-    <label class="combater-ready-field" data-ready-custom${choices[0].value === "other" ? "" : " hidden"}><span>${escapeHtml(t("TurnControls.ReadyCustom", "Describe the action"))}</span>
+    <fieldset class="combater-ready-group">
+      <legend>${escapeHtml(t("TurnControls.ReadyAction", "Action"))}</legend>
+      <div class="combater-ready-cards">${choices.map((choice, index) => readyCardHtml(choice, index === 0)).join("")}</div>
+    </fieldset>
+    <label class="combater-ready-field" data-ready-custom hidden><span>${escapeHtml(t("TurnControls.ReadyCustom", "Describe the action"))}</span>
       <input type="text" name="custom" maxlength="80" placeholder="${escapeHtml(t("TurnControls.ReadyCustomPlaceholder", "Cast Shield"))}"></label>
-    <label class="combater-ready-field" data-ready-map><span>${escapeHtml(t("TurnControls.ReadyMapLabel", "Attack penalty"))}</span>
-      <select name="mapIndex">${maps.map((label, index) => `<option value="${index}"${index === attacks ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
-      <small>${escapeHtml(t("TurnControls.ReadyMapHint", "A readied attack keeps the multiple attack penalty you have now."))}</small></label>
+    <fieldset class="combater-ready-group" data-ready-map>
+      <legend>${escapeHtml(t("TurnControls.ReadyMapLabel", "Attack penalty"))}</legend>
+      <div class="combater-ready-maps">${mapCards}</div>
+      <small class="combater-ready-hint">${escapeHtml(t("TurnControls.ReadyMapHint", "A readied attack keeps the multiple attack penalty you have now."))}</small>
+    </fieldset>
   </div>`;
+  const noMapLabel = t("TurnControls.ReadyNoMap", "No MAP");
   const result = await globalThis.foundry.applications.api.DialogV2.prompt({
     classes: ["pf2e-combater-delay-dialog", "pf2e-combater-ready-dialog"],
-    position: { width: 440, height: "auto" },
-    window: { title: t("TurnControls.ReadyTitle", "Ready an action for {name}", { name: turnCombatantName(combatant) }) },
+    position: { width: 500, height: "auto" },
+    window: {
+      title: t("TurnControls.ReadyTitle", "Ready an action for {name}", { name: turnCombatantName(combatant) }),
+      icon: "fa-solid fa-bullseye",
+    },
     content,
     render: (_event, dialog) => {
       const form = (dialog.element ?? dialog).querySelector?.("form");
-      const select = form?.elements?.choice;
+      if (!form) return;
+      // Strikes show their real bonus at each MAP step; other actions hide the penalty.
       const sync = () => {
-        const value = select.value;
+        const selected = form.querySelector("input[name='choice']:checked");
+        const value = selected?.value ?? "";
         form.querySelector("[data-ready-custom]").hidden = value !== "other";
         form.querySelector("[data-ready-map]").hidden = !value.startsWith("strike:");
+        const bonuses = String(selected?.dataset.bonuses ?? "").split(",");
+        const steps = String(selected?.dataset.mapSteps ?? "").split(",");
+        for (let index = 0; index < 3; index += 1) {
+          const bonus = form.querySelector(`[data-ready-map-bonus="${index}"]`);
+          const step = form.querySelector(`[data-ready-map-step="${index}"]`);
+          if (bonus) bonus.textContent = bonuses[index] || "";
+          if (step) step.textContent = steps[index] && steps[index] !== "0" ? `MAP ${steps[index]}` : noMapLabel;
+        }
+        if (value === "other") form.querySelector("[name='custom']")?.focus();
       };
-      select?.addEventListener("change", sync);
-      if (select) sync();
+      for (const input of form.querySelectorAll("input[name='choice']")) input.addEventListener("change", sync);
+      sync();
     },
     ok: {
-      label: t("TurnControls.Ready", "Ready"),
+      label: t("TurnControls.ReadyConfirm", "Ready (2 actions)"),
+      icon: "fa-solid fa-bullseye",
       callback: (_event, button) => {
         const elements = button.form.elements;
         return { choice: elements.choice.value, custom: elements.custom.value, mapIndex: elements.mapIndex.value };
@@ -130,7 +209,30 @@ async function promptReady(combat) {
   const choice = choices.find((entry) => entry.value === result.choice);
   const label = (choice?.value === "other" ? result.custom : choice?.label)?.trim();
   if (!label) throw Error(t("TurnControls.ReadyIncomplete", "Choose an action to ready."));
-  return { label, strike: choice?.strike ?? null, mapIndex: choice?.strike ? Number(result.mapIndex) || 0 : 0 };
+  const movementSlug = ["action:stride", "action:step"].includes(choice?.value) ? choice.value.slice(7) : null;
+  return { label, strike: choice?.strike ?? null, mapIndex: choice?.strike ? Number(result.mapIndex) || 0 : 0, movementSlug };
+}
+
+// The planner's own Stride/Step candidate carries the creature's Speed and footprint,
+// so the picker shows the same reachable area as a planned move.
+function readyMovementAction(panel, slug) {
+  const candidates = [...(panel?._candidates ?? []), ...(panel?._detected ?? [])];
+  return candidates.find((candidate) => (candidate?.slug ?? candidate?.id) === slug)
+    ?? { id: slug, slug, name: pf2eActionName(slug), actionCost: 1, requiresDestination: true };
+}
+
+function pickReadyDestination(panel, slug) {
+  return new Promise((resolve) => {
+    globalThis.ui?.notifications?.info?.(t("TurnControls.ReadyPickDestination", "Choose where {action} will move when the trigger happens.", { action: pf2eActionName(slug) }));
+    const picker = chooseDestination({
+      context: panel?._context,
+      action: readyMovementAction(panel, slug),
+      enableWaypoints: true,
+      onChoose: (destination, metadata = {}) => resolve({ slug, destination, movementPlan: metadata.movementPlan ?? null }),
+      onCancel: () => resolve(null),
+    });
+    if (!picker) resolve(null);
+  });
 }
 
 function chatSpeaker(combatant) {
@@ -154,9 +256,23 @@ async function announceReady(combatant, ready) {
 
 // Strikes roll through PF2e's native variant (it reads game.user.targets) at the
 // stored MAP. Other actions are announced; the player resolves them normally.
-async function useReadied(combatant, event) {
+function readiedContext(panel, combatant) {
+  if (panel?._context?.combatant?.id === combatant?.id) return panel._context;
+  return { combat: combatant?.combat ?? globalThis.game?.combat, combatant, actor: combatant?.actor, token: combatant?.token };
+}
+
+async function useReadied(panel, combatant, event) {
   const ready = readiedAction(combatant);
   if (!ready) return false;
+  if (ready.movement) {
+    const result = await executeMovement({
+      context: readiedContext(panel, combatant),
+      step: { destination: ready.movement.destination, movementPlan: ready.movement.movementPlan },
+      action: readyMovementAction(panel, ready.movement.slug),
+      choices: { reaction: true },
+    });
+    if (result?.status !== "done") throw Error(result?.error ?? t("TurnControls.ReadiedMoveFailed", "The readied movement could not be completed."));
+  }
   if (ready.strike) {
     const strike = readyStrikes(combatant.actor).find((action) => action.slug === ready.strike);
     const variant = strike?.variants?.[ready.mapIndex] ?? strike?.variants?.[0];
@@ -219,14 +335,19 @@ export function activateTurnControlBindings(panel, element) {
           if (!afterId) return;
           request.afterId = afterId;
         } else if (request.action === "ready") {
-          const ready = await promptReady(combat);
-          if (!ready) return;
+          const { movementSlug, ...ready } = (await promptReady(combat)) ?? {};
+          if (!ready.label) return;
+          if (movementSlug) {
+            const movement = await pickReadyDestination(panel, movementSlug);
+            if (!movement) return;
+            ready.movement = movement;
+          }
           Object.assign(request, ready);
           announce = { combatant: combat.combatant, ready };
         } else if (request.action === "return") request.delayedId = button.dataset.delayedId;
         else if (request.action === "ready-use" || request.action === "ready-clear") {
           const combatant = combat?.combatants?.get?.(button.dataset.readiedId);
-          if (request.action === "ready-use" && !(await useReadied(combatant, event))) return;
+          if (request.action === "ready-use" && !(await useReadied(panel, combatant, event))) return;
           request.used = request.action === "ready-use";
           request.action = "ready-clear";
           request.readiedId = button.dataset.readiedId;

@@ -104,12 +104,29 @@ export function attacksThisTurn(combat) {
   return (context?.actionTracker?.entries ?? []).filter((entry) => entry.slug === "strike").length;
 }
 
+const READY_MOVEMENT_SLUGS = new Set(["stride", "step"]);
+
+function readyMovement(value) {
+  if (!value || typeof value !== "object" || !READY_MOVEMENT_SLUGS.has(value.slug)) return null;
+  const x = Number(value.destination?.x);
+  const y = Number(value.destination?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const elevation = Number(value.destination?.elevation);
+  let movementPlan = null;
+  try {
+    movementPlan = value.movementPlan ? JSON.parse(JSON.stringify(value.movementPlan)) : null;
+  } catch (_error) {
+    movementPlan = null;
+  }
+  return { slug: value.slug, destination: { x, y, ...(Number.isFinite(elevation) ? { elevation } : {}) }, movementPlan };
+}
+
 function readyPayload(request) {
   const text = (value, max) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
   const label = text(request.label, 80);
   if (!label) throw Error(t("TurnControls.ReadyIncomplete", "Choose an action to ready."));
   const mapIndex = Math.max(0, Math.min(2, Math.trunc(Number(request.mapIndex)) || 0));
-  return { label, strike: text(request.strike, 80) || null, mapIndex };
+  return { label, strike: text(request.strike, 80) || null, mapIndex, movement: readyMovement(request.movement) };
 }
 
 // Move a waiting creature together with anyone waiting after it. Native PF2e

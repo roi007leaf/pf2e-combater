@@ -4,6 +4,7 @@ import { actionKey } from "../engine/planner/rules.js";
 import { contextTargets } from "../engine/target-pool.js";
 import { normalizeTurnIntent } from "../engine/planner/turn-intent.js";
 import { t } from "../i18n.js";
+import { bindCardSearch } from "./card-picker.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -28,12 +29,23 @@ function targetSelection(context, intent) {
   };
 }
 
+function actionCostLabel(candidate) {
+  const cost = candidate?.actionCost ?? candidate?.cost;
+  if (cost === "reaction") return t("TurnIntent.CostReaction", "Reaction");
+  if (cost === "free" || cost === 0) return t("TurnIntent.CostFree", "Free action");
+  const count = Number(cost);
+  if (!Number.isFinite(count) || count < 1) return "";
+  return count === 1 ? t("TurnIntent.CostOne", "1 action") : t("TurnIntent.CostMany", "{count} actions", { count });
+}
+
 function actionOptions(candidates, selectedKey) {
   const seen = new Set();
   return (Array.isArray(candidates) ? candidates : [])
     .map((candidate) => ({
       key: String(actionKey(candidate) ?? ""),
       name: String(candidate?.name ?? candidate?.label ?? candidate?.slug ?? "Action"),
+      img: candidate?.img ?? candidate?.item?.img ?? candidate?.strike?.imageUrl ?? "",
+      detail: actionCostLabel(candidate),
     }))
     .filter((option) => option.key && !seen.has(option.key) && seen.add(option.key))
     .toSorted((left, right) => left.name.localeCompare(right.name))
@@ -162,7 +174,8 @@ export class TurnIntentWindow extends HandlebarsApplicationMixin(ApplicationV2) 
         syncApply();
       });
     }
-    this.element.querySelector("[name='requiredActionKey']")?.addEventListener("change", syncApply);
+    for (const input of this.element.querySelectorAll("[name='requiredActionKey']")) input.addEventListener("change", syncApply);
+    bindCardSearch(this.element.querySelector("[data-turn-intent-search]"), this.element.querySelector("[data-turn-intent-actions]"));
     syncApply();
     this.element.querySelector("[data-turn-intent-cancel]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[data-turn-intent-clear]")?.addEventListener("click", (event) =>

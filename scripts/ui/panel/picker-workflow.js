@@ -1,4 +1,5 @@
 import { readDraftPlan } from "../../state/draft-plans.js";
+import { CARD_DIALOG_CLASS, cardPickerHtml, checkedValue } from "../card-picker.js";
 import { computeAreaMarker, projectContextForDraftStepOrigin } from "../../engine/action/builder/index.js";
 import { tokensInAreaMarker } from "../../engine/area/region.js";
 import {
@@ -230,14 +231,24 @@ export async function removePanelAreaTemplate(panel, instanceId) {
 export async function pickAreaTemplate(templates) {
   const dialog = globalThis.foundry?.applications?.api?.DialogV2;
   if (typeof dialog?.wait !== "function") return templates[0] ?? null;
-  const buttons = templates.map((template, index) => ({
-    action: String(index),
-    label: template.label ?? `${template.type} ${template.distance ?? ""} ft`.trim(),
-  }));
+  const shapeIcons = { burst: "fa-circle-dot", emanation: "fa-circle-notch", cone: "fa-play", line: "fa-grip-lines", cube: "fa-square", square: "fa-square" };
+  const options = templates.map((template, index) => {
+    const type = String(template.type ?? template.areaType ?? "").toLowerCase();
+    const size = template.distance ? `${template.distance}-ft ${type}`.trim() : type;
+    return {
+      value: String(index), label: template.label ?? size, detail: template.label ? size : "",
+      icon: shapeIcons[type] ?? "fa-draw-polygon", tone: "gold", checked: index === 0,
+    };
+  });
   const choice = await dialog.wait({
-    window: { title: t("Dialog.ChooseTemplate.Title", "Choose template") },
-    content: `<p>${escapeHtml(t("Dialog.ChooseTemplate.Content", "This action has more than one area template. Choose which to place:"))}</p>`,
-    buttons: [...buttons, { action: "cancel", label: t("Dialog.Cancel", "Cancel") }],
+    classes: [CARD_DIALOG_CLASS],
+    position: { width: 420, height: "auto" },
+    window: { title: t("Dialog.ChooseTemplate.Title", "Choose template"), icon: "fa-solid fa-draw-polygon" },
+    content: `<div class="combater-card-dialog-body"><p>${escapeHtml(t("Dialog.ChooseTemplate.Content", "This action has more than one area template. Choose which to place:"))}</p>${cardPickerHtml({ name: "areaTemplate", options })}</div>`,
+    buttons: [
+      { action: "ok", label: t("Dialog.ChooseTemplate.Confirm", "Place"), icon: "fa-solid fa-check", default: true, callback: (_event, button) => checkedValue(button.form, "areaTemplate") || "cancel" },
+      { action: "cancel", label: t("Dialog.Cancel", "Cancel") },
+    ],
     rejectClose: false,
   }).catch(() => null);
   if (choice === null || choice === undefined || choice === "cancel") return null;

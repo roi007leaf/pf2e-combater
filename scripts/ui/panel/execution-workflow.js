@@ -18,6 +18,7 @@ import { t } from "../../i18n.js";
 import { drawableSwapItems, heldSwapItems, swapItemById } from "../../engine/equipment-items.js";
 import { promptSwapSelection } from "../../engine/execution/equipment.js";
 import { recordTrackedExecution } from "../../state/action-tracker.js";
+import { CARD_DIALOG_CLASS, cardPickerHtml, checkedValue } from "../card-picker.js";
 
 function escapeHtml(value) {
   return foundry?.utils?.escapeHTML
@@ -41,14 +42,19 @@ export async function chooseSustainedSpellForStep(panel, step) {
       globalThis.ui?.notifications?.warn?.(t("Notify.ChooseSustainFirst", "Choose a spell from the Sustained spells section first."));
       return null;
     }
+    const options = entries.map((entry, index) => ({
+      value: entry.id, label: entry.name, img: entry.img ?? "", icon: "fa-wand-sparkles", tone: "blue", checked: index === 0,
+      detail: entry.templateRefs?.length
+        ? t("Dialog.SustainSpell.WithTemplate", "Sustained · area on the map")
+        : t("Dialog.SustainSpell.Effect", "Sustained effect"),
+    }));
     const choice = await dialog.wait({
-      window: { title: t("Dialog.SustainSpell.Title", "Sustain a Spell") },
-      content: `<p>${escapeHtml(t("Dialog.SustainSpell.Content", "Choose which sustained spell to sustain."))}</p>`,
+      classes: [CARD_DIALOG_CLASS],
+      position: { width: 440, height: "auto" },
+      window: { title: t("Dialog.SustainSpell.Title", "Sustain a Spell"), icon: "fa-solid fa-hourglass-half" },
+      content: `<div class="combater-card-dialog-body"><p>${escapeHtml(t("Dialog.SustainSpell.Content", "Choose which sustained spell to sustain."))}</p>${cardPickerHtml({ name: "sustainSpell", options })}</div>`,
       buttons: [
-        ...entries.map((entry) => ({
-          action: entry.id,
-          label: escapeHtml(entry.name),
-        })),
+        { action: "ok", label: t("Dialog.SustainSpell.Confirm", "Sustain"), icon: "fa-solid fa-check", default: true, callback: (_event, button) => checkedValue(button.form, "sustainSpell") || "cancel" },
         { action: "cancel", label: t("Dialog.Cancel", "Cancel") },
       ],
       rejectClose: false,

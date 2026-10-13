@@ -1,4 +1,5 @@
 import { collectionValues } from "../../foundry-data.js";
+import { CARD_DIALOG_CLASS, cardPickerHtml } from "../../ui/card-picker.js";
 import { t } from "../../i18n.js";
 import {
   drawableSwapItems,
@@ -67,12 +68,13 @@ function selectValue(button, name) {
   return String(field?.value ?? "");
 }
 
-function itemOptions(items, selectedId = null) {
+function itemCards(items, selectedId = null, detail = "") {
+  const fallbackId = items[0]?.id ?? items[0]?._id ?? items[0]?.uuid ?? "";
+  const chosen = String(selectedId ?? fallbackId);
   return items.map((item) => {
-    const id = item?.id ?? item?._id ?? item?.uuid ?? "";
-    const selected = String(id) === String(selectedId ?? "") ? " selected" : "";
-    return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(item?.name ?? id)}</option>`;
-  }).join("");
+    const id = String(item?.id ?? item?._id ?? item?.uuid ?? "");
+    return { value: id, label: item?.name ?? id, img: item?.img ?? "", icon: "fa-box", detail, checked: id === chosen };
+  });
 }
 
 export async function promptSwapSelection(heldItems, drawableItems, selected = {}) {
@@ -85,15 +87,22 @@ export async function promptSwapSelection(heldItems, drawableItems, selected = {
 
   const dialog = globalThis.foundry?.applications?.api?.DialogV2;
   if (typeof dialog?.wait !== "function") return null;
+  const heldLabel = t("Dialog.SwapItems.Held", "Held");
+  const wornLabel = t("Dialog.SwapItems.Worn", "Worn");
   return await dialog.wait({
-    window: { title: t("Dialog.SwapItems.Title", "Swap Items") },
-    content: `<p>${escapeHtml(t("Dialog.SwapItems.Content", "Choose one held item to put away and one worn item to draw."))}</p>`
-      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.PutAway", "Put away"))}</label><select name="swapHeldItemId">${itemOptions(heldItems, selected.swapHeldItemId)}</select></div>`
-      + `<div class="form-group"><label>${escapeHtml(t("Dialog.SwapItems.Draw", "Draw"))}</label><select name="swapDrawItemId">${itemOptions(drawableItems, selected.swapDrawItemId)}</select></div>`,
+    classes: [CARD_DIALOG_CLASS],
+    position: { width: 480, height: "auto" },
+    window: { title: t("Dialog.SwapItems.Title", "Swap Items"), icon: "fa-solid fa-right-left" },
+    content: `<div class="combater-card-dialog-body">
+      <p>${escapeHtml(t("Dialog.SwapItems.Content", "Choose one held item to put away and one worn item to draw."))}</p>
+      <div><p class="combater-pick-label">${escapeHtml(t("Dialog.SwapItems.PutAway", "Put away"))}</p>${cardPickerHtml({ name: "swapHeldItemId", options: itemCards(heldItems, selected.swapHeldItemId, heldLabel) })}</div>
+      <div><p class="combater-pick-label">${escapeHtml(t("Dialog.SwapItems.Draw", "Draw"))}</p>${cardPickerHtml({ name: "swapDrawItemId", options: itemCards(drawableItems, selected.swapDrawItemId, wornLabel) })}</div>
+    </div>`,
     buttons: [
       {
         action: "swap",
         label: t("Action.Swap", "Swap"),
+        icon: "fa-solid fa-right-left",
         default: true,
         callback: (_event, button) => ({
           swapHeldItemId: selectValue(button, "swapHeldItemId"),

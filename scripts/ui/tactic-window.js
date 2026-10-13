@@ -17,9 +17,45 @@ function clampSlider(value) {
   return Number.isFinite(number) ? Math.max(-3, Math.min(3, Math.round(number))) : 0;
 }
 
-function optionModel(option, selected) {
+// Icon, tint and a one-line hint per role and temperament, shown on the picker cards.
+function roleMeta() {
+  return {
+    auto: { icon: "fa-wand-magic-sparkles", tone: "gold", hint: t("Tactic.RoleHint.Auto", "Read from the creature") },
+    "melee-striker": { icon: "fa-hand-fist", tone: "red", hint: t("Tactic.RoleHint.MeleeStriker", "Close in and hit hard") },
+    "ranged-striker": { icon: "fa-bullseye", tone: "red", hint: t("Tactic.RoleHint.RangedStriker", "Attack from range") },
+    "spell-damage": { icon: "fa-fire", tone: "red", hint: t("Tactic.RoleHint.SpellDamage", "Damage with spells") },
+    healer: { icon: "fa-heart-pulse", tone: "green", hint: t("Tactic.RoleHint.Healer", "Keep allies standing") },
+    buffer: { icon: "fa-arrow-up", tone: "green", hint: t("Tactic.RoleHint.Buffer", "Boost allies") },
+    debuffer: { icon: "fa-arrow-down", tone: "blue", hint: t("Tactic.RoleHint.Debuffer", "Weaken enemies") },
+    boss: { icon: "fa-crown", tone: "gold", hint: t("Tactic.RoleHint.Boss", "Big threat, uses its best tricks") },
+    lieutenant: { icon: "fa-chess-rook", tone: "gold", hint: t("Tactic.RoleHint.Lieutenant", "Leads and supports the boss") },
+    minion: { icon: "fa-user", tone: "blue", hint: t("Tactic.RoleHint.Minion", "Simple, expendable attacks") },
+    brute: { icon: "fa-hammer", tone: "red", hint: t("Tactic.RoleHint.Brute", "Soak hits, deal heavy damage") },
+    skirmisher: { icon: "fa-person-running", tone: "green", hint: t("Tactic.RoleHint.Skirmisher", "Hit and reposition") },
+    artillery: { icon: "fa-meteor", tone: "red", hint: t("Tactic.RoleHint.Artillery", "Stay back, area damage") },
+    controller: { icon: "fa-link", tone: "blue", hint: t("Tactic.RoleHint.Controller", "Lock down the battlefield") },
+    defender: { icon: "fa-shield-halved", tone: "blue", hint: t("Tactic.RoleHint.Defender", "Protect allies, hold the line") },
+    support: { icon: "fa-hands-holding", tone: "green", hint: t("Tactic.RoleHint.Support", "Help allies succeed") },
+  };
+}
+
+function temperamentMeta() {
+  return {
+    auto: { icon: "fa-wand-magic-sparkles", tone: "gold", hint: t("Tactic.TemperamentHint.Auto", "From the creature") },
+    aggressive: { icon: "fa-fire-flame-curved", tone: "red", hint: t("Tactic.TemperamentHint.Aggressive", "Presses the attack") },
+    cautious: { icon: "fa-shield", tone: "blue", hint: t("Tactic.TemperamentHint.Cautious", "Avoids risk") },
+    opportunist: { icon: "fa-eye", tone: "gold", hint: t("Tactic.TemperamentHint.Opportunist", "Goes for openings") },
+    berserker: { icon: "fa-skull", tone: "red", hint: t("Tactic.TemperamentHint.Berserker", "Ignores its own safety") },
+    coward: { icon: "fa-person-running", tone: "green", hint: t("Tactic.TemperamentHint.Coward", "Flees when hurt") },
+  };
+}
+
+function optionModel(option, selected, meta = {}) {
   const id = String(option.id);
   return {
+    icon: "fa-circle",
+    tone: "blue",
+    ...(meta[id] ?? {}),
     ...option,
     id,
     selected: id === selected,
@@ -68,8 +104,8 @@ function windowContext(view) {
     customHelp: t("Tactic.FineTuneHelp", "Nudge the preset up or down per priority."),
     actionStyleLabel: t("Tactic.ActionStyle", "Action style"),
     targetStyleLabel: t("Tactic.TargetStyle", "Target style"),
-    roles: (Array.isArray(view?.roles) ? view.roles : []).map((option) => optionModel(option, role)),
-    temperaments: TACTIC_TEMPERAMENTS.map((option) => optionModel(option, temperament)),
+    roles: (Array.isArray(view?.roles) ? view.roles : []).map((option) => optionModel(option, role, roleMeta())),
+    temperaments: TACTIC_TEMPERAMENTS.map((option) => optionModel(option, temperament, temperamentMeta())),
     customEnabled: view?.showAdvanced === true && view?.customEnabled === true,
     actionSliders: TACTIC_ACTION_SLIDERS.map((slider) => sliderModel("action", slider, custom.action)),
     targetSliders: TACTIC_TARGET_SLIDERS.map((slider) => sliderModel("target", slider, custom.target)),

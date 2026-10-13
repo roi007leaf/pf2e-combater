@@ -254,6 +254,16 @@ try {
   await assert.rejects(act(combat, "ready-clear", { readiedId: "a" }, "p-a"), /no readied action/);
   assert.equal(reactionUsed(combat.combatants.get("a")), false, "discarding a readied action spends no reaction");
 
+  // A readied Stride keeps its chosen destination; anything else is dropped.
+  combat = fixture();
+  await act(combat, "ready", { label: "Stride", movement: { slug: "stride", destination: { x: "150", y: 250, elevation: 5 }, movementPlan: { id: "plan", waypoints: [{ x: 150, y: 250 }] } } });
+  assert.deepEqual(readiedAction(combat.combatants.get("a")).movement, {
+    slug: "stride", destination: { x: 150, y: 250, elevation: 5 }, movementPlan: { id: "plan", waypoints: [{ x: 150, y: 250 }] },
+  }, "a readied Stride stores its destination and route");
+  combat = fixture();
+  await act(combat, "ready", { label: "Interact", movement: { slug: "teleport", destination: { x: 1, y: 2 } } });
+  assert.equal(readiedAction(combat.combatants.get("a")).movement, null, "only Stride and Step can carry a readied destination");
+
   // Using a readied action is a reaction: mark it, and keep PF2e Reaction Checker in sync.
   combat = fixture();
   globalThis.game.modules = new Map([["pf2e-reaction", { active: true }]]);

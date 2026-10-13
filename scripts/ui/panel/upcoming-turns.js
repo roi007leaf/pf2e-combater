@@ -38,8 +38,14 @@ export async function panToUpcomingCombatant(id, combatId) {
   if (combat?.id !== combatId || !upcomingTurnsView(combat).entries.some((entry) => entry.id === id)) return false;
   const combatant = combat.turns.find((entry) => entry.id === id);
   const canvas = globalThis.canvas;
-  const token = combatant?.token?.object;
-  if (!canvas?.ready || combatant.sceneId !== canvas.scene?.id || !token?.visible) {
+  // Resolve the placeable on the current canvas directly: a combat not linked to
+  // this scene can leave the combatant's own scene/token references unset.
+  const token = canvas?.tokens?.get?.(combatant?.tokenId) ?? combatant?.token?.object;
+  const sceneId = combatant?.sceneId ?? combatant?.token?.parent?.id ?? token?.document?.parent?.id;
+  const onScene = Boolean(token) && (!sceneId || sceneId === canvas?.scene?.id);
+  // The GM can always pan to a token on the scene; players need it in their vision.
+  const visible = globalThis.game?.user?.isGM === true || token?.isVisible === true || token?.visible === true;
+  if (!canvas?.ready || !onScene || !visible) {
     globalThis.ui?.notifications?.warn?.(t("UpcomingTurns.PanUnavailable", "This combatant's token is not visible on the current scene."));
     return false;
   }
