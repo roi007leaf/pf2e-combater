@@ -4,6 +4,7 @@ import { readDraftPlan } from "../state/draft-plans.js";
 import { contextActorDocument } from "./actor-context.js";
 import { slugify as normalizeSlug } from "./action/text.js";
 import { readSustainedSpellEntries } from "./sustained-spells.js";
+import { rechargeEntries } from "./npc-recharge-state.js";
 
 const ROUND_SECONDS = 6;
 const BUCKET_ORDER = ["attention", "soon", "handled", "later"];
@@ -181,8 +182,30 @@ function conditionEntries(actor) {
   return entries;
 }
 
+// Breath Weapon and other "can't use again for 1d4 rounds" abilities counting down.
+function rechargeClockEntries(actor) {
+  return rechargeEntries(actor).map(({ item, roundsLeft, readyRound }) => {
+    const bucket = roundsLeft <= 1 ? "soon" : "later";
+    return {
+      id: `recharge-${documentId(item)}`,
+      kind: "recharge",
+      name: item?.name ?? t("EffectClock.Recharge", "Recharge"),
+      img: item?.img ?? null,
+      documentUuid: item?.uuid ?? null,
+      statusLabel: t("EffectClock.Recharging", "Recharging"),
+      timingLabel: roundsLeft === 1
+        ? t("EffectClock.RechargeOne", "Back next round (round {round})", { round: readyRound })
+        : t("EffectClock.RechargeMany", "Back in {count} rounds (round {round})", { count: roundsLeft, round: readyRound }),
+      detail: t("EffectClock.RechargeDetail", "Auto-fill won't plan it until then."),
+      remaining: roundsLeft * ROUND_SECONDS,
+      bucket,
+      urgent: false,
+    };
+  });
+}
+
 function compareEntries(left, right) {
-  const kindOrder = { sustain: 0, condition: 1, effect: 2 };
+  const kindOrder = { sustain: 0, condition: 1, recharge: 2, effect: 3 };
   const kindDifference = (kindOrder[left.kind] ?? 9) - (kindOrder[right.kind] ?? 9);
   if (kindDifference !== 0) return kindDifference;
   const leftRemaining = left.remaining === Infinity ? Number.MAX_SAFE_INTEGER : Number(left.remaining ?? 0);
@@ -227,6 +250,7 @@ export function buildEffectClock(context, {
     if (timing) entries.push(effectEntry(effect, timing));
   }
   entries.push(...conditionEntries(actor));
+  entries.push(...rechargeClockEntries(actor));
 
   const groups = BUCKET_ORDER.map((id) => groupView(id, entries));
   const urgentCount = entries.filter((entry) => entry.urgent).length;

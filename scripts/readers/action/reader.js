@@ -685,6 +685,7 @@ function readActorItemActions(actor, context) {
         || resourceRecoveryAvailability.reason
         || inSpaceAvailability.reason,
       ...(inOwnSpace ? { maxRange: 0 } : {}),
+      ...(recharge?.recharge ? { rechargeRoundsLeft: recharge.recharge.roundsLeft, rechargeReadyRound: recharge.recharge.readyRound } : {}),
       item,
       trigger,
       role: tactic?.role ?? "unknown",

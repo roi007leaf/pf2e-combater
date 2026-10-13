@@ -304,7 +304,19 @@
       "RunAllFailed": "Run all stopped.",
       "PlanChosenOver": "Chosen over {alternative} ({margin}): {chosen} instead of {instead}.",
       "PlanEndsNearEnemies": "Ends within reach of {count} more enemies.",
-      "PlanEndsAwayFromEnemies": "Ends out of reach of {count} enemies."
+      "PlanEndsAwayFromEnemies": "Ends out of reach of {count} enemies.",
+      "WhyEndsNearOne": "Ends next to 1 more enemy",
+      "WhyEndsNearMany": "Ends next to {count} more enemies",
+      "WhyEndsAway": "Ends out of reach of {count}",
+      "WhyProvokesOne": "Provokes 1 Reactive Strike",
+      "WhyProvokesMany": "Provokes {count} Reactive Strikes",
+      "WhyReadyOne": "Saves a Stride next turn",
+      "WhyReadyMany": "Saves {count} Strides next turn",
+      "WhyReadyWorse": "Needs {count} more Stride next turn",
+      "WhyLabel": "Why this plan?",
+      "WhyTitle": "Why plan {position}",
+      "WhyVersus": "Beats plan {position}",
+      "AutoFillCycleHint": "Click for the next plan, right-click for the previous one."
     },
     "Summon": {
       "Choose": "Choose summoned creature and plan placement",
@@ -354,7 +366,8 @@
       "OpenSheet": "Open sheet",
       "ExpandRow": "Show details",
       "ActionLeft": "{count} action left",
-      "ActionsLeft": "{count} actions left"
+      "ActionsLeft": "{count} actions left",
+      "RechargeTooltip": "Usable again on round {round}."
     },
     "Section": {
       "Favorites": "Favorites",
@@ -1475,7 +1488,12 @@
       "Frightened": "Frightened",
       "FrightenedTiming": "Decreases by 1",
       "FrightenedDetail": "Normally decreases by 1 when this turn ends.",
-      "Group": "This turn"
+      "Group": "This turn",
+      "Recharge": "Recharge",
+      "Recharging": "Recharging",
+      "RechargeOne": "Back next round (round {round})",
+      "RechargeMany": "Back in {count} rounds (round {round})",
+      "RechargeDetail": "Auto-fill won't plan it until then."
     },
     "RecallKnowledge": {
       "TargetRequired": "Choose a creature target before using Recall Knowledge.",
@@ -1547,6 +1565,10 @@
     },
     "Chat": {
       "Recharge": "{item} recharges in {rounds} rounds (usable again on round {round})."
+    },
+    "Recharge": {
+      "OneRoundLeft": "Recharging: 1 round left",
+      "RoundsLeft": "Recharging: {count} rounds left"
     }
   }
 }

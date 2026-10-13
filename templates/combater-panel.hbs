@@ -465,6 +465,26 @@
               <button type="button" data-cycle-auto-fill aria-label="{{autoFillCycle.nextLabel}}"><i class="fa-solid fa-chevron-right"></i></button>
             </span>
             {{/if}}
+            {{#if autoFillCycle.why.visible}}
+            <button type="button" class="combater-plan-why-toggle" data-plan-why-toggle aria-expanded="false" aria-haspopup="dialog" data-tooltip="{{autoFillCycle.why.label}}" aria-label="{{autoFillCycle.why.label}}"><i class="fa-solid fa-scale-balanced"></i></button>
+            <div class="combater-plan-why" data-plan-why popover="auto" role="dialog" aria-label="{{autoFillCycle.why.title}}">
+              <header>
+                <strong>{{autoFillCycle.why.title}}</strong>
+                {{#if autoFillCycle.why.versus}}<span class="combater-plan-why-versus">{{autoFillCycle.why.versus}} <b>{{autoFillCycle.why.margin}}</b></span>{{/if}}
+              </header>
+              {{#if (or autoFillCycle.why.gains.length autoFillCycle.why.drops.length)}}
+              <ul class="combater-plan-why-diff">
+                {{#each autoFillCycle.why.gains}}<li class="is-gain"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
+                {{#each autoFillCycle.why.drops}}<li class="is-drop"><i class="fa-solid fa-minus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
+              </ul>
+              {{/if}}
+              {{#if autoFillCycle.why.outcomes.length}}
+              <div class="combater-plan-why-outcomes">
+                {{#each autoFillCycle.why.outcomes}}<span class="combater-plan-why-chip is-{{tone}}"><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{text}}</span>{{/each}}
+              </div>
+              {{/if}}
+            </div>
+            {{/if}}
             {{/if}}
           {{/unless}}
         {{/if}}

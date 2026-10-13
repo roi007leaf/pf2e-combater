@@ -8,7 +8,6 @@ import { attachRevertOp, executionPatch } from "./results.js";
 import { setTarget, setTokenTargets } from "./targets.js";
 import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 import { parseActionText } from "../action/text.js";
-import { recordRechargeUse } from "../npc-recharge-state.js";
 import { summonsAssistantHandlesSpell } from "../../integrations/summons-assistant.js";
 
 function numeric(value, fallback = null) {
@@ -452,8 +451,6 @@ export async function executeNativeAction({ actor, action, event, target = null,
       nativeResult,
     };
   }
-
-  if (nativeResult && action?.item) await recordRechargeUse(actor, action.item);
 
   const sustainedEffectUuid = nativeResult?.spellCast === true && trackSustainedSpell
     ? await createSustainedSpellEffect(actor, action, nativeResult.message)

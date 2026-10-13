@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./constants.js";
+import { registerRechargeTracking } from "./engine/npc-recharge-state.js";
 import { registerActionTrackerHooks } from "./state/action-tracker.js";
 import { delayedTurn, handleTurnControl, registerTurnControlHooks } from "./state/turn-controls.js";
 import { registerReadyMarkerHooks } from "./ui/ready-marker.js";
@@ -445,6 +446,7 @@ Hooks.once("ready", async () => {
   await migrateVisionerCombatSettings();
   await migrateDeprecatedFlankingRule();
   registerFlankingSizeRuleWrapper();
+  registerRechargeTracking();
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;

@@ -314,10 +314,13 @@ function strideSwordFor() {
 
   const plan = (summary, score, names) => ({ id: summary, summary, score, steps: names.map((name) => ({ id: name, name })) });
   const chosen = plan("Stride -> Rapier -> Rapier", 300, ["Stride -> Rapier", "Rapier"]);
-  const comparison = planComparison(chosen, [chosen, plan("Rapier-ish", 299, ["Stride -> Rapier", "Rapier"]), plan("Shortbow -> Shortbow -> Recall Knowledge", 262, ["Shortbow", "Shortbow MAP", "Recall Knowledge"])]);
-  assert.equal(comparison.alternative, "Shortbow -> Shortbow -> Recall Knowledge", "compares against a genuinely different plan");
+  const regrouped = plan("Stride, Rapier, Rapier", 299, ["Stride", "Rapier", "Rapier"]);
+  const comparison = planComparison(chosen, [chosen, regrouped, plan("Shortbow -> Shortbow -> Recall Knowledge", 262, ["Shortbow", "Shortbow", "Recall Knowledge"])]);
+  assert.equal(comparison.alternative, "Shortbow -> Shortbow -> Recall Knowledge", "the same actions grouped differently aren't an alternative");
+  assert.equal(comparison.position, 3);
   assert.equal(comparison.margin, 38);
-  assert.equal(comparison.chosen, "Stride -> Rapier, Rapier");
+  assert.deepEqual(comparison.chosen, ["Stride", "Rapier ×2"]);
+  assert.deepEqual(comparison.instead, ["Shortbow ×2", "Recall Knowledge"]);
 }
 
 console.log("Player tactic audit tests passed.");

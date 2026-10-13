@@ -449,6 +449,8 @@ function showDisabledInBuilder(action) {
     return isMovementAction && Boolean(action?.rejectionReason);
   }
   if (action?.tacticSlug === "elemental-blast") return true;
+  // A recharging Breath Weapon stays listed, showing when it's back.
+  if (Number(action?.rechargeRoundsLeft) > 0) return true;
   if (isMovementAction) return true;
 
   const reason = disabledActionReason(action);

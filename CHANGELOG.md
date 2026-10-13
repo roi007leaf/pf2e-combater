@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.9]
+
+### Added
+
+- **"Why this plan?" card.** A scale button next to the plan selector opens a small card: the plan this one beat and by how much, what it does that the other doesn't, what it skips, and how the turn ends (next to more enemies, provoking a Reactive Strike, saving a Stride next turn).
+- **Recharge countdown in Browse and the Clock.** A recharging Breath Weapon stays listed in Browse with the rounds left, and the Clock counts it down to the round it's back.
+
+### Changed
+
+- The plan selector's tooltip is just the click hint; plans that only group the same actions differently ("Stride -> Longsword" vs "Stride, Longsword") are no longer compared as alternatives.
+
+### Fixed
+
+- Recharge abilities are now tracked however they're used (Combater, the sheet or a macro), including before the encounter is started.
+
 ## [2.0.8]
 
 ### Added

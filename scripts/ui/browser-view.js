@@ -41,6 +41,10 @@ function browserRow(action, { sharedTarget, expanded }) {
     oddsTooltipHtml: preflight?.tooltipHtml ?? "",
     rowTarget: target && target !== sharedTarget ? t("Browser.RowTarget", "vs {name}", { name: target }) : "",
     rowWarning: budgetOnly ? "" : action?.disabledReason ?? "",
+    recharge: Number(action?.rechargeRoundsLeft) > 0 ? {
+      rounds: Number(action.rechargeRoundsLeft),
+      tooltip: t("Browser.RechargeTooltip", "Usable again on round {round}.", { round: action.rechargeReadyRound }),
+    } : null,
     extraChips,
     hasExtraChips: extraChips.length > 0,
     expanded: expanded?.has?.(action?.key) === true,

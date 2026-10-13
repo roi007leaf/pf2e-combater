@@ -154,26 +154,60 @@ function stepLabel(steps) {
   return steps.map((step) => step?.name ?? "?").join(", ");
 }
 
-// "Why this plan": the strongest genuinely different alternative and what was swapped for it --
-// the steps only this plan has against the steps only the alternative has.
+// "Why this plan": the best plan that does something different this turn (not the same actions
+// grouped differently, e.g. "Stride -> Longsword" vs "Stride, Longsword"), and what differs.
+function planAtoms(plan) {
+  const atoms = [];
+  for (const step of plan?.steps ?? []) {
+    const target = step?.suggestedTarget?.name ?? step?.preferredTarget?.name ?? "";
+    for (const part of String(step?.name ?? "?").split(/\s*->\s*/)) {
+      const label = part.trim() || "?";
+      // Movement squares differ plan to plan; a Stride is a Stride.
+      atoms.push(/^(?:stride|step)$/i.test(label) ? label : `${label}\t${target}`);
+    }
+  }
+  return atoms;
+}
+
+function counts(values) {
+  const map = new Map();
+  for (const value of values) map.set(value, (map.get(value) ?? 0) + 1);
+  return map;
+}
+
+function difference(left, right) {
+  const out = new Map();
+  for (const [key, count] of left) {
+    const extra = count - (right.get(key) ?? 0);
+    if (extra > 0) out.set(key, extra);
+  }
+  return out;
+}
+
+function atomLabels(map) {
+  return [...map].map(([key, count]) => {
+    const [label, target] = key.split("\t");
+    const named = target ? `${label} → ${target}` : label;
+    return count > 1 ? `${named} ×${count}` : named;
+  });
+}
+
 export function planComparison(selected, plans) {
   if (!selected?.steps?.length || !Array.isArray(plans)) return null;
-  const mine = new Set(selected.steps.map(stepKey));
-  const alternative = plans
-    .filter((plan) => plan && plan !== selected && plan.id !== selected.id && plan.steps?.length)
-    .find((plan) => {
-      const theirs = new Set(plan.steps.map(stepKey));
-      return [...mine].some((key) => !theirs.has(key)) && [...theirs].some((key) => !mine.has(key));
-    });
-  if (!alternative) return null;
-  const theirs = new Set(alternative.steps.map(stepKey));
-  const kept = selected.steps.filter((step) => !theirs.has(stepKey(step)));
-  const dropped = alternative.steps.filter((step) => !mine.has(stepKey(step)));
-  const margin = Math.round((Number(selected.score) || 0) - (Number(alternative.score) || 0));
+  const mine = counts(planAtoms(selected));
+  const index = plans.findIndex((plan) => {
+    if (!plan || plan === selected || plan.id === selected.id || !plan.steps?.length) return false;
+    const theirs = counts(planAtoms(plan));
+    return difference(mine, theirs).size > 0 || difference(theirs, mine).size > 0;
+  });
+  if (index < 0) return null;
+  const alternative = plans[index];
+  const theirs = counts(planAtoms(alternative));
   return {
-    alternative: alternative.summary ?? stepLabel(alternative.steps),
-    margin,
-    chosen: stepLabel(kept),
-    instead: stepLabel(dropped),
+    alternative: alternative.summary ?? (alternative.steps ?? []).map((step) => step?.name ?? "?").join(", "),
+    position: index + 1,
+    margin: Math.round((Number(selected.score) || 0) - (Number(alternative.score) || 0)),
+    chosen: atomLabels(difference(mine, theirs)),
+    instead: atomLabels(difference(theirs, mine)),
   };
 }

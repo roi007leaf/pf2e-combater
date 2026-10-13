@@ -13,7 +13,11 @@
             <span class="combater-browser-name">{{name}}</span>
             <span class="combater-browser-why">{{#if userExcluded}}<span class="is-warning"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> {{localize "PF2E_COMBATER.Browser.HiddenForPlayers"}}</span> · {{/if}}{{#if rowTarget}}<span class="is-target">{{rowTarget}}</span> · {{/if}}{{#if rowWarning}}<span class="is-warning">{{rowWarning}}</span>{{else}}{{reason}}{{/if}}</span>
           </button>
+          {{#if recharge}}
+          <span class="combater-browser-recharge" data-tooltip="{{recharge.tooltip}}"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>{{recharge.rounds}}</span>
+          {{else}}
           <span class="combater-browser-odds"{{#if oddsTooltipHtml}} data-tooltip-html="{{oddsTooltipHtml}}"{{else}}{{#if oddsTooltip}} data-tooltip="{{oddsTooltip}}"{{/if}}{{/if}}>{{odds}}</span>
+          {{/if}}
           {{#unless readonly}}
             {{#unless blockedByExclusion}}
             <button type="button" class="combater-run combater-add-action {{#if overBudget}}is-over{{/if}}" data-add-action="{{key}}" data-tooltip="{{addTooltip}}" aria-label="{{localize "PF2E_COMBATER.Browser.AddToPlanAria" name=name}}" {{#if overBudget}}disabled{{/if}}>

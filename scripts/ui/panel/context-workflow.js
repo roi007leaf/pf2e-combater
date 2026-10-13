@@ -123,6 +123,45 @@ export function panelIntelLedgerView(context) {
   return intelLedgerView(context);
 }
 
+// "Why this plan" card: the plan it beat, what differs, and how the turn ends.
+function planWhyView(plan, cycle, position) {
+  if (!plan?.steps?.length) return { visible: false };
+  const comparison = planComparison(plan, cycle);
+  const outcomes = [];
+  const danger = plan.danger ?? {};
+  if (danger.delta > 0) {
+    outcomes.push({ tone: "risk", icon: "fa-triangle-exclamation", text: danger.delta === 1
+      ? t("Panel.WhyEndsNearOne", "Ends next to 1 more enemy")
+      : t("Panel.WhyEndsNearMany", "Ends next to {count} more enemies", { count: danger.delta }) });
+  } else if (danger.delta < 0) {
+    outcomes.push({ tone: "good", icon: "fa-shield-halved", text: t("Panel.WhyEndsAway", "Ends out of reach of {count}", { count: -danger.delta }) });
+  }
+  if (danger.provoked > 0) {
+    outcomes.push({ tone: "risk", icon: "fa-person-running", text: danger.provoked === 1
+      ? t("Panel.WhyProvokesOne", "Provokes 1 Reactive Strike")
+      : t("Panel.WhyProvokesMany", "Provokes {count} Reactive Strikes", { count: danger.provoked }) });
+  }
+  const saved = Number(plan.readiness?.saved) || 0;
+  if (saved > 0) {
+    outcomes.push({ tone: "good", icon: "fa-forward", text: saved === 1
+      ? t("Panel.WhyReadyOne", "Saves a Stride next turn")
+      : t("Panel.WhyReadyMany", "Saves {count} Strides next turn", { count: saved }) });
+  } else if (saved < 0) {
+    outcomes.push({ tone: "neutral", icon: "fa-backward", text: t("Panel.WhyReadyWorse", "Needs {count} more Stride next turn", { count: -saved }) });
+  }
+  if (!comparison && !outcomes.length) return { visible: false };
+  return {
+    visible: true,
+    label: t("Panel.WhyLabel", "Why this plan?"),
+    title: t("Panel.WhyTitle", "Why plan {position}", { position }),
+    versus: comparison ? t("Panel.WhyVersus", "Beats plan {position}", { position: comparison.position }) : "",
+    margin: comparison ? (comparison.margin >= 0 ? `+${comparison.margin}` : String(comparison.margin)) : "",
+    gains: comparison?.chosen ?? [],
+    drops: comparison?.instead ?? [],
+    outcomes,
+  };
+}
+
 export function viewPanelContext(panel, context) {
   const showDebug = Boolean(game?.user?.isGM && settingOrDefault(SETTINGS.showDebugTab, false));
   const showAutoFill = game?.user?.isGM === true || !settingOrDefault(SETTINGS.hideAutoFillFromPlayers, false);
@@ -134,21 +173,7 @@ export function viewPanelContext(panel, context) {
   const autoFillCycle = autoFillCyclePlans(activePlans);
   const autoFillCycleIndex = autoFillCycle.findIndex((plan) => plan?.id === selectedAutoFill?.id);
   const autoFillCyclePosition = autoFillCycleIndex >= 0 ? autoFillCycleIndex + 1 : 1;
-  const comparison = planComparison(selectedAutoFill, autoFillCycle);
-  const comparisonText = comparison
-    ? t("Panel.PlanChosenOver", "Chosen over {alternative} ({margin}): {chosen} instead of {instead}.", {
-      alternative: comparison.alternative,
-      margin: comparison.margin >= 0 ? `+${comparison.margin}` : String(comparison.margin),
-      chosen: comparison.chosen,
-      instead: comparison.instead,
-    })
-    : "";
-  const danger = selectedAutoFill?.danger;
-  const dangerText = danger?.delta > 0
-    ? t("Panel.PlanEndsNearEnemies", "Ends within reach of {count} more enemies.", { count: danger.delta })
-    : danger?.delta < 0
-      ? t("Panel.PlanEndsAwayFromEnemies", "Ends out of reach of {count} enemies.", { count: -danger.delta })
-      : "";
+  const planWhy = planWhyView(selectedAutoFill, autoFillCycle, autoFillCyclePosition);
   const draftSteps = panel._builder?.draft?.steps ?? [];
   const planPreference = deterministicPlanPreferenceAdjustment(context, panel._builder?.draft);
   const resourceHorizon = resourceHorizonView(panel.resourceHorizon);
@@ -253,12 +278,8 @@ export function viewPanelContext(panel, context) {
       ofLabel: t("Panel.AltPlanOf", "of {total}", { total: Math.max(1, autoFillCycle.length) }),
       previousLabel: t("Panel.AltPlanPrevious", "Previous plan"),
       nextLabel: t("Panel.AltPlanNext", "Next plan"),
-      tooltip: [
-        comparisonText,
-        dangerText,
-        t("Panel.AutoFillCycleTooltip", "Left-click next plan; right-click previous. Current: {current}/{total}.", { current: autoFillCyclePosition, total: Math.max(1, autoFillCycle.length) }),
-      ].filter(Boolean).join(" "),
-      comparison: comparisonText,
+      tooltip: t("Panel.AutoFillCycleHint", "Click for the next plan, right-click for the previous one."),
+      why: planWhy,
       ariaLabel: t("Panel.AutoFillCycleAria", "Cycle Auto-fill plan"),
     },
     hasContext: Boolean(context),

@@ -4146,6 +4146,41 @@
 .pf2e-combater .combater-utilities-menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 30px; margin: 0; padding: 6px 9px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 12px; text-align: left; }
 .pf2e-combater .combater-utilities-menu button:hover,
 .pf2e-combater .combater-utilities-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+.pf2e-combater .combater-browser-recharge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #6a5a30; border-radius: 10px; background: #2c271c; color: #e6c77e; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pf2e-combater .combater-browser-recharge i { font-size: 10px; }
+/* "Why this plan" card, opened from the scale button next to the plan selector. */
+.pf2e-combater .combater-plan-why-toggle { flex: 0 0 auto; width: 30px; min-width: 30px; height: 30px; padding: 0; border: 1px solid #49535e; border-radius: 6px; background: #20262c; color: #b5c3d0; }
+.pf2e-combater .combater-plan-why-toggle:hover,
+.pf2e-combater .combater-plan-why-toggle[aria-expanded="true"] { border-color: #79aee8; color: #e5f1ff; }
+.pf2e-combater .combater-plan-why-toggle:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
+.pf2e-combater .combater-plan-why {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 10px 12px;
+  width: min(300px, calc(100vw - 16px));
+  border: 1px solid #4b5664;
+  border-radius: 8px;
+  background: #1c2229;
+  color: #e5ecf4;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+}
+.pf2e-combater .combater-plan-why header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.pf2e-combater .combater-plan-why header strong { font-size: 13px; color: #fff; }
+.pf2e-combater .combater-plan-why-versus { color: #9aa6b4; white-space: nowrap; }
+.pf2e-combater .combater-plan-why-versus b { margin-left: 2px; padding: 1px 6px; border-radius: 9px; background: #23402f; color: #8fe0ab; font-weight: 600; }
+.pf2e-combater .combater-plan-why-diff { display: grid; gap: 3px; margin: 0 0 8px; padding: 0; list-style: none; }
+.pf2e-combater .combater-plan-why-diff li { display: flex; align-items: center; gap: 7px; padding: 4px 7px; border-radius: 5px; background: #242b33; line-height: 1.3; }
+.pf2e-combater .combater-plan-why-diff li i { flex: 0 0 auto; width: 12px; font-size: 10px; text-align: center; }
+.pf2e-combater .combater-plan-why-diff li.is-gain i { color: #66c78f; }
+.pf2e-combater .combater-plan-why-diff li.is-drop { color: #9aa6b4; }
+.pf2e-combater .combater-plan-why-diff li.is-drop span { text-decoration: line-through; text-decoration-color: #6b7480; }
+.pf2e-combater .combater-plan-why-diff li.is-drop i { color: #e06f67; }
+.pf2e-combater .combater-plan-why-outcomes { display: flex; flex-wrap: wrap; gap: 5px; }
+.pf2e-combater .combater-plan-why-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid #3d4652; border-radius: 12px; background: #20262e; color: #c9d3de; }
+.pf2e-combater .combater-plan-why-chip.is-good { border-color: #2f5a41; color: #8fe0ab; }
+.pf2e-combater .combater-plan-why-chip.is-risk { border-color: #6a4730; color: #f1b27e; }
 .pf2e-combater .combater-turn-status { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
 .pf2e-combater .combater-turn-status .combater-action-tracker { flex: 1 1 240px; min-width: 0; }
 .pf2e-combater .combater-turn-status .combater-header-clock { flex: 0 0 auto; margin-left: auto; height: 28px; min-height: 28px; padding: 4px 7px; border-radius: 5px; border-color: #49535e; background: #20262c; color: #b5c3d0; }

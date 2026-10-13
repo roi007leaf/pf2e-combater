@@ -26,23 +26,44 @@ function rechargeEntry(actor, item) {
   return actor?.flags?.[MODULE_ID]?.[NPC_RECHARGE_FLAG]?.[id] ?? null;
 }
 
-export function rechargeAvailability(actor, item, combat = globalThis.game?.combat) {
-  if (!isNpc(actor) || !rechargeFormula(item)) return { available: true, reason: "" };
+// { readyRound, roundsLeft } while the ability is recharging in this combat, else null.
+export function rechargeStatus(actor, item, combat = globalThis.game?.combat) {
+  if (!isNpc(actor) || !rechargeFormula(item)) return null;
   const entry = rechargeEntry(actor, item);
-  if (!entry || !combat || entry.combatId !== combat.id) return { available: true, reason: "" };
-  const round = Number(combat.round) || 0;
-  if (round >= Number(entry.readyRound)) return { available: true, reason: "" };
-  return {
-    available: false,
-    reason: t("Avail.Recharging", "Recharging: usable again on round {round}.", { round: entry.readyRound }),
-  };
+  if (!entry || !combat || entry.combatId !== combat.id) return null;
+  const roundsLeft = Number(entry.readyRound) - (Number(combat.round) || 0);
+  return roundsLeft > 0 ? { readyRound: Number(entry.readyRound), roundsLeft } : null;
 }
 
-// After an NPC uses a recharge ability in combat: roll the delay (privately, like the GM's own
-// [[/gmr 1d4]]) and remember when it's back.
+export function rechargeLabel(status) {
+  if (!status) return "";
+  return status.roundsLeft === 1
+    ? t("Recharge.OneRoundLeft", "Recharging: 1 round left")
+    : t("Recharge.RoundsLeft", "Recharging: {count} rounds left", { count: status.roundsLeft });
+}
+
+export function rechargeAvailability(actor, item, combat = globalThis.game?.combat) {
+  const status = rechargeStatus(actor, item, combat);
+  if (!status) return { available: true, reason: "" };
+  return { available: false, reason: rechargeLabel(status), recharge: status };
+}
+
+// Every ability this actor has recharging in the current combat, for the effect clock.
+export function rechargeEntries(actor, combat = globalThis.game?.combat) {
+  const stored = actor?.flags?.[MODULE_ID]?.[NPC_RECHARGE_FLAG] ?? {};
+  return Object.keys(stored).flatMap((id) => {
+    const item = actor?.items?.get?.(id);
+    const status = item ? rechargeStatus(actor, item, combat) : null;
+    return status ? [{ item, ...status }] : [];
+  });
+}
+
+// After an NPC uses a recharge ability: roll the delay (privately, like the GM's own
+// [[/gmr 1d4]]) and remember when it's back. Counted from the combat's current round, so an
+// encounter that hasn't started yet (round 0) still blocks it until round N.
 export async function recordRechargeUse(actor, item, combat = globalThis.game?.combat) {
   const formula = rechargeFormula(item);
-  if (!isNpc(actor) || !formula || !combat?.started || typeof actor?.setFlag !== "function") return null;
+  if (!isNpc(actor) || !formula || !combat || typeof actor?.setFlag !== "function") return null;
   const RollClass = globalThis.Roll;
   if (typeof RollClass !== "function") return null;
   const roll = await new RollClass(formula).evaluate();
@@ -60,4 +81,16 @@ export async function recordRechargeUse(actor, item, combat = globalThis.game?.c
     // The flag is what matters; the note is a courtesy.
   }
   return { readyRound, rounds };
+}
+
+// Track it however the ability was used (Combater, the sheet, a macro): PF2e posts the ability's
+// own card (not a roll) with the item attached. Only the client that posted it records.
+export function registerRechargeTracking() {
+  globalThis.Hooks?.on?.("createChatMessage", (message, _options, userId) => {
+    if (userId !== globalThis.game?.user?.id || message?.isRoll) return;
+    const item = message?.item;
+    const actor = message?.actor ?? item?.actor;
+    if (!item || !isNpc(actor) || !rechargeFormula(item)) return;
+    recordRechargeUse(actor, item).catch((error) => console.warn(`${MODULE_ID} | Recharge tracking failed`, error));
+  });
 }
