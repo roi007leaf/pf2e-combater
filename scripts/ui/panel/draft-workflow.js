@@ -1252,7 +1252,10 @@ function rebuildPanelAutoFillContext(panel, draft = null, targetKey = "") {
   panel._fillGapPlanCacheKey = null;
   panel._autoFillTargetKey = targetKey;
   const candidateBuild = buildCandidates(focusedContext);
-  const plans = buildTurnPlans(focusedContext, candidateBuild.candidates, { includeCoverage: false });
+  const plans = buildTurnPlans(focusedContext, candidateBuild.candidates, {
+    includeCoverage: false,
+    approachCandidates: candidateBuild.approachable ?? [],
+  });
   panel._autoFillPlans = plans;
   return { context: focusedContext, candidateBuild, plans };
 }

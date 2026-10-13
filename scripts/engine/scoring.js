@@ -100,9 +100,11 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   const ownSkillReliability = ownSkillReliabilityScore(profile, action, context);
   const spellAdjustment = spellTacticalAdjustment(action, role, context);
   const resourceAdjustment = resourceHorizonAdjustment(context, action);
-  const preflightAllowed = context?.isGM === true
+  // Planner re-scoring compares a candidate against itself on a projected board; native odds can't
+  // see projected conditions, so both sides of that comparison use the heuristic hit chance.
+  const preflightAllowed = context?.skipNativePreflight !== true && (context?.isGM === true
     || (typeof context?.isGM !== "boolean" && globalThis.game?.user?.isGM === true)
-    || settingOrDefault(SETTINGS.nativeRollContextPreflight, false);
+    || settingOrDefault(SETTINGS.nativeRollContextPreflight, false));
   const rawNativePreflight = preflightAllowed
     ? nativeRollContextPreflight(context, action, { target })
     : { available: false, status: "disabled", scoreApplied: false };
@@ -172,6 +174,9 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     }
   }
 
+  // Class, personality, spell and resource terms value the action for this actor, not the hit;
+  // the hidden-target flat check must not discount them.
+  let actorAdjustment = 0;
   const classAdjustment = classTacticAdjustment(profile, action, {
     context,
     target,
@@ -189,28 +194,33 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   });
   if (classAdjustment.scoreDelta) {
     score += classAdjustment.scoreDelta;
+    actorAdjustment += classAdjustment.scoreDelta;
     reasons.push(...classAdjustment.reasons);
   }
 
   const npcAdjustment = npcTacticAdjustment(context, action, { target, role, areaHitCount });
   if (npcAdjustment.scoreDelta) {
     score += npcAdjustment.scoreDelta;
+    actorAdjustment += npcAdjustment.scoreDelta;
     reasons.push(...npcAdjustment.reasons);
   }
 
   const tacticAdjustment = tacticPersonalityAdjustment(context, action, { target, role, areaHitCount });
   if (tacticAdjustment.scoreDelta) {
     score += tacticAdjustment.scoreDelta;
+    actorAdjustment += tacticAdjustment.scoreDelta;
     reasons.push(...tacticAdjustment.reasons);
   }
 
   if (spellAdjustment.scoreDelta) {
     score += spellAdjustment.scoreDelta;
+    actorAdjustment += spellAdjustment.scoreDelta;
     reasons.push(...spellAdjustment.reasons);
   }
 
   if (resourceAdjustment.scoreDelta) {
     score += resourceAdjustment.scoreDelta;
+    actorAdjustment += resourceAdjustment.scoreDelta;
     reasons.push(...resourceAdjustment.reasons);
   }
 
@@ -231,7 +241,10 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(t("ScoreReason.CommitsActions", "Commits {count} actions to one effect.", { count: action.actionCost }));
   }
 
-  if (skillCheck) {
+  // The native preflight and skillCheckScore both price the same degree-of-success odds against the
+  // same DC; count them once (the native one is more exact), so a GM-run plan and a player-run plan
+  // for the same PC weigh skill actions alike.
+  if (skillCheck && !nativeOutcome.scoreDelta) {
     score += skillCheck.scoreDelta;
     reasons.push(...skillCheck.reasons);
   }
@@ -242,7 +255,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   }
 
   if (target && isAttackLikeAction(action, role) && detectionState(target) === "hidden") {
-    const targetDependentGain = Math.max(0, score - baseScore(action));
+    const targetDependentGain = Math.max(0, score - actorAdjustment - baseScore(action));
     score -= targetDependentGain * HIDDEN_TARGET_FLAT_CHECK_DISCOUNT;
     reasons.push(t("ScoreReason.HiddenTargetFlatCheck", "{target} is hidden; a flat check is needed before this can affect them.", { target: target.name }));
   }

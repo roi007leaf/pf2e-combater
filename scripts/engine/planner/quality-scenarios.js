@@ -77,6 +77,54 @@ const diversityCandidates = [
   candidate("battle-ward", 28, { name: "Battle Ward", role: "buff", actionCost: 3, confidence: "medium" }),
 ];
 
+// Ed's turn: rapier held but the enemy 25 ft away, dueling pistol in range, skill fillers on offer.
+const edEnemy = { id: "quality-unknown", name: "Unknown", distance: 25, conditions: { slugs: [], values: {} } };
+const edContext = {
+  ...setupContext,
+  actor: { ...setupContext.actor, id: "quality-ed", name: "Ed" },
+  targets: [edEnemy],
+  battlefield: { targets: [edEnemy], enemies: [edEnemy], allies: [] },
+};
+const atEd = { suggestedTarget: { type: "enemy", id: edEnemy.id, name: edEnemy.name } };
+const plainStride = candidate("stride", 50, { name: "Stride", source: "generic", role: "mobility", ...atEd });
+const plainStep = candidate("step", 42, { name: "Step", source: "generic", role: "mobility", ...atEd });
+const diversion = candidate("create-a-diversion", 54, { name: "Create a Diversion", source: "generic", role: "setup", ...atEd });
+const recall = candidate("recall-knowledge", 58, { name: "Recall Knowledge", source: "generic", role: "setup", ...atEd });
+const pistol = candidate("strike-dueling-pistol", 54, {
+  name: "Dueling Pistol", slug: "strike", source: "strike", role: "damage", confidence: "medium",
+  range: { increment: 60, max: 360 }, traits: ["concussive", "fatal-d10"], ...atEd,
+});
+// (The out-of-reach Rapier itself is filtered out before planning, as in live Auto-fill.)
+const strideRapier = candidate("stride-strike-rapier", 150, {
+  name: "Stride -> Rapier", slug: "stride-strike-rapier", source: "system-inferred", role: "mobility-attack",
+  actionCost: 2, confidence: "medium", range: { max: 5 }, ...atEd,
+  activityProfile: { includes: ["stride", "strike"], includesStrike: true, strideCount: 1, strikeReach: 5 },
+  targetingProfile: { enemy: true, reachAfterMove: true, preferredTargetId: edEnemy.id },
+});
+const stepRapier = candidate("step-strike-rapier", 140, {
+  name: "Step -> Rapier", slug: "step-strike-rapier", source: "system-inferred", role: "mobility-attack",
+  actionCost: 2, confidence: "medium", range: { max: 5 }, ...atEd,
+  activityProfile: { includes: ["step", "strike"], includesStrike: true, strideCount: 1, strikeReach: 5, fixedDistance: 5 },
+  targetingProfile: { enemy: true, reachAfterMove: true, preferredTargetId: edEnemy.id },
+});
+const hastedContext = {
+  ...edContext,
+  profile: { conditions: { slugs: ["quickened"], values: { quickened: 1 } } },
+  actor: { ...edContext.actor, profile: { conditions: { slugs: ["quickened"], values: { quickened: 1 } } } },
+};
+const orphanSequence = ["stride", "create-a-diversion", "recall-knowledge"];
+// No move-and-strike composite (e.g. the attack square couldn't be resolved): the Rapier is only
+// reachable after a plain Stride, so it arrives as an approach candidate the planner must sequence.
+const approachRapier = candidate("strike-rapier", -999, {
+  name: "Rapier", slug: "strike", source: "strike", role: "damage", confidence: "medium",
+  range: { max: 5 }, averageDamage: 9, needsApproach: true, item: { id: "rapier", name: "Rapier", type: "weapon" }, ...atEd,
+});
+const speedContext = {
+  ...edContext,
+  profile: { speed: 25, conditions: { slugs: [], values: {} } },
+  actor: { ...edContext.actor, profile: { speed: 25, conditions: { slugs: [], values: {} } } },
+};
+
 export const plannerQualityScenarios = Object.freeze([
   {
     id: "balanced-martial",
@@ -138,6 +186,7 @@ export const plannerQualityScenarios = Object.freeze([
     id: "wide-pool-coverage",
     name: "Tail candidate coverage",
     context: fighterContext,
+    includeCoverage: true,
     candidates: widePool,
     expect: {
       anyPlans: [{ includes: ["wide-15"], totalCost: 3 }],
@@ -160,6 +209,70 @@ export const plannerQualityScenarios = Object.freeze([
       minPlanCount: 3,
       minTopAlternativeDiversity: 0.5,
       maxStatesExpanded: 25,
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "melee-with-ranged-backup",
+    name: "Melee approach beats pistol and skill filler",
+    context: edContext,
+    candidates: [plainStride, diversion, recall, pistol, strideRapier],
+    expect: {
+      rankedPlans: [{ rank: 1, includes: ["stride-strike-rapier"], totalCost: 3 }],
+      forbiddenInTop: [{ n: 3, sequence: orphanSequence }],
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "ranged-backup-no-orphans",
+    name: "No orphan setups when only the pistol reaches",
+    context: edContext,
+    candidates: [plainStride, diversion, recall, pistol],
+    expect: {
+      rankedPlans: [{ rank: 1, includes: ["strike-dueling-pistol"] }],
+      forbiddenInTop: [{ n: 3, sequence: orphanSequence }],
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "step-into-reach",
+    name: "Step into reach, then a follow-up Strike",
+    context: { ...edContext, targets: [{ ...edEnemy, distance: 10 }], battlefield: { targets: [{ ...edEnemy, distance: 10 }], enemies: [{ ...edEnemy, distance: 10 }], allies: [] } },
+    candidates: [plainStep, diversion, recall, stepRapier],
+    expect: {
+      rankedPlans: [{ rank: 1, sequence: ["step-strike-rapier", "strike-rapier"], totalCost: 3 }],
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "hasted-approach",
+    name: "Haste's extra action pays for the approach Stride",
+    context: hastedContext,
+    candidates: [plainStride, diversion, recall, strideRapier],
+    expect: {
+      rankedPlans: [{ rank: 1, includes: ["stride-strike-rapier"], totalCost: 4 }],
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "plain-stride-then-strike",
+    name: "A plain Stride brings an out-of-reach Strike into play",
+    context: speedContext,
+    candidates: [plainStride, diversion, recall],
+    approachCandidates: [approachRapier],
+    expect: {
+      rankedPlans: [{ rank: 1, sequence: ["stride", "strike-rapier"], totalCost: 3 }],
+      forbiddenInTop: [{ n: 1, sequence: orphanSequence }],
+      searchLimitHit: false,
+    },
+  },
+  {
+    id: "out-of-reach-melee-only",
+    name: "Out of reach with melee only: approach, no orphan Diversion",
+    context: { ...edContext, targets: [{ ...edEnemy, distance: 70 }], battlefield: { targets: [{ ...edEnemy, distance: 70 }], enemies: [{ ...edEnemy, distance: 70 }], allies: [] } },
+    candidates: [plainStride, diversion, recall],
+    expect: {
+      rankedPlans: [{ rank: 1, includes: ["stride"], excludes: ["create-a-diversion"] }],
       searchLimitHit: false,
     },
   },

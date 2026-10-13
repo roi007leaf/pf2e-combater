@@ -378,6 +378,17 @@ function attackTargetableConditions(conditions) {
     && !hasCondition(conditions, "unnoticed");
 }
 
+// How far the creature threatens (reach weapons, Large+ size). Retreat, kite and flank logic read it;
+// without it every creature was treated as having 5 ft reach.
+function actorMeleeReach(actor) {
+  try {
+    const reach = Number(actor?.getReach?.({ action: "attack" }));
+    return Number.isFinite(reach) && reach > 0 ? reach : null;
+  } catch {
+    return null;
+  }
+}
+
 function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = null } = {}) {
   const actor = tokenActor(token);
   const intelLedger = readIntelLedger(actor);
@@ -399,6 +410,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     }),
     token: tokenSummary(token, { combatant }),
     distance: measureDistance(originToken, token),
+    meleeReach: actorMeleeReach(actor),
     intelLedger,
     intelRevealMode,
     intelFalseInformation,

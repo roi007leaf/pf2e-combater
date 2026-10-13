@@ -116,9 +116,9 @@ function skirmishKitePlan(context, profile, readyStrikes, spells, budget) {
     const rangedPrimary = finisher.average > 0 && finisher.average >= bestMelee;
     if (!fragile && !rangedPrimary) continue;
 
-    const meleeStrike = readyStrikes.find((strike) =>
-      !isRangedStrike(strike) && currentDistance <= strikeMeleeReach(strike),
-    ) ?? null;
+    const meleeStrike = readyStrikes
+      .filter((strike) => !isRangedStrike(strike) && currentDistance <= strikeMeleeReach(strike))
+      .reduce((best, strike) => (!best || candidateAverageDamage(strike) > candidateAverageDamage(best) ? strike : best), null);
     const includeMelee = Boolean(meleeStrike) && (1 + 1 + finisher.actionCost) <= budget;
     if (!includeMelee && (1 + finisher.actionCost) > budget) continue;
 

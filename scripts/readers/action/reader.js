@@ -239,8 +239,19 @@ function readStrikeAverageDamage(strike) {
   return readStrikeDamageProfile(strike)?.average ?? null;
 }
 
+// PF2e lists a thrown dagger's thrown Strike (and a javelin's melee one) under altUsages; each is
+// a separate Strike with its own range, modifiers and roll, so it becomes its own option.
+function withAltUsages(strikes) {
+  return strikes.flatMap((strike) => [
+    strike,
+    ...(Array.isArray(strike?.altUsages) ? strike.altUsages : [])
+      .filter((alt) => alt?.type === "strike")
+      .map((alt) => Object.assign(Object.create(alt), { combaterAltUsage: alt.item?.isRanged ? "thrown" : "melee" })),
+  ]);
+}
+
 export function actorStrikeOptions(actor, context = null, { includeUnready = false } = {}) {
-  const strikes = pf2eRuntime.readActor(actor).actions;
+  const strikes = withAltUsages(pf2eRuntime.readActor(actor).actions);
   return strikes
     .filter((strike, index) => {
       const slug = slugify(strike?.slug ?? strike?.item?.slug ?? strike?.label ?? strike?.name ?? `strike-${index}`);
@@ -261,10 +272,16 @@ export function actorStrikeOptions(actor, context = null, { includeUnready = fal
         range,
         traits,
       };
+      const isRanged = readStrikeIsRanged(strike, range, traits);
       const strikeAvailability = generatedStrikeAvailability(context, action);
+      const altUsage = strike.combaterAltUsage ?? null;
+      const baseName = strike.label ?? strike.name ?? strike.item?.name ?? "Strike";
       return {
-        id: `strike-${slug || index}`,
-        name: strike.label ?? strike.name ?? strike.item?.name ?? "Strike",
+        id: `strike-${slug || index}${altUsage ? `-${altUsage}` : ""}`,
+        name: altUsage === "thrown"
+          ? t("Action.ThrownStrike", "{name} (Thrown)", { name: baseName })
+          : altUsage === "melee" ? t("Action.MeleeStrike", "{name} (Melee)", { name: baseName }) : baseName,
+        altUsage,
         slug: "strike",
         actionCost: 1,
         source: "strike",
@@ -272,6 +289,7 @@ export function actorStrikeOptions(actor, context = null, { includeUnready = fal
         executable: "strike",
         attackTrait: true,
         traits,
+        isRanged,
         weaponTraits: strike.weaponTraits ?? [],
         attackEffects,
         ...(attackEffects.some((effect) => /\bdoom(?:ing|ed)?\b/i.test(String(effect)))
@@ -429,13 +447,26 @@ function nativeStrikeReach(actor, strike) {
   return null;
 }
 
+// A Strike is ranged because of the weapon (a range increment, the ranged trait, PF2e's own
+// isRanged), never because its reach is long: a Huge creature's reach-15 Jaws is still melee.
+function readStrikeIsRanged(strike, range, traits) {
+  const native = strike?.item?.isRanged ?? strike?.isRanged;
+  if (typeof native === "boolean") return native;
+  if (traits.includes("ranged")) return true;
+  const systemRange = strike?.item?.system?.range;
+  const hasSystemRange = [systemRange?.increment, systemRange?.max, systemRange]
+    .some((value) => Number(systemValue(value)) > 0);
+  return hasSystemRange || Number(range?.increment) > 0;
+}
+
 function readStrikeRange(strike, traits, actor) {
   const item = strike.item;
   const systemRange = item?.system?.range;
   const increment = Number(systemValue(systemRange?.increment ?? systemRange));
   const max = Number(systemValue(systemRange?.max));
   if (Number.isFinite(max) && max > 0) return { max };
-  if (Number.isFinite(increment) && increment > 0) return { increment, max: increment };
+  // Ranged weapons can fire out to six range increments (at -2 per increment past the first).
+  if (Number.isFinite(increment) && increment > 0) return { increment, max: increment * 6 };
 
   const traitReach = traits
     .map((trait) => trait.match(/^reach-(\d+)$/)?.[1])

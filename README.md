@@ -115,9 +115,12 @@ creature. PF2e's turn effects run once. Player turn controls need socketlib and 
 ### Ready
 
 **Ready** (2 actions) prepares a single action and ends the turn. Pick it from cards with its art:
-your Strikes (each showing its bonus), Stride, Step, Raise a Shield, Interact, or another action you
-type. A readied Strike keeps the multiple attack penalty you had, shown as three cards with your real
-bonus at each step. Declare the trigger at the table. Fleeing and Confused prevent Ready.
+your Strikes (each showing its bonus), Stride, Step, Raise a Shield, Interact, a **skill action**
+(Trip, Grapple, Shove, Demoralize, Create a Diversion, Recall Knowledge, Seek, Hide, Take Cover and
+more, with a search box), or another action you type. Disarm and Feint appear once you're trained. A
+readied Strike keeps the multiple attack penalty you had, shown as three cards with your real bonus at
+each step, and a readied skill action rolls the real PF2e check when you use it. Declare the trigger at
+the table. Fleeing and Confused prevent Ready.
 
 - The token shows an **amber ring and bullseye** until the creature's next turn, and the panel shows
   **Readied · <action>** with **Use** and **Discard**.
@@ -328,9 +331,24 @@ generic action), then gets adjusted for the actual situation:
 - Explores legal combinations of the highest-scoring actions and throws out the nonsensical ones:
   two moves in a row, Drop Prone → Stride, a Step you don't need because the attack already reaches,
   more than two Strikes, or using a Quickened action on something other than Strike/Stride.
-- Accounts for the **multiple attack penalty** as attacks stack up, and prefers plans that **use your
-  whole turn** rather than leaving actions on the table.
+- **Simulates the turn step by step.** After each step it re-scores what comes next against the board
+  that step leaves: a Stride brings the target into reach, a Trip leaves it prone (off-guard), a
+  Demoralize leaves it frightened. A setup is worth what it adds to the attacks after it, weighted by
+  the chance the check succeeds. Actions that are only out of range right now (a Rapier 25 ft away,
+  Demoralize at 40 ft) can be planned after a move.
+- Throws out wasted setup: a Feint or Create a Diversion with no attack after it, or a Stride padded with
+  skill actions when an attack was on offer.
+- Accounts for the **multiple attack penalty** as attacks stack up, dealing it in the cheapest order
+  (the big hit first, the agile one second), and prefers plans that **use your whole turn** rather than
+  leaving actions on the table.
 - Orders the result sensibly — setup before payoff (Demoralize/Feint first, Stand before you move).
+
+### "It picked a weird turn": save it as a test
+
+GMs get a **flask** button in the plan footer. It saves the turn's Auto-fill input with your verdict
+(the right plan, or "the top plan is wrong") to `tests/recorded-turns/`. Attach the file to an
+[issue](https://github.com/roi007leaf/pf2e-combater/issues) and it becomes a permanent regression test
+for the planner.
 
 ### No metagaming: players only use revealed enemy intel
 
@@ -342,7 +360,9 @@ generic action), then gets adjusted for the actual situation:
 That splits the scoring into two honest modes:
 
 - **Player auto-fill** ranks actions on what the player legitimately knows: the action's base value,
-  whether the target is in range, the player's **own** average damage, the multiple attack penalty,
+  whether the target is in range, the player's **own** average damage and attack bonus (hit chance is
+  estimated against a typical AC for the player's own level, never the creature's real AC), the
+  multiple attack penalty,
   movement, action economy, the player's own conditions, and any exact Recall Knowledge facts the GM
   revealed for that NPC.
 - **GM auto-fill** (for the NPCs the GM runs) adds the full defense-aware math below — the GM already

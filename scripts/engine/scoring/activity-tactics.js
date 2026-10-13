@@ -14,6 +14,7 @@ import {
   profileMoveReach,
   profileReach,
   profileSpeed,
+  strikeDamageScore,
 } from "./tactic-helpers.js";
 import { t } from "../../i18n.js";
 
@@ -78,6 +79,12 @@ export function scoreActivityProfileTactics(context, action, {
     } else if (distance > reach && distance <= moveReach) {
       nextScore += 60;
       nextReasons.unshift(t("ScoreReason.MovesIntoReachAndAttacks", "Moves into reach and attacks {p0}.", { p0: target.name }));
+      // The backing weapon matters: Stride -> Greatsword should beat Stride -> Fist.
+      const average = Number(action.averageDamage);
+      if (Number.isFinite(average) && average > 0) {
+        nextScore += strikeDamageScore(average);
+        nextReasons.push(t("ScoreReason.AverageDamage", "Average damage about {amount}.", { amount: Math.round(average) }));
+      }
     } else if (distance <= reach) {
       nextScore += 18;
       nextReasons.unshift(t("ScoreReason.IsAlreadyInReachFor", "{p0} is already in reach for the attack.", { p0: target.name }));

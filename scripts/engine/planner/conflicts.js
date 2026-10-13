@@ -263,9 +263,11 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
     return true;
   }
 
+  // "Don't walk if the attack already reaches" -- except for an approach candidate, which only
+  // reaches on the projected board *because of* that move.
   if (
-    (basicMove && steps.some((step) => reachesCurrentTarget(context, step)))
-    || (reachesCurrentTarget(context, candidate) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug)))
+    (basicMove && steps.some((step) => !step.needsApproach && reachesCurrentTarget(context, step)))
+    || (!candidate.needsApproach && reachesCurrentTarget(context, candidate) && steps.some((step) => BASIC_MOVE_SLUGS.has(step.slug)))
   ) {
     return true;
   }

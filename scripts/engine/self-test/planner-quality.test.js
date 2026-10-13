@@ -5,14 +5,17 @@ import {
   runPlannerQualityLab,
 } from "../planner/quality-lab.js";
 import { plannerQualityScenarios } from "../planner/quality-scenarios.js";
+import { loadRecordedTurnScenarios } from "../../dev/recorded-turns.mjs";
 
-const report = runPlannerQualityLab(plannerQualityScenarios);
+const recordedScenarios = await loadRecordedTurnScenarios();
+const report = runPlannerQualityLab([...plannerQualityScenarios, ...recordedScenarios]);
 assert.equal(report.passed, true, report.scenarios.flatMap((scenario) => scenario.failures).join("\n"));
 assert.equal(report.summary.qualityScore, 100);
-assert.equal(report.summary.scenarioCount, plannerQualityScenarios.length);
+assert.equal(report.summary.scenarioCount, plannerQualityScenarios.length + recordedScenarios.length);
 assert.equal(report.scenarios.every((scenario) => scenario.metrics.deterministic), true);
 assert.equal(report.scenarios.find((scenario) => scenario.id === "wide-pool-coverage")?.metrics.candidateCoverage, 1);
-assert.match(formatPlannerQualityReport(report), /6\/6 scenarios passed \| 100% quality/);
+const scenarioTotal = plannerQualityScenarios.length + recordedScenarios.length;
+assert.ok(formatPlannerQualityReport(report).includes(`${scenarioTotal}/${scenarioTotal} scenarios passed | 100% quality`));
 
 const failingReport = runPlannerQualityLab([{
   id: "intentional-failure",

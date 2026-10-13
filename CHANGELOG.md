@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.0.4]
+
+### Added
+
+- **Ready skill actions.** The Ready dialog lists single skill actions you can ready (Trip, Grapple, Shove, Disarm, Reposition, Demoralize, Feint, Create a Diversion, Tumble Through, Recall Knowledge, Seek, Sense Motive, Hide, Sneak, Take Cover, Command an Animal, Steal, Palm an Object, Force Open, Escape), with a search box. Disarm and Feint need training. Using a readied skill action rolls the real PF2e check.
+- **Save a turn as a planner test (GM).** A flask button in the plan footer saves the turn's Auto-fill input and your verdict to `tests/recorded-turns/`; the planner quality lab replays every saved turn.
+- **Thrown Strikes.** A held dagger, spear or javelin also offers its thrown (or melee) usage, e.g. "Dagger (Thrown)".
+- **Finished turn.** Done steps collapse to a ✓ with their target, the footer says "Turn complete" with a progress bar and Reset, and the End turn button pulses.
+
+### Changed
+
+- **Auto-fill simulates the turn step by step.** Each step is re-scored against the board the earlier steps leave: a Stride brings the target into reach, a Trip leaves it prone, a Demoralize leaves it frightened. Out-of-range actions can be planned after a move (Stride → Strike, Stride → Demoralize).
+- **Strikes are scored by hit chance.** Damage is weighed by the chance to hit, using the target's AC when known (or a typical AC for your own level), lowered by off-guard, frightened, clumsy and sickened. Fatal adds critical value, and shots past the first range increment pay the −2 per increment.
+- **Multiple attack penalty** is dealt in the cheapest order (the big hit first, the agile one second); a third attack at −10 loses most of its value.
+- **Setup actions earn their keep.** Feint and Create a Diversion are valued by the attack they set up; Demoralize scales with the size of your party; Recall Knowledge is worth less on each repeat and blocked after a failure.
+- **Melee Striker** no longer counts Demoralize or Aid as ranged, and only demotes a ranged plan when a melee option was actually available.
+- Ranged weapons reach six range increments. Haste's extra action can pay for the Stride in a Stride → Strike.
+- Target labels use a crosshair pill, and ranges a ruler icon.
+
+### Fixed
+
+- Auto-fill didn't plan Strikes for a character holding a melee weapon and a ranged one (e.g. rapier and pistol): the in-range pistol hid the Stride → Rapier option. The same applied to drawing a sheathed melee weapon and to reach-weapon hit-and-run.
+- Auto-fill no longer plans a Stride, Create a Diversion or Feint that nothing in the turn pays off.
+- "Stride → Strike" picks the cheapest target to reach and your hardest-hitting weapon, not the first one listed; Step → Strike now gets its follow-up Strike.
+- Creatures' real reach (reach weapons, Large and bigger) is used for retreat, hit-and-run and flanking; a reach-15 Strike is no longer treated as ranged; Hunted Shot no longer walks into melee.
+- Trip, Grapple and other maneuvers check every enemy in reach, not just your current target, and use the right reach.
+- Flanking recognizes diagonal (opposite-corner) positions and ignores downed allies; drawing a weapon checks free hands.
+- The "→ →" double arrow on targets and in the step tooltip.
+
 ## [2.0.3]
 
 ### Added

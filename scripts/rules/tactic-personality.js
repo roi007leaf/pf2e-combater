@@ -736,6 +736,12 @@ function traitSet(action) {
   return new Set(traits.map((trait) => normalizeId(trait?.slug ?? trait?.name ?? trait)));
 }
 
+function offensiveOrControlRole(role, profile) {
+  return ["damage", "save-damage", "area-damage", "multiattack", "control", "debuff", "grab"].includes(role)
+    || Boolean(profile.appliesCondition)
+    || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0);
+}
+
 function actionCategories(action, explicitRole) {
   const role = actionRole(action, explicitRole);
   const traits = traitSet(action);
@@ -746,7 +752,18 @@ function actionCategories(action, explicitRole) {
   const profile = action?.activityProfile ?? {};
   const spell = source === "spell" || source === "spell-inferred" || action?.spell === true || action?.item?.type === "spell";
   const maxRange = Number(action?.range?.max ?? action?.targetingProfile?.maxRange);
-  const ranged = traits.has("ranged") || (Number.isFinite(maxRange) && maxRange > 10);
+  // "Ranged" means attacking from range: a ranged/thrown weapon, a long-range spell, or a damaging
+  // ability. A 30 ft targeting range on Demoralize or Aid is not a ranged attack, and a reach-15
+  // Jaws is still melee.
+  const strikeLike = source === "strike" || profile.includesStrike === true;
+  const weaponRanged = action?.isRanged === true
+    || traits.has("ranged")
+    || [...traits].some((trait) => trait.startsWith("thrown"))
+    || Number(action?.range?.increment) > 0;
+  const damaging = ["damage", "save-damage", "area-damage", "multiattack"].includes(role);
+  const ranged = strikeLike
+    ? (action?.isRanged === false ? false : weaponRanged || (Number.isFinite(maxRange) && maxRange > 10 && ![...traits].some((trait) => trait.startsWith("reach"))))
+    : traits.has("ranged") || ((spell ? offensiveOrControlRole(role, profile) : damaging) && Number.isFinite(maxRange) && maxRange > 10);
   const offensiveOrControl = [
     "damage",
     "save-damage",
@@ -874,7 +891,7 @@ export function tacticPersonalityAdjustment(context, action, { role = null } = {
   };
 }
 
-export function tacticPersonalityPlanAdjustment(context, steps = [], resolvedTactic = null) {
+export function tacticPersonalityPlanAdjustment(context, steps = [], resolvedTactic = null, candidates = null) {
   if (!canUseTacticPersonality(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolvedTactic ?? resolveTacticPersonality(context);
   const effectiveRole = tactic.effectiveRole ?? tactic.role;
@@ -887,7 +904,12 @@ export function tacticPersonalityPlanAdjustment(context, steps = [], resolvedTac
   }
   const preferred = weights.prefer.some((category) => categories.has(category));
   const avoided = weights.avoid.some((category) => categories.has(category));
-  const scoreDelta = preferred ? weights.bonus : avoided ? weights.penalty : 0;
+  // The off-role penalty steers toward an on-role option; when none was on offer this turn (melee out
+  // of reach for a Melee Striker), it would only push the plan toward doing nothing useful.
+  const preferredOnOffer = !Array.isArray(candidates) || candidates.some((candidate) =>
+    candidate?.available !== false
+    && weights.prefer.some((category) => actionCategories(candidate, candidate?.role).has(category)));
+  const scoreDelta = preferred ? weights.bonus : avoided && preferredOnOffer ? weights.penalty : 0;
   if (!scoreDelta) return { scoreDelta: 0, reasons: [] };
   const label = formatTacticLabel(tacticForActorType(context, tactic));
   return {

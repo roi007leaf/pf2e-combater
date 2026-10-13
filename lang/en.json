@@ -76,7 +76,9 @@
       "ReadyPickDestination": "Choose where {action} will move when the trigger happens.",
       "ReadiedMoveFailed": "The readied movement could not be completed.",
       "ReadiedMove": "Change destination",
-      "ReadyMoveInvalid": "Choose a destination on the canvas."
+      "ReadyMoveInvalid": "Choose a destination on the canvas.",
+      "ReadySkillActions": "Skill actions",
+      "ReadySkillSearch": "Search skill actions"
     },
     "ActionTracker": {
       "NextTurn": "Next turn",
@@ -484,7 +486,9 @@
       "StrideStrikeStride": "Stride -> {strike} -> Stride",
       "FlankStrike": "Stride to Flank ({strike}'s Reach)",
       "SkirmishKite": "{prefix}Stride Away -> {finisher}",
-      "ElementalBlastNamed": "Elemental Blast ({element})"
+      "ElementalBlastNamed": "Elemental Blast ({element})",
+      "ThrownStrike": "{name} (Thrown)",
+      "MeleeStrike": "{name} (Melee)"
     },
     "Reason": {
       "StandThenStride": "Stand, then Stride toward {name}.",
@@ -972,7 +976,12 @@
       "OnlyOneEnemyIsIn": "Only one enemy is in reach; focused offense is usually better.",
       "NoEnemyIsInReach": "No enemy is in reach for {p0}.",
       "AlliesInAreaOne": "{count} ally may be in the area.",
-      "AlliesInAreaMany": "{count} allies may be in the area."
+      "AlliesInAreaMany": "{count} allies may be in the area.",
+      "RecallKnowledgeBlocked": "Recall Knowledge on {target} already failed.",
+      "RecallKnowledgeRepeat": "Already recalled {count}x about {target}; less left to learn.",
+      "HitChance": "About {percent}% to hit.",
+      "FatalCritical": "Fatal adds critical damage potential (+{amount}).",
+      "RangeIncrementPenalty": "Beyond the first range increment: -{amount} to hit."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",
@@ -1233,7 +1242,13 @@
         "Opportunist": "Goes for openings",
         "Berserker": "Ignores its own safety",
         "Coward": "Flees when hurt"
-      }
+      },
+      "PlanFavors": "{label} tactic promotes matching plans.",
+      "PlanAvoids": "{label} tactic demotes off-role plans.",
+      "NpcTitle": "NPC tactic",
+      "PlayerTitle": "Player tactic",
+      "NpcHelp": "Set this NPC's tactical personality. Auto-fill and shuffle weight actions and targets from this profile.",
+      "PlayerHelp": "Set this character's combat role. Auto-fill and shuffle weight actions and targets from this profile."
     },
     "Intel": {
       "Label": "Intel",
@@ -1440,6 +1455,20 @@
       "OutcomeTitle": "Recall Knowledge Outcome",
       "OutcomeMissing": "Roll outcome could not be read automatically. Choose the result shown in chat.",
       "DubiousKnowledgeGM": "Dubious Knowledge: give one correct and one erroneous answer manually. Planner Intel stays unchanged so it cannot reveal which answer is true."
+    },
+    "RecordTurn": {
+      "TopIsRight": "Auto-fill got it right",
+      "AlternativeIsRight": "Alternative {number} is the right turn",
+      "TopIsWrong": "Auto-fill's top plan is wrong",
+      "NothingToRecord": "There is no Auto-fill plan to record yet.",
+      "Hint": "Saves this turn's Auto-fill input as a planner test. Pick what the right answer was.",
+      "Note": "What should it have done?",
+      "NotePlaceholder": "e.g. Stride and Strike with the rapier",
+      "Title": "Save turn as a planner test",
+      "Save": "Save test",
+      "Saved": "Saved {path}. Run npm run planner:quality to replay it.",
+      "Downloaded": "Downloaded {file}. Put it in tests/recorded-turns/ to replay it.",
+      "Tooltip": "Save this turn as a planner test (GM)"
     }
   }
 }

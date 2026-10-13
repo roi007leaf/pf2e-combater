@@ -41,19 +41,14 @@ import {
   isCurated,
   profileReach,
   selfReference,
+  strikeDamageScore,
 } from "./tactic-helpers.js";
 import { t } from "../../i18n.js";
 import { HARD_BLOCK_SCORE } from "./weights.js";
+import { recallKnowledgeAttemptState } from "../../rules/recall-knowledge.js";
+import { contextActorDocument } from "../actor-context.js";
 
 export { baseScore, defaultReason, includesStand } from "./tactic-helpers.js";
-
-function strikeDamageScore(averageDamage) {
-  // Capped main term keeps a single Strike from dominating cross-role comparisons. The small
-  // uncapped tiebreaker then keeps strike-vs-strike ordering monotonic once both cap out, so a
-  // harder-hitting weapon still wins -- e.g. a 2d12+12 Pincer (avg 25) beats a 2d10+10 beam (avg 21)
-  // at the same range instead of tying at the 40 ceiling.
-  return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
-}
 
 function deadlyStrikeScore(action, criticalChance) {
   const trait = actionTraitSlugs(action).find((slug) => /^deadly-(?:[1-3])?d\d+$/.test(slug));
@@ -65,9 +60,80 @@ function deadlyStrikeScore(action, criticalChance) {
   return Math.round(dice * ((faces + 1) / 2) * chance * 2);
 }
 
-function demoralizeTactic(acc, { target }) {
+// Fatal raises the weapon's dice to the fatal die on a critical hit and adds one more such die.
+function fatalStrikeScore(action, criticalChance) {
+  const trait = actionTraitSlugs(action).find((slug) => /^fatal-d\d+$/.test(slug));
+  if (!trait) return 0;
+  const faces = Number(trait.slice("fatal-d".length));
+  const damage = action?.item?.system?.damage ?? action?.strike?.item?.system?.damage ?? {};
+  const dice = Math.max(1, Number(damage.dice) || 1);
+  const baseFaces = Number(String(damage.die ?? "d6").replace(/^d/, "")) || 6;
+  const chance = Number.isFinite(criticalChance) ? criticalChance : 0.1;
+  const critGain = dice * Math.max(0, faces - baseFaces) + (faces + 1) / 2;
+  return Math.round(critGain * chance * 2);
+}
+
+function strikeAttackBonus(action) {
+  const strike = action?.strike ?? {};
+  const values = [strike.totalModifier, strike.variants?.[0]?.modifier, action?.attackBonus];
+  for (const value of values) {
+    const number = Number(value);
+    if (value !== null && value !== undefined && value !== "" && Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+const OFF_GUARD_SOURCES = ["off-guard", "flat-footed", "prone", "grabbed", "restrained", "paralyzed", "unconscious", "blinded"];
+
+function targetConditionValue(target, slug) {
+  const conditions = target?.conditions ?? {};
+  const slugs = Array.isArray(conditions) ? conditions.map((entry) => entry?.slug ?? entry) : conditions.slugs ?? [];
+  if (!slugs.includes(slug)) return 0;
+  const value = Number(Array.isArray(conditions) ? conditions.find((entry) => (entry?.slug ?? entry) === slug)?.value : conditions.values?.[slug]);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+// AC the attack actually faces: off-guard (from any of its sources) is -2; frightened, clumsy and
+// sickened lower AC by their value (status penalties don't stack, so the worst one counts).
+export function targetAcPenalty(target) {
+  const offGuard = OFF_GUARD_SOURCES.some((slug) => targetConditionValue(target, slug) > 0) ? 2 : 0;
+  const status = Math.max(targetConditionValue(target, "frightened"), targetConditionValue(target, "sickened"));
+  return offGuard + status + targetConditionValue(target, "clumsy");
+}
+
+// Hit chance at MAP 0: the target's AC when it's known, else a moderate-AC creature of your own level
+// (GM Core creature table, roughly 13 + 1.5 x level) -- never the hidden real level or AC.
+function strikeHitChance(action, target, profile) {
+  const bonus = strikeAttackBonus(action);
+  if (bonus === null) return null;
+  const knownAc = Number(target?.ac);
+  const level = Number(profile?.level);
+  const ac = Number.isFinite(knownAc) && knownAc > 0
+    ? knownAc
+    : Number.isFinite(level) ? Math.round(13 + 1.5 * Math.max(-1, level)) : null;
+  if (ac === null) return null;
+  return Math.min(0.95, Math.max(0.05, (21 - (ac - targetAcPenalty(target) - bonus)) / 20));
+}
+
+// -2 to attack per range increment past the first (PF2e range penalty), ~3 points per point.
+function rangeIncrementPenalty(action, target) {
+  const increment = Number(action?.range?.increment);
+  const distance = Number(target?.distance);
+  if (!(increment > 0) || !Number.isFinite(distance) || distance <= increment) return 0;
+  return (Math.ceil(distance / increment) - 1) * 6;
+}
+
+// What a lasting debuff is worth beyond your own next attacks (those are priced by the planner's
+// step-by-step re-scoring): each ally attacking the target before it fades gains ~5% per point, and
+// the target's own rolls suffer too. Scales with the party instead of a flat bonus.
+function partyDebuffValue(context, points) {
+  const allies = Math.min(3, contextAllies(context).filter((ally) => ally?.hpPercent !== 0).length);
+  return Math.round(points * (8 + allies * 3));
+}
+
+function demoralizeTactic(acc, { context, target }) {
   if (!(target && !hasCondition(target, "frightened"))) return;
-  acc.score += 22;
+  acc.score += 4 + partyDebuffValue(context, 1);
   acc.reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
 }
 
@@ -101,15 +167,17 @@ function shoveTactic(acc, { target }) {
   acc.reasons.push(t("ScoreReason.CanPushTargetOut", "Can push target out of position."));
 }
 
+// Feint and Create a Diversion only set up your own next attack; the planner's re-scoring credits
+// that payoff on the attack itself (weighted by the check's success), so the action alone is small.
 function feintTactic(acc, { context, target }) {
   if (!(enemyInMelee(context) && !hasCondition(target, "off-guard"))) return;
-  acc.score += 18;
+  acc.score += 6;
   acc.reasons.push(t("ScoreReason.TargetIsInMelee", "Target is in melee and not off-guard."));
 }
 
 function createADiversionTactic(acc, { profile, target }) {
   if (!(target && !hasCondition(profile, "hidden"))) return;
-  acc.score += 12;
+  acc.score += 4;
   acc.reasons.push(t("ScoreReason.CanCreateAHidden", "Can create a hidden opening."));
 }
 
@@ -140,9 +208,21 @@ function senseMotiveTactic(acc, { target }) {
   acc.reasons.push(t("ScoreReason.UsefulWhenEnemyIntent", "Useful when enemy intent is unclear."));
 }
 
-function recallKnowledgeTactic(acc, { target }) {
+function recallKnowledgeTactic(acc, { context, target }) {
   if (!target) return;
-  acc.score += 16;
+  // A failed attempt blocks further Recall Knowledge on this creature; each success already spent
+  // leaves less to learn (and the DC climbs), so repeats are worth less every time.
+  const state = recallKnowledgeAttemptState(contextActorDocument(context, { allowActorFallback: true }), target);
+  if (state.blocked) {
+    acc.score = HARD_BLOCK_SCORE;
+    acc.reasons.push(t("ScoreReason.RecallKnowledgeBlocked", "Recall Knowledge on {target} already failed.", { target: target.name }));
+    return;
+  }
+  const value = Math.max(2, 16 - state.attempts * 7);
+  acc.score += value;
+  if (state.attempts > 0) {
+    acc.reasons.push(t("ScoreReason.RecallKnowledgeRepeat", "Already recalled {count}x about {target}; less left to learn.", { count: state.attempts, target: target.name }));
+  }
   acc.reasons.push(t("ScoreReason.IdentifyDefenses", "Identify {target} defenses and weaknesses.", { target: target.name }));
 }
 
@@ -337,13 +417,34 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     // an agile unarmed fallback even after one prior attack.
     const average = Number(action.averageDamage);
     if (Number.isFinite(average) && average > 0) {
-      score += strikeDamageScore(average);
+      const damageScore = strikeDamageScore(average);
+      score += damageScore;
       reasons.push(t("ScoreReason.AverageDamage", "Average damage about {amount}.", { amount: Math.round(average) }));
+      // Without the native roll preflight, weigh the damage by the chance to hit, so a +15 rapier
+      // beats a +11 pistol with the same damage. Centered on a typical 60% so scales stay comparable.
+      const hitChance = criticalChance === null || criticalChance === undefined ? strikeHitChance(action, target, profile) : null;
+      if (hitChance !== null) {
+        const delta = Math.round(Math.max(-15, Math.min(10, damageScore * (hitChance / 0.6 - 1))));
+        if (delta) {
+          score += delta;
+          reasons.push(t("ScoreReason.HitChance", "About {percent}% to hit.", { percent: Math.round(hitChance * 100) }));
+        }
+      }
     }
     const deadlyScore = deadlyStrikeScore(action, criticalChance);
     if (deadlyScore > 0) {
       score += deadlyScore;
       reasons.push(t("ScoreReason.DeadlyCritical", "Deadly adds critical damage potential (+{amount}).", { amount: deadlyScore }));
+    }
+    const fatalScore = fatalStrikeScore(action, criticalChance);
+    if (fatalScore > 0) {
+      score += fatalScore;
+      reasons.push(t("ScoreReason.FatalCritical", "Fatal adds critical damage potential (+{amount}).", { amount: fatalScore }));
+    }
+    const rangePenalty = rangeIncrementPenalty(action, target);
+    if (rangePenalty > 0) {
+      score -= rangePenalty;
+      reasons.push(t("ScoreReason.RangeIncrementPenalty", "Beyond the first range increment: -{amount} to hit.", { amount: rangePenalty / 3 }));
     }
     if (action.attackEffects?.some((effect) => /\bdoom(?:ing|ed)?\b/i.test(String(effect)))
       && !hasCondition(target, "doomed")) {

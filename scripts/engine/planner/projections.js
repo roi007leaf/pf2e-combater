@@ -12,9 +12,11 @@ import { t } from "../../i18n.js";
 const BASE_ACTIONS = 3;
 const GENERATED_STRIKE_COMPOSITE_PREFIXES = [
   "stand-stride-strike-",
+  "stand-step-strike-",
   "stride-strike-stride-",
   "stride-away-strike-",
   "stride-strike-",
+  "step-strike-",
   "draw-strike-",
 ];
 const COMPOSITE_MOVE_PART_NAMES = new Set(["crawl", "draw", "interact", "stand", "step", "stride", "stride-away"]);

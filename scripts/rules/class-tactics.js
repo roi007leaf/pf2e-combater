@@ -762,7 +762,10 @@ function swashbucklerPlaybook(parts, profile, action, signals, actionSlug) {
     if (panache) {
       addPlaybookDelta(parts, -24, t("ClassTactic.PanacheAlreadyActiveGainingPanache", "Panache already active; gaining panache is lower value."));
     } else {
-      addPlaybookDelta(parts, 34, t("ClassTactic.SwashbucklerWantsPanacheBeforeFinishers", "Swashbuckler wants panache before finishers."));
+      // Gain Panache is certain; Feint, Create a Diversion, Tumble Through, Bon Mot only grant it on
+      // a success, so their value is discounted rather than stacked on top of the skill bonus.
+      const certain = actionSlug === "gain-panache" || action?.activityProfile?.gainPanache === true;
+      addPlaybookDelta(parts, certain ? 34 : 20, t("ClassTactic.SwashbucklerWantsPanacheBeforeFinishers", "Swashbuckler wants panache before finishers."));
     }
   }
 

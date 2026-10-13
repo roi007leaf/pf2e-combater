@@ -149,7 +149,13 @@ function readyPayload(request) {
   const label = text(request.label, 80);
   if (!label) throw Error(t("TurnControls.ReadyIncomplete", "Choose an action to ready."));
   const mapIndex = Math.max(0, Math.min(2, Math.trunc(Number(request.mapIndex)) || 0));
-  return { label, strike: text(request.strike, 80) || null, mapIndex, movement: readyMovement(request.movement) };
+  return {
+    label,
+    strike: text(request.strike, 80) || null,
+    skillAction: text(request.skillAction, 60) || null,
+    mapIndex,
+    movement: readyMovement(request.movement),
+  };
 }
 
 // Move a waiting creature together with anyone waiting after it. Native PF2e

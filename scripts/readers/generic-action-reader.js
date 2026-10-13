@@ -261,14 +261,16 @@ function readGenericActionAvailabilityForAction(action, context) {
     if (!inRange) return availability(false, t("Avail.NoTargetWithin", "No target within {range} feet.", { range: action.maxRange }));
   }
   if (action.requiresEnemyInReach) {
-    const enemyInReach = targetableTargets.some((target) => (target?.distance ?? Infinity) <= meleeReach(profile));
+    // Any enemy in reach counts, not only the one the user targeted for something else.
+    const reach = Number(profile?.maneuverReach?.[action.slug]) || meleeReach(profile);
+    const enemyInReach = [...targetableTargets, ...targetableEnemies].some((target) => (target?.distance ?? Infinity) <= reach);
     if (!enemyInReach) return availability(false, t("Avail.NoEnemyInReach", "No enemy in reach."));
   }
   if (action.requiresFreeHand && freeHands(profile) < 1 && !freeHandAlternativeAvailable(action, context, actionTargets)) {
     return availability(false, t("Avail.NoFreeHand", "No free hand available."));
   }
   if (action.requiresNearbyEnemy) {
-    const nearbyEnemy = targetableTargets.some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
+    const nearbyEnemy = [...targetableTargets, ...targetableEnemies].some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
     if (!nearbyEnemy) return availability(false, t("Avail.NoEnemyClose", "No enemy close enough."));
   }
   if (action.requiresSeekTarget) {

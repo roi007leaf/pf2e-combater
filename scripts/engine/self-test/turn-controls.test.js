@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { MODULE_ID } from "../../constants.js";
 import { createTurnSnapshot, registerActionTrackerHooks, trackedActionContext } from "../../state/action-tracker.js";
 import { attacksThisTurn, delayedTurn, delayTargets, handleTurnControl, orderAfter, reactionUsed, readiedAction, registerTurnControlHooks, turnIdentity } from "../../state/turn-controls.js";
-import { turnControlsView } from "../../ui/panel/turn-controls.js";
+import { readyChoices, turnControlsView } from "../../ui/panel/turn-controls.js";
 import { upcomingTurnsView } from "../../ui/panel/upcoming-turns.js";
 import { setSocket, requestTurnControl } from "../../socket.js";
 
@@ -235,6 +235,7 @@ try {
   assert.equal(held.label, "Fist", "action label is normalized");
   assert.equal(held.mapIndex, 2, "MAP index is clamped to the third attack");
   assert.equal(held.strike, "fist");
+  assert.equal(held.skillAction, null, "a readied Strike carries no skill action");
   const readyView = turnControlsView(context(combat, "a"), combat, gm);
   assert.equal(readyView.readied.label, "Fist");
   assert.equal(readyView.readied.canUse, true);
@@ -325,4 +326,18 @@ try {
   globalThis.game = previous.game;
   globalThis.Hooks = previous.Hooks;
 }
+// Ready offers single skill actions; trained-only ones need training.
+{
+  const untrained = readyChoices({ type: "character", skills: { athletics: { rank: 0 }, deception: { rank: 0 } } });
+  const skillSlugs = untrained.filter((choice) => choice.group === "skill").map((choice) => choice.action);
+  for (const slug of ["trip", "grapple", "shove", "demoralize", "create-a-diversion", "recall-knowledge", "seek", "hide", "take-cover"]) {
+    assert.ok(skillSlugs.includes(slug), `${slug} can be readied`);
+  }
+  assert.ok(!skillSlugs.includes("disarm") && !skillSlugs.includes("feint"), "Disarm and Feint need training");
+  assert.ok(!skillSlugs.includes("balance") && !skillSlugs.includes("high-jump"), "terrain moves and 2-action activities are left out");
+  const trained = readyChoices({ type: "character", skills: { athletics: { rank: 1 }, deception: { rank: 2 } } });
+  assert.ok(trained.some((choice) => choice.action === "disarm") && trained.some((choice) => choice.action === "feint"));
+  assert.equal(untrained.find((choice) => choice.action === "trip")?.value, "skill:trip");
+}
+
 console.log("Turn controls and Delay tests passed.");

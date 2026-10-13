@@ -21,8 +21,8 @@
   {{#*inline "draftSequence"}}
   {{#*inline "draftStepChip"}}
           <div class="combater-header-step {{#if warning}}has-warning{{/if}} status-{{executionStatus}} {{#if isCurrentExecution}}is-current{{/if}} {{#if toolsOpen}}is-tools-open{{/if}}" data-preview-draft-step="{{instanceId}}" data-drag-row="{{instanceId}}"{{#if pipSlots}} data-step-pips="{{pipSlots}}"{{/if}}>
-            <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if mapLabel}} ({{mapLabel}}){{/if}}{{#if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
-              {{#if stepNumber}}<span class="combater-step-number" aria-hidden="true"><span>{{stepNumber}}</span></span>{{/if}}
+            <button type="button" class="combater-chip {{costClass}}" data-open-draft-step="{{instanceId}}" data-tooltip="{{name}}{{#if mapLabel}} ({{mapLabel}}){{/if}}{{#if targetName}} → {{targetName}}{{else if targetLabel}} - {{targetLabel}}{{/if}}{{#if areaLabel}} - {{areaLabel}}{{/if}}{{#if executionLabel}} - {{executionLabel}}{{/if}}{{#if warning}} - {{warning}}{{/if}}: {{reason}}">
+              {{#if stepNumber}}<span class="combater-step-number" aria-hidden="true"><span>{{#if isExecutionDone}}<i class="fa-solid fa-check"></i>{{else}}{{stepNumber}}{{/if}}</span></span>{{/if}}
               {{#unless isGroupChild}}
               <span class="combater-chip-cost" aria-label="{{costLabel}}">
                 <img class="combater-cost-glyph" src="{{actionGlyphIcon}}" alt="{{costLabel}}">
@@ -32,6 +32,7 @@
                 <span class="combater-step-headline">
                   {{#if img}}<img class="combater-chip-img" src="{{img}}" alt="">{{/if}}
                   <span class="combater-chip-name">{{name}}</span>
+                  {{#if isExecutionDone}}{{#if targetLabel}}{{#if targetName}}<span class="combater-target-pill is-done"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i>{{targetName}}</span>{{else}}<span class="combater-done-target">{{targetLabel}}</span>{{/if}}{{/if}}{{/if}}
                   {{#if usesQuickened}}<span class="combater-exec-badge is-quickened" data-tooltip="{{quickenedActionHint}}"><i class="fa-solid fa-bolt" aria-hidden="true"></i> {{quickenedActionLabel}}</span>{{/if}}
                   {{#if quickenedNextTurn}}<span class="combater-exec-badge is-next-turn" data-tooltip="{{quickenedNextTurnHint}}">{{quickenedNextTurnLabel}}</span>{{/if}}
                   {{#if isExecutionDone}}<span class="combater-exec-badge is-done"><i class="fa-solid fa-check"></i> {{localize "PF2E_COMBATER.Panel.Done"}}</span>{{/if}}
@@ -39,10 +40,10 @@
                 </span>
                 {{#if hasStepDetails}}
                 <span class="combater-step-details {{#if minionPlan}}has-minion-plan{{/if}}">
-                  {{#if targetLabel}}{{#unless hideTarget}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{/unless}}{{/if}}
+                  {{#if targetLabel}}{{#unless hideTarget}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{#if targetName}}<span class="combater-target-pill"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i>{{targetName}}</span>{{else}}{{targetLabel}}{{/if}}</span>{{/unless}}{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
                   {{#if swapItemsLabel}}<span class="combater-detail-chip is-swap-items"><i class="fa-solid fa-right-left"></i> {{swapItemsLabel}}</span>{{/if}}
-                  {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
+                  {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-ruler-horizontal"></i> {{rangeLabel}}</span>{{/if}}
                   {{#unless minionPlanAsChildren}}{{> minionPlanDetails}}{{/unless}}
                   {{#if awaitingGm}}<span class="combater-chip-target is-awaiting"><i class="fa-solid fa-hourglass-half fa-spin"></i> {{awaitingGmLabel}}</span>{{/if}}
                   {{#if warning}}<span class="combater-chip-target is-warning"><i class="fa-solid fa-triangle-exclamation"></i> {{warning}}</span>{{/if}}
@@ -306,7 +307,7 @@
                 </span>
                 {{#if targetLabel}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{targetLabel}}</span>{{/if}}
                 {{#if mapLabel}}<span class="combater-chip-target">{{mapLabel}}</span>{{/if}}
-                {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-crosshairs"></i> {{rangeLabel}}</span>{{/if}}
+                {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-ruler-horizontal"></i> {{rangeLabel}}</span>{{/if}}
                 {{> minionPlanDetails}}
               </span>
             </button>
@@ -362,7 +363,7 @@
     {{/if}}
     {{#if turnControls.controlsCurrent}}
       <div class="combater-turn-controls is-header">
-        <div class="combater-turn-split">
+        <div class="combater-turn-split {{#if planLayout.complete}}is-turn-complete{{/if}}">
           <button type="button" class="combater-turn-button is-end" data-turn-control="end" data-tooltip="{{turnControls.endHint}}" {{#unless turnControls.canEnd}}disabled{{/unless}}><i class="fa-solid fa-forward-step"></i> {{turnControls.endLabel}}</button>
           <button type="button" class="combater-turn-button is-more" data-turn-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="{{turnControls.moreLabel}}" data-tooltip="{{turnControls.moreLabel}}" {{#unless turnControls.canOpenMenu}}disabled{{/unless}}><i class="fa-solid fa-chevron-down"></i></button>
           <div class="combater-turn-menu" data-turn-menu popover="auto" role="group" aria-label="{{turnControls.moreLabel}}">
@@ -532,21 +533,6 @@
         {{/if}}
     </div>
     {{/if}}
-      {{#if builder}}
-        {{#if builder.execution.hasStatus}}
-          <div class="combater-execution-controls">
-            {{#if builder.execution.canReset}}
-              <button type="button" class="combater-chip-tool combater-header-reset" data-reset-execution data-tooltip="{{localize "PF2E_COMBATER.Panel.ResetTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ResetAria"}}">
-                <i class="fa-solid fa-rotate-left"></i>
-                <span>{{localize "PF2E_COMBATER.Panel.Reset"}}</span>
-              </button>
-            {{/if}}
-            {{#if builder.execution.progressLabel}}
-              <span class="combater-exec-progress" data-tooltip="{{localize "PF2E_COMBATER.Panel.ExecutedSteps"}}">{{builder.execution.progressLabel}}</span>
-            {{/if}}
-          </div>
-        {{/if}}
-      {{/if}}
   </header>
 
   {{#if builder}}
@@ -682,18 +668,33 @@
       {{/if}}
     </div>
   {{/if}}
-  {{#if (or planLayout.footer.visible planPreference.visible)}}
+  {{#if (or planLayout.footer.visible planLayout.complete planLayout.progress planPreference.visible recordTurn.visible)}}
   <footer class="combater-run-footer">
-    {{#if planLayout.footer.visible}}
+    {{#if planLayout.complete}}
       <div class="combater-run-row">
-        <button type="button" class="combater-run-next" data-run-next="{{planLayout.footer.instanceId}}" data-tooltip="{{planLayout.footer.tooltip}}" {{#if planLayout.footer.blocked}}disabled{{/if}}>
-          <i class="fa-solid fa-play"></i><span>{{planLayout.footer.label}}</span>
-        </button>
-        {{#if planLayout.footer.canRunAll}}
-          <button type="button" class="combater-run-all" data-run-all data-tooltip="{{planLayout.footer.runAllTooltip}}"><i class="fa-solid fa-forward"></i> {{planLayout.footer.runAllLabel}}</button>
-        {{/if}}
+        <span class="combater-turn-complete"><i class="fa-solid fa-circle-check"></i> {{planLayout.complete.label}}</span>
       </div>
+    {{else}}
+      {{#if planLayout.footer.visible}}
+        <div class="combater-run-row">
+          <button type="button" class="combater-run-next" data-run-next="{{planLayout.footer.instanceId}}" data-tooltip="{{planLayout.footer.tooltip}}" {{#if planLayout.footer.blocked}}disabled{{/if}}>
+            <i class="fa-solid fa-play"></i><span>{{planLayout.footer.label}}</span>
+          </button>
+          {{#if planLayout.footer.canRunAll}}
+            <button type="button" class="combater-run-all" data-run-all data-tooltip="{{planLayout.footer.runAllTooltip}}"><i class="fa-solid fa-forward"></i> {{planLayout.footer.runAllLabel}}</button>
+          {{/if}}
+        </div>
+      {{/if}}
     {{/if}}
+    <div class="combater-run-meta">
+      {{#if planLayout.progress}}
+        <span class="combater-run-progress" data-tooltip="{{localize "PF2E_COMBATER.Panel.ExecutedSteps"}}"><span class="combater-run-progress-bar"><span style="width: {{planLayout.progress.percent}}%"></span></span>{{planLayout.progress.label}}</span>
+      {{/if}}
+      {{#if builder.execution.canReset}}
+        <button type="button" class="combater-run-reset" data-reset-execution data-tooltip="{{localize "PF2E_COMBATER.Panel.ResetTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.ResetAria"}}"><i class="fa-solid fa-rotate-left"></i> {{localize "PF2E_COMBATER.Panel.Reset"}}</button>
+      {{/if}}
+      <span class="combater-run-meta-gap"></span>
+
     {{#if planPreference.visible}}
     <div class="combater-plan-preference" data-tooltip="{{planPreference.tooltip}}">
       <span class="combater-plan-preference-label">{{planPreference.label}}</span>
@@ -705,6 +706,10 @@
       </button>
     </div>
     {{/if}}
+    {{#if recordTurn.visible}}
+      <button type="button" class="combater-chip-tool combater-record-turn-button" data-record-turn data-tooltip="{{recordTurn.tooltip}}" aria-label="{{recordTurn.tooltip}}"><i class="fa-solid fa-flask"></i></button>
+    {{/if}}
+    </div>
   </footer>
   {{/if}}
 </div>

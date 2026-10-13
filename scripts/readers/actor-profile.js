@@ -191,6 +191,23 @@ function readReach(actor) {
   return candidates.length ? Math.max(...candidates) : 5;
 }
 
+const MANEUVER_TRAITS = ["trip", "shove", "grapple", "disarm", "reposition"];
+
+// Athletics maneuvers reach as far as the creature itself, or as far as a held weapon that carries
+// the maneuver's trait (a whip Trips at 10 ft) -- not as far as any reach weapon it happens to hold.
+function readManeuverReach(actor) {
+  const explicitReach = actor?.system?.attributes?.reach;
+  const base = numericValue(explicitReach?.base, null) ?? numericValue(explicitReach?.value, null) ?? 5;
+  const strikes = pf2eRuntime.readActor(actor).actions.filter((strike) => strike?.type === "strike" && strike?.ready !== false);
+  return Object.fromEntries(MANEUVER_TRAITS.map((trait) => {
+    const weaponReaches = strikes
+      .filter((strike) => traitSlugs(strike?.item).includes(trait))
+      .map(strikeReach)
+      .filter((value) => Number.isFinite(value) && value >= 0);
+    return [trait, Math.max(base, ...weaponReaches)];
+  }));
+}
+
 function readDefenses(actor) {
   const saves = actor?.system?.saves ?? {};
   return {
@@ -459,6 +476,7 @@ export function readActorProfile(actor) {
     movementAction: preferredMovement.action,
     reach,
     meleeReach: reach,
+    maneuverReach: readManeuverReach(actor),
     defenses: readDefenses(actor),
     hasShield: readHasShield(actor),
     equippedRangedWeapon: readHasRangedWeapon(actor),

@@ -179,6 +179,10 @@ export function viewPanelContext(panel, context) {
       ...planPreference,
       visible: draftSteps.length > 0 && panel._builder?.readonly !== true,
     },
+    recordTurn: {
+      visible: game?.user?.isGM === true && (panel._autoFillPlans?.length ?? 0) > 0,
+      tooltip: t("RecordTurn.Tooltip", "Save this turn as a planner test (GM)"),
+    },
     builder: panel._builder,
     expanded: panel.expanded,
     activeTab: panel.activeTab,
@@ -351,6 +355,7 @@ export function preparePanelContext(panel) {
     // rebuild dozens of irrelevant alternatives before any button could repaint.
     ?? buildTurnPlans(autoFillContext, autoFillBuild.candidates.map(withBuilderActionFields), {
       includeCoverage: false,
+      approachCandidates: (autoFillBuild.approachable ?? []).map(withBuilderActionFields),
     });
   // Auto-fill/fill-gap own every displayed/cycled recommendation. A second planner search against
   // the draft-projected context only populated the builder's unused fallback plan and cost over a
@@ -375,6 +380,7 @@ export function preparePanelContext(panel) {
   panel._detected = detected;
   panel._plans = plans;
   panel._autoFillPlans = autoFillPlans;
+  panel._autoFillContext = autoFillContext;
   panel._loadoutAdvice = buildLoadoutAdvice(autoFillContext);
   panel._plan = plan;
   const builderModel = buildActionBuilderModel({

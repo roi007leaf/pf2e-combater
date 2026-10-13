@@ -8062,6 +8062,21 @@ const fiveFootMeleeApproach = readStrideStrikeActivities({
 assert.equal(fiveFootMeleeApproach[0]?.activityProfile?.includes?.[0], "step", "a 5-foot melee Strike approach should use Step instead of Stride");
 assert.equal(builderAtomicActionsForStep(fiveFootMeleeApproach[0])[0]?.slug, "step");
 
+// A held pistol that already reaches the target must not suppress the Stride -> Rapier approach:
+// a Melee Striker (or any character) still wants the melee option on the table.
+const pistolAndRapierApproach = readStrideStrikeActivities({
+  actor: { profile: { speed: 25, reach: 5 } },
+  profile: { speed: 25, reach: 5 },
+  token: {},
+  targets: [{ id: "target-25", name: "Unknown", distance: 25, disposition: -1 }],
+  enemies: [],
+}, [
+  { id: "pistol", name: "Dueling Pistol", slug: "dueling-pistol", actionCost: 1, range: { increment: 60, max: 360 }, traits: ["concussive", "fatal-d10", "reload-1"] },
+  { id: "rapier", name: "Rapier", slug: "rapier", actionCost: 1, range: { max: 5 }, traits: ["deadly-d8", "disarm", "finesse"] },
+]);
+assert.deepEqual(pistolAndRapierApproach.map((action) => action.name), ["Stride -> Rapier"],
+  "a ranged Strike in reach must not hide the Stride -> melee Strike approach");
+
 // Auto-fill pairs Quickened Casting with a discount-eligible spell: sequenced first, spell at 1
 // fewer action. A divine (or otherwise ineligible) spell never gets a synthetic discounted sibling.
 const plannerQuickenedCastingCandidate = {
@@ -17045,7 +17060,7 @@ assert.equal(drawShortbow.name, "Draw Shortbow -> Strike");
 assert.equal(drawShortbow.actionCost, 2);
 assert.equal(drawShortbow.source, "system-inferred");
 assert.equal(drawShortbow.activityProfile.drawsWeapon, true);
-assert.equal(drawShortbow.targetingProfile.maxRange, 60);
+assert.equal(drawShortbow.targetingProfile.maxRange, 360, "a bow reaches six range increments");
 
 const scoredDrawShortbow = buildCandidates(drawStrikeContext).candidates
   .find((candidate) => candidate.slug === "draw-strike-shortbow");
@@ -23817,10 +23832,10 @@ try {
   const largeTargetFlank = readActionSources(largeTargetFlankContext).find((action) => action.slug === "flank-strike-claw");
   assert.ok(largeTargetFlank, "expected a flank composite against the Large target");
   const largeTargetFlankSquare = largeTargetFlank.activityProfile.attackCenter;
-  // Calder is adjacent to Gromog's south-west cell (its own row's y-center is 1250) -- the correct
-  // flank square must be on the opposite (east) side AND share that same row, not the row one cell
-  // north of it (y-center 1150), which the old center-point-only check accepted just as readily.
-  assert.equal(largeTargetFlankSquare.y, 1250, `flank square must share the ally's own row against a Large target, got ${JSON.stringify(largeTargetFlankSquare)}`);
+  // Calder is adjacent to Gromog's south-west cell (y-center 1250). By the PF2e rule the line between
+  // the two centers must cross opposite sides of Gromog's 2x2 space: from Calder that holds for the
+  // east squares at y 1150 and 1250 (the line still exits the east side), but not for 1050 or 950.
+  assert.ok([1150, 1250].includes(largeTargetFlankSquare.y), `flank square must put Gromog between the flankers, got ${JSON.stringify(largeTargetFlankSquare)}`);
   assert.equal(largeTargetFlankSquare.x, 3050, `flank square must be on the opposite side of the Large target, got ${JSON.stringify(largeTargetFlankSquare)}`);
 } finally {
   globalThis.canvas = previousLargeTargetFlankCanvas;

@@ -7,6 +7,7 @@ import { attackableEnemies } from "./scoring/targets.js";
 import { maxRange } from "./scoring/facts.js";
 import {
   actionKey,
+  currentAttackRange,
   inheritPlannedTarget,
   isAttackAction,
   isGrabRider,
@@ -35,6 +36,7 @@ import {
   withQuickenedCastingDiscountCandidates,
 } from "./planner/projections.js";
 import { planSignature } from "./planner/plan-signature.js";
+import { createPlanRescorer } from "./planner/rescoring.js";
 import {
   advancePlanState,
   createPlanState,
@@ -88,6 +90,8 @@ const DIVERSITY_LOOKAHEAD = 12;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
 const MAP_SCORE_WEIGHT = 3;
+const ORPHAN_SETUP_PENALTY = 20;
+const MAX_APPROACH_CANDIDATES = 3;
 const DIVERSE_CANDIDATE_CATEGORIES = [
   "strike",
   "class",
@@ -479,29 +483,176 @@ export function attacksTowardMap(candidate) {
 
 function quickenedCapacity(candidate, repeatReloadCost = 0, context = {}) {
   if (quickenedEligible(candidate, candidate.actionCost, context)) return 1;
+  // Haste's extra Stride/Strike can pay for one atom of a Stride -> Strike composite.
+  const atoms = candidate?.activityProfile?.includes ?? [];
+  if (Number(candidate?.actionCost) >= 2 && atoms.some((atom) => quickenedEligible({ slug: atom }, 1, context))) return 1;
   if (repeatReloadCost > 0 && isStrikeAction(candidate) && quickenedEligible({ slug: "strike" }, 1, context)) return 1;
   return 0;
 }
 
-function planScore(context, steps, sortedCandidates, budget) {
+// Second attacks (MAP -4/-5) cost a flat 3 points per point of penalty -- tuned against the attack
+// scores. A third attack (-8/-10) is a different animal: ~5% less to hit per point leaves it near
+// 15-25%, so it loses that share of its value and a heavily-buffed Strike can't shrug it off.
+export function mapScoreCost(candidate, penalty) {
+  if (!(penalty > 0)) return 0;
+  if (penalty < 8) return penalty * MAP_SCORE_WEIGHT;
+  const attackValue = Math.max(0, (Number(candidate?.score) || 0) - 46);
+  return Math.round(Math.max(penalty * MAP_SCORE_WEIGHT, attackValue * Math.min(0.9, penalty * 0.05 / 0.6)));
+}
+
+function permutations(values) {
+  if (values.length <= 1) return [values];
+  return values.flatMap((value, index) =>
+    permutations([...values.slice(0, index), ...values.slice(index + 1)]).map((rest) => [value, ...rest]));
+}
+
+function withMapAt(step, penalty, attackIndex) {
+  const base = step.mapBase;
+  return {
+    ...step,
+    mapPenalty: penalty,
+    attackIndex,
+    score: base.score - mapScoreCost({ score: base.score }, penalty),
+    reason: [
+      base.reload,
+      penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: base.reason, penalty }).trim() : base.reason,
+      base.volley,
+    ].filter(Boolean).join(" "),
+  };
+}
+
+// The search charges MAP in the order it happened to pick attacks, and orderPlanSteps reorders steps
+// afterwards. Re-deal the plan's Strikes into the order that loses least to MAP (the big hit first,
+// the agile one last), then recompute each attack's penalty from its final position.
+export function rebalancePlanMap(steps) {
+  const strikeSlots = steps.flatMap((step, index) => (step?.mapBase && isStrikeAction(step) ? [index] : []));
+  const attacks = steps.filter((step) => step?.mapBase);
+  if (strikeSlots.length < 2 || strikeSlots.length > 4) return steps;
+  const start = Math.min(...attacks.map((step) => (Number(step.attackIndex) || 1) - 1));
+  const strikes = strikeSlots.map((index) => steps[index]);
+  const deal = (order) => {
+    const next = [...steps];
+    strikeSlots.forEach((slot, position) => { next[slot] = order[position]; });
+    let attackCount = start;
+    let cost = 0;
+    const dealt = next.map((step) => {
+      if (!step?.mapBase) return step;
+      const penalty = mapPenalty(step, attackCount);
+      const placed = withMapAt(step, penalty, attackCount + 1);
+      cost += mapScoreCost({ score: step.mapBase.score }, penalty);
+      attackCount += attacksTowardMap(step);
+      return placed;
+    });
+    return { dealt, cost };
+  };
+  let best = deal(strikes);
+  for (const order of permutations(strikes)) {
+    const dependencyBroken = order.some((step, index) => order.slice(index + 1).some((later) => stepDependsOnStep(step, later)));
+    if (dependencyBroken) continue;
+    const candidate = deal(order);
+    if (candidate.cost < best.cost) best = candidate;
+  }
+  return best.dealt;
+}
+
+function isMovementStep(step) {
+  return isPlainMovement(step) || Number(step?.activityProfile?.strideCount) > 0;
+}
+
+function strikeWeaponKey(action) {
+  const item = action?.item ?? action?.strike?.item;
+  return item?.id ?? item?.uuid ?? null;
+}
+
+// Out-of-range actions the planner may use once an earlier step closes the distance. A weapon that
+// already has a move-and-strike composite is left to the composite (it carries a checked attack
+// square); the rest are capped so they can't crowd the search.
+function approachPool(approachCandidates, eligibleCandidates, context, budget, searchPool) {
+  // Nothing can close the distance without a plain move in the search.
+  if (!searchPool.some(isPlainMovement)) return [];
+  const compositeWeapons = new Set(eligibleCandidates
+    .filter((candidate) => candidate?.activityProfile?.includesStrike && Number(candidate?.activityProfile?.strideCount) > 0)
+    .map(strikeWeaponKey).filter(Boolean));
+  return (approachCandidates ?? [])
+    .filter((candidate) => candidate?.needsApproach)
+    .filter((candidate) => !compositeWeapons.has(strikeWeaponKey(candidate)))
+    .filter((candidate) => autoFillEligibleCandidate(context, candidate))
+    .filter((candidate) => turnIntentCandidateAllowed(context?.turnIntent, candidate))
+    .filter((candidate) => Number.isFinite(candidate.actionCost) && candidate.actionCost >= 0 && candidate.actionCost < budget.totalActions)
+    .toSorted((left, right) => Number(right.source === "strike") - Number(left.source === "strike")
+      || (Number(right.score) || 0) - (Number(left.score) || 0))
+    .slice(0, MAX_APPROACH_CANDIDATES);
+}
+
+function approachReaches(context, candidate) {
+  const target = targetForCandidate(context, candidate);
+  const range = currentAttackRange(candidate) ?? 5;
+  return Number(target?.distance ?? Infinity) <= range;
+}
+
+function isAttackPayoff(step) {
+  return isAttackAction(step) || step?.activityProfile?.includesStrike === true;
+}
+
+function isPlainMovement(step) {
+  if (step?.activityProfile?.includesStrike === true) return false;
+  return /(?:^|-)(?:stride|step)$/.test(normalizeSlug(step?.slug ?? step?.id));
+}
+
+function isAttackSetup(step) {
+  return /(?:^|-)(?:feint|create-a-diversion)$/.test(normalizeSlug(step?.slug ?? step?.id));
+}
+
+// Setup steps that nothing in the plan pays off: a Diversion or Feint with no attack after it, or a
+// plain Stride/Step followed by non-attack filler while an attack was on offer. These score on their
+// own ("closes distance", "creates an opening") but waste the action in that plan.
+export function orphanSetupSteps(steps, candidates = []) {
+  const attackOnOffer = candidates.some((candidate) =>
+    candidate?.available !== false && Number(candidate?.score) > 0 && isAttackPayoff(candidate));
+  return steps.filter((step, index) => {
+    const later = steps.slice(index + 1);
+    if (later.some(isAttackPayoff)) return false;
+    if (isAttackSetup(step)) return true;
+    return attackOnOffer && isPlainMovement(step) && later.some((next) => !isPlainMovement(next));
+  });
+}
+
+const candidateRankCache = new WeakMap();
+
+// Rank by actionKey, not identity: MAP'd attack copies are new objects and must pay their
+// candidate's rank like any other step.
+function candidateRank(sortedCandidates, step) {
+  let ranks = candidateRankCache.get(sortedCandidates);
+  if (!ranks) {
+    ranks = new Map();
+    sortedCandidates.forEach((candidate, index) => {
+      const key = actionKey(candidate);
+      if (!ranks.has(key)) ranks.set(key, index);
+    });
+    candidateRankCache.set(sortedCandidates, ranks);
+  }
+  return ranks.get(actionKey(step)) ?? 0;
+}
+
+export function planScore(context, steps, sortedCandidates, budget) {
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
-  const stepScore = steps.reduce((total, step) => {
-    const indexPenalty = sortedCandidates.indexOf(step);
-    return total + step.score - Math.max(indexPenalty, 0);
-  }, 0);
+  const stepScore = steps.reduce((total, step) => total + step.score - candidateRank(sortedCandidates, step), 0);
 
   return stepScore
     + targetConditionChainBonus(context, steps)
+    - orphanSetupSteps(steps, sortedCandidates).length * ORPHAN_SETUP_PENALTY
     - (budget.totalActions - totalCost) * UNUSED_ACTION_PENALTY;
 }
 
-function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null) {
-  const orderedSteps = applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps));
+function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null, simulation = null) {
+  const executionOrder = applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps));
+  const simulated = simulation ? simulation.rescorer.simulate(context, simulation.initialState, executionOrder) : executionOrder;
+  const orderedSteps = rebalancePlanMap(simulated);
   const evaluation = evaluatePlan(context, orderedSteps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
   const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget);
-  const tacticPlanAdjustment = tacticPersonalityPlanAdjustment(context, orderedSteps, resolvedTactic);
+  const tacticPlanAdjustment = tacticPersonalityPlanAdjustment(context, orderedSteps, resolvedTactic, sortedCandidates);
   const componentScoreDelta = orderedSteps.reduce(
     (total, step) => total + (Number(step?.preference?.scoreDelta) || 0),
     0,
@@ -517,6 +668,7 @@ function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null)
     steps: orderedSteps,
     totalCost,
     actionBudget: budget,
+    orphanSetups: orphanSetupSteps(orderedSteps, sortedCandidates).length,
     score: tacticalScore + tacticPlanAdjustment.scoreDelta - componentScoreDelta + preferenceScoreDelta,
     tactic: tacticPlanAdjustment,
     preference: {
@@ -602,7 +754,7 @@ function dedupePlans(plans) {
 function planUsesFullBudget(plan, budget) {
   const hasNegativeStep = (plan?.steps ?? [])
     .some((step) => Number.isFinite(step?.score) && step.score < 0);
-  return !hasNegativeStep && Number(plan?.totalCost) >= Number(budget?.totalActions);
+  return !hasNegativeStep && !(plan?.orphanSetups > 0) && Number(plan?.totalCost) >= Number(budget?.totalActions);
 }
 
 function comparePlanQuality(left, right, budget) {
@@ -698,12 +850,12 @@ function diversifyPlanOrder(sortedPlans, budget) {
   return [...ordered, ...tail];
 }
 
-export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true, includePendingQuickened = true } = {}) {
+export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true, includePendingQuickened = true, approachCandidates = [] } = {}) {
   if (includePendingQuickened && context?.actionTracker?.quickenedPending
     && context.actionTracker.nextTurnPool?.quickenedActions > 0 && context.quickenedAllowed?.length) {
     // A future recommendation is separate from this turn's search: it cannot buy a
     // fourth action now, satisfy a prerequisite, reserve a resource, or increase MAP.
-    const currentPlans = buildTurnPlans(context, candidates, { reservedSteps, includeCoverage, includePendingQuickened: false });
+    const currentPlans = buildTurnPlans(context, candidates, { reservedSteps, includeCoverage, includePendingQuickened: false, approachCandidates });
     const futureContext = {
       ...context,
       turnActionPool: { ...context.actionTracker.nextTurnPool, normalActions: 0, quickenedActions: 1, totalActions: 1 },
@@ -757,6 +909,11 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
     sortedCandidates = [requiredCandidate, ...sortedCandidates];
   }
 
+  sortedCandidates = [...sortedCandidates, ...approachPool(approachCandidates, eligibleCandidates, context, budget, sortedCandidates)];
+  const rescorer = createPlanRescorer(context, initialPlanState);
+  const rescore = rescorer.rescore;
+  const simulation = { rescorer, initialState: initialPlanState };
+
   const plans = [];
   const areaHitCache = new Map();
   const seenPlans = new Set();
@@ -798,15 +955,30 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       const key = steps.map(actionKey).join("|");
         if (!seen.has(key)) {
           seen.add(key);
-        offerPlan(targetPlans, toPlan(context, [...steps], sortedCandidates, budget, resolvedTactic), cap, budget);
+        offerPlan(targetPlans, toPlan(context, [...steps], sortedCandidates, budget, resolvedTactic, simulation), cap, budget);
       }
     }
 
     for (let index = startIndex; index < candidatePool.length; index += 1) {
       const candidate = candidatePool[index];
       const prerequisiteSteps = steps.length || !planState.lastStep ? steps : [planState.lastStep];
-      const linkedCandidate = withProjectedConditionalBonuses(projectedContext,
-        inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps));
+      // An approach candidate is only legal once an earlier move has brought its target in range;
+      // check that cheaply before paying for a re-score.
+      const mover = candidate.needsApproach ? steps.findLast(isMovementStep) : null;
+      if (candidate.needsApproach && (!mover || !approachReaches(projectedContext, candidate))) continue;
+      const inherited = inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps);
+      // Re-score against the board the earlier steps leave behind; the re-score already accounts
+      // for conditions those steps applied, so the conditional-bonus adjustment is for the rest.
+      const rescored = rescore(projectedContext, planState, inherited);
+      if (!rescored) continue;
+      let linkedCandidate = rescored === inherited ? withProjectedConditionalBonuses(projectedContext, inherited) : rescored;
+      if (candidate.needsApproach) {
+        if (!approachReaches(projectedContext, linkedCandidate)) continue;
+        linkedCandidate = {
+          ...linkedCandidate,
+          activityProfile: { ...(linkedCandidate.activityProfile ?? {}), requiresProjectedAfterKey: actionKey(mover) },
+        };
+      }
       if (entityHasAnyCondition(projectedContext.profile ?? projectedContext.actor?.profile, ["restrained"]) && linkedCandidate.slug !== "escape") continue;
       if (!readMovementAvailability(projectedContext, linkedCandidate).available) continue;
       const key = actionKey(candidate);
@@ -865,7 +1037,13 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
             : linkedCandidate.activityProfile,
           mapPenalty: penalty,
           attackIndex: planState.attackCount + 1,
-          score: linkedCandidate.score - penalty * MAP_SCORE_WEIGHT - projectedVolley,
+          mapBase: {
+            score: linkedCandidate.score - projectedVolley,
+            reason: linkedCandidate.reason ?? "",
+            reload: repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
+            volley: projectedVolley > 0 ? t("Plan.VolleyMoved", "Volley -2 when fired from the moved-in position.") : "",
+          },
+          score: linkedCandidate.score - mapScoreCost(linkedCandidate, penalty) - projectedVolley,
           reason: [
             repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
             penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: linkedCandidate.reason ?? "", penalty }).trim() : linkedCandidate.reason,

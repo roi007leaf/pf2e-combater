@@ -176,6 +176,8 @@ function emptyPlanState(context) {
     resourceLegal: true,
     resourceConflicts: [],
     durations: new Map(),
+    approaches: new Map(),
+    uncertainSetup: false,
   };
 }
 
@@ -260,6 +262,27 @@ function stepRemovedConditions(step) {
   return removed;
 }
 
+// Skill-check setups the catalog doesn't annotate: what they inflict on a success. Projected as
+// "uncertain" so the planner's re-scoring weights the payoff by the chance it lands.
+const CHECK_SETUP_CONDITIONS = new Map([
+  ["trip", "prone"],
+  ["grapple", "grabbed"],
+  ["demoralize", "frightened"],
+  ["feint", "off-guard"],
+  ["create-a-diversion", "off-guard"],
+]);
+
+function checkSetupCondition(step) {
+  const profile = stepProfile(step);
+  if (profile.appliesCondition || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length)) return null;
+  for (const slug of stepSlugCandidates(step)) {
+    for (const [setup, condition] of CHECK_SETUP_CONDITIONS) {
+      if (slug === setup || slug.endsWith(`-${setup}`)) return condition;
+    }
+  }
+  return null;
+}
+
 function stepAddedConditions(step) {
   const action = actionForStep(step);
   const profile = stepProfile(step);
@@ -273,6 +296,8 @@ function stepAddedConditions(step) {
   ]);
   const slugs = stepSlugCandidates(step);
   if (slugs.some((slug) => slug.includes("drop-prone")) || action?.executable === "drop-prone") added.add("prone");
+  const checkCondition = checkSetupCondition(step);
+  if (checkCondition) added.add(checkCondition);
   return added;
 }
 
@@ -420,6 +445,51 @@ function trackStepDuration(context, state, step) {
   return { ...known.state, durations, lastTargetKey: known.key };
 }
 
+const ADJACENT_FEET = 5;
+
+function profileSpeed(context) {
+  const profile = context?.profile ?? context?.actor?.profile ?? {};
+  const speed = Number(profile.speed ?? profile.landSpeed);
+  return Number.isFinite(speed) && speed > 0 ? speed : 25;
+}
+
+function isPlainMove(step) {
+  const profile = stepProfile(step);
+  if (profile.includesStrike === true || profile.retreatAfterStrike || profile.retreatBeforeStrike) return null;
+  const slug = primaryStepSlug(step);
+  if (/(?:^|-)step$/.test(slug)) return "step";
+  if (/(?:^|-)stride$/.test(slug)) return "stride";
+  return null;
+}
+
+function entityBaseDistance(context, state, key) {
+  for (const entity of contextEntities(context)) {
+    if (entityStateKey(state, entity) !== key) continue;
+    const distance = Number(entity?.distance);
+    if (Number.isFinite(distance)) return distance;
+  }
+  return null;
+}
+
+// Without a planned destination (a plain Stride, or a move-and-strike with no attack square), the
+// planner still knows the move closes on its target: by the actor's Speed (a Step: 5 ft), never
+// past adjacent; a move-and-strike ends within its Strike's reach. Steps later in the plan are then
+// scored against that distance instead of the turn-start one.
+function stepApproachDistance(context, state, step, key) {
+  if (!key) return null;
+  const current = state.approaches.get(key) ?? entityBaseDistance(context, state, key);
+  if (!Number.isFinite(current)) return null;
+  const profile = stepProfile(step);
+  if (profile.includesStrike === true && Number(profile.strideCount) > 0 && !profile.retreatAfterStrike) {
+    const reach = Number(profile.strikeReach);
+    return Math.min(current, Number.isFinite(reach) && reach > 0 ? reach : ADJACENT_FEET);
+  }
+  const move = isPlainMove(step);
+  if (!move) return null;
+  const feet = move === "step" ? 5 : profileSpeed(context);
+  return Math.max(ADJACENT_FEET, current - feet);
+}
+
 export function advancePlanState(context, currentState, step) {
   if (!usableStep(step) || step.quickenedNextTurn) return currentState;
   let state = reserveResource(currentState, step);
@@ -432,6 +502,12 @@ export function advancePlanState(context, currentState, step) {
     ? withKnownTarget(state, reference)
     : { state, key: null };
   state = known.state;
+
+  if (checkSetupCondition(step)) state = { ...state, uncertainSetup: true };
+  const approach = position ? null : stepApproachDistance(context, state, step, known.key);
+  if (approach !== null) {
+    state = { ...state, approaches: new Map(state.approaches).set(known.key, approach) };
+  }
 
   return {
     ...state,
@@ -480,6 +556,7 @@ export function serializePlanState(state) {
     resourceConflicts: [...(state?.resourceConflicts ?? [])],
     durations: Object.fromEntries(sortedEntries(state?.durations)),
     lastTargetKey: state?.lastTargetKey ?? null,
+    approaches: Object.fromEntries(sortedEntries(state?.approaches)),
   };
 }
 
@@ -551,7 +628,13 @@ function targetCenter(target) {
 
 function projectEntity(state, entity, originToken) {
   const withConditions = projectEntityConditions(state, entity);
-  if (!state.positionChanged || !state.position) return withConditions;
+  if (!state.positionChanged || !state.position) {
+    const key = state.approaches?.size ? entityStateKey(state, entity) : null;
+    const approached = key ? state.approaches.get(key) : undefined;
+    return Number.isFinite(approached) && approached < (Number(withConditions?.distance) || Infinity)
+      ? { ...withConditions, distance: approached }
+      : withConditions;
+  }
   const center = targetCenter(withConditions);
   if (!center) return withConditions;
   const distance = footprintPathDistanceFeet(state.position, originToken, center, withConditions);

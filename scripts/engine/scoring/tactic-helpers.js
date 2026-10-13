@@ -105,3 +105,11 @@ export function isCurated(action) {
     || action.source === "system-inferred"
     || action.source === "spell-inferred";
 }
+
+export function strikeDamageScore(averageDamage) {
+  // Capped main term keeps a single Strike from dominating cross-role comparisons. The small
+  // uncapped tiebreaker then keeps strike-vs-strike ordering monotonic once both cap out, so a
+  // harder-hitting weapon still wins -- e.g. a 2d12+12 Pincer (avg 25) beats a 2d10+10 beam (avg 21)
+  // at the same range instead of tying at the 40 ceiling.
+  return Math.min(averageDamage * 2, 40) + averageDamage * 0.25;
+}

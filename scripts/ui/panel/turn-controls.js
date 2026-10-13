@@ -11,6 +11,8 @@ import { clearActionPreview } from "../action/preview.js";
 import { showHoverGhost, showMovementPreview } from "../movement-preview.js";
 import { cancelPanelPickers } from "./picker-workflow.js";
 import { executeMovement } from "../../engine/execution/movement.js";
+import { usePf2eAction } from "../../engine/execution/system-action.js";
+import { GENERIC_ACTIONS } from "../../catalog/generic-actions.js";
 
 export function turnControlsView(context, combat = globalThis.game?.combat, user = globalThis.game?.user) {
   if (!settingOrDefault(SETTINGS.showTurnNavigation, true)) return { visible: false };
@@ -82,6 +84,59 @@ const READY_BASIC_ICONS = {
   interact: "fa-hand",
 };
 
+// Single skill actions worth readying ("when it moves next to me, I Trip it"). Terrain moves
+// (Balance, Climb, Swim) and condition-gated ones (Stand, Crawl, Retch) are left out.
+const READY_SKILL_ACTIONS = [
+  ["trip", "fa-person-falling"],
+  ["grapple", "fa-hands-holding"],
+  ["shove", "fa-hand-back-fist"],
+  ["disarm", "fa-hand-holding"],
+  ["reposition", "fa-arrows-up-down-left-right"],
+  ["demoralize", "fa-face-angry"],
+  ["feint", "fa-masks-theater"],
+  ["create-a-diversion", "fa-hand-sparkles"],
+  ["tumble-through", "fa-person-running"],
+  ["recall-knowledge", "fa-book-open"],
+  ["seek", "fa-eye"],
+  ["sense-motive", "fa-brain"],
+  ["hide", "fa-user-secret"],
+  ["sneak", "fa-user-ninja"],
+  ["take-cover", "fa-shield"],
+  ["command-an-animal", "fa-paw"],
+  ["steal", "fa-hand-holding-dollar"],
+  ["palm-an-object", "fa-hand"],
+  ["force-open", "fa-door-open"],
+  ["escape", "fa-unlock"],
+];
+// PF2e: these need at least trained proficiency; the rest can be attempted untrained.
+const READY_TRAINED_ONLY = new Set(["disarm", "feint"]);
+const GENERIC_ACTION_ART = /default-icons|icons\/actions\//;
+
+function readySkillLabel(skill) {
+  const key = globalThis.CONFIG?.PF2E?.skills?.[skill]?.label ?? globalThis.CONFIG?.PF2E?.skills?.[skill];
+  const localized = typeof key === "string" ? globalThis.game?.i18n?.localize?.(key) ?? key : "";
+  return localized || (skill ? skill[0].toUpperCase() + skill.slice(1) : "");
+}
+
+function readySkillChoices(actor) {
+  const catalog = new Map(GENERIC_ACTIONS.map((action) => [action.slug, action]));
+  return READY_SKILL_ACTIONS.flatMap(([slug, icon]) => {
+    const action = catalog.get(slug);
+    if (!action || Number(action.actionCost) !== 1) return [];
+    const skill = action.skill ?? "";
+    const rank = Number(actor?.skills?.[skill]?.rank ?? actor?.system?.skills?.[skill]?.rank);
+    if (READY_TRAINED_ONLY.has(slug) && actor?.type === "character" && !(rank > 0)) return [];
+    const label = pf2eActionName(slug);
+    const img = globalThis.game?.pf2e?.actions?.get?.(slug)?.img ?? "";
+    return [{
+      value: `skill:${slug}`, strike: null, action: slug, label, text: label, group: "skill",
+      img: GENERIC_ACTION_ART.test(img) ? "" : img, icon,
+      detail: skill ? readySkillLabel(skill) : t("TurnControls.ReadyBasic", "Basic action"),
+      search: `${label} ${skill}`,
+    }];
+  });
+}
+
 function strikeIsAgile(action) {
   const traits = [
     ...(action?.traits ?? []).map((trait) => trait?.name ?? trait),
@@ -125,7 +180,7 @@ export function readyChoices(actor) {
   return [...strikes, ...basics, {
     value: "other", strike: null, label: "", text: t("TurnControls.ReadyOther", "Another action…"),
     icon: "fa-pen", detail: t("TurnControls.ReadyOtherDetail", "Describe it"),
-  }];
+  }, ...readySkillChoices(actor)];
 }
 
 function readyCardHtml(choice, checked) {
@@ -133,13 +188,25 @@ function readyCardHtml(choice, checked) {
     ? `<img src="${escapeHtml(choice.img)}" alt="">`
     : `<i class="fa-solid ${escapeHtml(choice.icon ?? "fa-bolt")}" aria-hidden="true"></i>`;
   const classes = ["combater-ready-card", choice.strike ? "is-strike" : "", choice.value === "other" ? "is-other" : ""].filter(Boolean).join(" ");
-  return `<label class="${classes}">
+  const search = choice.search ? ` data-ready-search="${escapeHtml(String(choice.search).toLowerCase())}"` : "";
+  return `<label class="${classes}"${search}>
     <input type="radio" name="choice" value="${escapeHtml(choice.value)}"${checked ? " checked" : ""}
       data-bonuses="${escapeHtml((choice.bonuses ?? []).join(","))}" data-map-steps="${escapeHtml((choice.mapSteps ?? []).join(","))}">
     <span class="combater-ready-card-art">${art}</span>
     <span class="combater-ready-card-text"><strong>${escapeHtml(choice.value === "other" ? choice.text : choice.label)}</strong><small>${escapeHtml(choice.detail ?? "")}</small></span>
     <i class="fa-solid fa-circle-check combater-ready-card-check" aria-hidden="true"></i>
   </label>`;
+}
+
+function skillCardsHtml(choices) {
+  const skills = choices.filter((choice) => choice.group === "skill");
+  if (!skills.length) return "";
+  return `<fieldset class="combater-ready-group combater-ready-skills">
+      <legend>${escapeHtml(t("TurnControls.ReadySkillActions", "Skill actions"))}</legend>
+      <label class="combater-ready-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" data-ready-filter placeholder="${escapeHtml(t("TurnControls.ReadySkillSearch", "Search skill actions"))}"></label>
+      <div class="combater-ready-cards is-scroll">${skills.map((choice) => readyCardHtml(choice, false)).join("")}</div>
+    </fieldset>`;
 }
 
 async function promptReady(combat) {
@@ -159,8 +226,9 @@ async function promptReady(combat) {
     <p class="combater-ready-rule">${escapeHtml(t("TurnControls.ReadyRuleNoTrigger", "Spend 2 actions and end your turn. Declare the trigger at the table; if it happens before your next turn starts, use the action as a reaction."))}</p>
     <fieldset class="combater-ready-group">
       <legend>${escapeHtml(t("TurnControls.ReadyAction", "Action"))}</legend>
-      <div class="combater-ready-cards">${choices.map((choice, index) => readyCardHtml(choice, index === 0)).join("")}</div>
+      <div class="combater-ready-cards">${choices.filter((choice) => choice.group !== "skill").map((choice, index) => readyCardHtml(choice, index === 0)).join("")}</div>
     </fieldset>
+    ${skillCardsHtml(choices)}
     <label class="combater-ready-field" data-ready-custom hidden><span>${escapeHtml(t("TurnControls.ReadyCustom", "Describe the action"))}</span>
       <input type="text" name="custom" maxlength="80" placeholder="${escapeHtml(t("TurnControls.ReadyCustomPlaceholder", "Cast Shield"))}"></label>
     <fieldset class="combater-ready-group" data-ready-map>
@@ -198,6 +266,14 @@ async function promptReady(combat) {
         if (value === "other") form.querySelector("[name='custom']")?.focus();
       };
       for (const input of form.querySelectorAll("input[name='choice']")) input.addEventListener("change", sync);
+      const filter = form.querySelector("[data-ready-filter]");
+      filter?.addEventListener("input", () => {
+        const terms = filter.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+        for (const card of form.querySelectorAll("[data-ready-search]")) {
+          card.hidden = terms.length > 0 && !card.querySelector("input:checked")
+            && !terms.every((term) => card.dataset.readySearch.includes(term));
+        }
+      });
       sync();
     },
     ok: {
@@ -215,7 +291,13 @@ async function promptReady(combat) {
   const label = (choice?.value === "other" ? result.custom : choice?.label)?.trim();
   if (!label) throw Error(t("TurnControls.ReadyIncomplete", "Choose an action to ready."));
   const movementSlug = ["action:stride", "action:step"].includes(choice?.value) ? choice.value.slice(7) : null;
-  return { label, strike: choice?.strike ?? null, mapIndex: choice?.strike ? Number(result.mapIndex) || 0 : 0, movementSlug };
+  return {
+    label,
+    strike: choice?.strike ?? null,
+    skillAction: choice?.action ?? null,
+    mapIndex: choice?.strike ? Number(result.mapIndex) || 0 : 0,
+    movementSlug,
+  };
 }
 
 // The planner's own Stride/Step candidate carries the creature's Speed and footprint,
@@ -317,6 +399,13 @@ async function useReadied(panel, combatant, event) {
     if (!variant?.roll) throw Error(t("TurnControls.ReadiedMissing", "{action} is no longer available.", { action: ready.label }));
     const roll = await variant.roll({ event });
     return roll !== null && roll !== undefined;
+  }
+  if (ready.skillAction) {
+    // A readied skill action rolls the real PF2e action against the user's current target.
+    const action = GENERIC_ACTIONS.find((entry) => entry.slug === ready.skillAction);
+    const targetToken = globalThis.game?.user?.targets?.first?.() ?? null;
+    const result = action ? await usePf2eAction({ actor: combatant.actor, action, event, targetToken }) : null;
+    if (result) return true;
   }
   const name = escapeHtml(turnCombatantName(combatant));
   await globalThis.ChatMessage?.create?.({

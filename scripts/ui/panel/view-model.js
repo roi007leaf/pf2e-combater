@@ -637,7 +637,8 @@ const DECISION_TRAITS = ["agile", "nonlethal", "reach", "sweep", "forceful", "ba
 const INLINE_TRAIT_LIMIT = 2;
 
 export function compactTraitChips(chips) {
-  const list = Array.isArray(chips) ? chips : [];
+  // "Reload 0" means no reload at all, so it isn't worth a chip.
+  const list = (Array.isArray(chips) ? chips : []).filter((chip) => String(chip?.slug ?? "").toLowerCase() !== "reload-0");
   if (list.length <= INLINE_TRAIT_LIMIT + 1) return { chips: list, overflow: null };
   const key = (chip) => String(chip?.slug ?? chip?.label ?? "").toLowerCase();
   const important = list.filter((chip) => DECISION_TRAITS.some((trait) => key(chip).startsWith(trait)));
@@ -767,6 +768,8 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     reason: why.summary,
     why,
     targetLabel,
+    // The bare creature name for the styled target chip; Sustain labels keep their text.
+    targetName: !sustainLabel && targetLabel.startsWith("→ ") ? targetLabel.slice(2) : "",
     targetIntelKey: draftTargetIntelKey,
     canOpenTargetIntel: Boolean(targetLabel && !sustainLabel && draftTargetIntelKey),
     targetIntelTooltip: t("Intel.TargetTooltip", "View known intel for this target."),
@@ -1183,6 +1186,13 @@ function starRow(score, best) {
   return [0, 1, 2].map((index) => ({ on: index < filled }));
 }
 
+// PF2e's cost glyphs and placeholder icons duplicate the row's own cost glyph; only real art shows.
+const GENERIC_STEP_IMG = /icons\/actions\/(?:One|Two|Three|Free|Passive|Reaction|Empty|OneThree|OneTwo|TwoThree|Longer)[A-Za-z]*\.webp$|default-icons\//;
+
+function realStepImg(img) {
+  return img && !GENERIC_STEP_IMG.test(String(img)) ? img : "";
+}
+
 function hasMoreStepTools(step) {
   const live = !step?.isExecutionDone && Boolean(step?.canChooseSummon || step?.summonLabel || step?.canChooseTarget
     || step?.canChooseDestination || step?.canChooseArea || step?.canChooseRecommendedArea || step?.canChooseSwapItems
@@ -1209,6 +1219,7 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
     stepNumber,
     pipSlots: slots,
     hideTarget: Boolean(shared && step.targetLabel === shared),
+    img: realStepImg(step.img),
     toolsOpen: Boolean(openTools?.has?.(step.instanceId)),
     hasMoreTools: hasMoreStepTools(step),
     moreToolsLabel: t("Panel.MoreStepTools", "More options"),
@@ -1236,18 +1247,33 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
     if (!entry?.isGroup) return decorateStep(entry, stepNumber, slots);
     return { ...entry, stepNumber, pipSlots: slots, children: entry.children.map((child) => decorateStep(child, null, slots)) };
   });
+  // A setup step (e.g. the Stride before a Strike) doesn't repeat its payoff's reason.
+  const shown = steps.flatMap((entry) => (entry?.isGroup ? entry.children : [entry])).filter((step) => step?.instanceId);
+  for (let index = 0; index < shown.length - 1; index += 1) {
+    const summary = shown[index].why?.summary;
+    if (summary && summary === shown[index + 1].why?.summary) shown[index].why = { ...shown[index].why, hasReasons: false };
+  }
   const runnable = flat.filter((step) => step.canShowExecuteStep && !step.isExecutionDone && !step.quickenedNextTurn);
   const next = runnable[0] ?? null;
+  const counted = flat.filter((step) => !step.quickenedNextTurn);
+  const doneCount = counted.filter((step) => step.isExecutionDone).length;
+  const complete = counted.length > 0 && doneCount === counted.length;
+  const progress = counted.length > 0 && doneCount > 0 ? {
+    label: t("Panel.ProgressDone", "{done}/{total} done", { done: doneCount, total: counted.length }),
+    percent: Math.round((doneCount / counted.length) * 100),
+  } : null;
   return {
     steps,
     pipOwners,
     quickenedOwner,
     sharedTarget: shared ? {
-      label: shared,
+      label: shared.replace(/^→\s*/, ""),
       prefix: t("Panel.SharedTargetPrefix", "All steps target"),
       intelKey: intelStep?.targetIntelKey ?? "",
       intelTooltip: intelStep?.targetIntelTooltip ?? "",
     } : null,
+    progress,
+    complete: complete ? { label: t("Panel.TurnComplete", "Turn complete") } : null,
     footer: next ? {
       visible: true,
       instanceId: next.instanceId,

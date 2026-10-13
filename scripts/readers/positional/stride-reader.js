@@ -13,16 +13,20 @@ import {
   movementBlockingCondition,
   movementRange,
 } from "../action/reader-helpers.js";
-import { isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
+import { candidateAverageDamage, isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
 
 function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2, canStep = false) {
   const reach = strikeMeleeReach(strike);
   const speed = movementRange(profile);
   const oneStride = speed + reach;
   const twoStrides = speed * 2 + reach;
-  for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
+  // Only a Strike of the same kind makes the approach redundant: a pistol that already reaches the
+  // target says nothing about whether the rapier needs a Stride first.
+  const ranged = isRangedStrike(strike);
+  const sameKindStrikes = readyStrikes.filter((ready) => isRangedStrike(ready) === ranged);
+  const approach = (target) => {
     const distance = target?.distance ?? Infinity;
-    if (readyStrikeCanReach(readyStrikes, target)) continue;
+    if (readyStrikeCanReach(sameKindStrikes, target)) return null;
     if (canStep && distance <= reach + 5) {
       const attackCenter = bestReachableAttackCenter(context, target, 5, reach);
       if (attackCenter) return { target, strides: 1, movement: "step", attackCenter };
@@ -38,18 +42,37 @@ function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2
       if (attackCenter) return { target, strides: 2, attackCenter };
       if (canMoveIntoReach(context, target, speed * 2, reach)) return { target, strides: 2 };
     }
-  }
-  return null;
+    return null;
+  };
+  // Enemies arrive in canvas order; the target that is cheapest to reach wins (a Step beats a
+  // Stride, one Stride beats two), then the user's own target, then the nearest.
+  const targets = [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget);
+  const userTargets = new Set(contextTargets(context).map((target) => target?.id ?? target?.name));
+  return targets
+    .map((target, order) => ({ plan: approach(target), order }))
+    .filter((entry) => entry.plan)
+    .toSorted((left, right) => approachCost(left.plan) - approachCost(right.plan)
+      || Number(!userTargets.has(left.plan.target?.id ?? left.plan.target?.name)) - Number(!userTargets.has(right.plan.target?.id ?? right.plan.target?.name))
+      || (left.plan.target?.distance ?? Infinity) - (right.plan.target?.distance ?? Infinity)
+      || left.order - right.order)[0]?.plan ?? null;
+}
+
+function approachCost(plan) {
+  return plan.strides * 2 - (plan.movement === "step" ? 1 : 0);
 }
 
 export function readStrideStrikeActivities(context, readyStrikes) {
   const profile = contextProfile(context);
   const standFirst = canStandBeforeMovement(profile);
-  const stepAllowed = !standFirst && !movementBlockingCondition(profile, { slug: "step" });
+  // After Standing, a Step is legal again (and avoids the Reactive Strike a Stride would draw).
+  const stepAllowed = standFirst || !movementBlockingCondition(profile, { slug: "step" });
   if (!standFirst && movementBlockingCondition(profile, { slug: "stride" }) && !stepAllowed) return [];
 
-  const seenTargets = new Set();
-  return readyStrikes.flatMap((strike) => {
+  // One composite per target: the cheapest approach, then the hardest-hitting weapon -- not
+  // whichever Strike PF2e happens to list first (Fist before Greatsword).
+  const ranked = [...readyStrikes].toSorted((left, right) => candidateAverageDamage(right) - candidateAverageDamage(left));
+  const seenTargets = new Map();
+  const composites = ranked.flatMap((strike) => {
     const reach = strikeMeleeReach(strike);
     const plan = strideStrikePlan(
       context,
@@ -65,8 +88,8 @@ export function readStrideStrikeActivities(context, readyStrikes) {
     if (actionCost > 3) return [];
 
     const key = target.id ?? target.name;
-    if (seenTargets.has(key)) return [];
-    seenTargets.add(key);
+    if (seenTargets.has(key) && seenTargets.get(key) <= actionCost) return [];
+    seenTargets.set(key, actionCost);
 
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
     const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${movement === "step" ? t("Action.StepArrow", "Step -> ") : t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
@@ -82,6 +105,9 @@ export function readStrideStrikeActivities(context, readyStrikes) {
       detected: true,
       available: true,
       item: strike.item ?? null,
+      traits: strike.traits,
+      averageDamage: candidateAverageDamage(strike) || null,
+      damageProfile: strike.damageProfile ?? null,
       preferredTarget: target,
       role: "mobility-attack",
       activityProfile: {
@@ -108,6 +134,10 @@ export function readStrideStrikeActivities(context, readyStrikes) {
           : t("Reason.StrideStrike", "Stride into reach and Strike {target}.", { target: target.name })],
     }];
   });
+  // A cheaper approach found later (by a lower-damage weapon) replaces the costlier one for that target.
+  return composites.filter((action) => seenTargets.get(action.preferredTarget?.id ?? action.preferredTarget?.name) === action.actionCost)
+    .filter((action, index, list) => list.findIndex((other) =>
+      (other.preferredTarget?.id ?? other.preferredTarget?.name) === (action.preferredTarget?.id ?? action.preferredTarget?.name)) === index);
 }
 
 function strideMultiattackPlan(context, profile, reach, maxStrides, canStep = false, intrinsicStrides = 0) {
@@ -146,7 +176,10 @@ export function readStrideMultiattackActivities(context, generatedActivities) {
     const stationaryMultiattack = includes.length > 0 && includes.every((part) => part === "strike");
     const intrinsicMoveAndStrike = action.activityProfile?.includesStrike === true
       && Number(action.activityProfile?.strideCount) > 0;
+    // A ranged multiattack (Hunted Shot) never wants to walk into melee reach first.
+    const rangedOnly = String(action.activityProfile?.backingStrikeFilter ?? "").startsWith("ranged");
     return action.available !== false
+      && !rangedOnly
       && action.activityProfile?.requiresBackingStrike
       && (stationaryMultiattack || intrinsicMoveAndStrike);
   });

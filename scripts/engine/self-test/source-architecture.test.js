@@ -3488,7 +3488,7 @@ assert.equal(
 );
 assert.ok(
   /const autoFillPlans[\s\S]*?buildTurnPlans\(autoFillContext,[\s\S]*?includeCoverage: false/.test(panelContextWorkflowSource)
-    && /rebuildPanelAutoFillContext\(panel[\s\S]*?buildTurnPlans\(focusedContext, candidateBuild\.candidates, \{ includeCoverage: false \}\)/.test(panelDraftWorkflowSource),
+    && /rebuildPanelAutoFillContext\(panel[\s\S]*?buildTurnPlans\(focusedContext, candidateBuild\.candidates, \{\s*includeCoverage: false/.test(panelDraftWorkflowSource),
   "interactive panel planning should keep exhaustive legal-action coverage in Browse instead of blocking refresh and target-change buttons",
 );
 assert.ok(

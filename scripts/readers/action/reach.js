@@ -218,7 +218,25 @@ export function targetThreatReach(target) {
   return Number.isFinite(reach) && reach >= 0 ? reach : 5;
 }
 
+const NON_THREATENING_CONDITIONS = ["unconscious", "paralyzed", "petrified", "dead", "destroyed"];
+
+function entityConditionActive(entity, slug) {
+  const conditions = entity?.conditions;
+  if (!conditions) return false;
+  if (Array.isArray(conditions)) return conditions.some((condition) => condition === slug || condition?.slug === slug);
+  if (Array.isArray(conditions.slugs) && conditions.slugs.includes(slug)) return true;
+  return numeric(conditions.values?.[slug]) > 0;
+}
+
+// An ally who can't act (down, paralyzed, petrified) threatens nothing, so it can't flank.
+function allyCanThreaten(ally) {
+  const hpPercent = Number(ally?.hpPercent);
+  if (Number.isFinite(hpPercent) && hpPercent <= 0) return false;
+  return !NON_THREATENING_CONDITIONS.some((slug) => entityConditionActive(ally, slug));
+}
+
 export function allyThreatensTarget(ally, target, metrics) {
+  if (!allyCanThreaten(ally)) return false;
   const allyCenter = centerPoint(ally);
   const targetCenter = centerPoint(target);
   if (!allyCenter || !targetCenter) return false;

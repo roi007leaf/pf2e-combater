@@ -44,5 +44,24 @@ assert.equal(layout.footer.canRunAll, true);
 const mixed = decoratePlanLayout([step("a"), step("b", { targetLabel: "Goblin" })]);
 assert.equal(mixed.sharedTarget, null, "different targets keep per-row labels");
 assert.equal(decoratePlanLayout([]).footer.visible, false);
+assert.equal(decoratePlanLayout([step("p", { targetLabel: "→ Orc" }), step("q", { targetLabel: "→ Orc" })]).sharedTarget.label, "Orc", "the shared-target banner shows the bare name, not a second arrow");
+
+// Finished turn: progress, completion, generic icons dropped, setup reasons not repeated.
+const finished = decoratePlanLayout([
+  step("m", { name: "Stride", img: "systems/pf2e/icons/actions/OneAction.webp", isExecutionDone: true, canShowExecuteStep: false, why: { hasReasons: true, summary: "Stride into reach and Strike Rootfall.", score: 100 } }),
+  step("b", { name: "Shortbow", img: "icons/weapons/bow.webp", isExecutionDone: true, canShowExecuteStep: false, why: { hasReasons: true, summary: "Stride into reach and Strike Rootfall.", score: 100 } }),
+]);
+assert.equal(finished.steps[0].img, "", "PF2e's generic action icon is dropped");
+assert.equal(finished.steps[1].img, "icons/weapons/bow.webp", "real art is kept");
+assert.equal(finished.steps[0].why.hasReasons, false, "a setup step doesn't repeat its payoff's reason");
+assert.equal(finished.steps[1].why.hasReasons, true);
+assert.equal(finished.complete.label, "Turn complete");
+assert.equal(finished.progress.label, "2/2 done");
+assert.equal(finished.footer.visible, false, "nothing left to run");
+const halfway = decoratePlanLayout([step("x", { isExecutionDone: true, canShowExecuteStep: false }), step("y")]);
+assert.equal(halfway.complete, null);
+assert.deepEqual([halfway.progress.label, halfway.progress.percent], ["1/2 done", 50]);
+assert.equal(decoratePlanLayout([step("z")]).progress, null, "no progress line before anything runs");
+assert.equal(compactTraitChips([chip("reload-0"), chip("deadly-d10")]).chips.map((entry) => entry.slug).join(), "deadly-d10", "Reload 0 is not shown");
 
 console.log("Plan layout tests passed.");

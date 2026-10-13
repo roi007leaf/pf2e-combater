@@ -391,8 +391,8 @@ try {
   const withNativeScore = scoreCandidate(scoredContext, demoralize);
   assert.equal(
     withNativeScore.score,
-    withoutNativeScore.score + 2,
-    "disclosed 55% native odds should provide a bounded +2 Auto-fill adjustment",
+    withoutNativeScore.score - (withoutNativeScore.skillCheck?.scoreDelta ?? 0) + 2,
+    "disclosed 55% native odds replace the heuristic skill odds with a bounded +2 adjustment",
   );
   assert.equal(withNativeScore.nativePreflight.available, true);
   assert.equal(withNativeScore.nativePreflight.scoreApplied, true);

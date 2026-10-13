@@ -11,12 +11,18 @@ export function rangedStrikeReach(strike) {
 }
 
 export function isRangedStrike(strike) {
+  if (typeof strike?.isRanged === "boolean") return strike.isRanged;
+  const native = strike?.item?.isRanged;
+  if (typeof native === "boolean") return native;
+  if (Number(strike?.range?.increment) > 0) return true;
   if (rangedStrikeReach(strike) <= 5) return false;
   const traits = normalizedTraits(strike?.traits ?? strike?.item?.system?.traits?.value)
     .map((trait) => String(trait ?? "").toLowerCase());
-  return traits.includes("ranged")
-    || traits.some((trait) => trait.startsWith("thrown-"))
-    || Number(strike?.range?.max ?? strike?.range?.increment) > 10;
+  if (traits.includes("ranged")) return true;
+  // Without weapon data, a long reach only means ranged when no reach trait explains it.
+  return !traits.some((trait) => trait.startsWith("reach"))
+    && Number(strike?.range?.max) > 10
+    && !traits.some((trait) => trait.startsWith("thrown"));
 }
 
 export function candidateAverageDamage(candidate) {

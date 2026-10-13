@@ -25,7 +25,7 @@ function itemKey(item) {
 
 function dedupeKey(action) {
   if (action.source === "strike") {
-    return `strike:${itemKey(action.item) ?? action.id ?? action.name}`;
+    return `strike:${itemKey(action.item) ?? action.id ?? action.name}:${action.altUsage ?? ""}`;
   }
   // Keyed by the physical wand/scroll, not slug+cost -- otherwise a carried scroll of a spell the
   // actor also knows would collide with (and lose to) the known-spell candidate, hiding the backup
@@ -39,6 +39,21 @@ function dedupeKey(action) {
     return `spell:${action.spellcastingEntryUuid ?? action.spellcastingEntryId ?? ""}:${itemKey(action.item) ?? action.variantGroup ?? action.id ?? action.slug}:${action.castRank ?? action.rank ?? ""}:${action.slug}:${action.actionCost}`;
   }
   return `${action.slug ?? action.name}:${action.actionCost}`;
+}
+
+// Rejected only because nothing is in range/reach right now: the planner may still use it after a
+// move in the same turn (Stride -> Demoralize, Stride -> Strike). Matched against the readers' own
+// localized reasons so it works in every language.
+function rejectedOnlyForRange(action) {
+  const reason = action?.unavailableReason;
+  if (!reason) return false;
+  const range = Number(action.maxRange ?? action.targetingProfile?.maxRange ?? action.range?.max);
+  const reasons = new Set([
+    t("Avail.NoTargetInRange", "No target in range."),
+    t("Avail.NoEnemyInReach", "No enemy in reach."),
+    ...(Number.isFinite(range) ? [t("Avail.NoTargetWithin", "No target within {range} feet.", { range })] : []),
+  ]);
+  return reasons.has(reason);
 }
 
 function preferAction(left, right, includeUnknown) {
@@ -80,6 +95,7 @@ export function buildCandidates(context) {
   const { detected, duplicates } = dedupeDetected([...actions, ...spells], includeUnknown);
   const candidates = [];
   const rejected = [...duplicates];
+  const approachable = [];
   const exclusions = readActionExclusions(context);
 
   for (const detectedAction of detected) {
@@ -91,6 +107,10 @@ export function buildCandidates(context) {
     }
     if (!action.available) {
       rejected.push({ action, reason: action.unavailableReason || t("Reject.NotAvailable", "Action is not available in current context.") });
+      if (rejectedOnlyForRange(action) && !String(action.source ?? "").endsWith("-unknown")) {
+        const scored = scoreCandidate(context, { ...action, available: true }, spells, detected);
+        if (!npcTacticRejection(context, scored, detected)) approachable.push({ ...scored, available: true, needsApproach: true });
+      }
       continue;
     }
     if (action.source === "spell-unknown") {
@@ -114,5 +134,5 @@ export function buildCandidates(context) {
     candidates.push(scored);
   }
 
-  return { candidates, rejected, detected };
+  return { candidates, rejected, detected, approachable };
 }

@@ -3,6 +3,7 @@ import { slugify } from "../engine/action/text.js";
 import { canAttackTarget, contextEnemies, contextTargets } from "../engine/target-pool.js";
 import { readItemAvailability } from "./item-action-reader.js";
 import { readyStrikeCanReach } from "./action/reach.js";
+import { isRangedStrike } from "./positional/tactic-helpers.js";
 import { t } from "../i18n.js";
 import { npcWeaponNeedsReload } from "../engine/npc-reload-state.js";
 
@@ -18,7 +19,7 @@ function readWeaponRange(weapon) {
   const increment = Number(systemValue(systemRange?.increment ?? systemRange));
   const max = Number(systemValue(systemRange?.max));
   if (Number.isFinite(max) && max > 0) return { max, traits };
-  if (Number.isFinite(increment) && increment > 0) return { increment, max: increment, traits };
+  if (Number.isFinite(increment) && increment > 0) return { increment, max: increment * 6, traits };
 
   const thrownRange = traits
     .map((trait) => trait.match(/^thrown-(\d+)$/)?.[1])
@@ -33,7 +34,8 @@ function readWeaponRange(weapon) {
   if (reachRange.length) return { max: Math.max(...reachRange), traits };
   if (traits.includes("reach")) return { max: 10, traits };
 
-  return null;
+  // An ordinary melee weapon (rapier, longsword) has no range data at all: it reaches 5 ft.
+  return { max: 5, traits };
 }
 
 function readWeaponItems(actor) {
@@ -53,8 +55,27 @@ function weaponHandsHeld(weapon) {
   return Number.isFinite(hands) ? hands : 0;
 }
 
-function isDrawableWeapon(weapon) {
+// Hands a weapon needs to wield: "held-in-two-hands" (or hands 2) needs both, anything else one.
+function weaponHandsRequired(weapon) {
+  const hands = weapon?.hands ?? weapon?.system?.usage?.hands;
+  if (Number(hands) >= 2) return 2;
+  const usage = String(weapon?.system?.usage?.value ?? weapon?.usage?.value ?? "");
+  return usage === "held-in-two-hands" ? 2 : 1;
+}
+
+// Free hands left after everything already held (weapons, shields, other held gear).
+function actorFreeHands(actor) {
+  const held = collectionValues(actor?.items).reduce((total, item) => {
+    const hands = Number(item?.system?.equipped?.handsHeld ?? item?.handsHeld);
+    if (Number.isFinite(hands) && hands > 0) return total + hands;
+    return (item?.system?.equipped?.carryType ?? item?.carryType) === "held" ? total + 1 : total;
+  }, 0);
+  return Math.max(0, 2 - held);
+}
+
+function isDrawableWeapon(weapon, freeHands = 2) {
   if (!weapon || weapon.type !== "weapon") return false;
+  if (weaponHandsRequired(weapon) > freeHands) return false;
   const category = systemValue(weapon.system?.category);
   if (category === "unarmed") return false;
   if (weapon?.isHeld === true || weaponHandsHeld(weapon) > 0) return false;
@@ -62,24 +83,30 @@ function isDrawableWeapon(weapon) {
   return readItemAvailability(weapon).available;
 }
 
-function drawStrikeTarget(context, range, readyStrikes) {
+function drawStrikeTarget(context, weapon, range, readyStrikes) {
+  // Any reaching Strike makes drawing a ranged weapon pointless, but a held pistol doesn't replace
+  // a sheathed rapier: drawing a melee weapon is only redundant if a melee Strike already reaches.
+  const sameKindStrikes = isRangedStrike({ range, item: weapon })
+    ? readyStrikes
+    : readyStrikes.filter((ready) => !isRangedStrike(ready));
   const targets = contextTargets(context);
   const enemies = contextEnemies(context);
   return [...targets, ...enemies].find((target) =>
     canAttackTarget(target)
-    && !readyStrikeCanReach(readyStrikes, target)
+    && !readyStrikeCanReach(sameKindStrikes, target)
     && (target?.distance ?? Infinity) <= range.max,
   ) ?? null;
 }
 
 function readDrawStrikeActivities(actor, context, readyStrikes) {
+  const freeHands = actorFreeHands(actor);
   return readWeaponItems(actor)
-    .filter(isDrawableWeapon)
+    .filter((weapon) => isDrawableWeapon(weapon, freeHands))
     .flatMap((weapon) => {
       const range = readWeaponRange(weapon);
       if (!range) return [];
 
-      const target = drawStrikeTarget(context, range, readyStrikes);
+      const target = drawStrikeTarget(context, weapon, range, readyStrikes);
       if (!target) return [];
 
       const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
@@ -125,7 +152,8 @@ function isHeldWeapon(weapon) {
 }
 
 function readDrawWeaponActions(actor) {
-  return readWeaponItems(actor).filter(isDrawableWeapon).map((weapon) => {
+  const freeHands = actorFreeHands(actor);
+  return readWeaponItems(actor).filter((weapon) => isDrawableWeapon(weapon, freeHands)).map((weapon) => {
     const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
     return {
       id: `draw-weapon-${weapon.id ?? slug}`,

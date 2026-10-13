@@ -188,7 +188,12 @@ function validateScenarios(scenarios) {
 }
 
 function scenarioResult(scenario) {
-  const options = { reservedSteps: scenario.reservedSteps ?? [] };
+  // Auto-fill and fill-gap run without coverage plans; scenarios opt in to test that mode.
+  const options = {
+    reservedSteps: scenario.reservedSteps ?? [],
+    includeCoverage: scenario.includeCoverage === true,
+    approachCandidates: scenario.approachCandidates ?? [],
+  };
   const started = currentTime();
   const plans = buildTurnPlans(scenario.context, scenario.candidates, options);
   const plannerMs = rounded(currentTime() - started);
@@ -240,6 +245,15 @@ function scenarioResult(scenario) {
       `any-plan-${index + 1}`,
       matched,
       `no plan matched ${JSON.stringify(requirement)}`,
+    );
+  }
+  for (const [index, requirement] of (expected.forbiddenInTop ?? []).entries()) {
+    const top = plans.slice(0, Math.max(1, Math.trunc(numeric(requirement.n, 3))));
+    const offender = top.find((plan) => planRequirementFailures(plan, requirement).length === 0);
+    addCheck(
+      `forbidden-top-${index + 1}`,
+      !offender,
+      `top ${top.length} contains ${planSummary(offender)?.actions?.join(" -> ") ?? JSON.stringify(requirement)}`,
     );
   }
   for (const reference of expected.excludedFromAllPlans ?? []) {

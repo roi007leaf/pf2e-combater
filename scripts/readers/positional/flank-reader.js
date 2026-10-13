@@ -19,53 +19,49 @@ import {
 } from "../action/reader-helpers.js";
 import { isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
 
-function rangeOverlap(aMin, aMax, bMin, bMax) {
-  return Math.min(aMax, bMax) - Math.max(aMin, bMin);
+function orientation(a, b, c) {
+  const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  return Math.abs(cross) < 1e-9 ? 0 : Math.sign(cross);
 }
 
-function withinRange(value, min, max) {
-  return value >= min && value <= max;
+function onSegment(a, b, point) {
+  return point.x >= Math.min(a.x, b.x) - 1e-9 && point.x <= Math.max(a.x, b.x) + 1e-9
+    && point.y >= Math.min(a.y, b.y) - 1e-9 && point.y <= Math.max(a.y, b.y) + 1e-9;
 }
 
-// Actor and ally flank a target when they are on opposite sides and actually across from
-// each other along that side. Center-only checks accept wrong squares for large targets.
-function flanksTarget(attackerRectangle, allyRectangle, targetRectangle) {
+// Inclusive of endpoints, so a line through a corner touches both sides that meet there.
+function segmentsIntersect(a, b, c, d) {
+  const o1 = orientation(a, b, c);
+  const o2 = orientation(a, b, d);
+  const o3 = orientation(c, d, a);
+  const o4 = orientation(c, d, b);
+  if (o1 !== o2 && o3 !== o4) return true;
+  return (o1 === 0 && onSegment(a, b, c))
+    || (o2 === 0 && onSegment(a, b, d))
+    || (o3 === 0 && onSegment(c, d, a))
+    || (o4 === 0 && onSegment(c, d, b));
+}
+
+function rectangleCenter(rectangle) {
+  return { x: rectangle.x + rectangle.width / 2, y: rectangle.y + rectangle.height / 2 };
+}
+
+// PF2e flanking: the line between the two flankers' centers passes through opposite sides or
+// opposite corners of the target's space (a corner counts as both sides that meet there).
+export function flanksTarget(attackerRectangle, allyRectangle, targetRectangle) {
   if (!attackerRectangle || !allyRectangle || !targetRectangle) return false;
-  const targetCenter = { x: targetRectangle.x + targetRectangle.width / 2, y: targetRectangle.y + targetRectangle.height / 2 };
-  const attackerCenter = { x: attackerRectangle.x + attackerRectangle.width / 2, y: attackerRectangle.y + attackerRectangle.height / 2 };
-  const allyCenter = { x: allyRectangle.x + allyRectangle.width / 2, y: allyRectangle.y + allyRectangle.height / 2 };
-  const dx = attackerCenter.x - targetCenter.x;
-  const dy = attackerCenter.y - targetCenter.y;
-  const ax = allyCenter.x - targetCenter.x;
-  const ay = allyCenter.y - targetCenter.y;
-  const targetYMin = targetRectangle.y;
-  const targetYMax = targetRectangle.y + targetRectangle.height;
-  const targetXMin = targetRectangle.x;
-  const targetXMax = targetRectangle.x + targetRectangle.width;
-
-  if (
-    dx * ax < 0
-    && withinRange(attackerCenter.y, targetYMin, targetYMax)
-    && withinRange(allyCenter.y, targetYMin, targetYMax)
-  ) {
-    const overlap = rangeOverlap(
-      attackerRectangle.y, attackerRectangle.y + attackerRectangle.height,
-      allyRectangle.y, allyRectangle.y + allyRectangle.height,
-    );
-    if (overlap > 0) return true;
-  }
-  if (
-    dy * ay < 0
-    && withinRange(attackerCenter.x, targetXMin, targetXMax)
-    && withinRange(allyCenter.x, targetXMin, targetXMax)
-  ) {
-    const overlap = rangeOverlap(
-      attackerRectangle.x, attackerRectangle.x + attackerRectangle.width,
-      allyRectangle.x, allyRectangle.x + allyRectangle.width,
-    );
-    if (overlap > 0) return true;
-  }
-  return false;
+  const from = rectangleCenter(attackerRectangle);
+  const to = rectangleCenter(allyRectangle);
+  const left = targetRectangle.x;
+  const right = targetRectangle.x + targetRectangle.width;
+  const top = targetRectangle.y;
+  const bottom = targetRectangle.y + targetRectangle.height;
+  const crosses = (a, b) => segmentsIntersect(from, to, a, b);
+  const crossesLeft = crosses({ x: left, y: top }, { x: left, y: bottom });
+  const crossesRight = crosses({ x: right, y: top }, { x: right, y: bottom });
+  const crossesTop = crosses({ x: left, y: top }, { x: right, y: top });
+  const crossesBottom = crosses({ x: left, y: bottom }, { x: right, y: bottom });
+  return (crossesLeft && crossesRight) || (crossesTop && crossesBottom);
 }
 
 function flankStrikePlan(context, profile, strike) {

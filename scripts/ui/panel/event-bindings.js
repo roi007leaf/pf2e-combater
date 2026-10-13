@@ -1,4 +1,5 @@
 import { SETTINGS, settingOrDefault } from "../../settings.js";
+import { recordPanelTurn } from "./record-turn.js";
 import { activateActionTrackerBindings } from "./action-tracker.js";
 import { activateTurnControlBindings } from "./turn-controls.js";
 import { activateUpcomingTurnBindings } from "./upcoming-turns.js";
@@ -123,6 +124,13 @@ export function activatePanelRenderBindings(panel, element) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       panel._setPlanPreferenceFeedback(Number(button.dataset.planPreference));
+    });
+  }
+
+  for (const button of element.querySelectorAll("[data-record-turn]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      recordPanelTurn(panel);
     });
   }
 

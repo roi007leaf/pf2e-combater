@@ -430,7 +430,11 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       // Gap filling only needs the best tactical continuations. The exhaustive coverage backfill
       // exists so a fresh-turn cycle can expose every legal action, but repeating that work after
       // every draft edit made Remove, reorder, target, route, and equipment buttons block the UI.
-      { reservedSteps: lockedDraft.steps, includeCoverage: false },
+      {
+        reservedSteps: lockedDraft.steps,
+        includeCoverage: false,
+        approachCandidates: (candidateBuild.approachable ?? []).map(withBuilderActionFields),
+      },
     );
     this._fillGapPlanCacheKey = cacheKey;
     return this._fillGapPlanCache;

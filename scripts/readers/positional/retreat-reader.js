@@ -127,8 +127,9 @@ function skirmishStrikePlan(context, profile, strike, readyStrikes) {
   if (reach <= 5) return null;
 
   const speed = movementRange(profile);
+  const meleeStrikes = readyStrikes.filter((ready) => !isRangedStrike(ready));
   for (const target of [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget)) {
-    if (readyStrikeCanReach(readyStrikes, target) || (target?.distance ?? Infinity) <= reach) continue;
+    if (readyStrikeCanReach(meleeStrikes, target) || (target?.distance ?? Infinity) <= reach) continue;
 
     const coverState = originCoverFromTarget(context, target);
     if (!coverState) continue;
