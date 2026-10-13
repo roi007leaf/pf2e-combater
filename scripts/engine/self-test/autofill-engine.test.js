@@ -328,7 +328,9 @@ assert.equal(targetAcPenalty({ conditions: { slugs: ["frightened", "sickened"], 
     assert.ok(shot.score > strike.score, `Hunted Shot (${shot.score}) outscores one bow Strike (${strike.score})`);
     assert.equal(attacksTowardMap(shot), 2, "Hunted Shot's two Strikes both advance MAP");
     const freshPlans = buildTurnPlans(fresh, candidates).plans ?? buildTurnPlans(fresh, candidates);
-    assert.deepEqual(planNames(freshPlans[0]), ["Hunt Prey", "Hunted Shot", "Verdant Sting"], "Hunt Prey, then both shots before the -10 Strike");
+    assert.deepEqual(planNames(freshPlans[0]).slice(0, 2), ["Hunt Prey", "Hunted Shot"], "Hunt Prey, then both shots");
+    const extraShot = planNames(freshPlans[0]).indexOf("Verdant Sting");
+    assert.ok(extraShot < 0 || extraShot > 1, "a third bow Strike (at -10) only ever comes after Hunted Shot");
     for (const plan of freshPlans) {
       assert.ok(planNames(plan).includes("Hunted Shot") === false || planNames(plan).includes("Hunt Prey"),
         `with no prey yet, Hunted Shot needs Hunt Prey first: ${planNames(plan).join(" -> ")}`);

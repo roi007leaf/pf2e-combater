@@ -146,6 +146,13 @@ function actionKind(action) {
 }
 
 function resourceKind(action) {
+  // Cantrips cost nothing: they share a spellcasting entry with slotted spells, but aren't one.
+  const spellResource = String(action?.spellResource?.type ?? "").toLowerCase();
+  const isCantrip = action?.isCantrip === true || action?.activityProfile?.cantrip === true
+    || spellResource === "cantrip"
+    || (Array.isArray(action?.traits) && action.traits.some((trait) => String(trait?.slug ?? trait?.name ?? trait).toLowerCase() === "cantrip"));
+  if (isCantrip) return "at-will";
+  if (spellResource === "focus") return "focus";
   const text = [
     action?.resourceType,
     action?.resource?.type,

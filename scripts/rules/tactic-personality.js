@@ -110,11 +110,11 @@ const ROLE_ACTION_WEIGHTS = {
   lieutenant: { support: 12, control: 10, damage: 4, highImpact: 6 },
   minion: { simple: 10, support: 5, mobility: 4, highImpact: -10, reaction: -4 },
   brute: { damage: 14, grab: 12, control: 6, mobilityAttack: 8, support: -8 },
-  skirmisher: { mobility: 14, mobilityAttack: 14, defense: 6, damage: 4, highImpact: -4 },
+  skirmisher: { mobility: 14, mobilityAttack: 14, damage: 4, highImpact: -4 },
   artillery: { ranged: 14, spell: 12, damage: 8, control: 5, defense: -4, melee: -10 },
   controller: { control: 16, grab: 14, mobilityAttack: 6, debuff: 4, damage: -4 },
   defender: { defense: 16, control: 8, support: 8, reaction: 8, damage: -4 },
-  support: { support: 22, simple: 8, healing: 4, defense: 6, damage: -8 },
+  support: { support: 22, debuff: 6, healing: -4, spell: -4, defense: 6, damage: -8 },
 };
 
 const TEMPERAMENT_ACTION_WEIGHTS = {
@@ -152,7 +152,7 @@ const ROLE_PLAN_WEIGHTS = {
   debuffer: { prefer: ["debuff"], avoid: ["damage"], bonus: 55, penalty: -35 },
   controller: { prefer: ["grab", "control"], avoid: ["ranged"], bonus: 50, penalty: -25 },
   defender: { prefer: ["defense"], avoid: ["ranged"], bonus: 50, penalty: -25 },
-  support: { prefer: ["support"], avoid: ["damage"], bonus: 50, penalty: -30 },
+  support: { prefer: ["support", "debuff"], avoid: ["damage"], bonus: 50, penalty: -30 },
   skirmisher: { prefer: ["mobility", "mobilityAttack"], avoid: ["defense"], bonus: 50, penalty: -25 },
 };
 
@@ -548,10 +548,137 @@ function inferTacticPersonality(context) {
   return computeInferTacticPersonality(context);
 }
 
+// Player characters: what the class is for, what the best ready weapon is, and what the spells and
+// impulses actually do. Descriptions of passive feats and gear are not evidence ("+1 status bonus",
+// "armor", "shield" turned fighters into Defenders and rangers into Support).
+const CLASS_ROLE_PRIORS = {
+  fighter: { "melee-striker": 8 },
+  barbarian: { "melee-striker": 10 },
+  monk: { "melee-striker": 8, skirmisher: 3 },
+  swashbuckler: { "melee-striker": 7, skirmisher: 4 },
+  rogue: { "melee-striker": 6, skirmisher: 4 },
+  investigator: { "melee-striker": 5, support: 2 },
+  ranger: { "ranged-striker": 3, "melee-striker": 3 },
+  gunslinger: { "ranged-striker": 10 },
+  inventor: { "melee-striker": 6 },
+  thaumaturge: { "melee-striker": 7 },
+  magus: { "melee-striker": 7, "spell-damage": 3 },
+  exemplar: { "melee-striker": 8 },
+  champion: { defender: 10, "melee-striker": 3 },
+  guardian: { defender: 12 },
+  commander: { support: 10 },
+  kineticist: { "spell-damage": 10 },
+  wizard: { "spell-damage": 8 },
+  sorcerer: { "spell-damage": 7 },
+  psychic: { "spell-damage": 8 },
+  witch: { debuffer: 9, "spell-damage": 3 },
+  alchemist: { "ranged-striker": 6, support: 2 },
+  cleric: { healer: 8 },
+  druid: { "spell-damage": 4, healer: 2 },
+  oracle: { "spell-damage": 3, healer: 3, debuffer: 2 },
+  bard: { buffer: 8, support: 3 },
+  summoner: { "melee-striker": 4, support: 2 },
+  animist: { healer: 4, "spell-damage": 4 },
+};
+
+function actorClassSlug(actor, context = null) {
+  const item = actor?.class ?? actorItems(actor, "class")[0] ?? null;
+  return normalizeId(item?.slug ?? item?.system?.slug ?? item?.name ?? context?.profile?.classSlug ?? context?.actor?.profile?.classSlug ?? "");
+}
+
+function playerStrikeAverage(strike) {
+  const parsed = strikeAverageDamage(strike);
+  if (parsed !== null) return parsed;
+  const damage = strike?.item?.system?.damage ?? {};
+  const faces = Number(String(damage.die ?? "").replace(/^d/, ""));
+  const dice = Math.max(1, Number(damage.dice) || 1) + (Number(strike?.item?.system?.runes?.striking) || 0);
+  return Number.isFinite(faces) && faces > 0 ? dice * (faces + 1) / 2 : 0;
+}
+
+function isRangedPlayerStrike(strike, traits) {
+  const native = strike?.item?.isRanged;
+  if (typeof native === "boolean") return native;
+  return strikeRange(strike, traits) > 10 && !traits.some((trait) => trait.startsWith("reach"));
+}
+
+const DAMAGE_WORDS_RE = /\b(damage|attack roll|spell attack)\b/;
+const BUFF_RE = /\b(status bonus|circumstance bonus to|allies|ally|grant|heroism|haste|bless|inspire|anthem|composition)\b/;
+
+function classifyPlayerSpell(spell) {
+  const text = documentText(spell);
+  const traits = traitSlugs(spell);
+  if (traits.includes("healing") || (hasPattern(text, HEALING_RE) && !spell?.system?.damage)) return "healer";
+  // Curses, misfortune and nonlethal "damage" (Daze, Phantom Pain) are there for the condition.
+  if (traits.some((trait) => ["curse", "misfortune", "nonlethal"].includes(trait))) return "debuffer";
+  const damage = Boolean(spell?.system?.damage && Object.keys(spell.system.damage).length) || hasPattern(text, DAMAGE_WORDS_RE);
+  const control = hasPattern(text, CONTROL_RE);
+  if (damage) return control ? "mixed" : "spell-damage";
+  if (control) return "debuffer";
+  if (hasPattern(text, BUFF_RE)) return "buffer";
+  return null;
+}
+
+export function computePlayerTacticPersonality(context, actor) {
+  const scores = scoreBag();
+  for (const [role, amount] of Object.entries(CLASS_ROLE_PRIORS[actorClassSlug(actor, context)] ?? {})) addScore(scores, "role", role, amount);
+
+  // The best ready weapon says melee or ranged; the basic Fist only counts for an unarmed fighter.
+  const strikes = pf2eRuntime.readActor(actor).actions
+    .filter((action) => action?.type === "strike" && action?.visible !== false && action?.ready !== false);
+  const weapons = strikes.filter((strike) => systemValue(strike?.item?.system?.category) !== "unarmed");
+  const pool = weapons.length ? weapons : strikes;
+  const best = pool
+    .map((strike) => ({ strike, traits: strikeTraits(strike), damage: playerStrikeAverage(strike) }))
+    .toSorted((left, right) => right.damage - left.damage)[0] ?? null;
+  if (best) {
+    const martial = (CLASS_ROLE_PRIORS[actorClassSlug(actor, context)]?.["melee-striker"] ?? 0) > 0
+      || (CLASS_ROLE_PRIORS[actorClassSlug(actor, context)]?.["ranged-striker"] ?? 0) > 0;
+    addScore(scores, "role", isRangedPlayerStrike(best.strike, best.traits) ? "ranged-striker" : "melee-striker", martial ? 8 : 4);
+    if (best.traits.includes("agile") || best.traits.includes("finesse")) addScore(scores, "role", "skirmisher", 1);
+  }
+
+  // Alchemical bombs are an alchemist's ranged attack even though they aren't held weapons.
+  // (Anyone can carry a bomb or two; only for an alchemist are they the main attack.)
+  if (actorClassSlug(actor, context) === "alchemist"
+    && actorItemsOfTypes(actor, ["consumable", "weapon"]).some((item) => traitSlugs(item).includes("bomb"))) {
+    addScore(scores, "role", "ranged-striker", 6);
+  }
+
+  // Spells and impulses by what they do; cantrips and impulses are the everyday kit, so they weigh more.
+  const castables = [
+    ...actorItemsOfTypes(actor, ["spell"]),
+    ...actorItemsOfTypes(actor, ["action", "feat"]).filter((item) => traitSlugs(item).includes("impulse")),
+  ];
+  const seen = new Set();
+  for (const item of castables) {
+    // The same spell in several spellcasting entries (or the list's duplicates) counts once.
+    const key = normalizeId(item?.system?.slug ?? item?.slug ?? item?.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const kind = classifyPlayerSpell(item);
+    const everyday = traitSlugs(item).includes("cantrip") || traitSlugs(item).includes("impulse");
+    const weight = everyday ? 2 : 1;
+    if (kind === "mixed") {
+      addScore(scores, "role", "spell-damage", weight);
+      addScore(scores, "role", "debuffer", weight);
+    } else if (kind) {
+      addScore(scores, "role", kind, weight);
+    }
+  }
+
+  if (context?.profile?.hasShield === true) addScore(scores, "role", "defender", 2);
+  return {
+    role: bestAllowedScoredKey(scores.role, AUTO_ROLE_MIN_SCORE, PLAYER_TACTIC_ROLE_ID_SET),
+    temperament: "auto",
+    scores: scores.role,
+  };
+}
+
 function computeInferTacticPersonality(context) {
   const actor = actorDocument(context);
   if (!actor) return { role: "auto", temperament: "auto" };
   const npc = actorType(context) === "npc";
+  if (!npc) return computePlayerTacticPersonality(context, actor);
   const scores = scoreBag();
   const level = actorLevel(actor);
   const enemyLevels = opposingLevels(context);
@@ -742,6 +869,17 @@ function offensiveOrControlRole(role, profile) {
     || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0);
 }
 
+function backingWeapon(action) {
+  return [action?.item, action?.strike?.item, action?.backingStrike?.item, action?.activityProfile?.backingStrike?.item]
+    .find((item) => item && ["weapon", "melee"].includes(item.type)) ?? null;
+}
+
+function weaponItemIsRanged(item) {
+  if (typeof item?.isRanged === "boolean") return item.isRanged;
+  const range = item?.system?.range;
+  return Number(range?.increment ?? range?.max ?? range) > 0;
+}
+
 function actionCategories(action, explicitRole) {
   const role = actionRole(action, explicitRole);
   const traits = traitSet(action);
@@ -750,46 +888,51 @@ function actionCategories(action, explicitRole) {
   const source = normalizeId(action?.source);
   const slug = normalizeId(action?.slug ?? action?.id);
   const profile = action?.activityProfile ?? {};
-  const spell = source === "spell" || source === "spell-inferred" || action?.spell === true || action?.item?.type === "spell";
+  // Kineticist impulses (Elemental Blast included) play like spells, not weapons.
+  const spell = source === "spell" || source === "spell-inferred" || source === "spell-curated" || action?.spell === true
+    || action?.item?.type === "spell" || traits.has("impulse");
   const maxRange = Number(action?.range?.max ?? action?.targetingProfile?.maxRange);
-  // "Ranged" means attacking from range: a ranged/thrown weapon, a long-range spell, or a damaging
-  // ability. A 30 ft targeting range on Demoralize or Aid is not a ranged attack, and a reach-15
-  // Jaws is still melee.
-  const strikeLike = source === "strike" || profile.includesStrike === true;
-  const weaponRanged = action?.isRanged === true
-    || traits.has("ranged")
-    || [...traits].some((trait) => trait.startsWith("thrown"))
-    || Number(action?.range?.increment) > 0;
+  // Strike-like: a Strike, or anything built on one (Stride -> Strike, Power Attack, Hunted Shot,
+  // Stride Away -> Bow). Melee or ranged comes from the weapon it uses, never from a targeting
+  // range: a 30 ft Demoralize isn't a ranged attack and a reach-15 Jaws is still melee.
+  const strikeLike = !spell && (source === "strike" || profile.includesStrike === true || profile.multiStrike === true
+    || profile.requiresBackingStrike === true || role === "multiattack");
+  const weapon = backingWeapon(action);
+  const filter = String(profile.backingStrikeFilter ?? "");
+  const weaponRanged = typeof action?.isRanged === "boolean" ? action.isRanged
+    : weapon ? weaponItemIsRanged(weapon)
+      : filter.startsWith("ranged") ? true
+        : traits.has("ranged") || [...traits].some((trait) => trait.startsWith("thrown")) || Number(action?.range?.increment) > 0
+          || (Number.isFinite(maxRange) && maxRange > 10 && ![...traits].some((trait) => trait.startsWith("reach")));
+  const ranged = strikeLike ? weaponRanged : (!spell && traits.has("ranged"));
+  const appliesConditions = Boolean(profile.appliesCondition)
+    || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0);
+  const allyTargeted = action?.targetingProfile?.ally === true && action?.targetingProfile?.enemy !== true;
   const damaging = ["damage", "save-damage", "area-damage", "multiattack"].includes(role);
-  const ranged = strikeLike
-    ? (action?.isRanged === false ? false : weaponRanged || (Number.isFinite(maxRange) && maxRange > 10 && ![...traits].some((trait) => trait.startsWith("reach"))))
-    : traits.has("ranged") || ((spell ? offensiveOrControlRole(role, profile) : damaging) && Number.isFinite(maxRange) && maxRange > 10);
-  const offensiveOrControl = [
-    "damage",
-    "save-damage",
-    "area-damage",
-    "multiattack",
-    "control",
-    "debuff",
-    "grab",
-  ].includes(role) || profile.appliesCondition || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0);
+  // Heal carries a vitality "damage" entry for undead; that doesn't make it an attack.
+  const dealsDamage = role !== "healing" && !allyTargeted
+    && (damaging || strikeLike || Boolean(action?.damageProfile) || Number(action?.averageDamage) > 0);
+  const offensiveOrControl = damaging || ["control", "debuff", "grab"].includes(role) || appliesConditions;
 
-  if (["damage", "save-damage", "area-damage", "multiattack"].includes(role) || source === "strike" || profile.includesStrike === true || action?.damageProfile) categories.add("damage");
-  if (["control", "debuff", "grab", "setup"].includes(role) || profile.appliesCondition || (Array.isArray(profile.appliesConditions) && profile.appliesConditions.length > 0)) categories.add("control");
-  if (["debuff"].includes(role)) categories.add("debuff");
+  if (dealsDamage) categories.add("damage");
+  if (["control", "debuff", "grab", "setup"].includes(role) || appliesConditions) categories.add("control");
+  // Debuffs: anything that weakens an enemy -- Slow and Grease are "control", Daze deals damage too.
+  if (role === "debuff" || (!allyTargeted && (role === "control" || appliesConditions))) categories.add("debuff");
   if (role === "grab" || ["grapple", "grab"].includes(slug)) categories.add("grab");
   if (["defense", "stealth-defense"].includes(role) || ["raise-a-shield", "take-cover", "hide"].includes(slug)) categories.add("defense");
   if (["buff", "healing", "summon", "support"].includes(role) || profile.spellBuff === true || profile.companion === true) categories.add("support");
   if (role === "buff" || profile.spellBuff === true) categories.add("buff");
   if (role === "healing") categories.add("healing");
   if (["mobility", "mobility-attack"].includes(role) || ["stride", "step", "crawl", "tumble-through"].includes(slug)) categories.add("mobility");
-  if (role === "mobility-attack") categories.add("mobilityAttack");
+  // Moving in to hit is a melee approach; moving away to shoot is ranged play.
+  if (role === "mobility-attack" && !ranged) categories.add("mobilityAttack");
   if (spell) categories.add("spell");
-  if (spell && offensiveOrControl && ranged) categories.add("rangedSpell");
+  if (spell && offensiveOrControl && Number.isFinite(maxRange) && maxRange > 10) categories.add("rangedSpell");
   if (spell && offensiveOrControl && Number.isFinite(maxRange) && maxRange <= 10) categories.add("meleeSpell");
   if (ranged) categories.add("ranged");
-  if (source === "strike" && !ranged) categories.add("melee");
-  if (role === "area-damage" || profile.area === true || profile.areaShape || profile.areaHitCount) categories.add("areaDamage");
+  if (strikeLike && !ranged) categories.add("melee");
+  const area = role === "area-damage" || profile.area === true || Boolean(profile.areaShape) || Boolean(profile.areaHitCount);
+  if (area && (dealsDamage || role === "area-damage")) categories.add("areaDamage");
   if (action?.actionCost === "reaction" || role === "reaction" || profile.reaction === true) categories.add("reaction");
   if ((Number.isFinite(cost) && cost >= 2 && (categories.has("damage") || categories.has("control") || categories.has("support"))) || profile.npcFamily || profile.highImpact === true) categories.add("highImpact");
   if (Number.isFinite(cost) && cost <= 1 && !categories.has("spell")) categories.add("simple");
@@ -870,7 +1013,7 @@ function reasonFor(tactic, parts) {
     : t("Tactic.Deprioritizes", "{label} tactic de-prioritizes {items}.", { label, items });
 }
 
-export function tacticPersonalityAdjustment(context, action, { role = null } = {}) {
+export function tacticPersonalityAdjustment(context, action, { role = null, siblings = null } = {}) {
   if (!canUseTacticPersonality(context)) return { scoreDelta: 0, reasons: [] };
   const tactic = resolveTacticPersonality(context);
   const effectiveRole = tactic.effectiveRole ?? tactic.role;
@@ -880,6 +1023,16 @@ export function tacticPersonalityAdjustment(context, action, { role = null } = {
   const categories = actionCategories(action, role);
   const parts = [];
   addWeightedParts(parts, ROLE_ACTION_WEIGHTS[effectiveRole], categories);
+  // Nothing on-role is usable this turn (a Melee Striker with no melee in reach, a Ranged Striker
+  // with nothing in range): don't push it off its only real options as well.
+  const planWeights = ROLE_PLAN_WEIGHTS[effectiveRole];
+  if (planWeights && Array.isArray(siblings) && !siblings.some((sibling) => sibling !== action
+    && sibling?.available !== false && !sibling?.needsApproach
+    && planWeights.prefer.some((category) => actionCategories(sibling, sibling?.role).has(category)))) {
+    for (let index = parts.length - 1; index >= 0; index -= 1) {
+      if (parts[index].delta < 0 && planWeights.avoid.includes(parts[index].category)) parts.splice(index, 1);
+    }
+  }
   addWeightedParts(parts, TEMPERAMENT_ACTION_WEIGHTS[effectiveTemperament], categories);
   if (tactic.customEnabled) addCustomActionParts(parts, tactic.custom, categories);
 
@@ -899,17 +1052,33 @@ export function tacticPersonalityPlanAdjustment(context, steps = [], resolvedTac
   if (!weights || !Array.isArray(steps) || !steps.length) return { scoreDelta: 0, reasons: [] };
 
   const categories = new Set();
-  for (const step of steps) {
-    for (const category of actionCategories(step, step?.role)) categories.add(category);
+  const stepCategories = steps.map((step) => actionCategories(step, step?.role));
+  // A Skirmisher's plain Stride/Step toward the target only "repositions" around melee attacks;
+  // walking up to a target you then shoot is not hit-and-run.
+  const meleePlan = stepCategories.some((entry) => entry.has("melee"));
+  for (const [index, entry] of stepCategories.entries()) {
+    const plainMove = effectiveRole === "skirmisher" && !meleePlan
+      && /(?:^|-)(?:stride|step)$/.test(normalizeId(steps[index]?.slug ?? steps[index]?.id))
+      && steps[index]?.activityProfile?.includesStrike !== true;
+    for (const category of entry) {
+      if (plainMove && category === "mobility") continue;
+      categories.add(category);
+    }
   }
   const preferred = weights.prefer.some((category) => categories.has(category));
   const avoided = weights.avoid.some((category) => categories.has(category));
   // The off-role penalty steers toward an on-role option; when none was on offer this turn (melee out
   // of reach for a Melee Striker), it would only push the plan toward doing nothing useful.
+  // "On offer" means usable this turn: a positive score, not blocked, not waiting on a move it
+  // can't make. An unreachable melee Strike, a heal nobody needs or a buff already up don't count.
   const preferredOnOffer = !Array.isArray(candidates) || candidates.some((candidate) =>
     candidate?.available !== false
+    && !candidate?.needsApproach
+    && Number(candidate?.score) > 0
     && weights.prefer.some((category) => actionCategories(candidate, candidate?.role).has(category)));
-  const scoreDelta = preferred ? weights.bonus : avoided && preferredOnOffer ? weights.penalty : 0;
+  // A plan that mixes on- and off-role steps gets both: shooting once doesn't buy the full bonus.
+  const scoreDelta = (preferred ? weights.bonus : 0)
+    + (avoided && (preferred || preferredOnOffer) ? weights.penalty : 0);
   if (!scoreDelta) return { scoreDelta: 0, reasons: [] };
   const label = formatTacticLabel(tacticForActorType(context, tactic));
   return {

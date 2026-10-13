@@ -12667,7 +12667,8 @@ const scoredTripAgainstProne = scoreCandidate({
   actionCost: 1,
   source: "generic",
 });
-assert.equal(scoredTripAgainstProne.score, 42);
+assert.equal(scoredTripAgainstProne.score, -999, "tripping a creature that's already prone does nothing");
+assert.ok(scoredTripAgainstProne.reasons.some((reason) => /already prone/.test(reason)));
 assert.ok(!scoredTripAgainstProne.reasons.includes("Target is standing and can be knocked prone."));
 
 const scoredShield = scoreCandidate(fighterContext, {
@@ -25428,7 +25429,12 @@ const twinTakedownForBackingStrike = {
   role: "multiattack",
   activityProfile: { includes: ["strike", "strike"], includesStrike: true, multiStrike: true, requiresBackingStrike: true, requiresDualBackingStrike: true },
 };
-const twinTakedownBackingStrikeContext = { ...fighterContext, actor: { document: twinTakedownActorForBackingStrike } };
+// Adjacent target: the test is about which weapons back it (at 10 ft both 5 ft weapons are out of reach).
+const twinTakedownBackingStrikeContext = {
+  ...fighterContext,
+  actor: { document: twinTakedownActorForBackingStrike },
+  targets: fighterContext.targets.map((target) => ({ ...target, distance: 5 })),
+};
 const twinTakedownScored = scoreCandidateWithActorStrikes(twinTakedownBackingStrikeContext, twinTakedownForBackingStrike);
 assert.notEqual(twinTakedownScored.score, -999, "Twin Takedown must remain usable when two melee weapons are held");
 assert.equal(twinTakedownScored.activityProfile.backingStrikes?.length, 2, "requiresDualBackingStrike must compute an array of the actor's two held melee weapons");

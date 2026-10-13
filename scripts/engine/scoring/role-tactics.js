@@ -39,6 +39,13 @@ function saveIntelCategory(action) {
 
 function healingTactic(acc, { context, action, profile }) {
   if (!isCurated(action)) return;
+  // Restoring HP to a dying ally beats Stabilize (+40), which leaves them unconscious at 0 HP.
+  const slug = String(action?.slug ?? "").toLowerCase();
+  const dying = contextAllies(context).find((ally) => hasCondition(ally, "dying") && !hasCondition(ally, "healed"));
+  if (dying && !/stabilize/.test(slug)) {
+    acc.score += 50;
+    acc.reasons.push(t("ScoreReason.HealsDyingAlly", "Brings {name} back up.", { name: dying.name }));
+  }
   const injuredAlly = contextAllies(context).find((ally) => hpPercent(ally) < 0.5);
   if (hpPercent(profile) < 0.5) {
     acc.score += 34;
@@ -49,6 +56,19 @@ function healingTactic(acc, { context, action, profile }) {
   } else {
     acc.score -= 10;
     acc.reasons.push(t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
+  }
+  // An area heal (3-action Heal) is worth it when it reaches several hurt allies at once.
+  if (action?.targetingProfile?.area === true) {
+    const radius = Number(action.targetingProfile.maxRange) || 30;
+    const hurt = contextAllies(context).filter((ally) => hpPercent(ally) < 0.75
+      && (!Number.isFinite(Number(ally?.distance)) || Number(ally.distance) <= radius)).length
+      + (hpPercent(profile) < 0.75 ? 1 : 0);
+    if (hurt >= 2) {
+      acc.score += (hurt - 1) * 22;
+      acc.reasons.push(t("ScoreReason.HealsSeveral", "Heals {count} hurt creatures at once.", { count: hurt }));
+    } else {
+      acc.score -= 20;
+    }
   }
 }
 
@@ -425,7 +445,8 @@ export function scoreCuratedRoleTactics(context, action, {
 
   EARLY_ROLE_TACTICS[role]?.(acc, deps);
 
-  if (action.activityProfile?.drawsWeapon && target) {
+  // Only "Draw X -> Strike" earns the strike value; a plain Draw is just an Interact.
+  if (action.activityProfile?.drawsWeapon && action.activityProfile?.includesStrike === true && target) {
     const weaponName = action.activityProfile.weaponName ?? action.item?.name ?? action.name;
     if (inActionReach(profile, action, target)) {
       // Drawing a weapon costs an action. It is the strong play only when no

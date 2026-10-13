@@ -21,6 +21,19 @@ export function spellTacticalAdjustment(action, role, context) {
       || (role === "area-damage" && (context?.battlefield?.enemies?.length ?? 0) <= 1);
     scoreDelta -= lowImpact ? 14 : 5;
     reasons.push(t("ScoreReason.UsesARankedSpell", "Uses a ranked spell slot."));
+    // The last slot of a rank is worth more than a spare one.
+    const remaining = Number(action.spellResource?.remaining);
+    if (action.spellResource?.type !== "prepared" && Number.isFinite(remaining) && remaining <= 1) {
+      scoreDelta -= 8;
+      reasons.push(t("ScoreReason.LastSlotOfRank", "Last slot of this rank."));
+    }
+    // Every enemy in the fight is nearly down: a cantrip or a Strike can finish them.
+    const enemies = attackableEnemies(context);
+    const damaging = ["damage", "save-damage", "area-damage"].includes(role);
+    if (damaging && enemies.length && enemies.every((enemy) => Number(enemy?.hpPercent ?? 1) < 0.3)) {
+      scoreDelta -= 15;
+      reasons.push(t("ScoreReason.EnemiesNearlyDown", "Enemies are nearly down; save the slot."));
+    }
   }
 
   if (profile.sustained) {

@@ -22,6 +22,7 @@ import {
   inRange,
   isAttackLikeAction,
   isMeleeStrikeFallback,
+  isRangedStrike,
   isOffensiveRole,
   isSpellAction,
   makesAttackRoll,
@@ -45,6 +46,7 @@ import {
 } from "./tactic-helpers.js";
 import { t } from "../../i18n.js";
 import { HARD_BLOCK_SCORE } from "./weights.js";
+import { healingRecipientAllowed } from "./gates.js";
 import { recallKnowledgeAttemptState } from "../../rules/recall-knowledge.js";
 import { contextActorDocument } from "../actor-context.js";
 
@@ -131,20 +133,50 @@ function partyDebuffValue(context, points) {
   return Math.round(points * (8 + allies * 3));
 }
 
+// Re-applying a condition the target already has wastes the action: enough to outweigh any role
+// bonus (a Debuffer's +36) so it never leads a plan.
+const REDUNDANT_DEBUFF_PENALTY = 45;
+
+function conditionLevel(target, slug) {
+  const conditions = target?.conditions ?? {};
+  const slugs = Array.isArray(conditions) ? conditions.map((entry) => entry?.slug ?? entry) : conditions.slugs ?? [];
+  if (!slugs.includes(slug)) return 0;
+  const value = Number(Array.isArray(conditions) ? conditions.find((entry) => (entry?.slug ?? entry) === slug)?.value : conditions.values?.[slug]);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
 function demoralizeTactic(acc, { context, target }) {
-  if (!(target && !hasCondition(target, "frightened"))) return;
+  if (!target) return;
+  const frightened = conditionLevel(target, "frightened");
+  if (frightened >= 2) {
+    // A success gives frightened 1, a critical success 2: nothing to gain.
+    acc.score -= REDUNDANT_DEBUFF_PENALTY;
+    acc.reasons.push(t("ScoreReason.AlreadyFrightened", "{name} is already frightened {value}.", { name: target.name, value: frightened }));
+    return;
+  }
+  if (frightened >= 1) return;
   acc.score += 4 + partyDebuffValue(context, 1);
   acc.reasons.push(t("ScoreReason.TargetIsNotFrightened", "Target is not frightened."));
 }
 
 function tripTactic(acc, { target }) {
-  if (!(target && !hasCondition(target, "prone"))) return;
+  if (!target) return;
+  if (hasCondition(target, "prone")) {
+    acc.score = HARD_BLOCK_SCORE;
+    acc.reasons.push(t("ScoreReason.AlreadyProne", "{name} is already prone.", { name: target.name }));
+    return;
+  }
   acc.score += 18;
   acc.reasons.push(t("ScoreReason.TargetIsStandingAnd", "Target is standing and can be knocked prone."));
 }
 
 function grappleTactic(acc, { target }) {
-  if (!(target && !hasCondition(target, "grabbed"))) return;
+  if (!target) return;
+  if (hasCondition(target, "grabbed") || hasCondition(target, "restrained")) {
+    acc.score -= REDUNDANT_DEBUFF_PENALTY;
+    acc.reasons.push(t("ScoreReason.AlreadyGrabbed", "{name} is already grabbed.", { name: target.name }));
+    return;
+  }
   acc.score += 16;
   acc.reasons.push(t("ScoreReason.TargetIsNotGrabbed", "Target is not grabbed."));
 }
@@ -349,15 +381,22 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
 
   if (role === "healing") {
     const profile = context?.profile ?? context?.actor?.profile ?? {};
-    const healingAllies = action?.targetingProfile?.reach === true
-      ? contextAllies(context).filter((ally) => inActionReach(profile, action, ally))
-      : contextAllies(context);
+    const rangeKnown = action?.targetingProfile?.reach === true || Number(action?.targetingProfile?.maxRange) > 0
+      || String(action?.skill ?? action?.statistic ?? "").toLowerCase() === "medicine";
+    // In range, and not already healed earlier in this plan: spread heals across the party.
+    const healingAllies = contextAllies(context)
+      .filter((ally) => !rangeKnown || !Number.isFinite(Number(ally?.distance)) || inActionReach(profile, action, ally))
+      .filter((ally) => !hasCondition(ally, "healed"))
+      .filter((ally) => healingRecipientAllowed(action, ally));
     const dying = healingAllies.find((ally) => hasCondition(ally, "dying"));
     if (dying) return targetReference(dying, "ally");
     const bleeding = healingAllies.find((ally) => hasCondition(ally, "persistent-bleed"));
     if (bleeding) return targetReference(bleeding, "ally");
-    const injuredAlly = healingAllies.find((ally) => hpPercent(ally) < 0.5);
-    if (injuredAlly) return targetReference(injuredAlly, "ally");
+    const injuredAlly = healingAllies
+      .filter((ally) => hpPercent(ally) < 0.75)
+      .toSorted((left, right) => hpPercent(left) - hpPercent(right))[0];
+    const selfHurt = hpPercent(profile) < 0.75 && !hasCondition(profile, "healed");
+    if (injuredAlly && (!selfHurt || hpPercent(injuredAlly) < hpPercent(profile))) return targetReference(injuredAlly, "ally");
     return selfReference(context);
   }
 
@@ -574,6 +613,7 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     extraStrikeValue,
   });
   score = activityProfileTactics.score;
+  const outOfReach = activityProfileTactics.outOfReach === true;
 
   if (isCurated(action) && (action.curated?.friendlyFireRisk ?? action.friendlyFireRisk)) {
     if (contextAllies(context).some((ally) => (ally?.distance ?? Infinity) <= 20)) score -= 18;
@@ -587,6 +627,10 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     } else if (isMeleeStrikeFallback(action)) {
       score -= 18;
       reasons.push(t("ScoreReason.SpellcasterMeleeStrikeIs", "Spellcaster melee Strike is lower priority than spell options."));
+    } else if (action?.source === "strike" && isRangedStrike(action)) {
+      // Ranged weapons too: with only the rapier penalised, a caster shot adjacent enemies point-blank.
+      score -= 18;
+      reasons.push(t("ScoreReason.SpellcasterRangedStrikeIs", "Spellcaster weapon Strike is lower priority than spell options."));
     }
   }
 
@@ -599,5 +643,6 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     areaPlacementOptions,
     minionPlan,
     conditionalBonuses,
+    outOfReach,
   };
 }

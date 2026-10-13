@@ -30,6 +30,17 @@ function rescoringInput(candidate) {
   return { ...rest, reason: undefined, reasons: undefined };
 }
 
+function targetId(target) {
+  return target ? String(target.id ?? target.uuid ?? target.name ?? "") : "";
+}
+
+// Only a real switch counts: no target before (or none after) is not a change of target.
+function changedTarget(candidate, projectedTarget) {
+  const before = targetId(candidate?.preferredTarget ?? candidate?.suggestedTarget);
+  const after = targetId(projectedTarget);
+  return Boolean(before && after && before !== after);
+}
+
 export function createPlanRescorer(baseContext, baseState) {
   const baseSignature = projectionSignature(baseState);
   const baseScores = new Map();
@@ -73,7 +84,8 @@ export function createPlanRescorer(baseContext, baseState) {
     if (!candidate || candidate.mapBase) return candidate;
     const result = evaluate(projectedContext, state, candidate);
     if (!result) return null;
-    if (!result.projected || (Math.abs(result.delta) < 1 && !candidate.needsApproach)) return candidate;
+    const retargeted = changedTarget(candidate, result.projected?.suggestedTarget);
+    if (!result.projected || (Math.abs(result.delta) < 1 && !candidate.needsApproach && !retargeted)) return candidate;
     return {
       ...candidate,
       score: Number(candidate.score) + result.delta,
@@ -81,6 +93,7 @@ export function createPlanRescorer(baseContext, baseState) {
       reasons: result.projected.reasons,
       reason: result.projected.reason,
       suggestedTarget: result.projected.suggestedTarget ?? candidate.suggestedTarget,
+      ...(retargeted && candidate.preferredTarget ? { preferredTarget: result.projected.suggestedTarget } : {}),
     };
   }
 
@@ -97,10 +110,20 @@ export function createPlanRescorer(baseContext, baseState) {
       if (!result) return step;
       const previous = Number(step.projectedScoreDelta) || 0;
       const delta = Math.abs(result.delta) < 1 ? 0 : result.delta;
-      if (delta === previous) return step;
+      // The re-score may pick a different target (Fear moves to the fresh minion, the second heal
+      // to the other wounded ally); the step must carry it, or it would execute on the old one.
+      const projectedTarget = result.projected?.suggestedTarget;
+      const retarget = changedTarget(step, projectedTarget);
+      if (delta === previous && !retarget) return step;
       const shift = delta - previous;
       return {
         ...step,
+        ...(retarget ? {
+          suggestedTarget: projectedTarget,
+          ...(step.preferredTarget ? { preferredTarget: projectedTarget } : {}),
+          reasons: result.projected.reasons,
+          reason: result.projected.reason,
+        } : {}),
         score: Number(step.score) + shift,
         projectedScoreDelta: delta,
         ...(step.mapBase ? { mapBase: { ...step.mapBase, score: Number(step.mapBase.score) + shift } } : {}),

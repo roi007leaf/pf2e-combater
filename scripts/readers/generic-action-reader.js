@@ -260,15 +260,17 @@ function readGenericActionAvailabilityForAction(action, context) {
     const inRange = targetPool.some((target) => (target?.distance ?? Infinity) <= action.maxRange);
     if (!inRange) return availability(false, t("Avail.NoTargetWithin", "No target within {range} feet.", { range: action.maxRange }));
   }
+  // Hands first: a Trip with no free hand isn't merely out of reach (or the planner would Stride to it).
+  if (action.requiresFreeHand && freeHands(profile) < 1 && !freeHandAlternativeAvailable(action, context, actionTargets)) {
+    return availability(false, t("Avail.NoFreeHand", "No free hand available."));
+  }
   if (action.requiresEnemyInReach) {
     // Any enemy in reach counts, not only the one the user targeted for something else.
     const reach = Number(profile?.maneuverReach?.[action.slug]) || meleeReach(profile);
     const enemyInReach = [...targetableTargets, ...targetableEnemies].some((target) => (target?.distance ?? Infinity) <= reach);
     if (!enemyInReach) return availability(false, t("Avail.NoEnemyInReach", "No enemy in reach."));
   }
-  if (action.requiresFreeHand && freeHands(profile) < 1 && !freeHandAlternativeAvailable(action, context, actionTargets)) {
-    return availability(false, t("Avail.NoFreeHand", "No free hand available."));
-  }
+
   if (action.requiresNearbyEnemy) {
     const nearbyEnemy = [...targetableTargets, ...targetableEnemies].some((target) => (target?.distance ?? Infinity) <= movementRange(profile));
     if (!nearbyEnemy) return availability(false, t("Avail.NoEnemyClose", "No enemy close enough."));

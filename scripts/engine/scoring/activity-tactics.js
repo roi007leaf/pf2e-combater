@@ -51,6 +51,9 @@ export function scoreActivityProfileTactics(context, action, {
   backingStrike = null,
   extraStrikeValue = 0,
 } = {}) {
+  // Its Strikes can't reach anyone this turn: the activity is unusable from here (the planner may
+  // still use it after a move -- see candidates.js "approachable").
+  let outOfReach = false;
   let nextScore = Number.isFinite(Number(score)) ? Number(score) : 0;
   const nextReasons = Array.isArray(reasons) ? reasons : [];
 
@@ -92,6 +95,7 @@ export function scoreActivityProfileTactics(context, action, {
       nextReasons.unshift(t("ScoreReason.IsAlreadyInReachFor", "{p0} is already in reach for the attack.", { p0: target.name }));
     } else {
       nextScore -= 30;
+      outOfReach = true;
       nextReasons.unshift(t("ScoreReason.TargetIsBeyondThisMove", "Target is beyond this move-and-attack activity."));
     }
 
@@ -204,6 +208,9 @@ export function scoreActivityProfileTactics(context, action, {
       nextReasons.unshift(t("ScoreReason.OnlyOneEnemyIsIn", "Only one enemy is in reach; focused offense is usually better."));
     } else {
       nextScore -= 40;
+      // Only when its reach is actually known (a backing Strike or its own movement); a multi-Strike
+      // with no backing weapon resolved yet may well be a bow volley.
+      outOfReach = Boolean(backingStrike) || strideCount > 0;
       nextReasons.unshift(t("ScoreReason.NoEnemyIsInReach", "No enemy is in reach for {p0}.", { p0: action.name }));
     }
   }
@@ -211,5 +218,6 @@ export function scoreActivityProfileTactics(context, action, {
   return {
     score: nextScore,
     reasons: nextReasons,
+    outOfReach,
   };
 }

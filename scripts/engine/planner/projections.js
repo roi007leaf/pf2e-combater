@@ -94,6 +94,10 @@ export function appliesProne(step) {
   // ("generic-drop-prone"), not the bare "drop-prone", so an exact check missed it.
   const slug = String(step?.slug ?? "").toLowerCase();
   if (slug.includes("drop-prone") || step?.executable === "drop-prone") return true;
+  // Prone applied to a target (Grease, Command, Trip) doesn't put *you* on the ground.
+  const targeting = step?.targetingProfile ?? {};
+  const selfOnly = targeting.self === true && targeting.enemy !== true && targeting.ally !== true;
+  if (!selfOnly) return false;
   const profile = step?.activityProfile ?? {};
   const applied = [profile.appliesCondition, ...(Array.isArray(profile.appliesConditions) ? profile.appliesConditions : [])];
   return applied.includes("prone");

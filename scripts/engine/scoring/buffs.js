@@ -67,8 +67,15 @@ export function actionGrantsQuickened(action) {
   ].map(slugText).includes("quickened");
 }
 
+// Spells that leave their target immune for a while (Guidance: 1 hour). PF2e marks it with an
+// "... Immunity" effect, so the same ally can't be chosen again every turn.
+const IMMUNITY_AFTER_CAST = new Map([["guidance", ["guidance-immunity", "effect-guidance-immunity", "spell-effect-guidance"]]]);
+
 export function targetAlreadyHasBuff(entity, action) {
-  return activeBuffKeys(action).some((slug) => hasCondition(entity, slug) || hasEffect(entity, slug));
+  const slug = slugText(action?.slug ?? action?.id);
+  const immunity = [...IMMUNITY_AFTER_CAST.entries()].find(([key]) => slug === key || slug.endsWith(`-${key}`))?.[1] ?? [];
+  if (immunity.some((effect) => hasEffect(entity, effect))) return true;
+  return activeBuffKeys(action).some((key) => hasCondition(entity, key) || hasEffect(entity, key));
 }
 
 function selfReference(context) {
@@ -158,6 +165,12 @@ function buffRecipientValue(context, action, recipient) {
   }
 
   return value;
+}
+
+// Every living creature this buff could go on already has it: casting it again does nothing.
+export function buffAlreadyCoversEveryone(context, action) {
+  const recipients = buffRecipients(context, action).filter((recipient) => recipient?.entity && hpPercent(recipient.entity) > 0);
+  return recipients.length > 0 && recipients.every((recipient) => targetAlreadyHasBuff(recipient.entity, action));
 }
 
 export function bestBuffRecipient(context, action) {

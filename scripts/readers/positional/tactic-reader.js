@@ -8,6 +8,7 @@ import {
 } from "./retreat-reader.js";
 import { readFlankStrikeActivities } from "./flank-reader.js";
 import { readSkirmishKiteActivities } from "./kite-reader.js";
+import { readStrikeStepAwayActivities } from "./step-away-reader.js";
 
 export function readPositionalMovementActions(context, readyStrikes, generatedActivities, spells = []) {
   const actions = [
@@ -17,6 +18,7 @@ export function readPositionalMovementActions(context, readyStrikes, generatedAc
     ...readSkirmishStrikeActivities(context, readyStrikes),
     ...readSkirmishKiteActivities(context, readyStrikes, spells),
     ...readFlankStrikeActivities(context, readyStrikes),
+    ...readStrikeStepAwayActivities(context, readyStrikes),
   ];
   const movementAction = context?.profile?.movementAction ?? context?.actor?.profile?.movementAction;
   if (!movementAction) return actions;

@@ -146,9 +146,24 @@ function isFacts(value) {
     && value?.sequencing;
 }
 
+// The planner asks for the same candidate's facts thousands of times per search. Candidates are
+// treated as immutable (changes always make a copy), so the facts can be cached per object.
+const factsCache = new WeakMap();
+
 /** Normalize every reader/classifier candidate into stable tactical facts. */
 export function normalizedActionFacts(candidate) {
   if (isFacts(candidate)) return candidate;
+  if (candidate && typeof candidate === "object") {
+    const cached = factsCache.get(candidate);
+    if (cached) return cached;
+    const facts = computeActionFacts(candidate);
+    factsCache.set(candidate, facts);
+    return facts;
+  }
+  return computeActionFacts(candidate);
+}
+
+function computeActionFacts(candidate) {
 
   const activity = rawActivity(candidate);
   const targeting = rawTargeting(candidate);

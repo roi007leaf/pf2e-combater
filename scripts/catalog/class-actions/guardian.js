@@ -8,6 +8,8 @@ export const GUARDIAN_ACTIONS = [
     },
     targetingProfile: {
       enemy: true,
+      // "Target one enemy within 30 feet."
+      maxRange: 30,
     },
     setupFor: ['defense', 'control'],
     executable: 'open-item',

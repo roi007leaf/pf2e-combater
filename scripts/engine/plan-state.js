@@ -299,6 +299,8 @@ function stepAddedConditions(step) {
   if (slugs.some((slug) => slug.includes("drop-prone")) || action?.executable === "drop-prone") added.add("prone");
   const checkCondition = checkSetupCondition(step);
   if (checkCondition) added.add(checkCondition);
+  // A heal marks its recipient, so the rest of the plan heals someone else.
+  if (String(action?.curated?.role ?? action?.role ?? "").toLowerCase() === "healing") added.add("healed");
   return added;
 }
 
@@ -482,8 +484,10 @@ function stepApproachDistance(context, state, step, key) {
   if (!Number.isFinite(current)) return null;
   const profile = stepProfile(step);
   if (profile.includesStrike === true && Number(profile.strideCount) > 0 && !profile.retreatAfterStrike) {
-    const reach = Number(profile.strikeReach);
-    return Math.min(current, Number.isFinite(reach) && reach > 0 ? reach : ADJACENT_FEET);
+    // It only ends within reach if its movement covers the gap; otherwise it just closes that much.
+    const reach = Number.isFinite(Number(profile.strikeReach)) && Number(profile.strikeReach) > 0 ? Number(profile.strikeReach) : ADJACENT_FEET;
+    const moved = Number(profile.fixedDistance) > 0 ? Number(profile.fixedDistance) : profileSpeed(context) * Number(profile.strideCount);
+    return current - moved <= reach ? Math.min(current, reach) : current - moved;
   }
   const move = isPlainMove(step);
   if (!move) return null;

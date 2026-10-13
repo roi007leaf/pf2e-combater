@@ -7,9 +7,11 @@ import { attackableEnemies } from "./scoring/targets.js";
 import { maxRange } from "./scoring/facts.js";
 import {
   actionKey,
+  candidateTraitSlugs,
   currentAttackRange,
   inheritPlannedTarget,
   isAttackAction,
+  isCompositionExtenderCandidate,
   isGrabRider,
   isSpellAction,
   isStrikeAction,
@@ -29,6 +31,7 @@ import {
   values,
 } from "./planner/rules.js";
 import {
+  isCompositionExtensionEligible,
   projectedFollowUpSatisfied,
   projectedVolleyPenalty,
   withLingeringCompositionCandidates,
@@ -37,6 +40,7 @@ import {
 } from "./planner/projections.js";
 import { planSignature } from "./planner/plan-signature.js";
 import { createPlanRescorer } from "./planner/rescoring.js";
+import { scoreCandidate } from "./scoring.js";
 import {
   advancePlanState,
   createPlanState,
@@ -252,6 +256,27 @@ function reloadCost(candidate) {
   return actionReloadCost(candidate);
 }
 
+// A reload weapon is empty once any earlier step fired it -- a plain Strike, or a composite such as
+// Stride Away -> Crossbow -- not only when the very same action repeats.
+function isThrownOrBombStrike(candidate) {
+  const traits = candidateTraitSlugs(candidate);
+  return candidate?.altUsage === "thrown" || traits.includes("bomb")
+    || (traits.some((trait) => trait.startsWith("thrown")) && isRangedCandidate(candidate));
+}
+
+function isRangedCandidate(candidate) {
+  if (typeof candidate?.isRanged === "boolean") return candidate.isRanged;
+  return Number(candidate?.range?.increment) > 0 || candidate?.item?.isRanged === true;
+}
+
+function weaponFiredEarlier(candidate, steps) {
+  const weapons = new Set(weaponIdentityValues(candidate));
+  if (!weapons.size) return false;
+  return steps.some((step) => (isStrikeAction(step) || step?.activityProfile?.includesStrike === true)
+    && step?.activityProfile?.reload !== true
+    && weaponIdentityValues(step).some((weapon) => weapons.has(weapon)));
+}
+
 function hasOffensiveFollowUp(steps) {
   return steps.some((step) => isAttackAction(step) || normalizedActionFacts(step).resolution.offensive);
 }
@@ -289,15 +314,29 @@ function planReloadsAreUseful(steps) {
 }
 
 function isSpellshapeSetup(step) {
-  return step?.activityProfile?.spellshape === true || step?.activityProfile?.rangeBuff === true;
+  return step?.activityProfile?.spellshape === true || step?.activityProfile?.rangeBuff === true
+    || isCompositionExtenderCandidate(step)
+    || candidateTraitSlugs(step).includes("spellshape");
 }
 
 const REACH_SPELL_FEET = 30;
 
 // Reach Spell adds 30 ft (a touch spell becomes 30 ft). It's only worth the action when the spell
 // it modifies can't reach its target without it but can with it -- never before a 500 ft spell.
-export function rangeBuffHelpsSpell(context, spell) {
+function withReachSpellRange(spell) {
   const range = maxRange(spell);
+  if (!Number.isFinite(range)) return null;
+  const boosted = range <= 5 ? REACH_SPELL_FEET : range + REACH_SPELL_FEET;
+  return {
+    ...spell,
+    range: { ...(spell.range ?? {}), max: boosted },
+    targetingProfile: { ...(spell.targetingProfile ?? {}), maxRange: boosted },
+    rangeBoostedFrom: range,
+  };
+}
+
+export function rangeBuffHelpsSpell(context, spell) {
+  const range = Number.isFinite(Number(spell?.rangeBoostedFrom)) ? Number(spell.rangeBoostedFrom) : maxRange(spell);
   const distance = Number(targetForCandidate(context, spell)?.distance);
   if (!Number.isFinite(range)) return true; // unknown range: can't rule it out (matches the scoring gate)
   if (!Number.isFinite(distance)) return false;
@@ -309,6 +348,8 @@ function planSpellshapesAreUseful(context, steps) {
   return steps.every((step, index) => {
     if (!isSpellshapeSetup(step)) return true;
     const nextStep = steps[index + 1];
+    // Lingering Composition only extends a composition cast right after it.
+    if (isCompositionExtenderCandidate(step)) return Boolean(nextStep && isCompositionExtensionEligible(nextStep));
     if (!(nextStep && isSpellAction(nextStep) && !isSpellshapeSetup(nextStep))) return false;
     return step?.activityProfile?.rangeBuff !== true || rangeBuffHelpsSpell(context, nextStep);
   });
@@ -597,8 +638,8 @@ function strikeWeaponKey(action) {
 // already has a move-and-strike composite is left to the composite (it carries a checked attack
 // square); the rest are capped so they can't crowd the search.
 function approachPool(approachCandidates, eligibleCandidates, context, budget, searchPool) {
-  // Nothing can close the distance without a plain move in the search.
-  if (!searchPool.some(isPlainMovement)) return [];
+  // Nothing can close the distance without a plain move (or Reach Spell, for a spell) in the search.
+  if (!searchPool.some(isPlainMovement) && !searchPool.some((candidate) => candidate?.activityProfile?.rangeBuff === true)) return [];
   const compositeWeapons = new Set(eligibleCandidates
     .filter((candidate) => candidate?.activityProfile?.includesStrike && Number(candidate?.activityProfile?.strideCount) > 0)
     .map(strikeWeaponKey).filter(Boolean));
@@ -613,10 +654,47 @@ function approachPool(approachCandidates, eligibleCandidates, context, budget, s
     .slice(0, MAX_APPROACH_CANDIDATES);
 }
 
+// The candidate's target as it stands on the projected board (allies too: a heal's patient).
+function projectedTargetOf(context, candidate) {
+  const reference = candidate?.preferredTarget ?? candidate?.suggestedTarget;
+  const ids = new Set(targetIdentity(reference ?? {}));
+  if (ids.size) {
+    const found = [...contextTargets(context), ...contextEnemies(context), ...contextAllies(context)]
+      .find((entity) => targetIdentity(entity).some((id) => ids.has(id)));
+    if (found) return found;
+  }
+  return targetForCandidate(context, candidate);
+}
+
 function approachReaches(context, candidate) {
-  const target = targetForCandidate(context, candidate);
-  const range = currentAttackRange(candidate) ?? 5;
+  const target = projectedTargetOf(context, candidate);
+  const strides = Number(candidate?.activityProfile?.strideCount) || 0;
+  const speed = Number(context?.profile?.speed ?? context?.actor?.profile?.speed) || 25;
+  const reach = Number(candidate?.activityProfile?.strikeReach) || currentAttackRange(candidate) || 5;
+  const range = strides > 0 ? speed * strides + reach
+    : Number(candidate?.targetingProfile?.maxRange) > 0 ? Number(candidate.targetingProfile.maxRange)
+      : currentAttackRange(candidate) ?? 5;
   return Number(target?.distance ?? Infinity) <= range;
+}
+
+// An out-of-reach heal needs a Stride toward its patient, not toward the enemy the plain Stride
+// is aimed at: offer a copy of the Stride aimed at each such patient.
+function strideTowardPatients(searchPool, approach) {
+  const stride = searchPool.find((candidate) => isPlainMovement(candidate) && /(?:^|-)stride$/.test(normalizeSlug(candidate?.slug ?? candidate?.id)));
+  if (!stride) return [];
+  const patients = new Map();
+  for (const candidate of approach) {
+    const target = candidate?.suggestedTarget;
+    if (normalizedActionFacts(candidate).role === "healing" && target?.type === "ally" && target.id) patients.set(target.id, target);
+  }
+  return [...patients.values()].map((patient) => ({
+    ...stride,
+    id: `${stride.id ?? stride.slug}-toward-${patient.id}`,
+    suggestedTarget: patient,
+    preferredTarget: patient,
+    reason: t("Plan.StrideTowardAlly", "Stride toward {name}.", { name: patient.name }),
+    reasons: [t("Plan.StrideTowardAlly", "Stride toward {name}.", { name: patient.name })],
+  }));
 }
 
 function isAttackPayoff(step) {
@@ -629,19 +707,31 @@ function isPlainMovement(step) {
 }
 
 function isAttackSetup(step) {
-  return /(?:^|-)(?:feint|create-a-diversion)$/.test(normalizeSlug(step?.slug ?? step?.id));
+  // Feint, Create a Diversion, Bespell Strikes: all only pay off on a later attack this turn.
+  return /(?:^|-)(?:feint|create-a-diversion|bespell-strikes|bespell-weapon)$/.test(normalizeSlug(step?.slug ?? step?.id));
 }
 
 // Setup steps that nothing in the plan pays off: a Diversion or Feint with no attack after it, or a
 // plain Stride/Step followed by non-attack filler while an attack was on offer. These score on their
 // own ("closes distance", "creates an opening") but waste the action in that plan.
 export function orphanSetupSteps(steps, candidates = []) {
+  // Only an attack usable without moving makes a Stride "padding": when every attack needs a move
+  // first (enemy 40 ft away), a Stride is progress even if the rest of the turn is defensive.
   const attackOnOffer = candidates.some((candidate) =>
-    candidate?.available !== false && Number(candidate?.score) > 0 && isAttackPayoff(candidate));
+    candidate?.available !== false && !candidate?.needsApproach && Number(candidate?.score) > 0 && isAttackPayoff(candidate)
+    && !(Number(candidate?.activityProfile?.strideCount) > 0));
   return steps.filter((step, index) => {
     const later = steps.slice(index + 1);
-    if (later.some(isAttackPayoff)) return false;
+    const plainDraw = step?.activityProfile?.drawsWeapon === true && step?.activityProfile?.includesStrike !== true;
+    if (!plainDraw && later.some(isAttackPayoff)) return false;
     if (isAttackSetup(step)) return true;
+    // A plain Draw is wasted unless a later step attacks with the weapon it drew.
+    if (step?.activityProfile?.drawsWeapon === true && step?.activityProfile?.includesStrike !== true) {
+      const drawn = new Set(weaponIdentityValues(step));
+      return !later.some((next) => isAttackPayoff(next) && weaponIdentityValues(next).some((weapon) => drawn.has(weapon)));
+    }
+    // A move that brings an out-of-reach action into range (a heal on a distant ally) is paid off.
+    if (later.some((next) => next?.needsApproach)) return false;
     return attackOnOffer && isPlainMovement(step) && later.some((next) => !isPlainMovement(next));
   });
 }
@@ -938,7 +1028,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
     sortedCandidates = [requiredCandidate, ...sortedCandidates];
   }
 
-  sortedCandidates = [...sortedCandidates, ...approachPool(approachCandidates, eligibleCandidates, context, budget, sortedCandidates)];
+  const approach = approachPool(approachCandidates, eligibleCandidates, context, budget, sortedCandidates);
+  sortedCandidates = [...sortedCandidates, ...strideTowardPatients(sortedCandidates, approach), ...approach];
   const rescorer = createPlanRescorer(context, initialPlanState);
   const rescore = rescorer.rescore;
   const simulation = { rescorer, initialState: initialPlanState };
@@ -993,14 +1084,26 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       const prerequisiteSteps = steps.length || !planState.lastStep ? steps : [planState.lastStep];
       // An approach candidate is only legal once an earlier move has brought its target in range;
       // check that cheaply before paying for a re-score.
-      const mover = candidate.needsApproach ? steps.findLast(isMovementStep) : null;
-      if (candidate.needsApproach && (!mover || !approachReaches(projectedContext, candidate))) continue;
-      const inherited = inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps);
-      // Re-score against the board the earlier steps leave behind; the re-score already accounts
-      // for conditions those steps applied, so the conditional-bonus adjustment is for the rest.
-      const rescored = rescore(projectedContext, planState, inherited);
-      if (!rescored) continue;
-      let linkedCandidate = rescored === inherited ? withProjectedConditionalBonuses(projectedContext, inherited) : rescored;
+      // Reach Spell right before an out-of-range spell can bring it in range without moving.
+      const lastStep = steps.at(-1);
+      const boosted = candidate.needsApproach && isSpellAction(candidate) && lastStep?.activityProfile?.rangeBuff === true
+        ? withReachSpellRange(candidate) : null;
+      const boostReaches = Boolean(boosted && approachReaches(projectedContext, boosted));
+      const mover = candidate.needsApproach ? (boostReaches ? lastStep : steps.findLast(isMovementStep)) : null;
+      if (candidate.needsApproach && !boostReaches && (!mover || !approachReaches(projectedContext, candidate))) continue;
+      let linkedCandidate;
+      if (boostReaches) {
+        const scored = scoreCandidate({ ...projectedContext, skipNativePreflight: true }, { ...boosted, reason: undefined, reasons: undefined });
+        if (!(scored.score > HARD_BLOCK_SCORE)) continue;
+        linkedCandidate = { ...scored, needsApproach: true, rangeBoostedFrom: boosted.rangeBoostedFrom };
+      } else {
+        const inherited = inheritPlannedTarget(projectedContext, candidate, prerequisiteSteps);
+        // Re-score against the board the earlier steps leave behind; the re-score already accounts
+        // for conditions those steps applied, so the conditional-bonus adjustment is for the rest.
+        const rescored = rescore(projectedContext, planState, inherited);
+        if (!rescored) continue;
+        linkedCandidate = rescored === inherited ? withProjectedConditionalBonuses(projectedContext, inherited) : rescored;
+      }
       if (candidate.needsApproach) {
         if (!approachReaches(projectedContext, linkedCandidate)) continue;
         linkedCandidate = {
@@ -1030,8 +1133,13 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
         linkedCandidate,
         [...reservedSteps, ...steps],
       );
-      const repeatReloadCost = strikeAction && (currentUses > 0 || npcReloadRequired) ? reloadCost(linkedCandidate) : 0;
-      const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost;
+      const firesWeapon = strikeAction || linkedCandidate?.activityProfile?.includesStrike === true;
+      const repeatReloadCost = firesWeapon && (currentUses > 0 || npcReloadRequired || weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps]))
+        ? reloadCost(linkedCandidate) : 0;
+      // A thrown weapon or bomb leaves your hand: throwing again needs another one drawn first.
+      const redrawCost = firesWeapon && repeatReloadCost === 0 && isThrownOrBombStrike(linkedCandidate)
+        && (currentUses > 0 || weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps])) ? 1 : 0;
+      const candidateActionCost = Number(linkedCandidate.actionCost) + repeatReloadCost + redrawCost;
 
       let nextNormalCost = normalCost + candidateActionCost;
       const nextQuickenedEligibleActions = quickenedEligibleActions + quickenedCapacity(candidate, repeatReloadCost, context);
@@ -1054,7 +1162,9 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
         ? {
           ...linkedCandidate,
           id: currentUses > 0 ? `${linkedCandidate.id ?? key}-map-${currentUses}` : linkedCandidate.id,
-          name: repeatReloadCost > 0 ? `Reload -> ${linkedCandidate.name}` : linkedCandidate.name,
+          name: repeatReloadCost > 0 ? `Reload -> ${linkedCandidate.name}`
+            : redrawCost > 0 ? t("Plan.DrawThen", "Draw -> {name}", { name: linkedCandidate.name }) : linkedCandidate.name,
+          ...(redrawCost > 0 ? { redrawCost } : {}),
           actionCost: candidateActionCost,
           reloadCost: repeatReloadCost,
           activityProfile: repeatReloadCost > 0

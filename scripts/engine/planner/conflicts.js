@@ -1,5 +1,6 @@
 import {
   candidateAppliedConditions,
+  candidateTraitSlugs,
   conditionSatisfies,
   currentAttackRange,
   isAttackAction,
@@ -205,6 +206,11 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
   ) {
     return true;
   }
+
+  // PF2e: one flourish per turn, and one composition per turn.
+  const isFlourish = (step) => candidateTraitSlugs(step).includes("flourish");
+  if (isFlourish(candidate) && steps.some(isFlourish)) return true;
+  if (isCompositionExtensionEligible(candidate) && steps.some(isCompositionExtensionEligible)) return true;
 
   if (includesStand(candidate) && steps.some(includesStand)) {
     return true;

@@ -488,7 +488,8 @@
       "SkirmishKite": "{prefix}Stride Away -> {finisher}",
       "ElementalBlastNamed": "Elemental Blast ({element})",
       "ThrownStrike": "{name} (Thrown)",
-      "MeleeStrike": "{name} (Melee)"
+      "MeleeStrike": "{name} (Melee)",
+      "StrikeStepAway": "{strike} -> Step Away"
     },
     "Reason": {
       "StandThenStride": "Stand, then Stride toward {name}.",
@@ -517,7 +518,8 @@
       "DrawOrRetrieve": "Draw or retrieve {name}.",
       "InteractItem": "Draw, retrieve, or manipulate an item.",
       "ReloadFree": "{weapon} reloads as part of firing (no action).",
-      "ReloadBeforeStrike": "Reload before firing {name}."
+      "ReloadBeforeStrike": "Reload before firing {name}.",
+      "StrikeStepAway": "Strike {target}, then Step out of reach."
     },
     "Label": {
       "Target": "Target: {name}",
@@ -981,7 +983,27 @@
       "RecallKnowledgeRepeat": "Already recalled {count}x about {target}; less left to learn.",
       "HitChance": "About {percent}% to hit.",
       "FatalCritical": "Fatal adds critical damage potential (+{amount}).",
-      "RangeIncrementPenalty": "Beyond the first range increment: -{amount} to hit."
+      "RangeIncrementPenalty": "Beyond the first range increment: -{amount} to hit.",
+      "AlreadyFrightened": "{name} is already frightened {value}.",
+      "AlreadyProne": "{name} is already prone.",
+      "AlreadyGrabbed": "{name} is already grabbed.",
+      "SpellcasterRangedStrikeIs": "Spellcaster weapon Strike is lower priority than spell options.",
+      "BuffAlreadyActive": "Everyone in reach already has {name}.",
+      "NoSummonedRecipient": "No living creature you summoned is in range.",
+      "RequiresTwoHeldMeleeWeapons": "Requires two held melee weapons.",
+      "StanceAlreadyActive": "A stance is already active.",
+      "LastSlotOfRank": "Last slot of this rank.",
+      "EnemiesNearlyDown": "Enemies are nearly down; save the slot.",
+      "HealsSeveral": "Heals {count} hurt creatures at once.",
+      "QuickAlchemyCreatesAlchemicalTool": "{p0} creates a short-lived alchemical tool for this turn.",
+      "ProneNoDefenseBenefit": "Off-Guard applies to every attacker alike, so dropping prone gives no defensive benefit against melee or ranged on its own.",
+      "NoThreatForProne": "No current threat makes dropping prone worthwhile.",
+      "NobodyNeedsHealing": "Nobody needs healing yet.",
+      "CloseTheDistance": "No attack reaches from here; close the distance.",
+      "LimitedUse": "Limited use ({per}); worth saving.",
+      "OutOfReachThisTurn": "{name} can't reach an enemy from here.",
+      "NoValidHealingRecipient": "No creature here can receive {name}.",
+      "HealsDyingAlly": "Brings {name} back up."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",
@@ -996,7 +1018,9 @@
       "MapPenalty": "{reason} MAP -{penalty}.",
       "VolleyMoved": "Volley -2 when fired from the moved-in position.",
       "QuickenedCastingDiscount": "{name} costs 1 fewer action after Quickened Casting.",
-      "LingeringCompositionExtend": "{name} lasts longer after Lingering Composition."
+      "LingeringCompositionExtend": "{name} lasts longer after Lingering Composition.",
+      "StrideTowardAlly": "Stride toward {name}.",
+      "DrawThen": "Draw -> {name}"
     },
     "Keybind": {
       "ToggleName": "Toggle PF2e Combater",

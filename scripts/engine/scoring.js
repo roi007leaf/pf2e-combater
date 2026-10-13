@@ -24,7 +24,7 @@ import {
 import { spellTacticalAdjustment } from "./scoring/spells.js";
 import { nativeRollContextPreflight } from "./scoring/roll-preflight.js";
 import { nativeOutcomeRanking } from "./scoring/probability.js";
-import { blockedCandidateResult } from "./scoring/gates.js";
+import { blockedCandidateResult, healingIsIdle } from "./scoring/gates.js";
 import {
   bestTargetForAction,
   distinctTargetsFor,
@@ -81,6 +81,16 @@ function extraStrikeValue(context, action, backingStrike, target, siblingSpells)
     value += Math.max(0, strikeScore - mapScoreCost({ score: strikeScore }, penalty));
   }
   return value;
+}
+
+// Many items only state it in prose: "<strong>Frequency</strong> once per day".
+function frequencyFromText(html) {
+  const match = String(html ?? "").replace(/<[^>]+>/g, " ").match(/\bfrequency\s+once per (day|hour|10 minutes|week)/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function systemValueOf(value) {
+  return value && typeof value === "object" && "value" in value ? value.value : value;
 }
 
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
@@ -148,6 +158,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     areaPlacementOptions,
     minionPlan,
     conditionalBonuses,
+    outOfReach,
   } = scoreRoleTactics(context, action, {
     role,
     profile,
@@ -158,13 +169,40 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   });
 
   const targetDistance = Number(target?.distance);
-  if (action.source === "strike" && isRangedStrike(action) && target
+  const rangedStrikeLike = ((action.source === "strike" && isRangedStrike(action))
+    || (action.activityProfile?.multiStrike === true && String(action.activityProfile?.backingStrikeFilter ?? "").startsWith("ranged")))
+    && action.activityProfile?.retreatBeforeStrike !== true;
+  if (rangedStrikeLike && target
     && Number.isFinite(targetDistance) && targetDistance <= 5
     && siblingActions.some((sibling) => sibling !== action && sibling.source === "strike"
       && sibling.available !== false && !isRangedStrike(sibling)
       && targetDistance <= maxRange(sibling))) {
     score -= 14;
     reasons.push(t("ScoreReason.RangedStrikeAdjacentMeleeReady", "A ready melee Strike can reach this adjacent target."));
+  }
+
+  // Nothing can attack from here (every Strike needs a move first): closing the distance is the
+  // turn's real work, not filler -- worth more than Recall Knowledge or an idle Raise a Shield.
+  const plainStride = action.source === "generic" && /(?:^|-)stride$/.test(String(action.slug ?? action.id ?? ""));
+  if (plainStride && target && Number.isFinite(targetDistance) && targetDistance > 5) {
+    const attackNow = siblingActions.some((sibling) => sibling !== action && sibling?.available !== false && !sibling?.needsApproach
+      && (sibling.source === "strike" || sibling.attackTrait === true)
+      && Number(sibling?.activityProfile?.strideCount ?? 0) === 0
+      && targetDistance <= maxRange(sibling));
+    if (!attackNow) {
+      score += 30;
+      reasons.push(t("ScoreReason.CloseTheDistance", "No attack reaches from here; close the distance."));
+    }
+  }
+
+  // Once a day (or an hour, or 10 minutes): worth saving for when it matters, especially when it
+  // isn't damage or healing (a +10 ft Speed bracelet is not this turn's best use of an action).
+  const frequencyPer = String(systemValueOf(action?.item?.system?.frequency?.per ?? action?.frequency?.per) ?? "").toLowerCase()
+    || frequencyFromText(action?.item?.system?.description?.value ?? action?.description);
+  if (/^(?:day|week|month|pt1h|pt10m|pt24h|hour|10 minutes)$/.test(frequencyPer)) {
+    const impactful = ["damage", "save-damage", "area-damage", "multiattack", "healing"].includes(role);
+    score -= impactful ? 10 : 30;
+    reasons.push(t("ScoreReason.LimitedUse", "Limited use ({per}); worth saving.", { per: frequencyPer }));
   }
 
   const strikeBonus = npcStrikeAttackBonus(action);
@@ -226,7 +264,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(...npcAdjustment.reasons);
   }
 
-  const tacticAdjustment = tacticPersonalityAdjustment(context, action, { target, role, areaHitCount });
+  const tacticAdjustment = tacticPersonalityAdjustment(context, action, { target, role, areaHitCount, siblings: siblingActions });
   if (tacticAdjustment.scoreDelta) {
     score += tacticAdjustment.scoreDelta;
     actorAdjustment += tacticAdjustment.scoreDelta;
@@ -281,6 +319,11 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(t("ScoreReason.HiddenTargetFlatCheck", "{target} is hidden; a flat check is needed before this can affect them.", { target: target.name }));
   }
 
+  if (role === "healing" && healingIsIdle(context, profile, action)) {
+    score = Math.min(score, -5);
+    reasons.unshift(t("ScoreReason.NobodyNeedsHealing", "Nobody needs healing yet."));
+  }
+
   if (nativeOutcome.scoreDelta) {
     score += nativeOutcome.scoreDelta;
     reasons.push(nativePreflight.rankingReason);
@@ -292,6 +335,13 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   }
 
   if (nativePreflight.available && nativePreflight.reason) reasons.push(nativePreflight.reason);
+
+  // A move-and-Strike or multi-Strike that reaches nobody can't be used from here: no "commits
+  // actions" credit, no role bonus can lift it back into a plan.
+  if (outOfReach) {
+    score = HARD_BLOCK_SCORE;
+    reasons.unshift(t("ScoreReason.OutOfReachThisTurn", "{name} can't reach an enemy from here.", { name: action.name }));
+  }
 
   return sanitizeScoredRecommendation({
     ...action,

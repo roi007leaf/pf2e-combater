@@ -12,3 +12,6 @@ output/playwright/
 artifacts/
 docs/
 .playwright-mcp/
+
+# Quality sweep: cached PF2e iconics extract + results (Paizo data, never commit)
+scripts/dev/quality-sweep/.cache/

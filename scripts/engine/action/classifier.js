@@ -1346,12 +1346,17 @@ function classifySystemActionBase(action, parsedCost) {
     const strideCount = /\b(?:strides?|steps?|moves?|leaps?|jumps?|bounds?|springs?)\s+twice\b/.test(text)
       ? 2
       : 1;
+    // "Step" alone (Skirmish Strike, Twin Riposte...) is a 5-foot Step, not a Stride.
+    // Descriptive "move" ("your feet and weapon move in tandem") doesn't make it a Stride.
+    const stepOnly = /\bsteps?\b/.test(text) && !/\bstrides?\b|\bleaps?\b|\bjumps?\b|\bbounds?\b|\bsprings?\b/.test(text);
+    const movement = stepOnly ? "step" : "stride";
     return inferred("mobility-attack", {
       activityProfile: {
-        includes: [...Array(strideCount).fill("stride"), "strike"],
+        includes: [...Array(strideCount).fill(movement), "strike"],
         strideCount,
         includesStrike: true,
         requiresBackingStrike: true,
+        ...(stepOnly ? { fixedDistance: 5 * strideCount, safeMovement: true } : {}),
       },
       targetingProfile: { enemy: true, reachAfterMove: true },
       gatingProfile,

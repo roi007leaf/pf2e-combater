@@ -1,4 +1,5 @@
 import { hasDemoralizeImmunity } from "../../rules/demoralize-immunity.js";
+import { buffAlreadyCoversEveryone } from "./buffs.js";
 import { livingMarkedTarget, readCombatState, targetHasMarkState } from "../../rules/combat-state.js";
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { resolveTacticPersonality } from "../../rules/tactic-personality.js";
@@ -91,18 +92,41 @@ function kineticAuraActive(context, profile) {
     || hasEffectSlug(profile, "channel-elements");
 }
 
-function entityNeedsHealing(entity) {
-  return hpPercent(entity) < 0.5
+// A Healer heals sooner (below 75%) than everyone else (below 50%), but never a healthy party.
+// Someone already healed earlier in this plan doesn't count again.
+function entityNeedsHealing(entity, threshold = 0.5) {
+  if (hasCondition(entity, "healed")) return false;
+  return hpPercent(entity) < threshold
     || hasCondition(entity, "dying")
     || hasCondition(entity, "persistent-bleed");
 }
 
-function hasNeededHealingRecipient(context, profile, action, { ignoreRange = false } = {}) {
-  if (hpPercent(profile) < 0.5) return true;
+// Medicine heals (Battle Medicine, Administer First Aid, Treat Wounds) need the patient adjacent.
+export function healingRangeKnown(action) {
+  return action?.targetingProfile?.reach === true || Number(action?.targetingProfile?.maxRange) > 0
+    || String(action?.skill ?? action?.statistic ?? "").toLowerCase() === "medicine";
+}
+
+// Heal Animal only works on animals.
+export function healingRecipientAllowed(action, entity) {
+  if (!/heal-animal/.test(String(action?.slug ?? action?.id ?? "").toLowerCase())) return true;
+  const traits = (Array.isArray(entity?.traits) ? entity.traits : []).map((trait) => String(trait?.slug ?? trait).toLowerCase());
+  return traits.includes("animal");
+}
+
+function hasNeededHealingRecipient(context, profile, action, { ignoreRange = false, threshold = 0.5 } = {}) {
+  if (hpPercent(profile) < threshold && !hasCondition(profile, "healed") && healingRecipientAllowed(action, profile)) return true;
   return contextAllies(context).some((ally) =>
-    entityNeedsHealing(ally)
-    && (ignoreRange || action?.targetingProfile?.reach !== true || inActionReach(profile, action, ally)),
+    healingRecipientAllowed(action, ally)
+    && entityNeedsHealing(ally, threshold)
+    && (ignoreRange || !healingRangeKnown(action) || !Number.isFinite(Number(ally?.distance)) || inActionReach(profile, action, ally)),
   );
+}
+
+// For an explicit Healer: nobody below 75% (or dying/bleeding) in range, so this heal would be wasted.
+export function healingIsIdle(context, profile, action) {
+  return hasExplicitPlayerHealerPreference(context)
+    && !hasNeededHealingRecipient(context, profile, action, { ignoreRange: true, threshold: 0.75 });
 }
 
 function actorType(context) {
@@ -128,6 +152,10 @@ export function blockedCandidateResult(context, action, {
   siblingSpells,
   backingStrikes,
 } = {}) {
+  if ((role === "buff" || action?.activityProfile?.spellBuff === true) && !isSummonBuff(action)
+    && action?.activityProfile?.spellshape !== true && buffAlreadyCoversEveryone(context, action)) {
+    return blockedAction(action, t("ScoreReason.BuffAlreadyActive", "Everyone in reach already has {name}.", { name: action.name }));
+  }
   if (isSummonBuff(action) && !summonedRecipients(context, action).length) {
     return blockedAction(action, t("ScoreReason.NoSummonedRecipient", "No living creature you summoned is in range."));
   }
@@ -185,9 +213,20 @@ export function blockedCandidateResult(context, action, {
     return blockedAction(action, t("ScoreReason.StanceAlreadyActive", "A stance is already active."));
   }
 
-  if (role === "healing" && !hasNeededHealingRecipient(context, profile, action) && !hasExplicitPlayerHealerPreference(context)) {
-    const hasOutOfReachRecipient = action?.targetingProfile?.reach === true
-      && hasNeededHealingRecipient(context, profile, action, { ignoreRange: true });
+  // A heal nobody here can receive at all (Heal Animal with no animal in the party).
+  if (role === "healing" && !healingRecipientAllowed(action, profile)
+    && !contextAllies(context).some((ally) => healingRecipientAllowed(action, ally))) {
+    return blockedAction(action, t("ScoreReason.NoValidHealingRecipient", "No creature here can receive {name}.", { name: action.name }));
+  }
+  const explicitHealer = hasExplicitPlayerHealerPreference(context);
+  const healingThreshold = explicitHealer ? 0.75 : 0.5;
+  // An explicit Healer keeps its heals listed when nobody needs one (scored below zero by
+  // healingIsIdle); a patient out of reach still blocks it, for everyone.
+  const outOfReachOnly = !hasNeededHealingRecipient(context, profile, action, { threshold: healingThreshold })
+    && hasNeededHealingRecipient(context, profile, action, { ignoreRange: true, threshold: healingThreshold });
+  if (role === "healing" && (outOfReachOnly || !explicitHealer) && !hasNeededHealingRecipient(context, profile, action, { threshold: healingThreshold })) {
+    const hasOutOfReachRecipient = healingRangeKnown(action)
+      && hasNeededHealingRecipient(context, profile, action, { ignoreRange: true, threshold: healingThreshold });
     return blockedAction(action, hasOutOfReachRecipient
       ? t("ScoreReason.NoBadlyInjuredHealingTargetInReach", "No badly injured healing target is in reach.")
       : t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));

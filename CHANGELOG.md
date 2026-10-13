@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.7]
+
+### Changed
+
+- **Auto picks the right role for player characters.** Auto now reads the class, the best ready weapon (ignoring the basic Fist and stowed weapons) and what the character's spells and impulses do, instead of words in feat and gear descriptions. Fighters, barbarians and rogues come out Melee Striker, gunslingers and alchemists Ranged Striker, champions and guardians Defender, clerics Healer, bards Buffer, witches Debuffer.
+- **Tactics understand what actions do.** Move-and-Strike activities and Strike feats count as melee or ranged by their weapon; Debuffer recognises control spells and condition effects (Slow, Grease, Daze); area spells only count as area damage when they deal damage; Heal never counts as damage; Kineticist impulses count as spells. A plan mixing on- and off-role steps gets both the bonus and the penalty, and only options usable this turn count.
+- **Skirmisher** gets "Strike -> Step Away"; Support favours Aid and Bon Mot.
+- **Healer** heals allies below 75% HP and leaves a healthy party alone; heals spread across hurt allies, respect range, Stride to a distant patient, and the 3-action Heal is valued by how many it reaches. Heal beats Stabilize on a dying ally.
+- **Melee characters close the distance** when nothing can attack from where they stand, instead of padding the turn.
+- Planning is about twice as fast.
+
+### Fixed
+
+- Plans with a plain Draw that nothing used, Strides padded with skill actions, buffs recast while active, Lingering Composition with no composition after it, and Reach Spell before a spell that already reaches.
+- Double Slice, Sudden Charge and other multi-Strike or move-and-Strike activities planned when they can't reach; move-and-Strike assumed to end adjacent however far the target was.
+- Crossbows firing twice without reloading; bombs and thrown weapons thrown twice without drawing another; Power Attack and Vicious Swing counting as one attack for MAP; two flourishes or two compositions in one turn.
+- Trip on a prone target, Demoralize on a target already frightened 2, Trip with no free hand, Heal Animal on non-animals, Guidance recast on an immune ally, Taunt with no range, once-per-day items used as filler.
+- "Take Cover" planned after knocking an enemy prone; casters shooting adjacent enemies point-blank; Skirmish Strike treated as a Stride; a re-targeted step executing on its old target.
+- Reach Spell can now bring an out-of-range spell into range; the last spell slot of a rank isn't spent on nearly defeated enemies; preference learning no longer treats cantrips as spending a slot.
+
 ## [2.0.6]
 
 ### Changed

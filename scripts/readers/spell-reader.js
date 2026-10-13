@@ -15,10 +15,12 @@ function titleCase(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+// Heal and Harm: 1 action is touch, 2 actions 30 ft, 3 actions a 30-foot emanation.
 function targetingForSpellActionCost(slug, actionCost, profile) {
-  if (slug !== "harm") return profile;
+  if (slug !== "harm" && slug !== "heal") return profile;
   if (actionCost === 1) return { ...profile, maxRange: 5, touch: true };
   if (actionCost === 2) return { ...profile, maxRange: 30, touch: false };
+  if (actionCost === 3) return { ...profile, maxRange: 30, touch: false, area: true };
   return profile;
 }
 

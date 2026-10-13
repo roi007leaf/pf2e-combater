@@ -3,6 +3,7 @@ import { readConsumableSpellActions, readSpellActions } from "../readers/spell-r
 import { npcTacticRejection } from "../rules/npc-tactics.js";
 import { SETTINGS, settingOrDefault } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
+import { contextAllies, contextEnemies } from "./target-pool.js";
 import { t } from "../i18n.js";
 import { actionExclusionKey, readActionExclusions } from "../state/action-exclusions.js";
 
@@ -54,6 +55,15 @@ function rejectedOnlyForRange(action) {
     ...(Number.isFinite(range) ? [t("Avail.NoTargetWithin", "No target within {range} feet.", { range })] : []),
   ]);
   return reasons.has(reason);
+}
+
+// The neediest ally a heal can't reach from here: dying first, then the lowest HP.
+function outOfReachPatient(context) {
+  const hp = (ally) => Number(ally?.hpPercent ?? 1);
+  const dying = (ally) => (ally?.conditions?.slugs ?? []).includes("dying");
+  return contextAllies(context)
+    .filter((ally) => Number.isFinite(Number(ally?.distance)) && (dying(ally) || hp(ally) < 0.5))
+    .toSorted((left, right) => Number(dying(right)) - Number(dying(left)) || hp(left) - hp(right))[0] ?? null;
 }
 
 function preferAction(left, right, includeUnknown) {
@@ -129,6 +139,22 @@ export function buildCandidates(context) {
     }
     if (scored.score <= REJECTED_SCORE) {
       rejected.push({ action: scored, reason: scored.reason || "Action is not useful in current context." });
+      // A heal whose patient is just out of reach: the planner may Stride to them first.
+      const patient = scored.reason === t("ScoreReason.NoBadlyInjuredHealingTargetInReach", "No badly injured healing target is in reach.")
+        ? outOfReachPatient(context) : null;
+      if (patient) {
+        const reference = { id: patient.id, name: patient.name, type: "ally" };
+        approachable.push({ ...scored, available: true, needsApproach: true, suggestedTarget: reference, preferredTarget: reference });
+      }
+      // A move-and-Strike or multi-Strike that can't reach yet: a Stride first may bring it in.
+      if (scored.reasons?.[0] === t("ScoreReason.OutOfReachThisTurn", "{name} can't reach an enemy from here.", { name: action.name })) {
+        const enemy = contextEnemies(context).filter((entry) => Number.isFinite(Number(entry?.distance)))
+          .toSorted((left, right) => Number(left.distance) - Number(right.distance))[0];
+        if (enemy) {
+          const reference = { id: enemy.id, name: enemy.name, type: "enemy" };
+          approachable.push({ ...scored, available: true, needsApproach: true, suggestedTarget: reference, preferredTarget: reference });
+        }
+      }
       continue;
     }
     candidates.push(scored);

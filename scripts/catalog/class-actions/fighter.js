@@ -6,6 +6,8 @@ export const FIGHTER_ACTIONS = [
       includes: ['strike'],
       includesStrike: true,
       focusedStrike: true,
+      // "counts as two attacks when calculating your multiple attack penalty"
+      mapAttacks: 2,
     },
     executable: 'open-item',
     confidence: 'high',
@@ -17,6 +19,7 @@ export const FIGHTER_ACTIONS = [
       includes: ['strike'],
       includesStrike: true,
       focusedStrike: true,
+      mapAttacks: 2,
     },
     executable: 'open-item',
     confidence: 'high',
