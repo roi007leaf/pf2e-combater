@@ -1,90 +1,133 @@
 # PF2e Combater – Tactical Turn Planner And Executioner
 
 [![Latest Version](https://img.shields.io/github/v/release/roi007leaf/pf2e-combater?display_name=tag&sort=semver&label=Latest%20Version)](https://github.com/roi007leaf/pf2e-combater/releases/latest)
-
 [![GitHub all releases](https://img.shields.io/github/downloads/roi007leaf/pf2e-combater/total)](https://github.com/roi007leaf/pf2e-combater/releases)
 
 PF2e Combater is a floating combat advisor for Foundry VTT's Pathfinder 2e system. It reads the
 acting creature's real options — strikes, spells, feats, generic actions — together with the
 battlefield around it, and helps you **plan a whole turn, see it on the canvas, and execute it step
-by step** (with one-click undo). GMs get tactical recommendations for the creatures they run;
-players plan their own turns.
+by step** (with one-click undo). It also **tracks the actions you actually spend** — from chat cards,
+rolls and token movement — and handles **End turn, Delay and Ready** from the same window. GMs get
+tactical recommendations for the creatures they run; players plan their own turns.
 
-## Live action tracker
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf)
+[![Patreon](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/roileaf)
 
-A compact turn-order strip under the header shows the next two creatures. It follows
-initiative and Delay changes, marks round wraparound, and respects hidden combatants and
-skip-defeated settings. Click a creature to pan to its visible token on the current scene
-without changing token selection or zoom. Reduced-motion preferences disable the slide
-transition. Turn off **Show turn navigation** in module settings to hide the strip and
-turn controls on your client.
+<p align="center"><img src="media/readme/panel.png" alt="The Combater panel planning a monk's turn: numbered steps matched to action diamonds, attack bonuses, and Run next / Run all" width="480"></p>
 
-**End turn** advances the current combatant through Foundry's normal turn handling.
-Owners can end their own turn; the GM can end the active turn. The **▾** beside it opens
-**Delay** and **Ready**; each explains in place why it is unavailable. **Delay** is available
-at turn start before tracked actions are spent. Choose a visible creature to return
-after (earlier turns are marked **next round**); Combater schedules that initiative
-position, advances combat, and keeps the plan and remaining allowance for the return.
-Players see their waiting status. The GM sees **Bring in now** for waiting creatures;
-this ends the current turn and resumes the chosen creature immediately. Player turn
-controls require socketlib and a connected GM. Delaying forbids reactions; PF2e's
-native turn effects still run when the turn is delayed.
+## 🆕 What's new in 2.0
 
-**Ready** (2 actions) prepares a single action and ends the turn. Pick a Strike, Stride,
-Step, Raise a Shield (when holding a shield), Interact, or type another action; a readied
-Strike keeps the multiple attack penalty you had when you readied it. Declare the trigger
-at the table. The token shows an amber ring with a bullseye badge until the creature's next
-turn starts (visible to everyone for player characters, GM-only for GM creatures), and the
-panel shows **Readied · <action>** with **Use** and **Discard**. **Use** rolls a readied Strike
-at its stored MAP and spends the creature's reaction; **Reaction used** shows until its next
-turn. A readied **Stride** or **Step** asks for its destination on the canvas when you ready it,
-and **Use** moves the token there; the banner's ⌖ button changes the destination, and hovering
-the banner previews the route. Tokens that used their reaction show an orange ↺ badge until
-their next turn (PF2e Reaction Checker's spent reactions count too). When PF2e Reaction Checker is active, its reaction state is updated too.
+- **Live action tracking.** Actions left updates from PF2e chat cards, action rolls, Combater
+  execution and token movement on the canvas. Slowed, stunned (Spring 2026 errata) and quickened shape
+  the budget automatically.
+- **End turn, Delay and Ready** right in the panel. Ready an action with a card picker, keep your MAP,
+  pick a Stride destination, and use it later as a reaction — with markers on the token.
+- **A redesigned interface.** Numbered steps matched to action diamonds, real attack bonuses,
+  Run next / Run all, a one-line action browser with success chances, and reworked Intel, Tactic,
+  Turn Intent, Loadout and Effect Clock windows. Dropdowns became image card pickers.
 
-Outside your turn, the tracker shows **Next turn** with the expected action total and
-current slowed, stunned, and quickened conditions. Auto-fill uses that upcoming budget,
-including permitted Quickened actions. Earlier movement and chat do not reduce the
-forecast. The GM can configure Quickened restrictions here; spend/refund controls appear
-when the actor's turn starts and the tracker switches to **Actions left**.
+See the [changelog](CHANGELOG.md) for everything in each release.
 
-During the selected combatant's active turn, **Actions left** tracks recognized PF2e chat
-cards and action rolls, alongside actions executed through Combater. Auto-fill and Browse
-use the remaining budget. Damage rolls, saving throws, rerolls, free actions, and reactions
-do not spend normal actions. Cards posted for reference still count: use **+** to refund
-them, or **−** to spend an action that was not posted. Deleting a standalone tracked card
-also removes its spend. Chat and execution receipts persist across panel closes and reloads.
+## 🖼️ Screenshots
 
-Canvas movement also spends actions, using Foundry's recorded path cost and the actor's
-prepared Speed. At Speed 25, a 35-foot Stride costs two actions. Terrain and diagonals use
-the native movement cost; continuing the same movement path shares its allowance, while a
-new path starts another movement action. Walking can use a Quickened action that permits
-Stride. Native movement undo refunds the corresponding spend. Combater-executed movement
-and matching movement chat cards are counted once. Displacement and teleport distance do
-not count as Strides. Recorded movement survives panel closes and reloads.
+| | |
+|:-:|:-:|
+| <img src="media/readme/turn-menu.png" alt="End turn menu with Delay and Ready" width="380"><br>**End turn · Delay · Ready** | <img src="media/readme/ready-dialog.png" alt="Ready dialog with action cards and attack-penalty cards" width="380"><br>**Ready an action** |
+| <img src="media/readme/browser.png" alt="Action browser with tab counts, budget line and success chances" width="380"><br>**Action browser** | <img src="media/readme/intel.png" alt="Recall Knowledge Intel editor with a planted false fact" width="380"><br>**Recall Knowledge Intel** |
+| <img src="media/readme/tactic.png" alt="Tactic window with role and temperament cards" width="380"><br>**NPC tactic** | <img src="media/readme/turn-intent.png" alt="Turn intent rules with a searchable Must include list" width="380"><br>**Turn intent** |
+| <img src="media/readme/readied.png" alt="A creature waiting with a readied action and next-turn forecast" width="380"><br>**Readied action & next-turn forecast** | <img src="media/readme/token-markers.png" alt="Token markers: readied ring and bullseye, reaction-used badge" width="380"><br>**Token markers: readied · reaction used** |
 
-The turn-start pool accounts for slowed, stunned, and quickened. Slowed and stunned overlap;
-the restricted quickened action is lost first. Haste gained during a turn takes effect on
-the next turn; the tracker immediately shows **Quickened · next turn** until then.
-Auto-fill also adds one allowed recommendation marked **Quickened · next turn**. This
-preview does not spend current actions or affect current MAP, and cannot execute yet.
-Auto-fill again when the next turn starts to build the plan against its actual budget.
-The GM can configure allowed actions from the pending chip too. Slowed or stunned can
-remove the predicted extra action.
-Newly applied valued stunned spends remaining actions, choosing the restricted
-quickened action first, and reduces its condition value by the actions actually lost.
-Only unpaid stunned carries into the next turn. A Combater activity in progress on
-the GM client finishes before this deduction; duration-based stunned remains active.
-Other condition changes and turn-start condition reductions remain under normal PF2e/GM control.
+<details>
+<summary>Canvas and 1.x screenshots</summary>
 
-Quickened has a separate counter. An active Haste effect automatically permits **Strike**
-or **Stride** in Auto-fill. Other sources show **Set actions**: the GM clicks the counter
-and enters allowed action slugs (for example `stride` or `strike, stride`). The choice stays
-with that Quickened condition across turns; a new application starts fresh. Players can
-spend/refund actions but cannot change these restrictions. Unknown restrictions remain
-manual until configured. The extra
-action never pays for a multi-action activity. Ambiguous custom cards can be corrected
-with the tracker controls.
+<img width="1712" height="1115" alt="Combater on the canvas" src="https://github.com/user-attachments/assets/24d3aecb-0fe5-4b94-bd71-024ba41555f6" />
+<img width="1907" height="1022" alt="Movement preview on the canvas" src="https://github.com/user-attachments/assets/2a7b22aa-0ec2-472b-9865-8d74b55802ed" />
+<img width="1886" height="1108" alt="Area and range overlays" src="https://github.com/user-attachments/assets/d310dd82-6024-4693-b6f9-3e62a27f2a9f" />
+<img width="747" height="381" alt="Panel detail" src="https://github.com/user-attachments/assets/15ec9258-a9f0-4884-aed2-fcf4e05088d6" />
+<img width="852" height="926" alt="Panel detail" src="https://github.com/user-attachments/assets/a226ba6d-b0d7-449e-88bf-36047c8b7ab7" />
+<img width="1533" height="773" alt="Panel detail" src="https://github.com/user-attachments/assets/52a8f8d5-f4ba-44dd-b82e-15b656a99270" />
+
+</details>
+
+---
+
+## 🧭 The panel at a glance
+
+- **Header.** Portrait, name, **Player plan** and **Reaction used** badges, and **End turn ▾**
+  (Delay, Ready). A compact **turn-order strip** shows who acts next; click a creature to pan to it.
+- **Plan setup.** One dropdown holds Tactic, resource use (Conserve / Normal / Burst), Intel, Intent
+  and Loadout. **Auto-fill** builds a turn; **‹ Plan N of M ›** steps through the next-best plans
+  (Shift-click Auto-fill to rebuild from scratch). **Browse** opens the action browser.
+- **Budget bar.** The PF2e action diamonds carry step numbers, so you can see which actions each
+  step uses — hover a step to light its diamonds. "N of M planned" warns when a plan overspends.
+  The **Adjust** popover holds the spend/refund controls; **Clock** opens timed effects.
+- **Plan.** Steps are numbered. Strikes show their **attack bonus** with MAP underneath (click to
+  pin a MAP level). Decision traits (Agile, Nonlethal, Reach…) stay inline and the rest collapse
+  into a "+N" chip. A target every step shares is shown once above the plan. Each step's top reason
+  comes with 1–3 stars. Target, weapon, movement type, route, duplicate and remove live behind **⋯**.
+- **Footer.** **Run next** executes the next step; **Run all** runs the rest in order and stops at the
+  first step that needs a choice, waits for the GM, or fails. Thumbs up/down rate the plan.
+
+## ⏳ Turns: action tracking, End turn, Delay & Ready
+
+### Action tracking
+
+During the selected combatant's turn, **Actions left** tracks recognized PF2e chat cards and action
+rolls alongside actions executed through Combater, and Auto-fill and Browse plan against what's
+left. Damage rolls, saving throws, rerolls, free actions and reactions spend nothing. Cards posted
+for reference still count: use the **Adjust** popover to refund them or to spend an action that was
+not posted. Deleting a standalone tracked card removes its spend. Receipts survive panel closes and
+reloads.
+
+**Canvas movement spends actions too**, using Foundry's recorded path cost and the actor's Speed —
+at Speed 25, a 35-foot Stride costs two actions. Terrain and diagonals use the native cost;
+continuing the same path shares its allowance, a new path starts another movement action, and
+native movement undo refunds it. Combater-executed movement and matching movement cards count once;
+displacement and teleports don't count as Strides.
+
+Outside its turn, a creature's tracker shows **Next turn** with the expected action total, and
+Auto-fill plans against that forecast.
+
+### Conditions & Quickened
+
+The turn-start pool accounts for **slowed, stunned and quickened**; slowed and stunned overlap and the
+restricted quickened action is lost first. **Stunned follows the Spring 2026 errata**: newly applied
+valued stunned waits for a Combater activity in progress to finish, then spends remaining actions
+(quickened first) and reduces its value by the actions actually lost; only unpaid stunned carries
+into the next turn. Haste gained mid-turn shows **Quickened · next turn**, and Auto-fill can add one
+allowed recommendation for it.
+
+An active Haste effect automatically allows **Strike** or **Stride**. For other sources the GM clicks
+**Set actions** and toggles the allowed actions as cards (Strike, Stride, Step, Raise a Shield,
+Interact, Sustain and the creature's own single actions), with a field for anything unusual. The choice
+stays with that Quickened condition; players can spend and refund but not change it. The extra action
+never pays for a multi-action activity.
+
+### End turn & Delay
+
+**End turn** advances the current combatant through Foundry's normal turn handling — owners end their
+own turn, the GM any active turn. The **▾** beside it opens **Delay** and **Ready**, and each says in
+place why it's unavailable. **Delay** works at turn start before actions are spent: choose a creature
+to return after (earlier turns are marked **next round**); Combater moves initiative, advances combat,
+and keeps your plan and remaining actions for the return. The GM can **Bring in now** any waiting
+creature. PF2e's turn effects run once. Player turn controls need socketlib and a connected GM.
+
+### Ready
+
+**Ready** (2 actions) prepares a single action and ends the turn. Pick it from cards with its art:
+your Strikes (each showing its bonus), Stride, Step, Raise a Shield, Interact, or another action you
+type. A readied Strike keeps the multiple attack penalty you had, shown as three cards with your real
+bonus at each step. Declare the trigger at the table. Fleeing and Confused prevent Ready.
+
+- The token shows an **amber ring and bullseye** until the creature's next turn, and the panel shows
+  **Readied · <action>** with **Use** and **Discard**.
+- A readied **Stride or Step** asks for its destination on the canvas, with the same reachable area
+  and path preview as planned movement. Hover the banner to preview the route; **⌖** changes it.
+- **Use** rolls a readied Strike at its stored MAP, or moves the token along the readied route, and
+  **spends the creature's reaction**: the token gets an orange **↺ badge** and the panel shows
+  **Reaction used** until its next turn. Reactions recorded by PF2e Reaction Checker count too, and
+  Combater updates that module's state when it spends one.
+- Markers are visible to everyone for player characters and only to the GM for GM creatures.
 
 ## Combat options without the panel
 
@@ -99,175 +142,148 @@ Avoid Notice already handles either action, Combater leaves that action to it. E
 combat-option settings transfer once when both modules are active; Visioner's old values reset
 to their defaults to prevent duplicate automation.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roileaf) 
-[![Patreon](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/roileaf)
-
 ---
-
-<img width="1712" height="1115" alt="image" src="https://github.com/user-attachments/assets/24d3aecb-0fe5-4b94-bd71-024ba41555f6" />
-<img width="1907" height="1022" alt="image" src="https://github.com/user-attachments/assets/2a7b22aa-0ec2-472b-9865-8d74b55802ed" />
-<img width="1886" height="1108" alt="image" src="https://github.com/user-attachments/assets/d310dd82-6024-4693-b6f9-3e62a27f2a9f" />
-<img width="747" height="381" alt="image" src="https://github.com/user-attachments/assets/15ec9258-a9f0-4884-aed2-fcf4e05088d6" />
-<img width="852" height="926" alt="image" src="https://github.com/user-attachments/assets/a226ba6d-b0d7-449e-88bf-36047c8b7ab7" />
-<img width="1533" height="773" alt="image" src="https://github.com/user-attachments/assets/52a8f8d5-f4ba-44dd-b82e-15b656a99270" />
 
 ## ✨ What it does
 
-- **Turn planner panel.** A floating window for the active combatant showing a draft plan, the
-  remaining action budget (slowed / stunned / quickened aware), and a browsable list of everything
-  the creature can actually do this turn.
 - **Auto-fill.** One click builds a sensible turn from the highest-value actions and fits it to the
   action economy — moving into reach, attacking, casting, or repositioning as the situation calls
-  for. Shift-click it to discard the current draft and rebuild a whole new plan from scratch. The
-  shuffle-icon counter next to it cycles through the next-best ranked alternative plans (right-click
-  to go back) — that cycling is what the rest of this doc calls **Shuffle**. One projected plan
-  state follows position, MAP, conditions, shields, targets, durations, and resources through every
-  step. Filling around manual choices continues their MAP and Strike count instead of starting a
-  fresh simulated turn, and remembers immediate-action and target-condition setups.
-- **Resource horizons.** Cycle the battery chip between **Conserve, Normal, and Burst** before
-  Auto-fill. Conserve protects scarce slots, consumables, and limited uses; Normal keeps the standard
-  tactical ranking; Burst spends more freely as encounter pressure rises. The choice is local to
-  your client and does not alter actor resources until you execute a step. During search, Auto-fill
-  reserves each shared resource pool, so a plan cannot spend one remaining spell slot, focus point,
-  consumable, or limited use twice. Manual draft steps reserve their resources before gap filling.
+  for. Shift-click to discard the current draft and rebuild from scratch. **‹ Plan N of M ›** cycles
+  through the next-best ranked alternatives — the rest of this doc calls that **Shuffle**. One
+  projected plan state follows position, MAP, conditions, shields, targets, durations and resources
+  through every step. Filling around manual choices continues their MAP and Strike count, and
+  remembers immediate-action and target-condition setups.
+- **Resource horizons.** Choose **Conserve, Normal or Burst** in the plan-setup dropdown before
+  Auto-fill. Conserve protects scarce slots, consumables and limited uses; Burst spends more freely as
+  encounter pressure rises. The choice is local to your client. During search, Auto-fill reserves each
+  shared resource pool, so a plan never spends the same slot, focus point, consumable or use twice.
 - **Real action sources.** Options are read from the actor itself, not a fixed list:
-  - **Strikes** (melee and ranged), with the multiple attack penalty accounted for — and a
-    per-strike MAP button to pin a level when an ability keeps MAP flat across attacks.
-  - **Spells** — curated catalog plus inferred classification (damage, save, area, control,
-    healing, buff…), respecting slots, focus points, and prepared/spontaneous/innate entries.
-    Wands, scrolls, and spell gems with a stored spell show up as real castable actions too,
-    tracked against their own charges or quantity.
-  - **Generic & skill actions** (Stride, Step, Demoralize, Trip, Grapple, Recall Knowledge, …),
-    gated by whether they're usable right now.
+  - **Strikes** (melee and ranged), with the multiple attack penalty accounted for — and a MAP button
+    on each Strike to pin a level when an ability keeps MAP flat across attacks.
+  - **Spells** — curated catalog plus inferred classification (damage, save, area, control, healing,
+    buff…), respecting slots, focus points, and prepared/spontaneous/innate entries. Wands, scrolls
+    and spell gems show up as real castable actions, tracked against their own charges or quantity.
+  - **Generic & skill actions** (Stride, Step, Demoralize, Trip, Grapple, Recall Knowledge, …), gated
+    by whether they're usable right now.
   - **Class & system feats/actions** detected from the actor's items.
+- **Action browser.** Tabs per action cost with counts, search across every tab, and one line per
+  action with its reason and a **success-chance column**. One budget line replaces per-row warnings,
+  and the shared best target is shown once. Click a row for details, **Add as uncounted**, **Hide from
+  Auto-fill** and **Open sheet**; sort by **Best** or **A–Z**.
 - **Move-and-strike composites.** When a target is a stride or two away, the planner offers
-  combined "Stride → Strike" (and "Stride → Stride → Strike") plays, with the destination computed
-  to land in reach — plus Step-first and Stand-first variants, and Stride into a multiattack
-  ability, for the actions that support them.
+  "Stride → Strike" (and "Stride → Stride → Strike") plays, with the destination computed to land in
+  reach — plus Step-first and Stand-first variants, and Stride into a multiattack ability.
 - **Positional tactics (GM NPCs).** Recommends **Skirmish/Kite** (optional melee → stride out of
-  threat → ranged Strike or offensive spell) and **Flank-and-Strike** (stride to a flanking square
-  for an off-guard hit) when the situation favors them.
-- **Situational remedies.** A dedicated section surfaces condition responses only when they apply —
-  Stand / Crawl while prone, Retch while sickened (the GM sets the sickened Fortitude DC, the player
-  rolls, and the GM rules the outcome over a synced "waiting for the GM" hand-off), Escape while
-  grabbed/restrained.
-- **Action favorites.** Star an action in Browse to pin it into a dedicated Favorites section, and
-  drag to reorder your favorites — saved per user, per actor.
-- **Hidden actions.** Use an action's eye button to hide it from player Browse and exclude it from
-  player Auto-fill for that actor. GMs see **Hidden for players** and can use the action normally,
-  including Add, Uncounted, and Auto-fill. **Show hidden** reveals
-  excluded actions for restoration. Existing draft steps stay intact.
-- **Summon planning.** With PF2e Summons Assistant and its dependencies active, supported creature
-  summon spells get a **Choose summon** button. Pick the creature and placement before casting;
-  execution casts normally; Summons Assistant reuses the saved creature without reopening its
-  picker or placement prompt, spawning at the saved location. Native summon effects and ownership still apply.
-  Reverting a cast requires manually removing any summoned token.
+  threat → ranged Strike or offensive spell) and **Flank-and-Strike** when the situation favors them.
+- **Situational remedies.** Condition responses appear only when they apply — Stand / Crawl while
+  prone, Retch while sickened (the GM sets the Fortitude DC, the player rolls, and the GM rules over a
+  synced "waiting for the GM" hand-off), Escape while grabbed/restrained.
+- **Action favorites.** Star an action in the browser to pin it into Favorites, and drag to reorder —
+  saved per user, per actor.
+- **Hidden actions.** **Hide from Auto-fill** hides an action from player Browse and player Auto-fill
+  for that actor. GMs see **Hidden for players** and can still use it; the **Hidden** toggle reveals
+  hidden actions for restoring. Existing draft steps stay intact.
+- **Summon planning.** With PF2e Summons Assistant active, supported creature summon spells get a
+  **Choose summon** button. Pick the creature and placement before casting; Summons Assistant reuses
+  them without reopening its picker. Reverting a cast requires manually removing the summoned token.
 - **Uncounted actions.** Multi-step activities such as Sudden Charge's Stride-Stride-Strike run
-  alongside the main plan without spending the 3-action budget or slot tracking, and each still
-  executes and reverts independently.
-- **Weapon & position handling.** Draw, **Sheathe**, Release (drop), and Reload for the right
-  weapons; a 1-action Drop Prone when it helps.
+  alongside the main plan without spending the 3-action budget, and each still executes and reverts
+  independently.
+- **Weapon & position handling.** Draw, **Sheathe**, Release (drop), Reload, and **Swap Items** (pick
+  what to put away and what to draw from item cards); a 1-action Drop Prone when it helps.
+- **Loadout advisor.** Suggests gear swaps for the current battlefield, with the best one marked, and
+  adds the swap to the plan in one click.
+- **Effect clock.** Timed effects and conditions grouped into **This turn** and **Later**.
 - **GM aggro targeting.** For GM-run NPCs, the planner weighs which player character is the best
   target (healer, caster, controller, defender, low HP) and pre-picks it.
-- **GM tactic personalities.** NPC turns get a tactic chip where the GM can set a role preset
-  (Boss, Lieutenant, Minion, Brute, Skirmisher, Artillery, Controller, Defender, Support), a
-  temperament (Aggressive, Cautious, Opportunist, Berserker, Coward), and optional custom priorities.
-  Auto-fill and Shuffle use that profile when ranking actions and choosing targets.
-- **Player tactic roles.** Character actors get their own tactic chip with PC-facing roles — Melee
-  Striker, Ranged Striker, Spell Damage, Healer, Buffer, Debuffer, Defender, Support, and Skirmisher.
-  Picking a role changes which whole plans Auto-fill and Shuffle prefer, not just individual action
-  scores (e.g. Melee Striker can promote a Stride-into-melee plan over a higher raw-score bow shot).
-  Players don't get the NPC-only roles, temperament, or custom sliders.
+- **GM tactic personalities.** NPCs get a role (Boss, Lieutenant, Minion, Brute, Skirmisher,
+  Artillery, Controller, Defender, Support) and a temperament (Aggressive, Cautious, Opportunist,
+  Berserker, Coward), picked from cards with a one-line description of each. **Fine-tune priorities**
+  nudges individual action and target priorities on −3…+3 scales (Avoid · Preset · Prefer). Auto-fill
+  and Shuffle use that profile when ranking actions and choosing targets.
+- **Player tactic roles.** Characters get PC-facing roles — Melee Striker, Ranged Striker, Spell
+  Damage, Healer, Buffer, Debuffer, Defender, Support and Skirmisher. A role changes which whole plans
+  Auto-fill and Shuffle prefer, not just individual action scores. Players don't get the NPC-only
+  roles, temperament or fine-tuning.
+- **Turn intent.** Rules Auto-fill must follow this turn: lock the target, require an action (searchable
+  cards), no spell slots, stay ranged, end in cover, or save an action. **Keep** carries a rule into
+  later turns until the encounter ends.
 - **Recall Knowledge Intel.** Players roll one secret d20 to attempt Recall Knowledge; the GM sees the
-  degrees of success across every applicable skill/Lore DC and chooses the outcome, then can mark
-  individual facts — traits, save DCs, weaknesses, resistances, and immunities — as revealed on the
-  NPC, either as **exact** numbers or level-scaled **Low/Mid/High bands**. Players can inspect only
-  those revealed facts, and Player Auto-fill/Shuffle use revealed Intel but never unrevealed defenses.
-- **Intel misinformation.** On a Critical Failure, the GM can instead reveal prepared false
-  information for that category (a wrong trait, save, weakness, etc.) instead of the real fact.
-  Misinformation displays as ordinary truth to players — no false marker — while GMs still see it
-  flagged. Auto-fill, Best target, and planner scoring only ever use real facts, never planted false
-  ones.
+  degrees of success across every applicable skill/Lore DC and chooses the outcome, then ticks the
+  facts revealed — traits, save DCs, weaknesses, resistances and immunities — as **exact DCs** or
+  level-scaled **bands**. Each category is one row with a select-all box and a revealed-facts progress
+  bar. Players see every topic, with unknown ones marked, and Player Auto-fill/Shuffle use revealed
+  Intel but never unrevealed defenses.
+- **Intel misinformation.** **+ False fact** on a category row plants a wrong fact (a fake Reflex DC,
+  trait, weakness…) as an orange chip beside the real ones; the GM can show or hide it, and a Critical
+  Failure can reveal prepared misinformation instead of the real fact. Players see it as ordinary
+  truth; Auto-fill, Best target and scoring only ever use real facts.
 - **Bestiary Tracking integration.** With an active Bestiary Tracking release exposing the v1
   knowledge API (including fork 1.3.11), Auto-fill and Shuffle also use shared party knowledge:
   revealed traits, numeric saves and Perception, IWR, and known Reactive Strike. Revealed numeric
-  AC supports attack preflight estimates and its optional scoring. Hidden fields and vague/custom
-  text provide no numeric estimates. Existing Combater Intel takes precedence for overlapping
-  save, Perception, and IWR facts. Bestiary's displayed misinformation is treated as party knowledge;
-  custom text is never parsed into numbers. Changes to the bestiary refresh an open panel.
-  Older, inactive, or unavailable Bestiary modules preserve existing behavior.
-- **Plan preference learning.** Thumbs-up/down a visible plan to teach Auto-fill and Shuffle which
-  complete turn sequences you like. Ratings are local per user and actor and give future rankings a
-  capped, predictable nudge for similar actions, roles, and ordering — they never touch actor data or
-  PF2e rules.
-- **Native Roll-Context Preflight.** A chip on supported actions previews what PF2e's live check
-  context would say before you roll it — Hit/Success chance or the named check modifier — using only
-  the target information you're allowed to know. GMs always see it; showing it to players is an
-  opt-in world setting, off by default. Disclosed degree-of-success odds provide a bounded Auto-fill
-  adjustment that values critical outcomes, basic saves, risky skill failures, and incapacitation;
-  approximate revealed Intel receives half weight.
-- **Best target chip.** Each scored action names the combatant recommendation scoring picked for it.
-  A normal target-button click still uses your current Foundry target; Shift-click commits the scored
-  Best target directly.
-- **Companion/minion support.** Command an Animal appears when a commandable companion, familiar, or
-  minion is detected, and its recommendation can show the two-action minion subturn it is trying to
-  set up.
+  AC supports attack preflight estimates. Hidden fields and vague/custom text provide no numeric
+  estimates, and existing Combater Intel takes precedence for overlapping facts.
+- **Plan preference learning.** Thumbs-up/down a plan to teach Auto-fill and Shuffle which complete
+  turn sequences you like. Ratings are local per user and actor and give a capped, predictable nudge
+  — they never touch actor data or PF2e rules.
+- **Native Roll-Context Preflight.** Supported actions show what PF2e's live check context would say
+  before you roll — hit/success chance or the named check modifier — using only target information
+  you're allowed to know. GMs always see it; showing it to players is an opt-in world setting.
+  Disclosed odds give Auto-fill a bounded adjustment that values critical outcomes, basic saves,
+  risky failures and incapacitation; approximate revealed Intel receives half weight.
+- **Best target.** Each scored action names the combatant scoring picked for it. A normal target
+  button click uses your current Foundry target; Shift-click commits the scored best target.
+- **Companion/minion support.** Command an Animal appears when a commandable companion, familiar or
+  minion is detected, and its recommendation can show the two-action minion subturn it sets up.
 
 ## 🎯 On the canvas
 
-- **Movement preview** for strides: the path, reachable squares, the starting square, and the
-  landing square — all clamped to the creature's actual Speed and the scene's diagonal rule.
+- **Movement preview** for strides: the path, reachable squares, the starting square and the landing
+  square — clamped to the creature's actual Speed and the scene's diagonal rule.
 - **Choose the movement type.** When a creature has more than one Speed, a Stride can travel on
-  **fly, burrow, swim, or climb** — the chosen speed sizes the reachable range and is the movement
-  the token uses on execute (land-only creatures see no extra control).
-- **Tactical routes.** Cycle a Stride between **Approach, Shortest, Safest, Seek Cover, Flank, and
-  Escape**. The route scorer weights melee threats and open enemy lines by each segment's PF2e
-  movement cost, so long or difficult exposed segments matter more than brief crossings.
-  Foundry/PF2e still measures and executes the final waypoint route through its native movement
-  transaction.
+  **fly, burrow, swim or climb** — the chosen speed sizes the reachable range and is the movement
+  the token uses on execute.
+- **Tactical routes.** Cycle a Stride between **Approach, Shortest, Safest, Seek Cover, Flank and
+  Escape**. The route scorer weights melee threats and open enemy lines by each segment's movement
+  cost; Foundry/PF2e still measures and executes the final route through its native movement.
 - **Vertical movement** for fly and burrow: hold **Shift** and scroll while placing a waypoint to
-  raise or lower its elevation. Each waypoint keeps its own height (so a path can climb, level off,
-  then dive), the elevation is shown on the waypoint, and every leg's vertical distance counts
+  raise or lower it. Each waypoint keeps its own height, and every leg's vertical distance counts
   against Speed.
 - **Teleport destinations.** Translocate and other teleports show a **range ring** and let you click
-  the target space; executing casts the spell and repositions the token instantly, and reverting
-  returns it to where it started.
-- **Range and area overlays** when hovering ranged or template spells, so you can see where a spell
-  reaches before committing.
-- **Area templates with auto-expiry.** Placing a lingering area (cloud, wall, darkness) creates a
-  linked PF2e countdown effect on the caster and removes the template automatically when the
-  duration ends — in encounter or exploration.
+  the target space; executing repositions the token instantly, and reverting returns it.
+- **Range and area overlays** when hovering ranged or template spells. When an action has several
+  areas, pick the shape from cards (cone, line, burst…).
+- **Area templates with auto-expiry.** A lingering area (cloud, wall, darkness) creates a linked PF2e
+  countdown effect on the caster and removes the template automatically when the duration ends.
+- **Turn markers.** A readied action draws an amber ring and bullseye on the token; a spent reaction
+  draws an orange ↺ badge.
 
 ## ▶️ Execute & undo
 
-- Run the plan **step by step**, or each step on its own. Strikes read your current target; moves
-  go to the planned destination; spells cast through the system.
-- **Drag to reorder** a planned step — grouped composites move as one block — or **duplicate** a
-  step to clone it (including its target, weapon, and MAP overrides) right after the original.
+- Run the plan **step by step** with ▶ on each step, or use **Run next** / **Run all** in the footer.
+  Strikes read your current target; moves go to the planned destination; spells cast through the
+  system.
+- **Drag to reorder** a planned step — grouped composites move as one block — or **duplicate** it
+  (including its target, weapon and MAP overrides) from the step's **⋯** tools.
 - **Revert** a completed step's real effect — movement returns the token, Stand re-applies prone,
   area actions delete their template — and **Reset** undoes the whole turn in reverse. Effects that
-  can't be safely auto-undone (e.g. a condition applied to another token) are flagged for manual
-  cleanup.
-- Undo is conflict-aware: if movement, a spell slot, a consumable, frequency, reload state, or carry
-  state changed again after Combater used it, Revert leaves the newer value intact and reports the
-  conflict instead of overwriting it.
+  can't be safely auto-undone are flagged for manual cleanup.
+- Undo is conflict-aware: if movement, a spell slot, a consumable, frequency, reload state or carry
+  state changed again after Combater used it, Revert leaves the newer value intact and reports it.
 
 ## 👥 Players & GM
 
 - Players plan and execute their own combatant; the GM window follows the **selected token**.
 - Players can **share** their draft with the GM, who can execute it on their behalf if they go AFK.
-- If a player is **not currently connected** (e.g. their PC is being run by the GM for the session),
-  the GM gets full Auto-fill/edit/execute rights on that character — same as any NPC. The read-only
-  "mirror the player's live plan" mode only applies while the owning player is actually online.
-- GMs can save an NPC tactic profile as an **actor default** for every copy of that creature, or as a
-  **token override** when one battlefield copy should behave differently.
+- If a player is **not currently connected**, the GM gets full Auto-fill/edit/execute rights on that
+  character. The read-only "mirror the player's live plan" mode applies only while the player is online.
+- GMs save an NPC tactic for **This token** or **All tokens of this actor** with one Save button.
 - GMs reveal Recall Knowledge Intel from the NPC's Combater panel. The Intel ledger is saved on the
-  NPC actor, so the same creature keeps those revealed facts in later combats. **Reset RK Attempts**
-  in the same editor clears every actor's attempt history and failure blocks for that NPC, restoring
-  first-attempt DCs.
-- Players see revealed NPC Intel from their own Combater panel's **Intel** button, the brain button
-  on visible NPC combat tracker rows, or by clicking an NPC target label inside a suggested/drafted
-  step. Players never get the GM editor and never see unrevealed NPC facts.
+  NPC actor, so the creature keeps those facts in later combats. **Reset RK attempts** clears every
+  actor's attempt history for that NPC.
+- Players see revealed NPC Intel from their panel's **Intel** option, the brain button on visible NPC
+  combat tracker rows, or by clicking an NPC target in a step. Players never get the GM editor and
+  never see unrevealed facts.
 
 ---
 
@@ -445,7 +461,7 @@ The finisher and immediate-threat cues need no hidden data, but because the whol
 
 ### NPC tactic personality: how the GM steers monster behavior
 
-For NPC turns, the tactic chip can stay on **Auto** or be set manually. Auto infers a role and
+For NPC turns, the **Tactic** window (plan-setup dropdown) can stay on **Auto** or be set manually. Auto infers a role and
 temperament from the NPC's sheet and the current fight: ranged strikes and combat spells lean
 Artillery, healing and ally buffs lean Support, heavy melee leans Brute while grab/control tools lean
 Controller, shield/guard tools lean Defender, level gaps can imply Boss, Lieutenant, or Minion, and HP,
@@ -455,8 +471,8 @@ Coward, Opportunist, Aggressive, or Cautious.
 Manual presets override that inference. The role and temperament then add action and target weights:
 Bosses favor high-impact turns, Artillery favors ranged/spell pressure, Defenders value protection and
 control, Support values allies, Aggressive creatures push damage, Cautious creatures value survival,
-and Opportunists chase openings. The optional **Customize preset** layer exposes six action-style
-sliders (damage, survival, control, mobility, support, reaction) and six target-style sliders —
+and Opportunists chase openings. The optional **Fine-tune priorities** layer exposes six action-style
+scales (damage, survival, control, mobility, support, reaction) and six target-style scales, each −3…+3 —
 finishing wounded enemies, pressuring casters/healers/controllers, punishing immediate threats,
 avoiding hard defenders, preferring the nearest reachable enemy, or preferring a marked objective
 target.
@@ -470,9 +486,9 @@ and Shuffle prefer.
 
 ### Player tactic roles: steering your own character
 
-Character actors get the same tactic chip, scoped to a smaller PC-facing role list: **Auto, Melee
+Character actors get the same Tactic window, scoped to a smaller PC-facing role list: **Auto, Melee
 Striker, Ranged Striker, Spell Damage, Healer, Buffer, Debuffer, Defender, Support, Skirmisher.** There's
-no temperament or custom sliders on the player side — just the role.
+no temperament or fine-tuning on the player side — just the role.
 
 The role reorders whole candidate plans, not just individual action scores: Melee Striker can promote
 a Stride-into-melee plan over a higher-scoring bow shot, and Spell Damage prefers offensive spells over
@@ -560,6 +576,10 @@ editable, and **Browse** lets you build the turn by hand instead.
 - Pathfinder 2e system
 - socketlib module enabled in the world
 
+**Optional integrations:** PF2e Reaction Checker (shared reaction state), PF2e Summons Assistant
+(summon planning), Bestiary Tracking (shared party knowledge), PF2e Avoid Notice (Defend and Rage
+automation hand-off).
+
 ## 🔌 Installation
 
 1. In Foundry, open **Add-on Modules → Install Module**.
@@ -569,19 +589,15 @@ editable, and **Browse** lets you build the turn by hand instead.
 
 ## 🕹️ Getting started
 
-- Open the panel from the **Token Controls** toolbar (the Combater tool), or it opens automatically
-  on a combatant's turn (configurable in module settings).
-- Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself, then run steps
-  one by one or with **Run next** / **Run all** in the footer. Use **‹ Plan N of M ›** to step
-  through alternative plans.
-- Steps are numbered, and the numbered action diamonds show which actions each step uses
-  (hover a step to light them). Strikes show their attack bonus with MAP underneath; extra step
-  tools live behind **⋯**.
-- Tactic, resource use, Intel, Intent, and Loadout sit in one plan-setup dropdown. **Clock** sits
-  beside remaining actions; the budget's **Adjust** popover holds the spend/refund controls;
-  **Refresh** and **Expand/Collapse plan** are in the **⋯ Window options** menu.
-- On an NPC turn, use the **Tactic** chip to set monster behavior and the **Intel** chip to reveal
-  Recall Knowledge facts players are allowed to use.
+1. Open the panel from the **Token Controls** toolbar (the Combater tool), or let it open
+   automatically when a combatant's turn starts (module setting).
+2. Hit **Auto-fill** for a suggested turn, or **Browse** to pick actions yourself. Use
+   **‹ Plan N of M ›** to look at alternatives.
+3. Run steps with ▶, or **Run next** / **Run all** in the footer. Drag, duplicate or remove steps from
+   their **⋯** tools.
+4. When you're done, **End turn** — or use **▾** to **Delay** or **Ready**.
+5. GMs: on an NPC turn, set behavior in the plan-setup dropdown's **Tactic** and reveal Recall
+   Knowledge facts players may use with **Intel**.
 
 ---
 
@@ -599,7 +615,7 @@ Configurable from Foundry's module settings:
   tactically score, instead of hiding them.
 - **Hide Auto-fill from players** — remove the Auto-fill button for players so they plan their own
   turn instead of accepting the generic recommendation; the GM still sees it.
-- **Show PF2e check previews to players** — let players see Native Roll-Context Preflight chips and
+- **Show PF2e check previews to players** — let players see Native Roll-Context Preflight success chances and
   use disclosed odds as a bounded Auto-fill ranking input. Only revealed Intel is used; GMs always
   receive native previews. Off by default for players.
 - **Show GM debug tab** — a GM-only panel tab for inspecting scoring inputs, rejected actions, and
