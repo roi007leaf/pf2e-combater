@@ -392,7 +392,7 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
   return null;
 }
 
-export function scoreRoleTactics(context, action, { role, profile, target, criticalChance = null } = {}) {
+export function scoreRoleTactics(context, action, { role, profile, target, criticalChance = null, backingStrike = null, extraStrikeValue = 0 } = {}) {
   const reasons = [...(action.reasons ?? [])];
   const targetDamageAdjustment = damageAdjustment(context, action, target);
   const targetSaveScore = saveScoreDelta(context, action, target, profile);
@@ -570,6 +570,8 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     score,
     reasons,
     pressure,
+    backingStrike,
+    extraStrikeValue,
   });
   score = activityProfileTactics.score;
 

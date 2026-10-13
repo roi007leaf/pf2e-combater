@@ -60,7 +60,7 @@ import {
   boundedPlanPreferenceDelta,
   deterministicPlanPreferenceAdjustment,
 } from "../state/preference-profile.js";
-import { HARD_BLOCK_SCORE, MAP_PENALTY_BY_ATTACK_INDEX } from "./scoring/weights.js";
+import { HARD_BLOCK_SCORE, MAP_PENALTY_BY_ATTACK_INDEX, mapScoreCost } from "./scoring/weights.js";
 import {
   resolveTacticPersonality,
   tacticPersonalityAdjustment,
@@ -89,7 +89,6 @@ const DIVERSITY_SCORE_WINDOW = 6;
 const DIVERSITY_LOOKAHEAD = 12;
 const MAX_STRIKE_STEPS = 2;
 const UNUSED_ACTION_PENALTY = 1;
-const MAP_SCORE_WEIGHT = 3;
 const ORPHAN_SETUP_PENALTY = 20;
 const MAX_APPROACH_CANDIDATES = 3;
 const DIVERSE_CANDIDATE_CATEGORIES = [
@@ -478,6 +477,10 @@ export function attacksTowardMap(candidate) {
   const value = candidate.activityProfile?.mapAttacks;
   if (value === "variable") return 3;
   if (Number.isFinite(value)) return Math.max(0, value);
+  // Hunted Shot / Flurry of Blows: each of its Strikes takes and advances MAP on its own.
+  if (candidate.activityProfile?.mapAppliesPerStrike === true) {
+    return Math.max(1, (candidate.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length);
+  }
   return 1;
 }
 
@@ -490,14 +493,20 @@ function quickenedCapacity(candidate, repeatReloadCost = 0, context = {}) {
   return 0;
 }
 
-// Second attacks (MAP -4/-5) cost a flat 3 points per point of penalty -- tuned against the attack
-// scores. A third attack (-8/-10) is a different animal: ~5% less to hit per point leaves it near
-// 15-25%, so it loses that share of its value and a heavily-buffed Strike can't shrug it off.
-export function mapScoreCost(candidate, penalty) {
-  if (!(penalty > 0)) return 0;
-  if (penalty < 8) return penalty * MAP_SCORE_WEIGHT;
-  const attackValue = Math.max(0, (Number(candidate?.score) || 0) - 46);
-  return Math.round(Math.max(penalty * MAP_SCORE_WEIGHT, attackValue * Math.min(0.9, penalty * 0.05 / 0.6)));
+export { mapScoreCost };
+
+// MAP a step pays when its first attack lands at attackCount. A per-Strike multiattack (Hunted Shot)
+// was scored with its own Strikes at MAP 0 and -5; starting later pushes every one of them down a tier,
+// so it pays the difference per Strike rather than once for the whole step.
+export function stepMapScoreCost(candidate, score, attackCount) {
+  const strikes = candidate?.activityProfile?.mapAppliesPerStrike === true ? attacksTowardMap(candidate) : 1;
+  if (strikes <= 1) return mapScoreCost({ score }, mapPenalty(candidate, attackCount));
+  const each = { score: score / strikes };
+  let cost = 0;
+  for (let index = 0; index < strikes; index += 1) {
+    cost += mapScoreCost(each, mapPenalty(candidate, attackCount + index)) - mapScoreCost(each, mapPenalty(candidate, index));
+  }
+  return cost;
 }
 
 function permutations(values) {
@@ -512,7 +521,7 @@ function withMapAt(step, penalty, attackIndex) {
     ...step,
     mapPenalty: penalty,
     attackIndex,
-    score: base.score - mapScoreCost({ score: base.score }, penalty),
+    score: base.score - stepMapScoreCost(step, base.score, attackIndex - 1),
     reason: [
       base.reload,
       penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: base.reason, penalty }).trim() : base.reason,
@@ -524,8 +533,14 @@ function withMapAt(step, penalty, attackIndex) {
 // The search charges MAP in the order it happened to pick attacks, and orderPlanSteps reorders steps
 // afterwards. Re-deal the plan's Strikes into the order that loses least to MAP (the big hit first,
 // the agile one last), then recompute each attack's penalty from its final position.
+// A standing multi-Strike (Hunted Shot) re-deals like a Strike; anything that moves stays put.
+function isRedealableAttack(step) {
+  if (isStrikeAction(step)) return true;
+  return step?.activityProfile?.mapAppliesPerStrike === true && !(Number(step.activityProfile.strideCount) > 0);
+}
+
 export function rebalancePlanMap(steps) {
-  const strikeSlots = steps.flatMap((step, index) => (step?.mapBase && isStrikeAction(step) ? [index] : []));
+  const strikeSlots = steps.flatMap((step, index) => (step?.mapBase && isRedealableAttack(step) ? [index] : []));
   const attacks = steps.filter((step) => step?.mapBase);
   if (strikeSlots.length < 2 || strikeSlots.length > 4) return steps;
   const start = Math.min(...attacks.map((step) => (Number(step.attackIndex) || 1) - 1));
@@ -539,7 +554,7 @@ export function rebalancePlanMap(steps) {
       if (!step?.mapBase) return step;
       const penalty = mapPenalty(step, attackCount);
       const placed = withMapAt(step, penalty, attackCount + 1);
-      cost += mapScoreCost({ score: step.mapBase.score }, penalty);
+      cost += stepMapScoreCost(step, step.mapBase.score, attackCount);
       attackCount += attacksTowardMap(step);
       return placed;
     });
@@ -1043,7 +1058,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
             reload: repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
             volley: projectedVolley > 0 ? t("Plan.VolleyMoved", "Volley -2 when fired from the moved-in position.") : "",
           },
-          score: linkedCandidate.score - mapScoreCost(linkedCandidate, penalty) - projectedVolley,
+          score: linkedCandidate.score - stepMapScoreCost(linkedCandidate, linkedCandidate.score, planState.attackCount) - projectedVolley,
           reason: [
             repeatReloadCost > 0 ? t("Plan.ReloadsBeforeFiring", "Reloads before firing {name}.", { name: linkedCandidate.name }) : "",
             penalty > 0 ? t("Plan.MapPenalty", "{reason} MAP -{penalty}.", { reason: linkedCandidate.reason ?? "", penalty }).trim() : linkedCandidate.reason,

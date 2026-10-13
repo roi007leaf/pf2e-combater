@@ -39,6 +39,7 @@ import { chooseDestination } from "../destination-picker.js";
 import { bestAutoFillPlan, nextAutoFillPlan, previousAutoFillPlan, selectDisplayPlan } from "../plan-selection.js";
 import { contextWithCurrentAutoFillTargets, currentAutoFillTargetKey } from "./auto-fill-context.js";
 import { cancelPanelPickers } from "./picker-workflow.js";
+import { recordPreferenceEdit } from "../../state/preference-profile.js";
 import {
   autoFillAppliesProne,
   autoFillStrideOverSpeed,
@@ -900,6 +901,10 @@ async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit,
   }
 
   const draft = panel._readActiveDraftPlan();
+  // Adding your own action to an Auto-filled plan is a soft "I wanted this" for it.
+  if (listKey === "steps" && (draft.steps ?? []).some((step) => step?.suggestedByAutoFill)) {
+    recordPreferenceEdit(panel._context, action, 1);
+  }
   // A composite (e.g. Rush, Sudden Charge) atomizes into its Stride/Strike parts, mirroring
   // Auto-fill (_autoFillDraft) -- a raw single-step push would leave the whole ability un-split
   // and unexecutable. A plain action passes straight through unchanged (same array, same
@@ -978,6 +983,11 @@ export async function removePanelDraftStep(panel, instanceId) {
   const draft = panel._readActiveDraftPlan();
   const listKey = draftListForInstance(draft, instanceId);
   const list = Array.isArray(draft[listKey]) ? draft[listKey] : [];
+  const removed = list.find((step) => step.instanceId === instanceId);
+  // Removing a step Auto-fill suggested (before it ran) is a soft "not this" for that action.
+  if (removed?.suggestedByAutoFill && executionStatus(removed) === "pending") {
+    recordPreferenceEdit(panel._context, panel._findBuilderAction(removed.actionKey) ?? removed, -1);
+  }
   await panel._writeActiveDraftPlan(markManualDraft({
     ...draft,
     [listKey]: list.filter((step) => step.instanceId !== instanceId),
@@ -1394,7 +1404,8 @@ export async function autoFillPanelDraft(panel, { plan = null, forceFull = false
       source: "auto-fill",
       autoFillPlanId: autoFill.id ?? null,
       autoFillPlanSummary: autoFill.summary ?? "",
-      steps: reachableSteps,
+      // Remembered through later edits, so removing a suggestion still teaches preferences.
+      steps: reachableSteps.map((step) => ({ ...step, suggestedByAutoFill: true })),
     });
     clearActionPreview();
     await panel.render({ force: true });
@@ -1417,7 +1428,7 @@ export async function fillPanelDraftGap(panel, { plan, draft, plans = null }) {
   if (plan) panel._pinnedFillPlanId = fillPlan.id ?? null;
   const movementContext = panel._planningContext ?? panel._context;
   const addedSteps = panel._atomizeAutoFillSteps(fillPlan, movementContext, lockedDraft.steps)
-    .map((step) => ({ ...step, autoFillGenerated: true }));
+    .map((step) => ({ ...step, autoFillGenerated: true, suggestedByAutoFill: true }));
   if (!addedSteps.length) return;
   await panel._writeActiveDraftPlan({
     ...lockedDraft,

@@ -43,7 +43,7 @@ import { t } from "../i18n.js";
 import { GENERIC_ACTIONS } from "../catalog/generic-actions.js";
 import { deterministicPreferenceAdjustment } from "../state/preference-profile.js";
 import { SETTINGS, settingOrDefault } from "../settings.js";
-import { HARD_BLOCK_SCORE } from "./scoring/weights.js";
+import { HARD_BLOCK_SCORE, MAP_PENALTY_BY_ATTACK_INDEX, mapScoreCost } from "./scoring/weights.js";
 
 // PF2e core rule: affecting a hidden creature (any attack roll or save-requiring effect) needs a
 // DC 11 flat check first, independent of the attack roll or save itself. A flat check against DC
@@ -62,6 +62,25 @@ function npcStrikeItemBonus(action) {
   if (rawBonus === null || rawBonus === undefined || rawBonus === "") return null;
   const bonus = Number(rawBonus);
   return Number.isFinite(bonus) ? bonus : null;
+}
+
+// A multi-Strike action (Hunted Shot, Flurry of Blows) is worth its first Strike plus each extra
+// Strike it packs into the same action, scored as the backing weapon against the same target and
+// discounted for the MAP that extra Strike takes.
+function extraStrikeValue(context, action, backingStrike, target, siblingSpells) {
+  if (!action.activityProfile?.multiStrike || !backingStrike || !target) return 0;
+  const strikes = (action.activityProfile.includes ?? []).filter((atom) => atom === "strike").length;
+  if (strikes < 2) return 0;
+  const strikeScore = Number(scoreCandidate(context, { ...backingStrike, preferredTarget: target }, siblingSpells, []).score);
+  if (!Number.isFinite(strikeScore) || strikeScore <= 0) return 0;
+  const agile = actionTraitSlugs(backingStrike).includes("agile");
+  let value = 0;
+  for (let index = 1; index < strikes; index += 1) {
+    const tier = action.activityProfile.mapAppliesPerStrike === true ? MAP_PENALTY_BY_ATTACK_INDEX[Math.min(index, 2)] : null;
+    const penalty = tier ? (agile ? tier.agile : tier.standard) : 0;
+    value += Math.max(0, strikeScore - mapScoreCost({ score: strikeScore }, penalty));
+  }
+  return value;
 }
 
 export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
@@ -134,6 +153,8 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     profile,
     target,
     criticalChance: rawNativePreflight?.odds?.criticalSuccess,
+    backingStrike,
+    extraStrikeValue: extraStrikeValue(context, action, backingStrike, target, siblingSpells),
   });
 
   const targetDistance = Number(target?.distance);

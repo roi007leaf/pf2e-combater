@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.5]
+
+### Added
+
+- **Learning from your choices.** Auto-fill learns which actions and kinds of action you prefer for each character, from thumbs up/down on plans and from your edits to Auto-filled plans (removing a suggested step, adding your own action). Learned preferences can move an action by up to ±20, show in the "Why" text ("You usually skip Recall Knowledge −7"), and are listed in the Tactic window with **Forget** and **Forget all**.
+
+### Changed
+
+- Learned preferences are stored with your Foundry user, so they follow you between browsers; existing ratings move over automatically. Only the 80 most recent ratings and edits are kept, so old habits fade.
+
+### Fixed
+
+- Rating a plan never taught Auto-fill anything about its individual actions: ratings were recorded against the draft's display names, which never matched the actions Auto-fill scores.
+
 ## [2.0.4]
 
 ### Added

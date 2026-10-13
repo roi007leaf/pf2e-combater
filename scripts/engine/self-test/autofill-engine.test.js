@@ -8,7 +8,8 @@ import { runPlannerQualityLab } from "../planner/quality-lab.js";
 import { buildRecordedTurn } from "../planner/turn-snapshot.js";
 import { advancePlanState, createPlanState, projectContextFromPlanState } from "../plan-state.js";
 import { targetAcPenalty } from "../scoring/tactics.js";
-import { mapScoreCost, orphanSetupSteps, planScore, rebalancePlanMap } from "../planner.js";
+import { attacksTowardMap, mapScoreCost, orphanSetupSteps, planScore, rebalancePlanMap } from "../planner.js";
+import { buildCandidates } from "../candidates.js";
 import { allyThreatensTarget } from "../../readers/action/reach.js";
 import { flanksTarget } from "../../readers/positional/flank-reader.js";
 import { readSkirmishKiteActivities } from "../../readers/positional/kite-reader.js";
@@ -281,6 +282,66 @@ assert.equal(targetAcPenalty({ conditions: { slugs: ["frightened", "sickened"], 
   assert.ok(tripThenStrike, "a Trip -> Strike plan exists");
   const followUp = tripThenStrike.steps.find((step) => step.slug === "strike");
   assert.ok(followUp.projectedScoreDelta > 0, `the Strike after Trip is re-scored against a prone target (delta ${followUp.projectedScoreDelta})`);
+}
+
+// Hunted Shot: two bow Strikes for one action, gated on the hunted prey. It used to be scored
+// against the ranger's 5 ft melee reach ("No enemy is in reach") and lose to a single Strike.
+{
+  const previousCanvas = globalThis.canvas;
+  try {
+    globalThis.canvas = { scene: { grid: { distance: 5 } }, grid: { size: 5 }, tokens: { placeables: [] } };
+    const bow = {
+      id: "bow", name: "Verdant Sting", type: "weapon", isHeld: true, isRanged: true,
+      system: { range: 60, reload: { value: "0" }, damage: { dice: 1, die: "d6", damageType: "piercing" }, traits: { value: ["deadly-d10", "propulsive"] }, equipped: { carryType: "held", handsHeld: 2 } },
+    };
+    const feat = (id, name, slug, type, traits, description) => ({
+      id, name, slug, type,
+      system: { slug, actionType: { value: "action" }, actions: { value: 1 }, traits: { value: traits }, description: { value: description } },
+    });
+    const huntedShot = feat("hunted-shot-item", "Hunted Shot", "hunted-shot", "feat", ["flourish", "ranger"],
+      "<p><strong>Requirements</strong> You are wielding a ranged weapon with reload 0.</p><hr /><p>Make two Strikes against your hunted prey with the required weapon. Apply your multiple attack penalty to each Strike normally.</p>");
+    const huntPrey = feat("hunt-prey-item", "Hunt Prey", "hunt-prey", "action", ["concentrate", "ranger"], "<p>You designate a single creature as your prey.</p>");
+    const rangerContext = (preyMarked) => {
+      const hellcat = { id: "hellcat", name: "Hellcat", distance: 30, disposition: -1, hpPercent: 1, conditions: { slugs: [], values: {} }, token: { center: { x: 30, y: 0 } }, ...(preyMarked ? { effects: [{ slug: "hunted-prey" }] } : {}) };
+      const dragon = { id: "dragon", name: "Dragon", distance: 50, disposition: -1, hpPercent: 1, conditions: { slugs: [], values: {} }, token: { center: { x: 50, y: 0 } } };
+      const profile = { actorType: "character", level: 5, classSlug: "ranger", speed: 25, reach: 5, hpPercent: 1, conditions: { slugs: [], values: {} }, skills: {}, ...(preyMarked ? { combatState: { huntedPreyActive: true } } : {}) };
+      const document = {
+        type: "character", name: "Rhema", getFlag: () => undefined,
+        system: { details: { level: { value: 5 } }, actions: [{ slug: "verdant-sting", type: "strike", label: "Verdant Sting", visible: true, ready: true, canAttack: true, item: bow, totalModifier: 14, roll: () => null }] },
+        itemTypes: { action: [huntPrey], feat: [huntedShot], feature: [], consumable: [], weapon: [bow] },
+        items: [huntPrey, huntedShot, bow],
+      };
+      return { isGM: false, actor: { id: "rhema", name: "Rhema", document, profile }, token: { id: "rhema-token", center: { x: 0, y: 0 } }, profile, battlefield: { targets: [hellcat], enemies: [hellcat, dragon], allies: [] }, targets: [hellcat] };
+    };
+    const planNames = (plan) => plan.steps.map((step) => step.name);
+    const usesHuntedShotOnPrey = (plan) => {
+      const index = plan.steps.findIndex((step) => step.name === "Hunted Shot");
+      if (index < 0) return true;
+      const prey = plan.steps.slice(0, index).find((step) => step.name === "Hunt Prey");
+      return prey ? prey.suggestedTarget?.id === plan.steps[index].suggestedTarget?.id : plan.steps[index].suggestedTarget?.id === "hellcat";
+    };
+
+    const fresh = rangerContext(false);
+    const { candidates } = buildCandidates(fresh);
+    const shot = candidates.find((candidate) => candidate.name === "Hunted Shot");
+    const strike = candidates.find((candidate) => candidate.name === "Verdant Sting");
+    assert.ok(shot.score > strike.score, `Hunted Shot (${shot.score}) outscores one bow Strike (${strike.score})`);
+    assert.equal(attacksTowardMap(shot), 2, "Hunted Shot's two Strikes both advance MAP");
+    const freshPlans = buildTurnPlans(fresh, candidates).plans ?? buildTurnPlans(fresh, candidates);
+    assert.deepEqual(planNames(freshPlans[0]), ["Hunt Prey", "Hunted Shot", "Verdant Sting"], "Hunt Prey, then both shots before the -10 Strike");
+    for (const plan of freshPlans) {
+      assert.ok(planNames(plan).includes("Hunted Shot") === false || planNames(plan).includes("Hunt Prey"),
+        `with no prey yet, Hunted Shot needs Hunt Prey first: ${planNames(plan).join(" -> ")}`);
+    }
+
+    const hunted = rangerContext(true);
+    const huntedPlans = buildTurnPlans(hunted, buildCandidates(hunted).candidates);
+    for (const plan of huntedPlans.plans ?? huntedPlans) {
+      assert.ok(usesHuntedShotOnPrey(plan), `Hunted Shot only hits the current prey: ${planNames(plan).join(" -> ")}`);
+    }
+  } finally {
+    globalThis.canvas = previousCanvas;
+  }
 }
 
 console.log("Auto-fill engine audit tests passed.");

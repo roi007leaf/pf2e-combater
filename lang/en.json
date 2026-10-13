@@ -1469,6 +1469,25 @@
       "Saved": "Saved {path}. Run npm run planner:quality to replay it.",
       "Downloaded": "Downloaded {file}. Put it in tests/recorded-turns/ to replay it.",
       "Tooltip": "Save this turn as a planner test (GM)"
+    },
+    "Preference": {
+      "Kind": {
+        "Attack": "attacks",
+        "Spell": "spells",
+        "Movement": "movement",
+        "Skill": "skill actions",
+        "Consumable": "consumables",
+        "Other": "other actions"
+      },
+      "ReasonPicks": "You usually pick {name} ({amount}).",
+      "ReasonSkips": "You usually skip {name} ({amount}).",
+      "ReasonPrefersKind": "You tend to prefer {name} ({amount}).",
+      "ReasonAvoidsKind": "You tend to avoid {name} ({amount}).",
+      "LearnedTitle": "Learned from your choices",
+      "LearnedHelp": "Thumbs up/down and your edits to Auto-filled plans teach it what you like.",
+      "LearnedEmpty": "Nothing learned yet. Rate plans or edit what Auto-fill suggests.",
+      "Forget": "Forget",
+      "ForgetAll": "Forget all"
     }
   }
 }

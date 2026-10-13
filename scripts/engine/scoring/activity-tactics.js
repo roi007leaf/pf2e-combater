@@ -48,6 +48,8 @@ export function scoreActivityProfileTactics(context, action, {
   score,
   reasons,
   pressure,
+  backingStrike = null,
+  extraStrikeValue = 0,
 } = {}) {
   let nextScore = Number.isFinite(Number(score)) ? Number(score) : 0;
   const nextReasons = Array.isArray(reasons) ? reasons : [];
@@ -179,11 +181,22 @@ export function scoreActivityProfileTactics(context, action, {
     // strideCount -- score its reach from where the Stride lands, not the actor's current position,
     // or the combo always looks unreachable and loses to a plain single-Strike combo that gets the
     // same treatment via activityMoveReach elsewhere in this function.
+    // Without a move, the Strikes reach as far as the weapon making them: Hunted Shot's bow, not
+    // the actor's melee reach.
     const strideCount = action.activityProfile?.strideCount;
-    const reach = strideCount > 0 ? activityMoveReach(profile, action, strideCount) : profileReach(profile);
+    const backingRange = Number(backingStrike?.range?.max ?? backingStrike?.range?.increment);
+    const reach = strideCount > 0
+      ? activityMoveReach(profile, action, strideCount)
+      : (Number.isFinite(backingRange) && backingRange > 0 ? backingRange : profileReach(profile));
     const inReach = (candidate) => Boolean(candidate && (candidate.distance ?? Infinity) <= reach);
     const reachableEnemies = attackableEnemies(context).filter(inReach);
-    if (reachableEnemies.length >= 2) {
+    if (extraStrikeValue > 0 && inReach(target)) {
+      nextScore += extraStrikeValue;
+      nextReasons.unshift(t("ScoreReason.MakesSeveralStrikes", "{p0} makes {count} Strikes for one action.", {
+        p0: action.name,
+        count: (action.activityProfile?.includes ?? []).filter((atom) => atom === "strike").length,
+      }));
+    } else if (reachableEnemies.length >= 2) {
       nextScore += 76;
       nextReasons.unshift(t("ScoreReason.EnemiesAreInReachFor", "{p0} enemies are in reach for separate Strikes.", { p0: reachableEnemies.length }));
     } else if (inReach(target)) {

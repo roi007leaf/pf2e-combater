@@ -226,9 +226,12 @@ to their defaults to prevent duplicate automation.
   revealed traits, numeric saves and Perception, IWR, and known Reactive Strike. Revealed numeric
   AC supports attack preflight estimates. Hidden fields and vague/custom text provide no numeric
   estimates, and existing Combater Intel takes precedence for overlapping facts.
-- **Plan preference learning.** Thumbs-up/down a plan to teach Auto-fill and Shuffle which complete
-  turn sequences you like. Ratings are local per user and actor and give a capped, predictable nudge
-  — they never touch actor data or PF2e rules.
+- **Learning from your choices.** Thumbs-up/down a plan, or edit what Auto-fill suggested (removing a
+  suggested step is a soft "no", adding your own action a soft "yes"), and Auto-fill learns which
+  actions and kinds of action you like for that character, up to ±20 per action. The "Why" text says
+  so ("You usually skip Recall Knowledge −7"), a thumbs-down also sends that exact plan to the back of
+  the queue, and the Tactic window lists what it learned with **Forget** and **Forget all**. Learning
+  is per player and per character, stored with your Foundry user so it follows you between browsers.
 - **Native Roll-Context Preflight.** Supported actions show what PF2e's live check context would say
   before you roll — hit/success chance or the named check modifier — using only target information
   you're allowed to know. GMs always see it; showing it to players is an opt-in world setting.

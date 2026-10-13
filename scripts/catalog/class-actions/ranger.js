@@ -23,6 +23,7 @@ export const RANGER_ACTIONS = [
       requiresBackingStrike: true,
       backingStrikeFilter: 'ranged-reload-zero',
       mapAppliesPerStrike: true,
+      requiresTargetCondition: 'hunted-prey',
     },
     targetingProfile: {
       enemy: true,
@@ -40,6 +41,7 @@ export const RANGER_ACTIONS = [
       requiresBackingStrike: true,
       requiresDualBackingStrike: true,
       mapAppliesPerStrike: true,
+      requiresTargetCondition: 'hunted-prey',
     },
     targetingProfile: {
       enemy: true,

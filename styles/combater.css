@@ -5169,3 +5169,17 @@
 .pf2e-combater-ready-dialog .combater-ready-search input { flex: 1; min-width: 0; height: 24px; border: 0; background: transparent; color: #e8edf3; font: inherit; outline: none; box-shadow: none; }
 .pf2e-combater-ready-dialog .combater-ready-cards.is-scroll { max-height: 214px; overflow-y: auto; padding-right: 2px; }
 .pf2e-combater-ready-dialog .combater-ready-card[hidden] { display: none; }
+
+.pf2e-combater-tactic-window .combater-tactic-learned { display: grid; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid #343a43; border-radius: 8px; background: #1b1e23; }
+.pf2e-combater-tactic-window .combater-tactic-learned header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.pf2e-combater-tactic-window .combater-tactic-learned header span { display: grid; gap: 2px; }
+.pf2e-combater-tactic-window .combater-tactic-learned header small { color: #8d9aab; font-size: 11px; }
+.pf2e-combater-tactic-window .combater-tactic-learned ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pf2e-combater-tactic-window .combater-tactic-learned li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; border: 1px solid #3a414b; border-radius: 999px; background: #22262c; font-size: 12px; color: #dfe6ee; }
+.pf2e-combater-tactic-window .combater-tactic-learned li i.fa-solid:first-child { font-size: 10px; color: #8d9aab; }
+.pf2e-combater-tactic-window .combater-tactic-learned li b { font-variant-numeric: tabular-nums; }
+.pf2e-combater-tactic-window .combater-tactic-learned li.is-positive b { color: #8fe0b0; }
+.pf2e-combater-tactic-window .combater-tactic-learned li.is-negative b { color: #f1a07e; }
+.pf2e-combater-tactic-window .combater-tactic-learned li button { display: grid; place-items: center; width: 20px; height: 20px; min-height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #8d9aab; font-size: 10px; }
+.pf2e-combater-tactic-window .combater-tactic-learned li button:hover { background: rgb(255 255 255 / 8%); color: #fff; }
+.pf2e-combater-tactic-window .combater-tactic-learned-empty { margin: 0; color: #8d9aab; font-size: 12px; }

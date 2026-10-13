@@ -1,7 +1,7 @@
 import { hasDemoralizeImmunity } from "../../rules/demoralize-immunity.js";
 import { battlefieldPressure } from "../../rules/battlefield-analysis.js";
 import { aggroProfile, aggroTargetValue } from "../../rules/aggro.js";
-import { readCombatState, targetHasMarkState, targetHasTokenMark, targetIsDefeated } from "../../rules/combat-state.js";
+import { livingMarkedTarget, readCombatState, targetHasMarkState, targetHasTokenMark, targetIsDefeated } from "../../rules/combat-state.js";
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { actorItems, entityKey } from "../../foundry-data.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
@@ -303,6 +303,15 @@ function canAffectTarget(context, action, target) {
       ?? context?.actor?.profile?.combatState
       ?? readCombatState(contextActorDocument(context));
     if (targetHasTokenMark(target, state?.huntedPreyTokenUuids)) return false;
+  }
+  // Hunted Shot / Twin Takedown Strike the hunted prey: while a living prey exists, only it.
+  if (action?.activityProfile?.requiresTargetCondition === "hunted-prey") {
+    const state = context?.profile?.combatState
+      ?? context?.actor?.profile?.combatState
+      ?? readCombatState(contextActorDocument(context));
+    const uuids = state?.huntedPreyTokenUuids ?? [];
+    if (livingMarkedTarget(context, uuids, "hunted-prey")
+      && !targetHasTokenMark(target, uuids) && !targetHasMarkState(target, "hunted-prey")) return false;
   }
   if (mark && targetHasMarkState(target, mark)) return false;
   return true;

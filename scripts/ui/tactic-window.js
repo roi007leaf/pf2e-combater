@@ -116,6 +116,19 @@ function windowContext(view) {
     avoidLabel: t("Tactic.ScaleAvoid", "Avoid"),
     presetLabel: t("Tactic.ScalePreset", "Preset"),
     preferLabel: t("Tactic.ScalePrefer", "Prefer"),
+    learned: {
+      visible: Array.isArray(view?.learned?.entries),
+      title: t("Preference.LearnedTitle", "Learned from your choices"),
+      help: t("Preference.LearnedHelp", "Thumbs up/down and your edits to Auto-filled plans teach it what you like."),
+      empty: t("Preference.LearnedEmpty", "Nothing learned yet. Rate plans or edit what Auto-fill suggests."),
+      forgetLabel: t("Preference.Forget", "Forget"),
+      forgetAllLabel: t("Preference.ForgetAll", "Forget all"),
+      entries: (view?.learned?.entries ?? []).map((entry) => ({
+        ...entry,
+        tone: entry.positive ? "is-positive" : "is-negative",
+        icon: entry.kind ? "fa-layer-group" : "fa-bolt",
+      })),
+    },
     scopeLabel: t("Tactic.SaveFor", "Save for"),
     scopeTokenLabel: bulkTokens
       ? t("Tactic.ScopeSelected", "{count} selected NPCs", { count: bulkTokenCount })
@@ -157,10 +170,11 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   constructor(view, options = {}) {
-    const { onSave, ...appOptions } = options;
+    const { onSave, onForget, ...appOptions } = options;
     super({ id: randomId(`${MODULE_ID}-tactic`), ...appOptions });
     this._view = view ?? {};
     this._onSave = typeof onSave === "function" ? onSave : null;
+    this._onForget = typeof onForget === "function" ? onForget : null;
   }
 
   get title() {
@@ -220,6 +234,15 @@ export class TacticWindow extends HandlebarsApplicationMixin(ApplicationV2) {
       const tokenMode = Number(this._view?.bulkTokenCount) > 1 ? "tokens" : "token";
       this._save({ mode: scope === "actor" ? "actor" : tokenMode, value: this._readForm() }, event.currentTarget);
     });
+    // Learned preferences: forget one, or all, then redraw from the fresh profile.
+    for (const button of this.element.querySelectorAll("[data-learned-forget]")) {
+      button.addEventListener("click", async () => {
+        if (!this._onForget) return;
+        button.disabled = true;
+        this._view = { ...this._view, learned: await this._onForget(button.dataset.learnedForget || null) };
+        await this.render();
+      });
+    }
     this.element.querySelector("[data-tactic-reset]")?.addEventListener("click", (event) =>
       this._save({ mode: Number(this._view?.bulkTokenCount) > 1 ? "reset-tokens" : "reset" }, event.currentTarget));
   }

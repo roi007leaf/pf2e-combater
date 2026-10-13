@@ -97,6 +97,7 @@ function appliedConditions(candidate, activity, slug) {
     activity?.appliedCondition,
     activity?.conditions,
     candidate?.appliesConditions,
+    activity?.targetMark,
   );
   if ((activity?.includesGrab === true || slug === "grapple") && !conditions.includes("grabbed")) {
     conditions.push("grabbed");

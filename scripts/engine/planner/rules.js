@@ -3,6 +3,8 @@ import { normalizedActionFacts } from "../action/facts.js";
 import { contextEnemies, contextTargets } from "../target-pool.js";
 import { contextTriggerEvents } from "../../rules/event-context.js";
 import { scoreCandidate } from "../scoring.js";
+import { readCombatState, targetHasMarkState, targetHasTokenMark } from "../../rules/combat-state.js";
+import { contextActorDocument } from "../actor-context.js";
 
 const TARGET_CONDITION_CHAIN_BONUS = 36;
 const GRAB_RIDER_CHAIN_BONUS = 24;
@@ -303,6 +305,20 @@ export function grabbedSetupTargetSourceStep(candidate, steps) {
 }
 
 
+// Class marks (Hunt Prey) live on the actor's state or the target's effects, not its conditions.
+const TOKEN_MARK_STATE_KEYS = { "hunted-prey": "huntedPreyTokenUuids" };
+
+function targetHasRequiredState(context, target, requirement) {
+  if (targetHasCondition(target, requirement)) return true;
+  const stateKey = TOKEN_MARK_STATE_KEYS[requirement];
+  if (!stateKey || !target) return false;
+  if (targetHasMarkState(target, requirement)) return true;
+  const state = context?.profile?.combatState
+    ?? context?.actor?.profile?.combatState
+    ?? readCombatState(contextActorDocument(context));
+  return targetHasTokenMark(target, state?.[stateKey]);
+}
+
 export function targetConditionSourceStep(context, candidate, steps) {
   const optionGroups = targetConditionRequirementOptions(candidate);
   if (!optionGroups.length || !steps.length) return null;
@@ -311,7 +327,7 @@ export function targetConditionSourceStep(context, candidate, steps) {
   let sourceStep = null;
 
   for (const group of optionGroups) {
-    if (group.some((requirement) => targetHasCondition(currentTarget, requirement))) continue;
+    if (group.some((requirement) => targetHasRequiredState(context, currentTarget, requirement))) continue;
 
     const step = steps.toReversed().find((candidateStep) =>
       stepSatisfiesTargetConditionRequirement(candidateStep, group),
@@ -357,8 +373,11 @@ export function targetConditionSatisfied(context, candidate, steps) {
   if (!optionGroups.length) return true;
 
   const target = targetForCandidate(context, candidate);
+  // There is only one hunted prey: Hunt Prey on someone else earlier in the plan moves the mark.
+  const markMoved = (requirement) => Boolean(TOKEN_MARK_STATE_KEYS[requirement]) && steps.some((step) =>
+    candidateAppliedConditions(step).has(requirement) && !samePlannedTarget(context, candidate, step));
   return optionGroups.every((group) =>
-    group.some((requirement) => targetHasCondition(target, requirement))
+    group.some((requirement) => targetHasRequiredState(context, target, requirement) && !markMoved(requirement))
     || steps.some((step) => plannedStepSatisfiesTargetCondition(context, candidate, step, group)),
   );
 }

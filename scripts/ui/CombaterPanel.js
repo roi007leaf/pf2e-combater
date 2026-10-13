@@ -119,7 +119,7 @@ import {
   normalizeIntelFalseInformation,
 } from "../rules/intel-ledger.js";
 import { readCombatContext } from "../state/combat-context.js";
-import { setPlanPreferenceFeedback } from "../state/preference-profile.js";
+import { forgetLearnedPreference, learnedPreferenceView, setPlanPreferenceFeedback } from "../state/preference-profile.js";
 import {
   nextResourceHorizon,
   normalizeResourceHorizon,
@@ -534,11 +534,19 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
       ...baseView,
       bulkTokenCount: selectedNpcTokens.length > 1 ? selectedNpcTokens.length : 0,
       actorName: this._context?.actor?.name ?? "",
+      learned: learnedPreferenceView(this._context),
     };
     if (!view.visible) return;
 
+    const context = this._context;
     await openTacticWindow(view, {
       onSave: (decision) => this._applyTacticPersonalityDecision(decision, { selectedNpcTokens }),
+      onForget: async (feature) => {
+        forgetLearnedPreference(context, feature);
+        this._pinnedPlanId = null;
+        await this.refresh("preference-forget");
+        return learnedPreferenceView(context);
+      },
     });
   }
 
@@ -974,7 +982,18 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this._canEditDraft() || !this._context) return;
     const plan = this._builder?.draft;
     if (!plan?.steps?.length) return;
-    setPlanPreferenceFeedback(this._context, plan, value);
+    // Rate the plan's real actions: draft steps only carry display names, which never matched the
+    // candidates Auto-fill scores, so per-action learning silently did nothing.
+    const actions = [];
+    const seen = new Set();
+    for (const step of plan.steps) {
+      const action = this._findBuilderAction(step.actionKey) ?? step;
+      const key = step.groupId ?? step.actionKey ?? step.instanceId;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      actions.push(action);
+    }
+    setPlanPreferenceFeedback(this._context, plan, value, { actions });
     await this.render({ force: true });
   }
 

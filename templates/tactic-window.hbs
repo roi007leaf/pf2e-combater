@@ -61,6 +61,29 @@
     {{/if}}
   </form>
 
+  {{#if learned.visible}}
+    <section class="combater-tactic-learned">
+      <header>
+        <span><strong>{{learned.title}}</strong><small>{{learned.help}}</small></span>
+        {{#if learned.entries.length}}<button type="button" class="combater-tactic-link" data-learned-forget="">{{learned.forgetAllLabel}}</button>{{/if}}
+      </header>
+      {{#if learned.entries.length}}
+        <ul>
+          {{#each learned.entries}}
+            <li class="{{tone}}">
+              <i class="fa-solid {{icon}}" aria-hidden="true"></i>
+              <span class="combater-tactic-learned-name">{{label}}</span>
+              <b>{{amount}}</b>
+              <button type="button" data-learned-forget="{{feature}}" data-tooltip="{{../learned.forgetLabel}}" aria-label="{{../learned.forgetLabel}} {{label}}"><i class="fa-solid fa-xmark"></i></button>
+            </li>
+          {{/each}}
+        </ul>
+      {{else}}
+        <p class="combater-tactic-learned-empty">{{learned.empty}}</p>
+      {{/if}}
+    </section>
+  {{/if}}
+
   <footer class="combater-tactic-actions">
     <span class="combater-tactic-scope" role="radiogroup" aria-label="{{scopeLabel}}">
       <span>{{scopeLabel}}</span>

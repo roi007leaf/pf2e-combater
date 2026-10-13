@@ -291,6 +291,7 @@ function stepAddedConditions(step) {
     ...normalizedConditionValues(profile.appliesConditions),
     ...normalizedConditionValues(profile.appliedCondition),
     ...normalizedConditionValues(profile.conditions),
+    ...normalizedConditionValues(profile.targetMark),
     ...normalizedConditionValues(action?.appliesCondition),
     ...normalizedConditionValues(action?.appliesConditions),
   ]);
