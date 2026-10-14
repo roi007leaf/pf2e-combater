@@ -27,6 +27,20 @@
 - **Movement.** Characters keep closing in over several Strides when the enemy is still out of reach (around walls), instead of moving once and stopping.
 - Thaumaturges Exploit Vulnerability before anything else; mindless creatures and immunities only change plans once the party knows about them; an enemy's reach is only used when it's known.
 - Kineticists plan Channel Elements into Elemental Blast from a cold start.
+- **Area spells.** An area spell that would catch nobody is never planned; creatures immune to its damage don't count as hits; a caster can Stride into position first so a short cone or burst reaches.
+- **Healing.** Hit-point healing goes to the dying before anyone else, a healer Strides toward a dying ally out of reach, and "additional Hit Points" spells aren't treated as heals. A creature heals itself when it's under a quarter of its HP.
+- **Buffs.** Caster-only spells go on the caster; "each ally" spells only count allies who qualify; Haste and other multi-target buffs are worth more for every extra ally they reach; conditions every target already has are not reapplied.
+- **Summons.** The first summon of a fight is favored, and spells that summon several creatures are recognized.
+- **Overkill.** Big spells and slots aren't spent on a foe that's almost down (the GM sees exact HP; players only see "badly hurt").
+- **Recall Knowledge** is valued by how much the party still doesn't know about the creature, and comes before the attacks it informs.
+- **Setups that don't pay off are dropped.** Feint and Create a Diversion only count when the following Strike is on the same target; Bespell Strikes needs a Strike after it; Drain Bonded Item needs a slotted spell after it; a Draw needs an attack with that weapon.
+- **Danger and the next turn.** The enemy's turn is weighed by how many enemies can reach you where the plan ends (more for casters and supports, and for PCs near death); ending a turn already in reach for next turn is worth more.
+- **Flanking.** Moving into a flank for a Strike is worth more, and the off-guard it grants carries to the following attacks in the plan.
+- **Plan ranking** is consistent: plans are compared by a stable tier and score, and a plan that leaves actions unused only wins when it's clearly better.
+- **Weapons.** A reload weapon that starts unloaded is reloaded before its first shot; a thrown weapon is only drawn again after it was thrown; a Draw is only planned when a hand is free.
+- **Gating.** Earthbind only targets flyers, Dispel Magic only targets an enemy with a spell effect, actions that need an item (or something you own) check for it, and Seeing an Unseen creature is planned when it matters.
+- Grab after a Strike applies grabbed automatically; a planned attack whose target has dropped asks for a new target instead of failing.
+- Players' plans use only the reach and abilities the party has seen or learned; the GM's plans see everything.
 - The plan toolbar (Auto-fill, plan cycling, Browse) hides while nothing is planned; the empty-plan card offers the same buttons.
 - Planning is noticeably faster for high-level creatures and casters.
 
@@ -39,6 +53,12 @@
 - Elemental Blast had no damage estimate before the kinetic aura was up; Base Kinesis is no longer auto-filled.
 - Runesmiths invoked a rune on a creature they hadn't traced.
 - Several Strikes, spells and reloads planned against creatures already down, out of reach, or with the wrong weapon in hand.
+- Mental effects were planned against mindless creatures, and fully immune creatures were attacked with damage they ignore (now only once the party knows).
+- Identical actions against different targets were merged into one option, hiding the alternatives.
+- A follow-up Strike after a move was checked against straight-line distance instead of the grid.
+- A thaumaturge drew a weapon too late, a fist was treated as a weapon that made drawing a real one pointless, and drawing a weapon was priced with the fist's damage.
+- An encounter with no combatants left counted as a fight in progress.
+- A locked Auto-fill target that was an enemy wasn't found.
 - The first chip in the upcoming-turns strip sat higher than the others.
 
 ## [2.0.11]
