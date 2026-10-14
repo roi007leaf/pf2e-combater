@@ -33,7 +33,7 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     scope: "client",
     config: true,
     type: Boolean,
-    default: true,
+    default: false,
   });
 
   game.settings.register(MODULE_ID, SETTINGS.rememberPanelPosition, {

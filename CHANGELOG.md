@@ -12,6 +12,7 @@
 - **Casters keep their distance:** when a caster or archer moves up, it stops at spell or weapon range instead of walking into melee.
 - **Focus fire:** enemies your allies are already fighting rank higher as targets.
 - Drain Bonded Item waits until one of your top two slot ranks is spent instead of filling spare actions.
+- The panel now opens full-size for anyone who hasn't chosen a size yet (the "Compact by default" setting is off by default).
 
 ### Fixed
 
