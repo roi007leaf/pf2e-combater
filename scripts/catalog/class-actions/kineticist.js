@@ -28,16 +28,18 @@ export const KINETICIST_ACTIONS = [
     },
   },
   {
+    // Moves an unattended object: nothing it does touches a creature, so Auto-fill leaves it to Browse.
     slug: 'base-kinesis',
-    role: 'control',
+    role: 'utility',
+    combatUse: 'browse-only',
     executable: 'open-item',
     confidence: 'high',
     activityProfile: {
-      includes: ['control'],
+      includes: ['utility'],
       impulse: true,
     },
     targetingProfile: {
-      enemy: true,
+      self: true,
     },
   },
   {

@@ -10,6 +10,7 @@ import {
   readVisionerDetectionState,
 } from "../integrations/visioner.js";
 import { hasDemoralizeImmunity } from "../rules/demoralize-immunity.js";
+import { spellstrikeExpended } from "../rules/spellstrike-state.js";
 import {
   canvasTokenById,
   isLockedDoorWall,
@@ -117,8 +118,14 @@ function isGmContext(context) {
   return context?.isGM === true || globalThis.game?.user?.isGM === true;
 }
 
+function hasSpellstrike(actor) {
+  return (actor?.items?.contents ?? Array.from(actor?.items ?? [])).some((item) => item?.slug === "spellstrike");
+}
+
 function hideGenericActionForContext(action, context) {
   if (action.hideFromSuggestions) return true;
+  // Only a magus (or anyone with Spellstrike) has a Spellstrike to recharge.
+  if (action.requiresSpellstrikeExpended && !hasSpellstrike(contextActorDocument(context))) return true;
   return action.slug === "recall-knowledge"
     && action.playerFacing
     && isGmContext(context)
@@ -330,6 +337,16 @@ function readGenericActionAvailabilityForAction(action, context) {
   if (action.requiresProne) {
     if (!hasCondition(profile, "prone")) {
       return availability(false, t("Avail.NotProne", "Actor is not prone."));
+    }
+  }
+  if (action.requiresSpellstrikeExpended) {
+    if (!spellstrikeExpended(contextActorDocument(context))) {
+      return availability(false, t("Avail.SpellstrikeCharged", "Spellstrike is already charged."));
+    }
+  }
+  if (action.requiresDying) {
+    if (!hasCondition(profile, "dying")) {
+      return availability(false, t("Avail.NotDying", "Actor is not dying."));
     }
   }
   if (action.requiresSickened) {

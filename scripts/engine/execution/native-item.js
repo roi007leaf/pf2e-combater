@@ -8,6 +8,7 @@ import { attachRevertOp, executionPatch } from "./results.js";
 import { setTarget, setTokenTargets } from "./targets.js";
 import { pf2eRuntime } from "../../runtime/pf2e-runtime.js";
 import { parseActionText } from "../action/text.js";
+import { executeCommanderTactic } from "../../integrations/commanderer.js";
 import { summonsAssistantHandlesSpell } from "../../integrations/summons-assistant.js";
 
 function numeric(value, fallback = null) {
@@ -357,6 +358,9 @@ async function createSustainedSpellEffect(actor, action, message) {
 
 async function executeNativeItem({ actor, action, event }) {
   const item = action?.item;
+  // A commander tactic goes through PF2e Commanderer when it is active: it picks responders and posts the order.
+  const commanderOrder = await executeCommanderTactic(item, actor);
+  if (commanderOrder) return commanderOrder;
   const entry = findSpellcastingEntry(actor, action);
   if (typeof entry?.cast === "function") {
     const spell = spellForPlannedActions(item, action);

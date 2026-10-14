@@ -123,7 +123,8 @@ export function readActionSources(context, spells = []) {
     ...readStandStrideActivities(context),
     ...generatedStrikes,
     ...readElementalBlastActions(actor, context),
-    ...readWeaponActions(actor, context, generatedStrikes),
+    // Unready Strikes too: a Draw -> Strike is priced with the stowed weapon's own damage.
+    ...readWeaponActions(actor, context, generatedStrikes, actorStrikeOptions(actor, context, { includeUnready: true })),
     ...readSwapItemActions(actor),
     ...readDropProneAction(actor, context),
     ...readPositionalMovementActions(context, generatedStrikes, [...generatedActivities, ...itemActions], spells),
@@ -310,6 +311,9 @@ export function actorStrikeOptions(actor, context = null, { includeUnready = fal
           ? { activityProfile: { appliesConditions: ["doomed"] } } : {}),
         range,
         reload,
+        // PF2e ammunition tracking: a reload weapon with nothing loaded can't fire until Reloaded.
+        ...(strike.ammunition?.requiresReload === true && Array.isArray(strike.ammunition?.loaded) && strike.ammunition.loaded.length === 0
+          ? { startsUnloaded: true } : {}),
         detected: true,
         available: strikeAvailability.available,
         unavailableReason: strikeAvailability.reason,
@@ -661,8 +665,10 @@ function readActorItemActions(actor, context) {
 
     if (!tactic && parsedCost.passive) return [];
     if (!curated && actionCost === null) return [];
+    const starlitRange = slug === "spellstrike" ? starlitSpellstrikeRange(actor) : null;
 
     return [{
+      ...(starlitRange ? { range: { max: starlitRange, increment: starlitRange }, maxRange: starlitRange } : {}),
       id: `item-${item.id ?? slug}`,
       name,
       slug,
@@ -692,7 +698,7 @@ function readActorItemActions(actor, context) {
       activityProfile: inOwnSpace ? { ...activityProfile, inOwnSpace: true, strikeReach: 0 } : activityProfile,
       targetingProfile: inOwnSpace
         ? { ...(tactic?.targetingProfile ?? {}), enemy: true, maxRange: 0, inOwnSpace: true }
-        : tactic?.targetingProfile ?? null,
+        : starlitRange ? { ...(tactic?.targetingProfile ?? {}), enemy: true, maxRange: starlitRange } : tactic?.targetingProfile ?? null,
       saveProfile: tactic?.saveProfile ?? null,
       damageProfile: tactic?.damageProfile ?? null,
       gatingProfile: tactic?.gatingProfile ?? null,
@@ -703,6 +709,17 @@ function readActorItemActions(actor, context) {
       attackTrait: traits.includes("attack"),
     }];
   });
+}
+
+// Starlit Span lets a magus Spellstrike with a ranged weapon: it reaches as far as that weapon's
+// first range increment.
+function starlitSpellstrikeRange(actor) {
+  const hasStarlit = collectionValues(actor?.items).some((item) => slugify(item?.slug ?? item?.system?.slug ?? item?.name) === "starlit-span");
+  if (!hasStarlit) return null;
+  const increments = actorStrikeOptions(actor)
+    .map((strike) => Number(strike?.range?.increment))
+    .filter((increment) => Number.isFinite(increment) && increment > 0);
+  return increments.length ? Math.max(...increments) : null;
 }
 
 // Strip Foundry enrichment (@UUID[...]{Leap}, @Damage[...], @Check[...]{Reflex}) down to readable

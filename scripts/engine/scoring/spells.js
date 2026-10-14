@@ -2,6 +2,29 @@ import { t } from "../../i18n.js";
 import { isSpellAction, maxRange } from "./facts.js";
 import { attackableEnemies } from "./targets.js";
 import { contextAllies, contextEnemies } from "../target-pool.js";
+import { canUseIntelCategory } from "../../rules/intel-ledger.js";
+import { contextActorDocument } from "../actor-context.js";
+
+// A foe's level, when this viewer may know it: a GM always; a player once the party has identified
+// the creature (Intel identity).
+function knownEnemyLevel(context, enemy) {
+  const level = Number(enemy?.actor?.level ?? enemy?.actor?.document?.level ?? enemy?.level);
+  if (!Number.isFinite(level)) return null;
+  const gm = typeof context?.isGM === "boolean" ? context.isGM : globalThis.game?.user?.isGM === true;
+  return gm || canUseIntelCategory(context, enemy, "identity") ? level : null;
+}
+
+function weakOppositionPenalty(context, enemies, castRank) {
+  const actorLevel = Number(contextActorDocument(context)?.level ?? context?.profile?.level ?? context?.actor?.profile?.level);
+  if (!Number.isFinite(actorLevel) || !Number.isFinite(castRank) || !enemies.length) return 0;
+  const levels = enemies.map((enemy) => knownEnemyLevel(context, enemy));
+  if (levels.some((level) => level === null)) return 0;
+  const gap = actorLevel - Math.max(...levels);
+  if (gap < 2) return 0;
+  const topRank = Math.max(1, Math.ceil(actorLevel / 2));
+  const rankWeight = castRank >= topRank ? 1 : castRank >= topRank - 1 ? 0.6 : 0.3;
+  return Math.round(Math.min(45, 12 * (gap - 1)) * rankWeight);
+}
 
 export function spellTacticalAdjustment(action, role, context) {
   if (!isSpellAction(action)) return { scoreDelta: 0, reasons: [] };
@@ -30,6 +53,13 @@ export function spellTacticalAdjustment(action, role, context) {
     // Every enemy in the fight is nearly down: a cantrip or a Strike can finish them.
     const enemies = attackableEnemies(context);
     const damaging = ["damage", "save-damage", "area-damage"].includes(role);
+    // Weak opposition doesn't deserve the top slots: the further below the caster's level the
+    // strongest known foe is, the more a high-rank slot costs.
+    const weakFoes = weakOppositionPenalty(context, enemies, Number(action.castRank ?? action.rank ?? profile.rank));
+    if (damaging && weakFoes) {
+      scoreDelta -= weakFoes;
+      reasons.push(t("ScoreReason.WeakFoesSaveSlots", "Weak foes: save the high-rank slot."));
+    }
     if (damaging && enemies.length && enemies.every((enemy) => Number(enemy?.hpPercent ?? 1) < 0.3)) {
       scoreDelta -= 15;
       reasons.push(t("ScoreReason.EnemiesNearlyDown", "Enemies are nearly down; save the slot."));

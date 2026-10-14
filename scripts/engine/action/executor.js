@@ -19,6 +19,7 @@ import { executeDropProne, executeRetch, executeStand } from "../execution/condi
 import { executeNativeAction } from "../execution/native-item.js";
 import { executeSystemAction } from "../execution/system-action.js";
 import { executeStrike } from "../execution/strike.js";
+import { setSpellstrikeExpended } from "../../rules/spellstrike-state.js";
 import { executeSustainSpell } from "../execution/sustain.js";
 import { executeTeleport } from "../execution/teleport.js";
 import {
@@ -75,6 +76,14 @@ async function executeDraftStepImpl({ context, step, action = step?.action ?? st
   const target = requiresTargetForAction(resolvedAction) ? resolveTarget(step, resolvedAction, choices) : null;
   if (requiresTargetForAction(resolvedAction)) {
     if (!target) return { status: "needs-choice", choices: ["target"], patch };
+    // The planned target died earlier this turn (an NPC at 0 HP): ask for a new one rather than
+    // attack the body. A target the user just picked is used as given.
+    const targetActorDocument = target.token?.actor ?? target.token?.document?.actor ?? null;
+    const targetHp = Number(targetActorDocument?.system?.attributes?.hp?.value);
+    if (!Object.prototype.hasOwnProperty.call(choices, "targetTokenIds")
+      && targetActorDocument?.type === "npc" && Number.isFinite(targetHp) && targetHp <= 0) {
+      return { status: "needs-choice", choices: ["target"], patch };
+    }
     patch.targetTokenIds = target.ids ?? [target.id];
     patch.targetLabel = target.label;
   }
@@ -91,6 +100,15 @@ async function executeDraftStepImpl({ context, step, action = step?.action ?? st
     result = await executeTeleport({ actor, context, step, action: resolvedAction, event, choices, patch });
   } else if (requiresDestinationForAction(resolvedAction)) {
     result = await executeMovement({ context, step, action: resolvedAction, choices });
+  } else if (resolvedAction?.executable === "recharge-spellstrike") {
+    await setSpellstrikeExpended(actor, false);
+    result = { status: "done", patch: executionPatch({}, "done", { result: t("Exec.SpellstrikeRecharged", "Spellstrike recharged.") }) };
+  } else if (resolvedAction?.executable === "recovery-check") {
+    // PF2e's own recovery check: rolls the flat check and updates the dying value.
+    const roll = typeof actor?.rollRecovery === "function" ? await actor.rollRecovery(event) : null;
+    result = roll === null && typeof actor?.rollRecovery !== "function"
+      ? { status: "failed", patch: executionPatch({}, "failed", { error: t("Exec.NoRecoveryApi", "Recovery check API is not available.") }), error: t("Exec.NoRecoveryApi", "Recovery check API is not available.") }
+      : { status: "done", patch: executionPatch({}, "done", { result: t("Exec.RecoveryRolled", "Recovery check rolled.") }) };
   } else if (slug === "stand") {
     result = await executeStand(actor);
   } else if (slug === "drop-prone") {
@@ -111,6 +129,14 @@ async function executeDraftStepImpl({ context, step, action = step?.action ?? st
     result = await executeReloadWeapon({ actor, action: resolvedAction });
   } else if (resolvedAction?.executable === "strike" || resolvedAction?.source === "strike") {
     result = await executeStrike({ actor, step, action: resolvedAction, event, choices });
+  } else if (resolvedAction?.activityProfile?.npcFamily === "grab-rider" && resolvedAction?.activityProfile?.noAttackRoll === true) {
+    // Grab after a Strike that lists it: the creature hit is grabbed automatically (PF2e leaves
+    // applying it to the GM), so post the ability and apply the condition it describes.
+    result = await executeNativeAction({ actor, action: resolvedAction, event, target, patch });
+    const grabbedActor = target?.token?.actor ?? target?.token?.document?.actor ?? null;
+    if (result?.status === "done" && typeof grabbedActor?.increaseCondition === "function" && !grabbedActor.hasCondition?.("grabbed")) {
+      await grabbedActor.increaseCondition("grabbed");
+    }
   } else if (slug === "seek" || resolvedAction?.executable === "pf2e-action") {
     result = await executeSystemAction({ actor, step, action: resolvedAction, event, choices });
   } else {

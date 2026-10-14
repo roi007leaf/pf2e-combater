@@ -570,16 +570,31 @@ function classifySystemActionBase(action, parsedCost) {
   const targetRequirementProfile = readTargetRequirementProfile(text);
   const eventProfile = readEventProfile(text, actionCost);
   const targetConditionRequirement = readTargetConditionRequirement(action);
+  // "Requirements The necromancer has at least one undead entity": usable only while it has one.
+  const ownedRequirement = readRequirementsText(action).match(/\bhas at least one ([a-z][a-z -]+?)(?=\s+(?:within|active|in|on)\b|[.;,]|$)/)?.[1]?.trim();
   const gatingProfile = {
     frequency: hasFrequency(action),
     triggerOnly: actionCost === "reaction",
     ...eventProfile,
+    ...(ownedRequirement ? { requiresOwned: ownedRequirement } : {}),
   };
 
   const isReaction = actionCost === "reaction";
   const isFree = actionCost === 0;
   const mentionsStrike = /\bstrikes?\b/.test(text);
   const offensive = category === "offensive" || traits.includes("attack") || mentionsStrike || Boolean(saveProfile || damageProfile);
+
+  // "Summons two Medium undead entities": a summon, even when the text goes on to describe what the
+  // summoned creatures can do (which would otherwise read as control or an attack).
+  if (!isReaction && !saveProfile && !damageProfile && /\bsummons? (?:a|an|the|forth|one|two|three|four|\d+)\b/.test(text)) {
+    return inferred("summon", {
+      activityProfile: baseProfile(["summon"]),
+      targetingProfile: { self: true },
+      gatingProfile,
+      confidence: "medium",
+      reasons: [t("ActReason.SummonsAnAllyOr", "Summons an ally or construct to the battlefield.")],
+    });
+  }
 
   if (isReaction || isFree) {
     if (

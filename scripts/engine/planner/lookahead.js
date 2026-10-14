@@ -7,7 +7,9 @@ import { normalizedActionFacts } from "../action/facts.js";
 // you actions then. Credited as the change against where you start, so plans that don't move are
 // unaffected. Balanced against endPositionDanger: temperament decides which wins.
 
-const POINTS_PER_STRIDE_SAVED = 12;
+// A Stride saved next turn is a whole action for attacking then: worth about a Strike's share, so
+// closing on a far enemy beats an idle defensive action this turn.
+const POINTS_PER_STRIDE_SAVED = 30;
 const MAX_STRIDES = 3;
 
 function speedOf(context) {

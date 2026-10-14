@@ -1,4 +1,5 @@
 import {
+  intelAbilityFactId,
   intelDefenseFactId,
   intelTraitFactId,
   normalizeIntelLedger,
@@ -66,6 +67,11 @@ export function withBestiaryKnowledge(target, knowledge) {
   if (typeof identity === 'string' && identity && !includesFact(local.identity, 'identity')) {
     result.identityName = identity;
     addFact('identity', 'identity');
+  }
+  for (const [category, entries] of [['actions', knowledge.actions], ['passives', knowledge.passives]]) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (typeof entry?.name === 'string' && entry.name) addFact(category, intelAbilityFactId(entry.name));
+    }
   }
   if (
     [knowledge.actions, knowledge.passives]

@@ -5,8 +5,10 @@ import {
   INTEL_LEDGER_FLAG,
   INTEL_FALSE_INFORMATION_FLAG,
   INTEL_REVEAL_MODE_FLAG,
+  intelCategoryLabel,
   intelLedgerView,
   normalizeIntelFalseInformation,
+  readIntelLedger,
 } from "../rules/intel-ledger.js";
 import {
   RECALL_KNOWLEDGE_QUESTIONS,
@@ -60,11 +62,45 @@ async function buttonChoice({ title, content, choices, contentIsHtml = false, cl
   return result && result !== "cancel" ? choices.find((choice) => choice.id === result) ?? null : null;
 }
 
-export function promptRecallKnowledgeQuestion() {
+// Each question as a card: what it reveals, and whether the party already knows all of it (from
+// the party's own ledger only, so nothing hidden leaks).
+export function promptRecallKnowledgeQuestion({ targetName = "", targetActor = null, attempt = 1 } = {}) {
+  const ledger = targetActor ? readIntelLedger(targetActor) : {};
+  const known = (question) => question.categories.every((category) => ledger[category] === true
+    || (Array.isArray(ledger[category]) && ledger[category].length > 0));
+  const reveals = (question) => question.categories.map((category) => intelCategoryLabel(category)).join(" · ");
+  const header = `<div class="rk-question-head">
+    <i class="fa-solid fa-brain" aria-hidden="true"></i>
+    <div>
+      <strong>${escapeHtml(targetName || t("RecallKnowledge.QuestionTarget", "This creature"))}</strong>
+      <span>${escapeHtml(t("RecallKnowledge.QuestionAttempt", "Attempt {attempt} · what are you trying to recall?", { attempt }))}</span>
+    </div>
+  </div>`;
   return buttonChoice({
     title: t("RecallKnowledge.QuestionTitle", "Recall Knowledge Question"),
-    content: t("RecallKnowledge.Question", "What information are you trying to recall?"),
-    choices: RECALL_KNOWLEDGE_QUESTIONS,
+    icon: "fa-solid fa-brain",
+    width: 460,
+    content: header,
+    contentIsHtml: true,
+    classes: ["pf2e-combater-rk-question"],
+    choices: RECALL_KNOWLEDGE_QUESTIONS.map((question) => ({
+      ...question,
+      icon: question.icon,
+      class: ["rk-question-option", known(question) ? "is-known" : ""].filter(Boolean).join(" "),
+    })),
+    render: (_event, dialog) => {
+      const root = dialog?.element ?? _event?.target?.element;
+      for (const question of RECALL_KNOWLEDGE_QUESTIONS) {
+        const button = root?.querySelector?.(`button[data-action="${question.id}"]`);
+        if (!button || button.querySelector(".rk-question-reveals")) continue;
+        const detail = document.createElement("small");
+        detail.className = "rk-question-reveals";
+        detail.textContent = known(question)
+          ? t("RecallKnowledge.QuestionKnown", "Already known: {categories}", { categories: reveals(question) })
+          : reveals(question);
+        button.append(detail);
+      }
+    },
   });
 }
 

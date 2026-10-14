@@ -25,6 +25,8 @@ import {
   targetDc,
   targetDcLabel,
   targetHasMatchingDefense,
+  targetFullyImmuneToDamage,
+  targetImmuneToActionTraits,
   targetTraitSlugs,
 } from "./facts.js";
 import { canAttackTarget, contextAllies, contextEnemies, firstContextTarget } from "../target-pool.js";
@@ -128,6 +130,12 @@ function alliesEngaging(context, target) {
   }).length;
 }
 
+// Score credit for attacking an enemy allies are already fighting: target ranking alone can't
+// separate two move-and-Strike composites that each name their own target.
+export function focusFireBonus(context, target) {
+  return Math.min(2, alliesEngaging(context, target)) * FOCUS_FIRE_PER_ALLY;
+}
+
 function offensiveTargetValue(context, action, role, target) {
   if (!target) return -Infinity;
   if ((action?.targetingProfile?.maxRange || action?.range?.max || action?.range?.increment) && !inRange(action, target)) {
@@ -161,7 +169,9 @@ function offensiveTargetValue(context, action, role, target) {
   value += aggroTargetValue(context, action, role, target);
   // Focus fire: an enemy your allies are already fighting drops sooner and keeps their flanks.
   value += Math.min(2, alliesEngaging(context, target)) * FOCUS_FIRE_PER_ALLY;
-  value += (1 - hpPercent(target)) * 4;
+  // Finish the wounded: a dropped enemy loses its whole next turn, which beats spreading damage.
+  const hp = hpPercent(target);
+  value += (1 - hp) * 24 + (hp > 0 && hp < 0.3 ? 16 : 0);
   return value;
 }
 
@@ -330,6 +340,10 @@ function canAffectTarget(context, action, target) {
   if (!targetMatchesTraitRequirements(context, action, target)) return false;
   if (!targetFitsSize(action, target)) return false;
   if (action?.slug === "demoralize" && hasDemoralizeImmunity(target)) return false;
+  if (targetImmuneToActionTraits(context, target, actionTraitSlugs(action))) return false;
+  // A pure damage attack against a creature immune to all of its damage does nothing.
+  if ((action?.source === "strike" || ["damage", "save-damage"].includes(action?.role))
+    && targetFullyImmuneToDamage(context, action, target)) return false;
   if (isExtractElementAction(action) && !canExtractElementFromTarget(context, action, target)) return false;
   if (isExploitVulnerabilityAction(action) && hasExploitVulnerabilityMark(target)) return false;
   const mark = action?.activityProfile?.targetMark;
@@ -429,7 +443,7 @@ export function bestTargetForAction(context, action, role) {
 
   if (needsTargetableEnemy) {
     const reachable = enemyValues.filter((enemy) => targetInSelectionRange(context, action, enemy));
-    return reachable[0] ?? null;
+    return reachable.length ? sortRankedTargets(context, action, role, reachable)[0] : null;
   }
 
   if (["step", "stride"].includes(action.slug)) {

@@ -17,7 +17,7 @@ import {
   movementRange,
   uniqueTargets,
 } from "../action/reader-helpers.js";
-import { isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
+import { candidateAverageDamage, isRangedStrike, strikeMeleeReach } from "./tactic-helpers.js";
 
 function orientation(a, b, c) {
   const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
@@ -131,6 +131,7 @@ export function readFlankStrikeActivities(context, readyStrikes) {
       detected: true,
       available: true,
       item: strike.item ?? null,
+      averageDamage: candidateAverageDamage(strike) || null,
       preferredTarget: target,
       role: "mobility",
       requiresDestination: true,

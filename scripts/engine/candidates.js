@@ -2,6 +2,7 @@ import { outOfRangeBuffRecipient } from "./scoring/buffs.js";
 import { readActionSources } from "../readers/action/reader.js";
 import { readConsumableSpellActions, readSpellActions } from "../readers/spell-reader.js";
 import { npcTacticRejection } from "../rules/npc-tactics.js";
+import { eidolonStrikeCandidates } from "../rules/minion-planner.js";
 import { SETTINGS, settingOrDefault } from "../settings.js";
 import { scoreCandidate } from "./scoring.js";
 import { contextAllies, contextEnemies } from "./target-pool.js";
@@ -40,7 +41,9 @@ function dedupeKey(action) {
   if (String(action.source ?? "").startsWith("spell")) {
     return `spell:${action.spellcastingEntryUuid ?? action.spellcastingEntryId ?? ""}:${itemKey(action.item) ?? action.variantGroup ?? action.id ?? action.slug}:${action.castRank ?? action.rank ?? ""}:${action.slug}:${action.actionCost}`;
   }
-  return `${action.slug ?? action.name}:${action.actionCost}`;
+  // Move-and-Strike composites come one per target: each target's is its own action.
+  const preferredTarget = action.targetingProfile?.preferredTargetId ?? "";
+  return `${action.slug ?? action.name}:${action.actionCost}${preferredTarget ? `:${preferredTarget}` : ""}`;
 }
 
 // Rejected only because nothing is in range/reach right now: the planner may still use it after a
@@ -100,7 +103,7 @@ export function buildCandidates(context) {
   const spells = settingOrDefault(SETTINGS.enableSpellRecommendations, true)
     ? [...readSpellActions(context), ...readConsumableSpellActions(context)]
     : [];
-  const actions = readActionSources(context, spells);
+  const actions = [...readActionSources(context, spells), ...eidolonStrikeCandidates(context)];
   const includeUnknown = settingOrDefault(SETTINGS.includeUnknownCustomActions, false);
 
   const { detected, duplicates } = dedupeDetected([...actions, ...spells], includeUnknown);
@@ -118,8 +121,8 @@ export function buildCandidates(context) {
     }
     if (!action.available) {
       rejected.push({ action, reason: action.unavailableReason || t("Reject.NotAvailable", "Action is not available in current context.") });
-      if (rejectedOnlyForRange(action) && !String(action.source ?? "").endsWith("-unknown")) {
-        const scored = scoreCandidate(context, { ...action, available: true }, spells, detected);
+      if (rejectedOnlyForRange(action) && !String(action.source ?? "").endsWith("-unknown") && !action.requiresDrawnWeaponId) {
+        const scored = scoreCandidate(context, { ...action, available: true, needsApproach: true }, spells, detected);
         if (!npcTacticRejection(context, scored, detected)) approachable.push({ ...scored, available: true, needsApproach: true });
       }
       continue;
@@ -147,6 +150,16 @@ export function buildCandidates(context) {
         const reference = { id: patient.id, name: patient.name, type: "ally" };
         approachable.push({ ...scored, available: true, needsApproach: true, suggestedTarget: reference, preferredTarget: reference });
       }
+      // An area attack that catches nobody from here (a 15-foot cone with everyone 25 feet away):
+      // the planner may Stride into position and re-aim it.
+      if (scored.targetingProfile?.area === true && scored.targetingProfile?.enemy === true && scored.activityProfile?.areaHitCount === 0) {
+        const enemy = contextEnemies(context).filter((entry) => Number.isFinite(Number(entry?.distance)))
+          .toSorted((left, right) => Number(left.distance) - Number(right.distance))[0];
+        if (enemy) {
+          const reference = { id: enemy.id, name: enemy.name, type: "enemy" };
+          approachable.push({ ...scored, available: true, needsApproach: true, suggestedTarget: reference, preferredTarget: reference });
+        }
+      }
       // A move-and-Strike or multi-Strike that can't reach yet: a Stride first may bring it in.
       if (scored.reasons?.[0] === t("ScoreReason.OutOfReachThisTurn", "{name} can't reach an enemy from here.", { name: action.name })) {
         const enemy = contextEnemies(context).filter((entry) => Number.isFinite(Number(entry?.distance)))
@@ -168,5 +181,23 @@ export function buildCandidates(context) {
     }
   }
 
+  // Dying (unconscious): the recovery check at the start of the turn is the whole turn.
+  const conditionSlugs = context?.profile?.conditions?.slugs ?? context?.actor?.profile?.conditions?.slugs ?? [];
+  if (Array.isArray(conditionSlugs) && conditionSlugs.includes("dying")) {
+    const recovery = [...candidates, ...detected].find((action) => action?.slug === "recovery-check" && action.available !== false);
+    if (recovery) {
+      return {
+        candidates: [{ ...recovery, score: Math.max(100, Number(recovery.score) || 0), reason: t("Reason.RecoveryCheck", "Dying: roll the recovery check (DC 10 + dying)."), reasons: [t("Reason.RecoveryCheck", "Dying: roll the recovery check (DC 10 + dying).")] }],
+        rejected: [...rejected, ...candidates.filter((action) => action !== recovery).map((action) => ({ action, reason: t("Reject.Dying", "Unconscious and dying: only the recovery check.") }))],
+        detected,
+        approachable: [],
+      };
+    }
+  }
+  // Unconscious but not dying (stable at 0 HP, or asleep): no actions at all.
+  if (Array.isArray(conditionSlugs) && conditionSlugs.includes("unconscious")) {
+    const reason = t("Reject.Unconscious", "Unconscious: can't act.");
+    return { candidates: [], rejected: [...rejected, ...candidates.map((action) => ({ action, reason }))], detected, approachable: [] };
+  }
   return { candidates, rejected, detected, approachable };
 }

@@ -128,7 +128,8 @@ export function scoreActivityProfileTactics(context, action, {
   // get atomized/treated as an attack (no MAP badge, and it still gets a normal destination-picker
   // button). GM-NPC preference and the ally-naming reason still apply the same as any other tactic.
   if (action.activityProfile?.setsUpFlank === true && canUseTargetDefenses(context)) {
-    nextScore += 30;
+    // Off-guard to every Strike left this turn (usually two), not just the next one.
+    nextScore += 40;
     const allyName = action.activityProfile.flankAllyName ?? t("Reason.AnAlly", "an ally");
     const flankReach = activityStrikeReach(profile, action);
     nextReasons.unshift(t("ScoreReason.FlanksForAnOffGuard", "Strides within {p2}-foot reach to flank {p0} with {p1} for an off-guard Strike.", { p0: target?.name ?? "the target", p1: allyName, p2: flankReach }));

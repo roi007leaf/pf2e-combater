@@ -562,7 +562,8 @@ const CLASS_ROLE_PRIORS = {
   gunslinger: { "ranged-striker": 10 },
   inventor: { "melee-striker": 6 },
   thaumaturge: { "melee-striker": 7 },
-  magus: { "melee-striker": 7, "spell-damage": 3 },
+  // A magus casts a lot, but its spells are meant to land through Spellstrike in melee.
+  magus: { "melee-striker": 12, "spell-damage": 2 },
   exemplar: { "melee-striker": 8 },
   champion: { defender: 10, "melee-striker": 3 },
   guardian: { defender: 12 },
@@ -577,7 +578,9 @@ const CLASS_ROLE_PRIORS = {
   druid: { "spell-damage": 4, healer: 2 },
   oracle: { "spell-damage": 3, healer: 3, debuffer: 2 },
   bard: { buffer: 8, support: 3 },
-  summoner: { "melee-striker": 4, support: 2 },
+  // The eidolon does the hitting; on the summoner's own turn it casts and supports.
+  summoner: { "spell-damage": 5, support: 4 },
+  runesmith: { "melee-striker": 6, support: 2 },
   animist: { healer: 4, "spell-damage": 4 },
 };
 

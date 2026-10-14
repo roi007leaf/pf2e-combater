@@ -423,7 +423,7 @@
       <aside class="combater-upcoming" aria-label="{{upcomingTurns.label}}" aria-live="polite" aria-atomic="true">
         <ol class="combater-upcoming-track" data-combat-id="{{upcomingTurns.combatId}}" data-turn-key="{{upcomingTurns.turnKey}}">
           {{#each upcomingTurns.entries}}
-            <li><button type="button" class="combater-upcoming-turn {{#if next}}is-next{{else}}is-following{{/if}}" data-upcoming-combatant="{{id}}" data-upcoming-round="{{round}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}">
+            <li><button type="button" class="combater-upcoming-turn {{#if next}}is-next{{else}}is-following{{/if}} is-{{disposition}}" data-upcoming-combatant="{{id}}" data-upcoming-round="{{round}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}">
               <span class="combater-upcoming-label">{{label}}</span>
               <img class="combater-upcoming-portrait" src="{{img}}" alt="">
               <span class="combater-upcoming-name">{{name}}</span>
@@ -473,6 +473,8 @@
         </div>
       </div>
       {{/if}}
+      {{!-- Nothing planned yet: the empty-plan card offers Auto-fill and Browse, so the toolbar would only repeat them. --}}
+      {{#unless (and builder (not builder.readonly) (not headerSteps.length) (not browserOpen))}}
       <div class="combater-actions-row combater-plan-toolbar" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.PlanToolbar"}}">
         {{#if builder}}
           {{#unless builder.readonly}}
@@ -523,6 +525,7 @@
           </div>
         </div>
       </div>
+      {{/unless}}
     </div>
     {{#if (or actionTracker.visible effectClock.visible)}}
     <div class="combater-turn-status">

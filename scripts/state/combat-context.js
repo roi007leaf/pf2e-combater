@@ -13,6 +13,7 @@ import {
   canUseIntelFact,
   intelSaveBand,
   intelDefenseFactId,
+  intelFactId,
   intelIdentityTrait,
   intelTraitFactId,
   readIntelFalseInformation,
@@ -389,6 +390,33 @@ function actorMeleeReach(actor) {
   }
 }
 
+// Reach a creature's size implies (visible on the map): tall Large creatures reach 10 feet, and so on.
+const SIZE_REACH = { tiny: 5, sm: 5, med: 5, lg: 10, huge: 15, grg: 20 };
+
+function knownMeleeStrikeReach(actor, intelLedger) {
+  const known = intelLedger?.strikes;
+  if (!known) return null;
+  const strikes = (actor?.itemTypes?.melee ?? []).filter((item) => item?.isMelee !== false);
+  const learned = known === true ? strikes : strikes.filter((item) => known.includes(intelFactId(item?.name)));
+  const reaches = learned.map((item) => {
+    const traits = Array.isArray(item?.system?.traits?.value) ? item.system.traits.value : [];
+    return Number(traits.map((trait) => /^reach-(\d+)$/.exec(trait)?.[1]).find(Boolean)) || 0;
+  }).filter((reach) => reach > 0);
+  return reaches.length ? Math.max(...reaches) : null;
+}
+
+// What a player may plan around: the reach its size shows, extended only by Strikes the party has
+// learned (Intel: Strikes); a hidden reach weapon stays hidden. The GM plans with the real reach.
+export function playerVisibleMeleeReach(actor, intelLedger) {
+  const actual = actorMeleeReach(actor);
+  if (actorType(actor) !== "npc") return actual;
+  if (intelLedger?.strikes === true) return actual;
+  const sizeReach = SIZE_REACH[String(actor?.size ?? actor?.system?.traits?.size?.value ?? "med")] ?? 5;
+  const learned = knownMeleeStrikeReach(actor, intelLedger);
+  const visible = Math.max(sizeReach, learned ?? 0);
+  return Number.isFinite(actual) ? Math.min(actual, visible) : visible;
+}
+
 function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = null } = {}) {
   const actor = tokenActor(token);
   const intelLedger = readIntelLedger(actor);
@@ -410,7 +438,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     }),
     token: tokenSummary(token, { combatant }),
     distance: measureDistance(originToken, token),
-    meleeReach: actorMeleeReach(actor),
+    meleeReach: canSeeDefenses ? actorMeleeReach(actor) : playerVisibleMeleeReach(actor, intelLedger),
     intelLedger,
     intelRevealMode,
     intelFalseInformation,
@@ -673,6 +701,22 @@ function sharesNonDefaultOwner(actorA, actorB) {
   );
 }
 
+function withManifestedEidolon(profile, eidolons) {
+  if (!eidolons?.length || !profile) return profile;
+  return { ...profile, combatState: { ...(profile.combatState ?? {}), eidolonManifested: true } };
+}
+
+// The summoner's own eidolon: the same player owns both, or (GM-run) the only eidolon allied to a
+// GM-owned summoner.
+function isSummonersEidolon(actor, candidate) {
+  if (!candidate || candidate === actor || !isEidolonActor(candidate)) return false;
+  const classSlug = String(actor?.class?.slug ?? "").toLowerCase();
+  if (classSlug !== "summoner") return false;
+  const hasPlayerOwner = (entity) => Object.entries(entity?.ownership ?? {}).some(([userId, level]) =>
+    userId !== "default" && globalThis.game?.users?.get?.(userId)?.isGM !== true && Number(level) >= 3);
+  return sharesNonDefaultOwner(actor, candidate) || (!hasPlayerOwner(actor) && !hasPlayerOwner(candidate));
+}
+
 function isCommandableMinion(actor, candidate) {
   if (!candidate || candidate === actor) return false;
   if (isEidolonActor(candidate)) return false;
@@ -682,7 +726,8 @@ function isCommandableMinion(actor, candidate) {
 
 export function readCombatContext(refreshSource = "manual", options = {}) {
   const combat = options.combat ?? globalThis.game?.combat ?? null;
-  const encounterStarted = combat?.started === true;
+  // An emptied encounter (every combatant removed) is no fight: plan out of combat instead.
+  const encounterStarted = combat?.started === true && collectionValues(combat?.combatants).length > 0;
 
   const combatant = selectedEncounterCombatant({ ...options, combat });
   const actor = combatant?.actor ?? null;
@@ -710,6 +755,12 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
     && isAllyDisposition(token, activeDisposition)
     && isCommandableMinion(actor, tokenActor(token)));
   const minions = minionTokens.map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
+  // A summoner's eidolon: on the board means manifested, and it acts on the summoner's actions
+  // (Act Together), so it is planned like a commanded companion.
+  const eidolons = tokens
+    .filter((token) => !tokenMatchesIdentity(token, activeToken) && isAllyDisposition(token, activeDisposition)
+      && isSummonersEidolon(actor, tokenActor(token)))
+    .map((token) => tokenEntry(token, activeToken, { canSeeDefenses }));
 
   const combatTokens = tokens
     .filter((token) => tokenInCombat(encounterCombat, token))
@@ -756,7 +807,7 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
     actor: {
       ...actorSummary(actor),
       name: activeTokenName ?? actor.name,
-      profile: readActorProfile(actor),
+      profile: withManifestedEidolon(readActorProfile(actor), eidolons),
     },
     token: tokenSummary(activeToken, { combatant }),
     actionsSpent: {
@@ -770,6 +821,7 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
       targets,
     },
     minions,
+    eidolons,
     summons: tokens.filter((token) => summonIdentity(tokenActor(token)).summoned)
       .filter((token) => isAllyDisposition(token, activeDisposition))
       .filter((token) => !tokenMatchesIdentity(token, activeToken) && isTargetableCombatToken(token))

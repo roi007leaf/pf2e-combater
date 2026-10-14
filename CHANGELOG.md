@@ -1,5 +1,46 @@
 # Changelog
 
+## [2.1.0]
+
+### Added
+
+- **PF2e Commanderer integration.** With PF2e Commanderer active, a commander's tactics are planned from its real state: only prepared tactics (including PF2e Dailies preparations), only when the banner aura is up for tactics that need it, and valued by what the squadmates who can answer actually do (Pincer Attack counts enemies next to them, Strike Hard needs one in reach, Gather to Me needs someone outside the aura). A character answers only one tactic per round, so plans no longer stack tactics the squad can't follow. Issuing a tactic goes through Commanderer's own order and responder workflow.
+- **Summoners and eidolons.** An eidolon on the board counts as manifested. Act Together plans what the eidolon does with its action, and the eidolon's own Strikes are offered on the summoner's shared actions (and shared multiple attack penalty). Boost Eidolon, Evolution Surge, Lifelink Surge and the other eidolon spells target the eidolon only.
+- **Intel learned from what the party sees** (new world setting, on by default). When an enemy makes a Strike or uses an ability in plain view, it is recorded in that creature's Intel. A Strike made outside its own turn marks its Reactive Strike as known. Abilities posted only to the GM are not learned.
+- **More Intel.** Actions, passives, skills, languages, senses and Strikes (with reach) can be revealed. The highest and lowest value in each category is marked, an info button opens an ability's description, and identity includes the creature's level. Players only see categories they know something about.
+- **Recovery checks.** A dying character's plan is its recovery check, rolled through PF2e.
+- **Recharge Spellstrike.** PF2e doesn't track it, so Combater does: Spellstrike is spent when used and recharged by Recharge Spellstrike (offered while spent) or a conflux spell. Auto-fill never plans a spent Spellstrike without recharging first.
+- **Ranged Spellstrike** for Starlit Span magi, at the range of the ranged weapon.
+- Upcoming turns are colored by disposition (friendly, hostile, neutral; secret only for the GM).
+- The player's Recall Knowledge question dialog has a proper card layout with the target and attempt.
+
+### Changed
+
+- **Survival.** A character near death next to an enemy heals or gets out instead of attacking. Healers treat an ally one hit from dropping almost as urgently as a dying one, and dying allies weigh more.
+- **Defenders hold the line.** Champions and guardians favor ending next to a threatened ally (casters and hurt allies first) within reach of the attacker, where their reactions protect.
+- **Spell slots.** Top-rank slots are saved when the known foes are well below the caster's level (cantrips handle goblins).
+- **Focus fire.** Wounded enemies rank much higher as targets, including for multi-attack activities like Double Slice.
+- **Magus.** Spellstrike is valued for the spell it delivers, and the magus closes in to use it instead of casting from the back line.
+- **Summoners** cast and support on their own turn instead of swinging a staff.
+- **Weapons.** Characters with weapons stowed draw their best weapon (the rapier, not the main-gauche), can Draw and then Strike twice with it, and Sudden Charge and Quick Draw land with the drawn weapon instead of a fist.
+- **Prone characters stand** before attacking when an enemy is next to them.
+- **Movement.** Characters keep closing in over several Strides when the enemy is still out of reach (around walls), instead of moving once and stopping.
+- Thaumaturges Exploit Vulnerability before anything else; mindless creatures and immunities only change plans once the party knows about them; an enemy's reach is only used when it's known.
+- Kineticists plan Channel Elements into Elemental Blast from a cold start.
+- The plan toolbar (Auto-fill, plan cycling, Browse) hides while nothing is planned; the empty-plan card offers the same buttons.
+- Planning is noticeably faster for high-level creatures and casters.
+
+### Fixed
+
+- Cantrips and focus spells were valued at their base rank instead of their heightened rank.
+- Spells that force a save could be previewed against "DC 0".
+- Stabilize failed with "PF2e action API is not available" and could target the caster; it now runs as Administer First Aid on the dying ally.
+- An unconscious character that wasn't dying still planned actions.
+- Elemental Blast had no damage estimate before the kinetic aura was up; Base Kinesis is no longer auto-filled.
+- Runesmiths invoked a rune on a creature they hadn't traced.
+- Several Strikes, spells and reloads planned against creatures already down, out of reach, or with the wrong weapon in hand.
+- The first chip in the upcoming-turns strip sat higher than the others.
+
 ## [2.0.11]
 
 ### Changed

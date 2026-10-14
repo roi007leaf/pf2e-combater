@@ -4282,7 +4282,8 @@
 /* Turn order: a compact strip instead of portrait cards. */
 .pf2e-combater .combater-upcoming { margin: 0 0 6px; }
 .pf2e-combater .combater-upcoming-track { gap: 6px; padding: 1px; overflow-x: auto; }
-.pf2e-combater .combater-upcoming-track > li { flex: 0 0 auto; }
+/* A generic list rule gives every non-last item a bottom margin, which lifted the first chip. */
+.pf2e-combater .combater-upcoming-track > li { flex: 0 0 auto; margin: 0; }
 .pf2e-combater .combater-upcoming-turn,
 .pf2e-combater .combater-upcoming-turn.is-following {
   flex-direction: row;
@@ -4967,6 +4968,19 @@
 .pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact:not(.is-known) .combater-intel-fact-mark { display: none; }
 .pf2e-combater-intel-window .combater-intel-category-list .combater-intel-fact:has(input:focus-visible) { outline: 2px solid var(--combater-focus); outline-offset: 1px; }
 .pf2e-combater-intel-window .combater-intel-actions { align-items: center; }
+/* Intel: highest / lowest value in a category (best and worst save, biggest resistance). */
+.pf2e-combater-intel-window .combater-intel-extreme { font-size: 10px; }
+.pf2e-combater-intel-window .combater-intel-extreme.is-highest { color: #e0a458; }
+.pf2e-combater-intel-window .combater-intel-extreme.is-lowest { color: #6fb3e0; }
+/* Intel: the (i) on an ability chip opens its description. */
+.pf2e-combater-intel-window .combater-intel-info { display: inline-grid; place-items: center; width: 16px; height: 16px; min-height: 0; margin: 0 -3px 0 0; padding: 0; border: 0; background: none; color: var(--combater-muted); font-size: 11px; line-height: 1; cursor: pointer; }
+.pf2e-combater-intel-window .combater-intel-info:hover,
+.pf2e-combater-intel-window .combater-intel-info:focus-visible { color: var(--combater-ink); box-shadow: none; }
+.pf2e-combater-intel-window .combater-intel-info.is-open { color: var(--combater-ink); }
+.pf2e-combater-intel-window .combater-intel-ability-details { grid-column: 1 / -1; flex-basis: 100%; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--combater-line); border-radius: 6px; background: #22262c; color: var(--combater-ink); font-size: 12px; }
+.pf2e-combater-intel-window .combater-intel-ability-details > strong { display: block; margin-bottom: 4px; }
+.pf2e-combater-intel-window .combater-intel-ability-description { max-height: 220px; overflow-y: auto; }
+.pf2e-combater-intel-window .combater-intel-ability-description p { margin: 0 0 6px; }
 .pf2e-combater-intel-window .combater-intel-entry-tools.is-footer { display: inline-flex; margin-right: auto; }
 /* Intel: planted false facts read as one compact line under their row. */
 .pf2e-combater-intel-window .combater-intel-category-list .combater-intel-add-false { display: inline-flex; gap: 5px; width: auto; padding: 0 9px; font-size: 11px; white-space: nowrap; }
@@ -5321,3 +5335,44 @@
 .pf2e-combater-rk-outcome-dialog footer button.rk-outcome.rk-degree-criticalfailure { color: #e08a84; }
 .pf2e-combater-rk-outcome-dialog footer button.rk-outcome.is-suggested { border-color: #e3a24f; background: #3a2a15; color: #ffd08a; box-shadow: 0 0 0 1px rgb(227 162 79 / 35%); }
 .pf2e-combater-rk-outcome-dialog footer button[data-action="cancel"] { height: 34px; border: 1px solid #3a414b; border-radius: 7px; background: transparent; color: #aab7c6; }
+
+/* Recall Knowledge question: one card per question, with what it reveals. */
+.pf2e-combater-rk-question .rk-question-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 4px; }
+.pf2e-combater-rk-question .rk-question-head > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--color-border-highlight, #ff6400) 18%, transparent); color: var(--color-border-highlight, #ff6400); font-size: 16px; }
+.pf2e-combater-rk-question .rk-question-head strong { display: block; font-size: 14px; }
+.pf2e-combater-rk-question .rk-question-head span { display: block; font-size: 12px; opacity: 0.75; }
+.pf2e-combater-rk-question .form-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pf2e-combater-rk-question .form-footer button.rk-question-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  justify-items: start;
+  column-gap: 8px;
+  row-gap: 2px;
+  height: auto;
+  min-height: 52px;
+  margin: 0;
+  padding: 8px 10px;
+  text-align: left;
+  line-height: 1.2;
+  white-space: normal;
+}
+.pf2e-combater-rk-question .form-footer button.rk-question-option > i { grid-row: 1 / span 2; justify-self: center; margin: 0; font-size: 15px; color: var(--color-border-highlight, #ff6400); }
+.pf2e-combater-rk-question .form-footer button.rk-question-option > span { font-weight: 700; }
+.pf2e-combater-rk-question .rk-question-reveals { grid-column: 2; font-size: 11px; font-weight: 400; opacity: 0.7; }
+.pf2e-combater-rk-question .form-footer button.rk-question-option.is-known { opacity: 0.6; border-style: dashed; }
+.pf2e-combater-rk-question .form-footer button.rk-question-option.is-known > i { color: inherit; }
+.pf2e-combater-rk-question .form-footer button[data-action="cancel"] { grid-column: 1 / -1; }
+
+/* Upcoming turns: the chip's border and portrait ring follow the token's disposition. */
+.pf2e-combater .combater-upcoming-turn { --upcoming-disposition: #536272; }
+.pf2e-combater .combater-upcoming-turn.is-friendly { --upcoming-disposition: #4f9c70; }
+.pf2e-combater .combater-upcoming-turn.is-hostile { --upcoming-disposition: #c0504d; }
+.pf2e-combater .combater-upcoming-turn.is-neutral { --upcoming-disposition: #c9a53b; }
+.pf2e-combater .combater-upcoming-turn.is-secret { --upcoming-disposition: #8b6bc7; }
+.pf2e-combater .combater-upcoming-turn.is-friendly,
+.pf2e-combater .combater-upcoming-turn.is-hostile,
+.pf2e-combater .combater-upcoming-turn.is-neutral,
+.pf2e-combater .combater-upcoming-turn.is-secret { border-color: color-mix(in srgb, var(--upcoming-disposition) 70%, #1d2228); }
+.pf2e-combater .combater-upcoming-turn.is-next { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--upcoming-disposition) 45%, transparent); }
+.pf2e-combater .combater-upcoming-turn .combater-upcoming-portrait { border: 2px solid var(--upcoming-disposition); }

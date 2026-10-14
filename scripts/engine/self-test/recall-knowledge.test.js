@@ -18,6 +18,11 @@ import {
   resolveRecallKnowledgeRequest,
 } from "../../ui/recall-knowledge.js";
 import { canUseIntelFact, intelLedgerView, normalizeIntelFalseInformation } from "../../rules/intel-ledger.js";
+import { reactiveStrikeKnown } from "../scoring/rk-warnings.js";
+import { observedIntelFact, recordObservedIntel } from "../../rules/observed-intel.js";
+import { isConfluxSpell, spellstrikeEvent, spellstrikeExpended } from "../../rules/spellstrike-state.js";
+import { hasPlanConflict } from "../planner/conflicts.js";
+import { playerVisibleMeleeReach } from "../../state/combat-context.js";
 import {
   RECALL_KNOWLEDGE_QUESTIONS,
   nextRecallKnowledgeAttempts,
@@ -124,7 +129,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   RECALL_KNOWLEDGE_QUESTIONS.map((entry) => entry.id),
-  ["notable", "defenses", "weaknesses", "protections"],
+  ["notable", "defenses", "weaknesses", "protections", "abilities", "senses"],
   "basic identity should be automatic, not a mutually exclusive Recall Knowledge question",
 );
 
@@ -661,6 +666,104 @@ try {
   globalThis.ChatMessage = previousChatMessage;
   globalThis.getDocumentClass = previousGetDocumentClass;
   globalThis.foundry = previousFoundry;
+}
+
+// Intel covers what a creature can do and sense, not just its defenses.
+{
+  const general = {
+    type: "npc",
+    name: "Hobgoblin General",
+    system: {
+      details: { languages: { value: ["common", "goblin"], details: "" } },
+      perception: { senses: [{ type: "darkvision", acuity: "precise", label: "Darkvision" }] },
+      traits: { value: ["hobgoblin", "humanoid"] },
+    },
+    skills: {
+      athletics: { label: "Athletics", mod: 15, proficient: true },
+      stealth: { label: "Stealth", mod: 12, proficient: true },
+      arcana: { label: "Arcana", mod: 0, proficient: false },
+    },
+    itemTypes: {
+      melee: [{ name: "Glaive", uuid: "Item.glaive", isMelee: true, system: { bonus: { value: 17 }, traits: { value: ["reach-10"] } } }],
+      action: [
+        { name: "Reactive Strike", uuid: "Item.rs", system: { actionType: { value: "reaction" } } },
+        { name: "Formation", uuid: "Item.formation", system: { actionType: { value: "passive" } } },
+      ],
+    },
+  };
+  const target = { id: "general", name: "Hobgoblin General", actor: general, intelLedger: {} };
+  const view = intelLedgerView({ isGM: true, battlefield: { enemies: [target] } });
+  const facts = view.entries[0].availableFacts;
+  assert.deepEqual(facts.skills.map((fact) => [fact.label, fact.value]), [["Athletics +15", 15], ["Stealth +12", 12]], "trained skills only, with modifiers");
+  assert.deepEqual(facts.languages.map((fact) => fact.id), ["common", "goblin"]);
+  assert.deepEqual(facts.senses.map((fact) => fact.label), ["Darkvision"]);
+  assert.deepEqual(facts.strikes.map((fact) => [fact.label, fact.value, fact.uuid]), [["Glaive +17 (reach 10 ft)", 17, "Item.glaive"]]);
+  assert.deepEqual(facts.actions.map((fact) => [fact.id, fact.uuid]), [["reactive-strike", "Item.rs"]]);
+  assert.deepEqual(facts.passives.map((fact) => fact.id), ["formation"]);
+  assert.ok(facts.saves === undefined || Array.isArray(facts.saves));
+
+  // A player's plan only prices a Reactive Strike the party has learned about.
+  const playerSees = (ledger) => reactiveStrikeKnown({ isGM: false }, { ...target, intelLedger: ledger });
+  assert.equal(playerSees({}), false, "unknown Reactive Strike stays hidden from player planning");
+  assert.equal(playerSees({ actions: ["reactive-strike"] }), true, "learned Reactive Strike is avoided");
+  assert.equal(reactiveStrikeKnown({ isGM: true }, { ...target, reactiveStrike: true }), true, "GM always knows");
+}
+
+// Enemy reach for player planning: what its size shows, extended only by Strikes the party knows.
+{
+  const glaiveGuard = {
+    type: "npc",
+    size: "med",
+    getReach: () => 10,
+    itemTypes: { melee: [{ name: "Glaive", isMelee: true, system: { traits: { value: ["reach-10"] } } }] },
+  };
+  assert.equal(playerVisibleMeleeReach(glaiveGuard, {}), 5, "an unknown reach weapon stays hidden");
+  assert.equal(playerVisibleMeleeReach(glaiveGuard, { strikes: ["glaive"] }), 10, "a learned Glaive reveals its reach");
+  assert.equal(playerVisibleMeleeReach(glaiveGuard, { strikes: true }), 10);
+  const ogre = { type: "npc", size: "lg", getReach: () => 10, itemTypes: { melee: [] } };
+  assert.equal(playerVisibleMeleeReach(ogre, {}), 10, "a Large creature's reach is visible from its size");
+}
+
+// What the party sees an enemy do becomes Intel: Strikes and reactions always, other abilities only
+// when the message wasn't kept to the GM.
+{
+  const npc = { type: "npc" };
+  const strike = { item: { type: "melee", name: "Ogre Hook", actor: npc }, actor: npc };
+  assert.deepEqual(observedIntelFact(strike), { actor: npc, category: "strikes", factId: "ogre-hook" });
+  const reactive = { item: { type: "action", name: "Reactive Strike", system: { actionType: { value: "reaction" } } }, actor: npc, whisper: ["gm"] };
+  assert.equal(observedIntelFact(reactive)?.factId, "reactive-strike", "a reaction is seen even when its card is GM-only");
+  const secret = { item: { type: "action", name: "Breath Weapon", system: { actionType: { value: "action" } } }, actor: npc, whisper: ["gm"] };
+  assert.equal(observedIntelFact(secret), null, "an ability posted only to the GM isn't learned");
+  const passive = { item: { type: "action", name: "Ferocity", system: { actionType: { value: "passive" } } }, actor: npc };
+  assert.equal(observedIntelFact(passive), null);
+  assert.equal(observedIntelFact({ item: { type: "melee", name: "Fist" }, actor: { type: "character" } }), null, "PCs aren't Intel targets");
+
+  const flags = {};
+  const actor = { getFlag: (scope, key) => flags[`${scope}.${key}`], setFlag: async (scope, key, value) => { flags[`${scope}.${key}`] = value; } };
+  assert.equal(await recordObservedIntel(actor, "actions", "reactive-strike"), true);
+  assert.equal(await recordObservedIntel(actor, "actions", "reactive-strike"), false, "already known: no second write");
+  assert.deepEqual(flags["pf2e-combater.intelLedger"].actions, ["reactive-strike"]);
+}
+
+// Spellstrike: spent when used, recharged by Recharge Spellstrike or a conflux spell; a plan can't
+// Spellstrike while it's spent unless it recharges first.
+{
+  assert.equal(spellstrikeEvent({ item: { slug: "spellstrike" } }), "spend");
+  assert.equal(spellstrikeEvent({ item: { slug: "recharge-spellstrike" } }), "recharge");
+  const conflux = { type: "spell", slug: "thunderous-strike", system: { traits: { value: ["focus", "magus", "electricity"] }, time: { value: "1" } } };
+  assert.equal(isConfluxSpell(conflux), true);
+  assert.equal(spellstrikeEvent({ item: conflux }), "recharge");
+  assert.equal(spellstrikeExpended({ flags: { "pf2e-combater": { spellstrike: { expended: true } } } }), true);
+  assert.equal(spellstrikeExpended({ flags: {} }), false);
+
+  const spellstrike = { slug: "spellstrike", activityProfile: { spellstrike: true } };
+  const recharge = { slug: "recharge-spellstrike", activityProfile: { rechargeSpellstrike: true } };
+  const spent = { profile: { combatState: { spellstrikeNeedsRecharge: true } } };
+  const charged = { profile: { combatState: { spellstrikeNeedsRecharge: false } } };
+  assert.equal(hasPlanConflict(spent, spellstrike, []), true, "a spent Spellstrike can't be planned");
+  assert.equal(hasPlanConflict(spent, spellstrike, [recharge]), false, "recharging first makes it legal");
+  assert.equal(hasPlanConflict(charged, spellstrike, []), false);
+  assert.equal(hasPlanConflict(charged, spellstrike, [spellstrike]), true, "two Spellstrikes need a recharge between them");
 }
 
 console.log("PF2e Combater Recall Knowledge test passed");

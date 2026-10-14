@@ -220,3 +220,42 @@ export function planMinionSubturn(context, options = {}) {
 
   return null;
 }
+
+// A summoner and its eidolon share three actions a turn (and the multiple attack penalty): the
+// eidolon's Strikes are offered as the summoner's own 1-action options, made from where the eidolon
+// stands. Only a Strike that already reaches an enemy is offered; Act Together plans the walk in.
+function footprintFeet(entity) {
+  const squares = Math.max(1, Number(entity?.token?.document?.width ?? entity?.width ?? entity?.size?.width ?? 1) || 1);
+  return (squares - 1) * 2.5;
+}
+
+export function eidolonStrikeCandidates(context) {
+  const eidolons = context?.eidolons ?? [];
+  const enemies = (context?.battlefield?.enemies ?? context?.enemies ?? []).filter((enemy) => enemy?.hpPercent !== 0);
+  if (!eidolons.length || !enemies.length) return [];
+  return eidolons.flatMap((eidolon) => {
+    const actor = resolvedMinionActor(eidolon);
+    if (!actor) return [];
+    const origin = center(eidolon);
+    const name = eidolon.name ?? actor.name;
+    return actorStrikeOptions(actor).flatMap((strike) => {
+      const reach = strikeRange(strike);
+      const target = enemies
+        .map((enemy) => ({ enemy, distance: measureDistance(origin, center(enemy)) - footprintFeet(enemy) - footprintFeet(eidolon) }))
+        .filter((entry) => entry.distance <= reach + 0.5)
+        .toSorted((left, right) => left.distance - right.distance)[0] ?? null;
+      if (!target) return [];
+      const reference = { id: target.enemy.id, name: target.enemy.name, type: "enemy" };
+      return [{
+        ...strike,
+        id: `eidolon-${eidolon.id ?? actor.id}-${strike.id ?? strike.slug}`,
+        name: `${name}: ${strike.name}`,
+        available: true,
+        // The enemy as the eidolon sees it: scoring reads the distance from its square, not the summoner's.
+        preferredTarget: { ...target.enemy, distance: Math.max(0, Math.round(target.distance)) },
+        suggestedTarget: reference,
+        activityProfile: { ...(strike.activityProfile ?? {}), eidolonStrike: true, eidolonTokenId: eidolon.id ?? null },
+      }];
+    });
+  });
+}

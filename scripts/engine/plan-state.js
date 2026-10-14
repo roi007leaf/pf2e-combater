@@ -297,6 +297,8 @@ function stepAddedConditions(step) {
   ]);
   const slugs = stepSlugCandidates(step);
   if (slugs.some((slug) => slug.includes("drop-prone")) || action?.executable === "drop-prone") added.add("prone");
+  // Striding into a flank leaves the target off-guard to this creature's later Strikes.
+  if (profile.setsUpFlank === true && profile.targetOffGuard === true) added.add("off-guard");
   const checkCondition = checkSetupCondition(step);
   if (checkCondition) added.add(checkCondition);
   // A heal marks its recipient, so the rest of the plan heals someone else.

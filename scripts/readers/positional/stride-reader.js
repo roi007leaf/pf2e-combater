@@ -48,14 +48,20 @@ function strideStrikePlan(context, profile, strike, readyStrikes, maxStrides = 2
   // Stride, one Stride beats two), then the user's own target, then the nearest.
   const targets = [...contextTargets(context), ...contextEnemies(context)].filter(canAttackTarget);
   const userTargets = new Set(contextTargets(context).map((target) => target?.id ?? target?.name));
+  // Every reachable target gets a plan (cheapest first); scoring then picks between them with the
+  // full target ranking (focus fire, wounded enemies), not canvas order.
   return targets
     .map((target, order) => ({ plan: approach(target), order }))
     .filter((entry) => entry.plan)
     .toSorted((left, right) => approachCost(left.plan) - approachCost(right.plan)
       || Number(!userTargets.has(left.plan.target?.id ?? left.plan.target?.name)) - Number(!userTargets.has(right.plan.target?.id ?? right.plan.target?.name))
       || (left.plan.target?.distance ?? Infinity) - (right.plan.target?.distance ?? Infinity)
-      || left.order - right.order)[0]?.plan ?? null;
+      || left.order - right.order)
+    .slice(0, MAX_COMPOSITE_TARGETS)
+    .map((entry) => entry.plan);
 }
+
+const MAX_COMPOSITE_TARGETS = 3;
 
 function approachCost(plan) {
   return plan.strides * 2 - (plan.movement === "step" ? 1 : 0);
@@ -74,7 +80,7 @@ export function readStrideStrikeActivities(context, readyStrikes) {
   const seenTargets = new Map();
   const composites = ranked.flatMap((strike) => {
     const reach = strikeMeleeReach(strike);
-    const plan = strideStrikePlan(
+    const plans = strideStrikePlan(
       context,
       profile,
       strike,
@@ -82,7 +88,7 @@ export function readStrideStrikeActivities(context, readyStrikes) {
       standFirst ? 1 : 2,
       stepAllowed && !isRangedStrike(strike),
     );
-    if (!plan) return [];
+    return plans.flatMap((plan) => {
     const { target, strides, movement = "stride", attackCenter } = plan;
     const actionCost = strides + 1 + (standFirst ? 1 : 0);
     if (actionCost > 3) return [];
@@ -94,7 +100,8 @@ export function readStrideStrikeActivities(context, readyStrikes) {
     const slug = slugify(strike.name ?? strike.slug ?? "strike");
     const movePrefix = `${standFirst ? t("Action.StandArrow", "Stand -> ") : ""}${movement === "step" ? t("Action.StepArrow", "Step -> ") : t("Action.StrideArrow", "Stride -> ").repeat(strides)}`;
     return [{
-      id: `${standFirst ? "stand-" : ""}${movement}-strike-${strike.id ?? slug}`,
+      // One per target (the first keeps the plain id, so existing drafts still resolve).
+      id: `${standFirst ? "stand-" : ""}${movement}-strike-${strike.id ?? slug}${plans.indexOf(plan) > 0 ? `-${slugify(String(target.id ?? target.name))}` : ""}`,
       name: `${movePrefix}${strike.name}`,
       slug: `${standFirst ? "stand-" : ""}${movement}-strike-${slug}`,
       actionCost,
@@ -133,6 +140,7 @@ export function readStrideStrikeActivities(context, readyStrikes) {
           ? t("Reason.StrideTwiceStrike", "Stride twice into reach and Strike {target}.", { target: target.name })
           : t("Reason.StrideStrike", "Stride into reach and Strike {target}.", { target: target.name })],
     }];
+    });
   });
   // A cheaper approach found later (by a lower-damage weapon) replaces the costlier one for that target.
   return composites.filter((action) => seenTargets.get(action.preferredTarget?.id ?? action.preferredTarget?.name) === action.actionCost)

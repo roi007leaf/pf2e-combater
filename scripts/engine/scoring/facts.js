@@ -42,8 +42,9 @@ function targetRequiresIntel(target) {
   return String(actor.type ?? target?.actor?.type ?? target?.type ?? "").toLowerCase() !== "character";
 }
 
+// An explicit isGM on the context wins (a player's view planned on a GM's client); otherwise the user.
 function contextIsGM(context) {
-  return context?.isGM === true || globalThis.game?.user?.isGM === true;
+  return typeof context?.isGM === "boolean" ? context.isGM : globalThis.game?.user?.isGM === true;
 }
 
 function systemTraitSlugs(document) {
@@ -202,7 +203,7 @@ function entryValue(entry) {
 
 function visibleDefenseEntries(context, target, category, value, { showValue = true } = {}) {
   const entries = defenseEntries(value);
-  if (!target || !targetRequiresIntel(target)) return entries;
+  if (!target || !targetRequiresIntel(target) || contextIsGM(context)) return entries;
   if (!canUseIntelCategory(context, target, category)) return [];
   return entries.filter((entry) =>
     canUseIntelFact(context, target, category, intelDefenseFactId(entry, { showValue })));
@@ -231,6 +232,15 @@ function defenseAmountReason(entry, amount) {
 function hasImmunity(entries, types) {
   if (!types.length) return false;
   return defenseEntries(entries).some((entry) => types.some((type) => matchesDamageType(entry, type)));
+}
+
+// Every damage type the action deals is (visibly) immune: the attack does nothing to this target.
+export function targetFullyImmuneToDamage(context, action, target) {
+  if (!target) return false;
+  const types = damageTypes(action);
+  if (!types.length) return false;
+  const immunities = visibleDefenseEntries(context, target, "immunities", target.immunities, { showValue: false });
+  return types.every((type) => hasImmunity(immunities, [type]));
 }
 
 export function damageAdjustment(context, action, target) {
@@ -482,6 +492,20 @@ export function targetHasMatchingDefense(context, target, types) {
     return visibleDefenseEntries(context, target, key, [...direct, ...actorValues], { showValue: key !== "immunities" })
       .some((entry) => types.some((type) => matchesDamageType(entry, type)));
   });
+}
+
+// Trait immunities (mental, fear, emotion...): a known immunity entry, or a mindless creature for mental.
+export function targetImmuneToActionTraits(context, target, actionTraits = []) {
+  const traits = actionTraits.map(slugText).filter(Boolean);
+  if (!target || !traits.length) return false;
+  if (traits.includes("mental") && targetTraitSlugs(context, target).has("mindless")) return true;
+  const document = targetActorDocument(target);
+  const entries = [
+    ...defenseEntries(target?.immunities),
+    ...defenseEntries(document?.system?.attributes?.immunities ?? document?.system?.immunities),
+  ];
+  return visibleDefenseEntries(context, target, "immunities", entries, { showValue: false })
+    .some((entry) => traits.includes(entryType(entry)));
 }
 
 export function canUseTargetSave(context, target = null, saveSlug = null) {

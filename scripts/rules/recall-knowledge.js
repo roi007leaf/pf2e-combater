@@ -4,10 +4,12 @@ import { collectionValues } from "../foundry-data.js";
 export const RECALL_KNOWLEDGE_ATTEMPTS_FLAG = "recallKnowledgeAttempts";
 
 export const RECALL_KNOWLEDGE_QUESTIONS = [
-  { id: "notable", label: "Notable traits", categories: ["traits"] },
-  { id: "defenses", label: "Defenses and saves", categories: ["saves", "perception"] },
-  { id: "weaknesses", label: "Weaknesses", categories: ["weaknesses"] },
-  { id: "protections", label: "Resistances and immunities", categories: ["resistances", "immunities"] },
+  { id: "notable", label: "Notable traits", icon: "fa-solid fa-tags", categories: ["traits"] },
+  { id: "defenses", label: "Defenses and saves", icon: "fa-solid fa-shield-halved", categories: ["saves", "perception"] },
+  { id: "weaknesses", label: "Weaknesses", icon: "fa-solid fa-heart-crack", categories: ["weaknesses"] },
+  { id: "protections", label: "Resistances and immunities", icon: "fa-solid fa-shield-virus", categories: ["resistances", "immunities"] },
+  { id: "abilities", label: "Abilities and attacks", icon: "fa-solid fa-hand-fist", categories: ["strikes", "actions", "passives"] },
+  { id: "senses", label: "Senses, skills and languages", icon: "fa-solid fa-eye", categories: ["senses", "skills", "languages"] },
 ];
 
 const STANDARD_SKILLS = ["arcana", "computers", "crafting", "medicine", "nature", "occultism", "religion", "society"];

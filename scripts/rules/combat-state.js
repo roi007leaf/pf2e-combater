@@ -1,4 +1,5 @@
 import { actorItems } from "../foundry-data.js";
+import { spellstrikeExpended } from "./spellstrike-state.js";
 import { slugify as normalize } from "../engine/action/text.js";
 import { pf2eRuntime } from "../runtime/pf2e-runtime.js";
 
@@ -212,11 +213,11 @@ export function readCombatState(actor) {
     "elemental-aura",
   ]) || hasFlagPath(actor, ["flags", "pf2e", "kineticist", "auraActive"]);
 
-  const spellstrikeNeedsRecharge = hasEntry(actor, [
+  // Combater tracks it (PF2e doesn't); the effect/flag names are kept for other modules that do.
+  const spellstrikeNeedsRecharge = spellstrikeExpended(actor) || hasEntry(actor, [
     "spellstrike-expended",
     "spellstrike-spent",
     "spellstrike-unavailable",
-    "recharge-spellstrike",
     "spellstrike-needs-recharge",
   ]) || flagBoolean(actor, [
     ["flags", "pf2e", "magus", "spellstrikeCharged"],

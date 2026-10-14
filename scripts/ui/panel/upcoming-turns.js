@@ -2,6 +2,15 @@ import { t } from "../../i18n.js";
 import { SETTINGS, settingOrDefault } from "../../settings.js";
 import { turnCombatantName } from "../../state/turn-controls.js";
 
+// Token disposition as a style key. Secret stays secret: players see it as neutral.
+function dispositionKey(combatant, user) {
+  const value = Number(combatant?.token?.disposition ?? combatant?.token?.document?.disposition);
+  if (value === 1) return "friendly";
+  if (value === -1) return "hostile";
+  if (value === -2) return user?.isGM ? "secret" : "neutral";
+  return "neutral";
+}
+
 export function upcomingTurnsView(combat = globalThis.game?.combat, user = globalThis.game?.user) {
   const turns = combat?.turns ?? [];
   if (!settingOrDefault(SETTINGS.showTurnNavigation, true) || !combat?.started || !turns.length) return { visible: false, entries: [] };
@@ -21,6 +30,7 @@ export function upcomingTurnsView(combat = globalThis.game?.combat, user = globa
     const roundLabel = t("UpcomingTurns.Round", "Round {round}", { round });
     entries.push({
       id: combatant.id, name, label, next, round,
+      disposition: dispositionKey(combatant, user),
       img: combatant.img || combatant.actor?.img || "icons/svg/mystery-man.svg",
       nextRound: round > combat.round,
       roundLabel,

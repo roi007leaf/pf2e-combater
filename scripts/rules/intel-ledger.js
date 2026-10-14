@@ -15,9 +15,15 @@ export const INTEL_LEDGER_CATEGORIES = [
   { id: "traits", label: "Traits" },
   { id: "saves", label: "Saves" },
   { id: "perception", label: "Perception" },
+  { id: "senses", label: "Senses" },
+  { id: "skills", label: "Skills" },
+  { id: "languages", label: "Languages" },
   { id: "weaknesses", label: "Weaknesses" },
   { id: "resistances", label: "Resistances" },
   { id: "immunities", label: "Immunities" },
+  { id: "strikes", label: "Strikes" },
+  { id: "actions", label: "Actions" },
+  { id: "passives", label: "Passives" },
 ];
 
 const CATEGORY_IDS = new Set(INTEL_LEDGER_CATEGORIES.map((entry) => entry.id));
@@ -178,6 +184,7 @@ export function normalizeIntelFalseInformation(value) {
     if (factId) {
       if (category === "saves" || category === "perception") label = `${factLabel || titleCase(factId)}${valueNumber === null ? "" : ` DC ${valueNumber}`}`;
       else if (category === "weaknesses" || category === "resistances") label = `${factLabel || titleCase(factId)}${valueNumber === null ? "" : ` ${valueNumber}`}`;
+      else if (category === "skills" || category === "strikes") label = `${factLabel || titleCase(factId)}${valueNumber === null ? "" : ` +${valueNumber}`}`;
       else label = factLabel || titleCase(factId) || text;
     } else if (!label) label = text;
     return [{
@@ -462,6 +469,7 @@ function saveFacts(enemy, { revealMode = INTEL_REVEAL_MODES.exact } = {}) {
     const knownBand = enemy?.intelSaveBands?.[key] ?? null;
     if (Number.isFinite(value)) {
       entries.push(fact(key, saveFactLabel(label, value, enemy, revealMode, knownBand), {
+        value,
         exactLabel: saveFactLabel(label, value, enemy, INTEL_REVEAL_MODES.exact),
         bandLabel: saveFactLabel(label, value, enemy, INTEL_REVEAL_MODES.band, knownBand),
       }));
@@ -499,16 +507,114 @@ function identityFacts(enemy) {
   const name = String(enemy?.identityName ?? actor?.name ?? "").trim();
   if (!name) return [];
   const category = intelIdentityTrait(enemy);
-  const label = category ? `${name} (${titleCase(category)})` : name;
+  // Recall Knowledge on a creature's identity tells you how dangerous it is: its level comes with it.
+  const level = Number(actor?.level ?? actor?.system?.details?.level?.value ?? enemy?.level);
+  const levelLabel = Number.isFinite(level) ? t("Intel.LevelShort", "Level {level}", { level }) : "";
+  const details = [category ? titleCase(category) : "", levelLabel].filter(Boolean).join(", ");
+  const label = details ? `${name} (${details})` : name;
   return [fact("identity", label, { exactLabel: label, bandLabel: label })];
 }
 
 function defenseFacts(enemy, category, { showValue = true, revealMode = INTEL_REVEAL_MODES.exact } = {}) {
   return defenseEntries(enemy?.[category] ?? actorDefense(targetActor(enemy), category))
     .map((entry) => fact(intelDefenseFactId(entry, { showValue }), defenseLabel(entry, { showValue, revealMode, target: enemy }), {
+      ...(showValue && Number(entry?.value ?? entry?.amount) > 0 ? { value: Number(entry?.value ?? entry?.amount) } : {}),
       exactLabel: defenseLabel(entry, { showValue, revealMode: INTEL_REVEAL_MODES.exact, target: enemy }),
       bandLabel: defenseLabel(entry, { showValue, revealMode: INTEL_REVEAL_MODES.band, target: enemy }),
     }));
+}
+
+// An action's name as its fact id, so a fact learned elsewhere (Bestiary Tracking, a planner check
+// such as Reactive Strike) matches the same entry.
+export function intelAbilityFactId(name) {
+  return intelFactId(name);
+}
+
+const ABILITY_GLYPHS = { action: "", reaction: " (reaction)", free: " (free)" };
+
+// Actions: the creature's activities and reactions (Reactive Strike, Grab, Breath Weapon);
+// passives: always-on abilities (Ferocity, Regeneration, auras). Strikes stay out.
+function abilityFacts(enemy, kind) {
+  const actor = targetActor(enemy);
+  const items = Array.isArray(enemy?.[kind]) ? enemy[kind]
+    : (actor?.itemTypes?.action ?? (Array.isArray(actor?.items) ? actor.items : Array.from(actor?.items ?? [])).filter((item) => item?.type === "action"));
+  const seen = new Set();
+  return (items ?? []).flatMap((item) => {
+    const name = String(item?.name ?? "").trim();
+    const type = String(item?.system?.actionType?.value ?? item?.actionType ?? "").toLowerCase();
+    const isPassive = type === "passive";
+    if (!name || (kind === "passives") !== isPassive) return [];
+    const id = intelAbilityFactId(name);
+    if (seen.has(id)) return [];
+    seen.add(id);
+    const label = `${name}${ABILITY_GLYPHS[type] ?? ""}`;
+    return [fact(id, label, { exactLabel: label, bandLabel: label, ...(item?.uuid ? { uuid: item.uuid } : {}) })];
+  });
+}
+
+function signed(value) {
+  return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function localizedConfig(mapName, slug) {
+  const raw = globalThis.CONFIG?.PF2E?.[mapName]?.[slug];
+  const label = typeof raw === "string" ? raw : raw?.label;
+  const localized = label ? globalThis.game?.i18n?.localize?.(label) ?? label : "";
+  return localized && localized !== label ? localized : (label && !label.includes(".") ? label : titleCase(slug));
+}
+
+// Trained skills (and Lores) with their modifiers: "Athletics +15".
+function skillFacts(enemy) {
+  const actor = targetActor(enemy);
+  return Object.entries(actor?.skills ?? {}).flatMap(([slug, skill]) => {
+    if (skill?.proficient !== true && skill?.lore !== true) return [];
+    const mod = Number(skill?.mod ?? skill?.totalModifier);
+    const name = String(skill?.label ?? titleCase(slug));
+    const label = Number.isFinite(mod) ? `${name} ${signed(mod)}` : name;
+    return [fact(slug, label, { exactLabel: label, bandLabel: name, ...(Number.isFinite(mod) ? { value: mod } : {}) })];
+  });
+}
+
+function languageFacts(enemy) {
+  const languages = targetActor(enemy)?.system?.details?.languages ?? {};
+  const slugs = Array.isArray(languages.value) ? languages.value : Array.from(languages.value ?? []);
+  const extra = String(languages.details ?? "").split(/[,;]/).map((entry) => entry.trim()).filter(Boolean);
+  return [
+    ...slugs.map((slug) => fact(slug, localizedConfig("languages", slug))),
+    ...extra.map((entry) => fact(entry, entry)),
+  ].map((entry) => ({ ...entry, exactLabel: entry.label, bandLabel: entry.label }));
+}
+
+// Darkvision, Scent (imprecise) 30 ft...
+function senseFacts(enemy) {
+  const actor = targetActor(enemy);
+  const senses = actor?.system?.perception?.senses ?? actor?.system?.traits?.senses ?? [];
+  return (Array.isArray(senses) ? senses : []).flatMap((sense) => {
+    const type = String(sense?.type ?? "").trim();
+    if (!type) return [];
+    const name = String(sense?.label ?? localizedConfig("senses", type));
+    const acuity = sense?.acuity && sense.acuity !== "precise" ? ` (${sense.acuity})` : "";
+    const range = Number(sense?.range) > 0 ? ` ${sense.range} ft` : "";
+    const label = `${name}${acuity}${range}`;
+    return [fact(type, label, { exactLabel: label, bandLabel: label })];
+  });
+}
+
+// The creature's attacks with attack bonus and reach: "Glaive +17 (reach 10 ft)".
+function strikeFacts(enemy) {
+  const actor = targetActor(enemy);
+  const items = actor?.itemTypes?.melee ?? [];
+  return items.flatMap((item) => {
+    const name = String(item?.name ?? "").trim();
+    if (!name) return [];
+    const bonus = Number(item?.system?.bonus?.value);
+    const traits = Array.isArray(item?.system?.traits?.value) ? item.system.traits.value : [];
+    const reach = traits.map((trait) => /^reach-(\d+)$/.exec(trait)?.[1]).find(Boolean);
+    const ranged = item?.isMelee === false || traits.some((trait) => /^(range|thrown|volley)/.test(trait));
+    const note = reach ? ` (reach ${reach} ft)` : ranged ? ` (${t("Intel.Ranged", "ranged")})` : "";
+    const label = `${name}${Number.isFinite(bonus) ? ` ${signed(bonus)}` : ""}${note}`;
+    return [fact(name, label, { exactLabel: label, bandLabel: `${name}${note}`, ...(Number.isFinite(bonus) ? { value: bonus } : {}), ...(item?.uuid ? { uuid: item.uuid } : {}) })];
+  });
 }
 
 function availableIntelFacts(enemy, { revealMode = readIntelRevealMode(enemy) } = {}) {
@@ -520,6 +626,12 @@ function availableIntelFacts(enemy, { revealMode = readIntelRevealMode(enemy) } 
     weaknesses: defenseFacts(enemy, "weaknesses", { revealMode }),
     resistances: defenseFacts(enemy, "resistances", { revealMode }),
     immunities: defenseFacts(enemy, "immunities", { showValue: false, revealMode }),
+    senses: senseFacts(enemy),
+    skills: skillFacts(enemy),
+    languages: languageFacts(enemy),
+    strikes: strikeFacts(enemy),
+    actions: abilityFacts(enemy, "actions"),
+    passives: abilityFacts(enemy, "passives"),
   };
 }
 
@@ -541,15 +653,7 @@ function selectedFacts(available, value) {
 
 function revealedIntelFacts(availableFacts, values) {
   const known = (category) => selectedFacts(availableFacts[category] ?? [], values[category]);
-  return {
-    identity: known("identity"),
-    traits: known("traits"),
-    saves: known("saves"),
-    perception: known("perception"),
-    weaknesses: known("weaknesses"),
-    resistances: known("resistances"),
-    immunities: known("immunities"),
-  };
+  return Object.fromEntries(INTEL_LEDGER_CATEGORIES.map(({ id }) => [id, known(id)]));
 }
 
 function revealedIntelDetails(availableFacts, values) {

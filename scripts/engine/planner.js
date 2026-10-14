@@ -4,7 +4,8 @@ import { combineConfidence } from "./confidence.js";
 import { normalizedActionFacts } from "./action/facts.js";
 import { scoredAreaPlacement } from "./scoring/area.js";
 import { attackableEnemies } from "./scoring/targets.js";
-import { maxRange } from "./scoring/facts.js";
+import { hpPercent as entityHpPercent, maxRange } from "./scoring/facts.js";
+import { strikeDamageScore } from "./scoring/tactic-helpers.js";
 import {
   actionKey,
   candidateTraitSlugs,
@@ -41,7 +42,7 @@ import {
 import { planSignature } from "./planner/plan-signature.js";
 import { createPlanRescorer } from "./planner/rescoring.js";
 import { plannedMoveDestination } from "../readers/action/reach.js";
-import { endPositionDanger, planEndState } from "./planner/danger.js";
+import { defenderCoverage, endPositionDanger, nearDeathExposure, planEndState } from "./planner/danger.js";
 import { nextTurnReadiness } from "./planner/lookahead.js";
 import { scoreCandidate } from "./scoring.js";
 import {
@@ -57,6 +58,8 @@ import {
   hasPlanConflict,
   includesStand,
   isRepeatablePlanningAction,
+  isSpellstrikeStep,
+  rechargesSpellstrike,
 } from "./planner/conflicts.js";
 import { contextAllies, contextEnemies, contextTargets } from "./target-pool.js";
 import { t } from "../i18n.js";
@@ -86,9 +89,14 @@ export { isAttackAction } from "./planner/rules.js";
 
 const MAX_CANDIDATES = 12;
 const PRIMARY_CANDIDATES = 8;
+// The best one-action options always make the pool: a top-eight of two-action spells would
+// otherwise leave nothing good for the third action.
+const ONE_ACTION_FILLERS = 2;
 const CONDITION_SETUP_CANDIDATES = 4;
 const MAX_FREE_STEPS = 1;
 const MAX_PLANS = 256;
+// How far a plan that leaves an action unused must outscore one that uses them all to rank above it.
+const FULL_BUDGET_PREFERENCE_MARGIN = 60;
 const MAX_SEARCH_STATES = 1024;
 const MAX_COVERAGE_SEARCH_STATES = 48;
 const MAX_COVERAGE_PLANS = 8;
@@ -209,7 +217,11 @@ function isMajorCriticalFailureAttackSkill(candidate) {
     && facts.resolution.criticalFailureRisk === "major";
 }
 
-function selectPlanningCandidates(sortedCandidates) {
+function selectPlanningCandidates(allCandidates) {
+  // A stowed weapon's follow-up Strike rides along with its Draw (added at the end, over the cap)
+  // instead of taking a slot from a real option.
+  const followUps = allCandidates.filter((candidate) => candidate?.requiresDrawnWeaponId);
+  const sortedCandidates = allCandidates.filter((candidate) => !candidate?.requiresDrawnWeaponId);
   const selected = [];
   const selectedKeys = new Set();
 
@@ -222,6 +234,7 @@ function selectPlanningCandidates(sortedCandidates) {
   }
 
   for (const candidate of sortedCandidates.slice(0, PRIMARY_CANDIDATES)) add(candidate);
+  for (const candidate of sortedCandidates.filter((entry) => Number(entry?.actionCost) === 1 && Number(entry?.score) > 0).slice(0, ONE_ACTION_FILLERS)) add(candidate);
 
   for (const payoff of sortedCandidates.filter(requiresTargetCondition).slice(0, PRIMARY_CANDIDATES)) {
     for (const group of targetConditionRequirementOptions(payoff)) {
@@ -243,6 +256,13 @@ function selectPlanningCandidates(sortedCandidates) {
   }
 
   for (const candidate of sortedCandidates) add(candidate);
+  const drawnIds = new Set(selected.filter((candidate) => candidate?.activityProfile?.drawsWeapon === true)
+    .map((candidate) => candidate?.item?.id).filter(Boolean));
+  for (const followUp of followUps) {
+    if (!drawnIds.has(followUp.requiresDrawnWeaponId) || selectedKeys.has(actionKey(followUp))) continue;
+    selected.push(followUp);
+    selectedKeys.add(actionKey(followUp));
+  }
   return selected.toSorted((left, right) => {
     const targetConditionDelta = Number(requiresTargetCondition(left)) - Number(requiresTargetCondition(right));
     if (targetConditionDelta !== 0) return targetConditionDelta;
@@ -460,6 +480,8 @@ function setupPriority(step, allSteps) {
     if (supportsPlannedStep) return 0;
   }
 
+  // Recall Knowledge first: what it reveals (the weak save, a weakness) should inform the attack.
+  if (step?.slug === "recall-knowledge" && hasOffensiveFollowUp(allSteps)) return -0.5;
   if (step?.slug === "demoralize" && hasOffensiveFollowUp(allSteps)) return 0;
   if (step?.slug === "feint" && hasStrikeFollowUp(allSteps)) return 1;
   if (isOffensiveSetup(step) && hasOffensiveFollowUp(allSteps)) return 1;
@@ -660,8 +682,18 @@ function approachPool(approachCandidates, eligibleCandidates, context, budget, s
   // best of each kind in turn: Strikes, spells, everything else.
   const kind = (candidate) => candidate.source === "strike" || candidate?.activityProfile?.includesStrike ? 0
     : String(candidate.source ?? "").startsWith("spell") ? 1 : 2;
-  const queues = [0, 1, 2].map((key) => eligible.filter((candidate) => kind(candidate) === key));
-  const picked = [];
+  // A heal aimed at an ally (the dying one first) always makes the list: every approach candidate
+  // scores -999 until re-scored, so an arbitrary five could leave the cleric's Heal out entirely.
+  const patientHeals = eligible
+    .filter((candidate) => normalizedActionFacts(candidate).role === "healing" && candidate?.suggestedTarget?.type === "ally")
+    // Real HP back (Heal, Soothe) before Stabilize; the 2-action, 30-foot Heal before the touch one.
+    .toSorted((left, right) => {
+      const restores = (candidate) => /(?:^|-)(?:heal|harm|soothe|life-boost|breath-of-life|vital-beacon)(?:$|-)/.test(normalizeSlug(candidate?.slug ?? candidate?.name)) ? 2 : 0;
+      return (restores(right) + Number(right.actionCost === 2)) - (restores(left) + Number(left.actionCost === 2));
+    })
+    .slice(0, 2);
+  const queues = [0, 1, 2].map((key) => eligible.filter((candidate) => kind(candidate) === key && !patientHeals.includes(candidate)));
+  const picked = [...patientHeals];
   while (picked.length < MAX_APPROACH_CANDIDATES && queues.some((queue) => queue.length)) {
     for (const queue of queues) if (queue.length && picked.length < MAX_APPROACH_CANDIDATES) picked.push(queue.shift());
   }
@@ -692,6 +724,75 @@ function rangedStandOffRange(tactic, candidates) {
   return ranges.length ? Math.min(60, Math.max(...ranges)) : null;
 }
 
+// A dying ally is an emergency: when this creature can heal or stabilize them (now or after
+// moving), a plan that doesn't is worse than any damage it deals.
+const DYING_NEGLECT_PENALTY = 120;
+const DYING_APPROACH_BONUS = 50;
+function dyingAllyNeglect(context, steps, candidates) {
+  const dying = contextAllies(context).filter((ally) => entityHasAnyCondition(ally, ["dying"]) && !entityHasAnyCondition(ally, ["healed"]));
+  if (!dying.length) return 0;
+  const helps = (step) => step?.role === "healing" || normalizedActionFacts(step).role === "healing" || /(?:^|-)(?:heal|stabilize|battle-medicine|treat-wounds|administer-first-aid|soothe)$/.test(normalizeSlug(step?.slug ?? step?.id));
+  if (steps.some(helps)) return 0;
+  if (!(candidates ?? []).some(helps)) return 0;
+  // Too far to heal this turn: closing the distance (a Stride toward them) is the help on offer, so
+  // that next turn's heal lands.
+  const dyingIds = new Set(dying.map((ally) => String(ally?.id ?? "")).filter(Boolean));
+  const towardDying = steps.filter((step) => /-toward-/.test(String(step?.id ?? "")) && dyingIds.has(String(step?.suggestedTarget?.id ?? ""))).length;
+  return towardDying ? Math.min(2, towardDying) * DYING_APPROACH_BONUS : -DYING_NEGLECT_PENALTY;
+}
+
+// Steps are scored on the turn's starting board, where a Sudden Charge backed by the fist is a
+// fist hit. After a plain Draw in the same plan it lands with the drawn weapon: rebind its backing
+// Strike to that weapon, and credit the fist penalty back plus the damage the weapon adds.
+const DRAWN_BACKING_PENALTY_REFUND = 60;
+function isFistStrike(strike) {
+  return strike?.item?.slug === "basic-unarmed" || strike?.item?.id === "xxPF2ExUNARMEDxx";
+}
+function withDrawnWeaponBacking(steps) {
+  let credit = 0;
+  let drawn = null;
+  const rebound = (steps ?? []).map((step) => {
+    const profile = step?.activityProfile ?? {};
+    if (profile.drawsWeapon === true && profile.includesStrike !== true && step?.item?.system?.range == null) {
+      drawn = step.drawnStrike ?? null;
+      return step;
+    }
+    if (!drawn || profile.requiresBackingStrike !== true || !isFistStrike(profile.backingStrike)) return step;
+    credit += DRAWN_BACKING_PENALTY_REFUND
+      + Math.max(0, strikeDamageScore(Number(drawn.averageDamage) || 0) - strikeDamageScore(Number(profile.backingStrike.averageDamage) || 0));
+    return { ...step, activityProfile: { ...profile, backingStrike: drawn } };
+  });
+  return { steps: rebound, credit };
+}
+
+// An ally one hit from going down (under a quarter HP, not yet dying): when this creature can heal
+// them this turn, a plan that heals nobody that hurt is worse, nearly as bad as leaving a dying ally.
+const CRITICAL_ALLY_HP = 0.25;
+const CRITICAL_ALLY_NEGLECT_PENALTY = 110;
+function criticalAllyNeglect(context, steps, candidates) {
+  const critical = contextAllies(context).filter((ally) => {
+    const hp = entityHpPercent(ally);
+    return Number.isFinite(hp) && hp > 0 && hp < CRITICAL_ALLY_HP && !entityHasAnyCondition(ally, ["dying", "dead"]);
+  });
+  if (!critical.length) return 0;
+  const criticalIds = new Set(critical.map((ally) => String(ally?.id ?? "")).filter(Boolean));
+  const heals = (step) => step?.role === "healing" || normalizedActionFacts(step).role === "healing";
+  const target = (step) => String(step?.suggestedTarget?.id ?? step?.preferredTarget?.id ?? "");
+  if (steps.some((step) => heals(step) && criticalIds.has(target(step)))) return 0;
+  if (!(candidates ?? []).some((candidate) => heals(candidate) && criticalIds.has(target(candidate)))) return 0;
+  return -CRITICAL_ALLY_NEGLECT_PENALTY;
+}
+
+// Spellstrike is scored on the turn's starting board, where a spent one is heavily penalised. When
+// this plan recharges it first, that penalty doesn't apply: credit it back (and the usual payoff bonus).
+const SPELLSTRIKE_RECHARGE_CREDIT = 138;
+function spellstrikeRechargeCredit(context, steps) {
+  if ((context?.profile ?? context?.actor?.profile)?.combatState?.spellstrikeNeedsRecharge !== true) return 0;
+  const recharge = steps.findIndex(rechargesSpellstrike);
+  const strike = steps.findIndex(isSpellstrikeStep);
+  return recharge >= 0 && strike > recharge ? SPELLSTRIKE_RECHARGE_CREDIT : 0;
+}
+
 function isSwarmContext(context) {
   const raw = contextActorDocument(context)?.system?.traits?.value;
   return (raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : []).includes("swarm");
@@ -706,7 +807,9 @@ function approachReaches(context, candidate) {
   const strides = Number(candidate?.activityProfile?.strideCount) || 0;
   const speed = Number(context?.profile?.speed ?? context?.actor?.profile?.speed) || 25;
   const reach = Number(candidate?.activityProfile?.strikeReach) || currentAttackRange(candidate) || 5;
+  const areaSize = candidate?.targetingProfile?.area === true ? Number(candidate.targetingProfile.distance) || 0 : 0;
   const range = strides > 0 ? speed * strides + reach
+    : areaSize > 0 ? (Number(candidate?.targetingProfile?.maxRange ?? candidate?.range?.max) || 0) + areaSize
     : candidate?.activityProfile?.inOwnSpace === true ? 0
     : Number(candidate?.targetingProfile?.maxRange) > 0 ? Number(candidate.targetingProfile.maxRange)
       : currentAttackRange(candidate) ?? 5;
@@ -733,6 +836,33 @@ function strideTowardPatients(searchPool, approach) {
   }));
 }
 
+// An area attack that catches nobody yet (a 15-foot cone, everyone 25 feet off) needs a Stride that
+// ends close enough to aim it, not the plain Stride's stand-off square: offer that copy per target.
+function strideIntoArea(searchPool, approach) {
+  const stride = searchPool.find((candidate) => isPlainMovement(candidate) && /(?:^|-)stride$/.test(normalizeSlug(candidate?.slug ?? candidate?.id)));
+  if (!stride) return [];
+  const targets = new Map();
+  for (const candidate of approach) {
+    const profile = candidate?.targetingProfile ?? {};
+    const target = candidate?.suggestedTarget;
+    const size = Number(profile.distance) || 0;
+    if (profile.area !== true || profile.enemy !== true || size <= 0 || !target?.id) continue;
+    // Close enough that the template still reaches past the nearest creature to the ones behind it.
+    const reach = Math.max(5, (Number(profile.maxRange ?? candidate?.range?.max) || 0) + size - 5);
+    const known = targets.get(target.id);
+    if (!known || reach < known.reach) targets.set(target.id, { target, reach });
+  }
+  return [...targets.values()].map(({ target, reach }) => ({
+    ...stride,
+    id: `${stride.id ?? stride.slug}-into-area-${target.id}`,
+    suggestedTarget: target,
+    preferredTarget: target,
+    activityProfile: { ...(stride.activityProfile ?? {}), approachReach: reach },
+    reason: t("Plan.StrideIntoArea", "Stride within area range of {name}.", { name: target.name }),
+    reasons: [t("Plan.StrideIntoArea", "Stride within area range of {name}.", { name: target.name })],
+  }));
+}
+
 function isAttackPayoff(step) {
   return isAttackAction(step) || step?.activityProfile?.includesStrike === true;
 }
@@ -754,17 +884,38 @@ export function orphanSetupSteps(steps, candidates = []) {
   // Only an attack usable without moving makes a Stride "padding": when every attack needs a move
   // first (enemy 40 ft away), a Stride is progress even if the rest of the turn is defensive.
   const attackOnOffer = candidates.some((candidate) =>
-    candidate?.available !== false && !candidate?.needsApproach && Number(candidate?.score) > 0 && isAttackPayoff(candidate)
+    candidate?.available !== false && !candidate?.needsApproach && !candidate?.requiresDrawnWeaponId && Number(candidate?.score) > 0 && isAttackPayoff(candidate)
     && !(Number(candidate?.activityProfile?.strideCount) > 0));
+  const targetOf = (step) => step?.suggestedTarget?.id ?? step?.preferredTarget?.id ?? step?.targetingProfile?.preferredTargetId ?? null;
   return steps.filter((step, index) => {
     const later = steps.slice(index + 1);
+    // Feint and Create a Diversion only open up the creature they targeted: a Strike on someone
+    // else doesn't pay them off.
+    if (/(?:^|-)(?:feint|create-a-diversion)$/.test(normalizeSlug(step?.slug ?? step?.id)) && targetOf(step)) {
+      return !later.some((next) => isAttackPayoff(next) && (!targetOf(next) || targetOf(next) === targetOf(step)));
+    }
+    // Bespell Strikes / Bespell Weapon charge a Strike: a spell attack (Ignition) doesn't use them.
+    if (/(?:^|-)(?:bespell-strikes|bespell-weapon)$/.test(normalizeSlug(step?.slug ?? step?.id))) {
+      return !later.some((next) => next?.source === "strike" || next?.activityProfile?.includesStrike === true);
+    }
+    // Drain Bonded Item (and kin) only pays off when a slotted spell is cast after it this turn.
+    if (step?.activityProfile?.recoversSpellResource === true && step?.activityProfile?.npcFamily !== "recharge") {
+      return !later.some((next) => String(next?.source ?? "").startsWith("spell")
+        && Number(next?.castRank ?? next?.rank) > 0
+        && !candidateTraitSlugs(next).some((trait) => trait === "cantrip" || trait === "focus"));
+    }
     const plainDraw = step?.activityProfile?.drawsWeapon === true && step?.activityProfile?.includesStrike !== true;
     if (!plainDraw && later.some(isAttackPayoff)) return false;
     if (isAttackSetup(step)) return true;
     // A plain Draw is wasted unless a later step attacks with the weapon it drew.
     if (step?.activityProfile?.drawsWeapon === true && step?.activityProfile?.includesStrike !== true) {
       const drawn = new Set(weaponIdentityValues(step));
-      return !later.some((next) => isAttackPayoff(next) && weaponIdentityValues(next).some((weapon) => drawn.has(weapon)));
+      // A melee weapon drawn before a Sudden Charge (or kin) that would otherwise land with the fist.
+      const meleeDraw = step?.item?.system?.range == null;
+      return !later.some((next) => (isAttackPayoff(next) && weaponIdentityValues(next).some((weapon) => drawn.has(weapon)))
+        || (meleeDraw && step.drawnStrike && next?.activityProfile?.requiresBackingStrike === true
+          && (isFistStrike(next.activityProfile.backingStrike)
+            || (next.activityProfile.backingStrike?.item?.id ?? next.activityProfile.backingStrike?.item?._id) === (step.item?.id ?? step.item?._id))));
     }
     // A move that brings an out-of-reach action into range (a heal on a distant ally) is paid off.
     if (later.some((next) => next?.needsApproach)) return false;
@@ -802,20 +953,25 @@ export function planScore(context, steps, sortedCandidates, budget) {
 function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null, simulation = null) {
   const executionOrder = applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps));
   const simulated = simulation ? simulation.rescorer.simulate(context, simulation.initialState, executionOrder) : executionOrder;
-  const orderedSteps = rebalancePlanMap(simulated);
+  const drawnBacking = withDrawnWeaponBacking(rebalancePlanMap(simulated));
+  const orderedSteps = drawnBacking.steps;
   const evaluation = evaluatePlan(context, orderedSteps);
   const totalCost = steps.reduce((total, step) => total + step.actionCost, 0);
   const targets = context.targets ?? context.battlefield?.targets ?? [];
   // The enemy's turn: how many more (or fewer) enemies can hit you where this plan ends.
   const endState = simulation ? planEndState(context, simulation.initialState, orderedSteps) : null;
   const danger = simulation
-    ? endPositionDanger(context, simulation.initialState, orderedSteps, resolvedTactic?.effectiveTemperament ?? resolvedTactic?.temperament, endState)
+    ? endPositionDanger(context, simulation.initialState, orderedSteps, resolvedTactic?.effectiveTemperament ?? resolvedTactic?.temperament, endState, resolvedTactic?.effectiveRole ?? resolvedTactic?.role)
     : { delta: 0, scoreDelta: 0 };
   // Next turn: Strides saved before you can attack again (a positioning turn has value).
   const readiness = simulation
     ? nextTurnReadiness(context, simulation.initialState, orderedSteps, sortedCandidates, endState)
     : { saved: 0, scoreDelta: 0 };
-  const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget) + danger.scoreDelta + readiness.scoreDelta;
+  const tacticalScore = planScore(context, orderedSteps, sortedCandidates, budget) + danger.scoreDelta + readiness.scoreDelta
+    + dyingAllyNeglect(context, orderedSteps, sortedCandidates) + criticalAllyNeglect(context, orderedSteps, sortedCandidates)
+    + drawnBacking.credit + spellstrikeRechargeCredit(context, orderedSteps)
+    + (simulation ? defenderCoverage(context, simulation.initialState, orderedSteps, resolvedTactic?.effectiveRole ?? resolvedTactic?.role, endState).scoreDelta : 0)
+    + (simulation ? nearDeathExposure(context, simulation.initialState, orderedSteps, resolvedTactic?.effectiveTemperament ?? resolvedTactic?.temperament, endState).scoreDelta : 0);
   const tacticPlanAdjustment = tacticPersonalityPlanAdjustment(context, orderedSteps, resolvedTactic, sortedCandidates);
   const componentScoreDelta = orderedSteps.reduce(
     (total, step) => total + (Number(step?.preference?.scoreDelta) || 0),
@@ -927,10 +1083,17 @@ function comparePlanQuality(left, right, budget) {
   const leftDemoted = left.preference?.queueDemoted === true;
   const rightDemoted = right.preference?.queueDemoted === true;
   if (leftDemoted !== rightDemoted) return leftDemoted ? 1 : -1;
-  const leftFull = planUsesFullBudget(left, budget);
-  const rightFull = planUsesFullBudget(right, budget);
-  if (leftFull !== rightFull) return rightFull ? 1 : -1;
-  if (right.score !== left.score) return right.score - left.score;
+  // A transitive key (a pairwise "full budget wins unless..." rule formed cycles and made the sort
+  // arbitrary): plans with a wasted step (orphan setup, negative step) rank below clean ones; among
+  // clean plans, leaving an action unused costs a fixed margin, so a 2-action Cataclysm still beats
+  // a 3-action Mist but not a near-equal full turn.
+  const tier = (plan) => ((plan?.orphanSetups > 0)
+    || (plan?.steps ?? []).some((step) => Number.isFinite(step?.score) && step.score < 0) ? 1 : 0);
+  const tierDelta = tier(left) - tier(right);
+  if (tierDelta !== 0) return tierDelta;
+  const rankScore = (plan) => Number(plan.score) - (planUsesFullBudget(plan, budget) ? 0 : FULL_BUDGET_PREFERENCE_MARGIN);
+  const delta = rankScore(right) - rankScore(left);
+  if (delta !== 0) return delta;
   return right.totalCost - left.totalCost;
 }
 
@@ -1016,7 +1179,20 @@ function diversifyPlanOrder(sortedPlans, budget) {
   return [...ordered, ...tail];
 }
 
+// Real-square destinations for planned Strides: the pathing is the costliest part of a search and
+// the same (from, target, speed, reach) recurs across many plan prefixes. Cleared per search, since the
+// board can change between searches.
+const moveDestinationCache = new Map();
+function cachedMoveDestination(projectedContext, target, speed, reach) {
+  const from = projectedContext?.token?.center;
+  const to = target?.center ?? target?.token?.center;
+  const key = [from?.x, from?.y, target?.id, to?.x, to?.y, speed, reach].join("|");
+  if (!moveDestinationCache.has(key)) moveDestinationCache.set(key, plannedMoveDestination(projectedContext, target, speed, reach));
+  return moveDestinationCache.get(key);
+}
+
 export function buildTurnPlans(context, candidates, { reservedSteps = [], includeCoverage = true, includePendingQuickened = true, approachCandidates = [] } = {}) {
+  moveDestinationCache.clear();
   if (includePendingQuickened && context?.actionTracker?.quickenedPending
     && context.actionTracker.nextTurnPool?.quickenedActions > 0 && context.quickenedAllowed?.length) {
     // A future recommendation is separate from this turn's search: it cannot buy a
@@ -1079,7 +1255,7 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
   }
 
   const approach = approachPool(approachCandidates, eligibleCandidates, context, budget, sortedCandidates);
-  sortedCandidates = [...sortedCandidates, ...strideTowardPatients(sortedCandidates, approach), ...approach];
+  sortedCandidates = [...sortedCandidates, ...strideTowardPatients(sortedCandidates, approach), ...strideIntoArea(sortedCandidates, approach), ...approach];
   const rescorer = createPlanRescorer(context, initialPlanState);
   const rescore = rescorer.rescore;
   const simulation = { rescorer, initialState: initialPlanState };
@@ -1156,6 +1332,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       }
       if (candidate.needsApproach) {
         if (!approachReaches(projectedContext, linkedCandidate)) continue;
+        // An area attack re-aimed after moving must actually catch someone.
+        if (linkedCandidate.targetingProfile?.area === true && linkedCandidate.activityProfile?.areaHitCount === 0) continue;
         // Name whoever the swarm ends up on, not the far-off target it was first scored against.
         const underneath = linkedCandidate.activityProfile?.inOwnSpace === true
           ? contextEnemies(projectedContext).find((enemy) => Number(enemy?.distance) <= 0) : null;
@@ -1171,7 +1349,12 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       if (!candidate.needsApproach && !linkedCandidate.activityProfile?.requiresProjectedAfterKey && !linkedCandidate.activityProfile?.orderAfterKey) {
         const moved = steps.findLast(isMovementStep);
         if (moved && (linkedCandidate.targetingProfile?.enemy === true || isAttackAction(linkedCandidate))) {
-          const range = currentAttackRange(linkedCandidate) ?? (Number(context.profile?.reach ?? context.profile?.meleeReach) || 5);
+          // Attacks without a listed range need melee reach; anything else needs only its own range
+          // (Exploit Vulnerability has none, so it may still lead the plan before the move).
+          const ownRange = Number(linkedCandidate.targetingProfile?.maxRange ?? linkedCandidate.range?.max);
+          const range = currentAttackRange(linkedCandidate)
+            ?? (isAttackAction(linkedCandidate) ? (Number(context.profile?.reach ?? context.profile?.meleeReach) || 5)
+              : (ownRange > 0 ? ownRange : Infinity));
           const now = Number(projectedTargetOf(projectedContext, linkedCandidate)?.distance);
           const before = Number(projectedTargetOf(context, linkedCandidate)?.distance);
           if (now <= range && before > range) {
@@ -1188,9 +1371,10 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
         const speed = Number(projectedContext.profile?.speed ?? projectedContext.actor?.profile?.speed) || 25;
         // A swarm attacks the creatures in its own space: it Strides onto them, not next to them.
         const reach = isSwarmContext(projectedContext) ? 0
+          : Number(linkedCandidate.activityProfile?.approachReach) > 0 ? Number(linkedCandidate.activityProfile.approachReach)
           : standOffRange && !contextAllies(projectedContext).includes(target) ? standOffRange
             : Number(projectedContext.profile?.reach ?? projectedContext.profile?.meleeReach) || 5;
-        const destination = target ? plannedMoveDestination(projectedContext, target, step ? 5 : speed, reach) : null;
+        const destination = target ? cachedMoveDestination(projectedContext, target, step ? 5 : speed, reach) : null;
         if (destination) linkedCandidate = { ...linkedCandidate, destination: { x: destination.x, y: destination.y }, plannedDestination: true };
       }
       if (entityHasAnyCondition(projectedContext.profile ?? projectedContext.actor?.profile, ["restrained"]) && linkedCandidate.slug !== "escape") continue;
@@ -1216,8 +1400,13 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
         [...reservedSteps, ...steps],
       );
       const firesWeapon = strikeAction || linkedCandidate?.activityProfile?.includesStrike === true;
-      const repeatReloadCost = firesWeapon && (currentUses > 0 || npcReloadRequired || weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps]))
-        ? reloadCost(linkedCandidate) : 0;
+      // Unloaded at turn start (PF2e ammunition tracking): the first shot needs its Reload too,
+      // unless an explicit Reload of this weapon already came earlier in the plan.
+      const firstShotUnloaded = firesWeapon && linkedCandidate?.startsUnloaded === true && currentUses === 0
+        && !weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps])
+        && ![...reservedSteps, ...steps].some((step) => step?.executable === "reload-weapon" && strikeWeaponKey(step) === strikeWeaponKey(linkedCandidate));
+      const repeatReloadCost = firesWeapon && (currentUses > 0 || npcReloadRequired || firstShotUnloaded || weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps]))
+        ? (Number(reloadCost(linkedCandidate)) > 0 ? reloadCost(linkedCandidate) : firstShotUnloaded ? 1 : 0) : 0;
       // A thrown weapon or bomb leaves your hand: throwing again needs another one drawn first.
       const redrawCost = firesWeapon && repeatReloadCost === 0 && isThrownOrBombStrike(linkedCandidate)
         && (currentUses > 0 || weaponFiredEarlier(linkedCandidate, [...reservedSteps, ...steps])) ? 1 : 0;

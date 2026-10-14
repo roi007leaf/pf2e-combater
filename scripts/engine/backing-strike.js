@@ -8,8 +8,9 @@ export function backingStrikeFilterByPreset(preset) {
 }
 
 function strikeOptions(values) {
+  // A stowed weapon's follow-up Strike isn't in hand yet: it can't back a Sudden Charge.
   return (Array.isArray(values) ? values : [])
-    .filter((strike) => strike?.source === "strike" || strike?.slug === "strike");
+    .filter((strike) => (strike?.source === "strike" || strike?.slug === "strike") && !strike?.requiresDrawnWeaponId);
 }
 
 function heldItem(item) {

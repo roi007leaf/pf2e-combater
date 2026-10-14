@@ -46,8 +46,9 @@ import {
 } from "./tactic-helpers.js";
 import { t } from "../../i18n.js";
 import { HARD_BLOCK_SCORE } from "./weights.js";
-import { healingRecipientAllowed } from "./gates.js";
+import { healingRecipientAllowed, isEidolonOnlySpell } from "./gates.js";
 import { recallKnowledgeAttemptState } from "../../rules/recall-knowledge.js";
+import { canUseIntelCategory, isNpcIntelTarget } from "../../rules/intel-ledger.js";
 import { contextActorDocument } from "../actor-context.js";
 
 export { baseScore, defaultReason, includesStand } from "./tactic-helpers.js";
@@ -249,6 +250,8 @@ function senseMotiveTactic(acc, { target }) {
   acc.reasons.push(t("ScoreReason.UsefulWhenEnemyIntent", "Useful when enemy intent is unclear."));
 }
 
+const RECALL_CATEGORIES = ["saves", "weaknesses", "resistances", "immunities", "actions"];
+
 function recallKnowledgeTactic(acc, { context, target }) {
   if (!target) return;
   // A failed attempt blocks further Recall Knowledge on this creature; each success already spent
@@ -259,7 +262,12 @@ function recallKnowledgeTactic(acc, { context, target }) {
     acc.reasons.push(t("ScoreReason.RecallKnowledgeBlocked", "Recall Knowledge on {target} already failed.", { target: target.name }));
     return;
   }
-  const value = Math.max(2, 16 - state.attempts * 7);
+  // What the party still doesn't know decides how much there is to learn (the party's own ledger
+  // only: a GM sees everything, so nothing is unknown there).
+  const playerView = context?.isGM !== true && isNpcIntelTarget(target);
+  const unknown = playerView ? RECALL_CATEGORIES.filter((category) => !canUseIntelCategory(context, target, category)).length : 0;
+  const learnable = playerView ? (unknown ? unknown * 7 : -10) : 0;
+  const value = Math.max(2, 16 + learnable - state.attempts * 7);
   acc.score += value;
   if (state.attempts > 0) {
     acc.reasons.push(t("ScoreReason.RecallKnowledgeRepeat", "Already recalled {count}x about {target}; less left to learn.", { count: state.attempts, target: target.name }));
@@ -329,6 +337,18 @@ function commandAnAnimalTactic(acc, { context, action }) {
   }
 }
 
+// Act Together: the summoner's action also gives the eidolon one of its own. Planned like a commanded
+// companion's sub-turn with a one-action budget (a Strike if it already reaches, else a Stride in).
+function actTogetherTactic(acc, { context }) {
+  const eidolons = context?.eidolons ?? [];
+  if (!eidolons.length) return;
+  acc.minionPlan = planMinionSubturn({ ...context, minions: eidolons }, { minionActionBudget: 1 });
+  if (acc.minionPlan) {
+    acc.score += 24 + acc.minionPlan.scoreDelta;
+    acc.reasons.push(...acc.minionPlan.reasons);
+  }
+}
+
 function administerFirstAidTactic(acc, { context }) {
   const ally = dyingAlly(context) ?? bleedingAlly(context);
   if (!ally) return;
@@ -368,6 +388,7 @@ const SLUG_TACTICS = {
   steal: stealTactic,
   "palm-an-object": palmAnObjectTactic,
   "command-an-animal": commandAnAnimalTactic,
+  "act-together": actTogetherTactic,
   "administer-first-aid": administerFirstAidTactic,
   stabilize: stabilizeTactic,
 };
@@ -377,6 +398,12 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
   const needsTargetableEnemy = requiresTargetableEnemy(action, role);
 
   if (isSelfCenteredAreaAction(action)) return null;
+
+  // Boost Eidolon, Lifelink Surge, Evolution Surge...: only the summoner's eidolon can take them.
+  if (isEidolonOnlySpell(action)) {
+    const eidolon = context?.eidolons?.[0];
+    return eidolon ? targetReference(eidolon, "ally") : null;
+  }
 
   if (action.source === "strike") {
     return target ? targetReference(target, "enemy") : null;
@@ -404,6 +431,12 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
       .filter((ally) => healingRecipientAllowed(action, ally));
     const dying = healingAllies.find((ally) => hasCondition(ally, "dying"));
     if (dying) return targetReference(dying, "ally");
+    // Stabilize has no one else to go to: name the dying ally even out of reach (a Stride comes first).
+    if (/(?:^|-)stabilize$/.test(String(action?.slug ?? action?.id ?? "").toLowerCase())) {
+      const farDying = contextAllies(context).filter((ally) => hasCondition(ally, "dying") && healingRecipientAllowed(action, ally))
+        .toSorted((left, right) => (Number(left?.distance) || Infinity) - (Number(right?.distance) || Infinity))[0];
+      if (farDying) return targetReference(farDying, "ally");
+    }
     const bleeding = healingAllies.find((ally) => hasCondition(ally, "persistent-bleed"));
     if (bleeding) return targetReference(bleeding, "ally");
     const injuredAlly = healingAllies
@@ -446,6 +479,14 @@ export function suggestedTargetFor(context, action, role, preferredTarget = firs
 }
 
 const UNARMED_WITH_WEAPON_PENALTY = 60;
+const DRAW_ARMS_LATER_TURNS_BONUS = 25;
+
+// Any real (non-unarmed) weapon already in hand.
+function hasHeldWeapon(context) {
+  const actor = contextActorDocument(context);
+  return (actor?.itemTypes?.weapon ?? []).some((weapon) => String(weapon?.system?.category ?? "") !== "unarmed"
+    && String(weapon?.system?.equipped?.carryType ?? "") === "held");
+}
 
 function isBasicUnarmed(item) {
   return item?.slug === "basic-unarmed" || item?.id === "xxPF2ExUNARMEDxx";
@@ -480,9 +521,27 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
   }
 
   // A fist is the fallback for an empty hand, not the plan when a real weapon is one Draw away.
-  if (isBasicUnarmed(action.item) && hasDrawableWeapon(context)) {
+  // Same for a Sudden Charge or Power Attack that would land with the fist.
+  if ((isBasicUnarmed(action.item) || (action.activityProfile?.requiresBackingStrike && isBasicUnarmed(backingStrike?.item)))
+    && hasDrawableWeapon(context)) {
     score -= UNARMED_WITH_WEAPON_PENALTY;
     reasons.push(t("ScoreReason.DrawWeaponInstead", "A weapon is a Draw away; a fist is the fallback."));
+  }
+  // Drawing a real weapon when only fists are ready also arms every later turn, not just this Strike.
+  if (action.activityProfile?.drawsWeapon === true && action.activityProfile?.includesStrike === true
+    && !isBasicUnarmed(action.item) && !hasHeldWeapon(context)
+    && !actionTraitSlugs(action).includes("bomb")) {
+    score += DRAW_ARMS_LATER_TURNS_BONUS;
+    reasons.push(t("ScoreReason.DrawArmsLaterTurns", "The drawn weapon stays ready for later turns."));
+  }
+  // Draw -> Strike hits with the drawn weapon: weigh its damage like a ready Strike's, so the rapier
+  // beats the main-gauche.
+  if (action.activityProfile?.drawsWeapon === true && action.activityProfile?.includesStrike === true && action.source !== "strike") {
+    const average = Number(action.averageDamage);
+    if (Number.isFinite(average) && average > 0) {
+      score += strikeDamageScore(average);
+      reasons.push(t("ScoreReason.AverageDamage", "Average damage about {amount}.", { amount: Math.round(average) }));
+    }
   }
 
   if (action.source === "strike" && inRange(action, target)) {
@@ -587,8 +646,9 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
       score += 18;
       reasons.push(t("ScoreReason.RemovesProneAndRestores", "Removes prone and restores normal movement."));
 
+      // Prone next to an enemy: -2 on your own attacks and off-guard for the enemy's whole turn.
       if (enemyInMelee(context)) {
-        score += 22;
+        score += 60;
         reasons.push(t("ScoreReason.StandingRemovesMeleeAttack", "Standing removes melee attack penalty and off-guard risk."));
       }
 
@@ -668,7 +728,8 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     reasons.push(t("ScoreReason.AreaSpellHasFriendly", "Area spell has friendly-fire risk."));
   }
 
-  if (hasSpellcastingCapability(context)) {
+  // An eidolon's Strike is the eidolon fighting, not the summoner falling back to a weapon.
+  if (hasSpellcastingCapability(context) && action.activityProfile?.eidolonStrike !== true) {
     if (isSpellAction(action)) {
       score += 18;
       reasons.push(t("ScoreReason.SpellcasterSpellOptionIs", "Spellcaster spell option is preferred over melee fallback."));

@@ -95,8 +95,10 @@ const approachContext = {
 const fist = { id: "fist", name: "Fist", actionCost: 1, range: { max: 5 }, averageDamage: 3.5 };
 const greatsword = { id: "greatsword", name: "Greatsword", actionCost: 1, range: { max: 5 }, averageDamage: 13 };
 const approaches = readStrideStrikeActivities(approachContext, [fist, greatsword]);
-assert.deepEqual(approaches.map((action) => [action.name, action.preferredTarget.id]), [["Stride -> Greatsword", "near"]],
-  "one composite per target: the cheapest target with the best weapon");
+// One composite per reachable target, cheapest first, always with the best weapon; scoring picks
+// between targets with the full ranking (focus fire, wounded enemies).
+assert.deepEqual(approaches.map((action) => [action.name, action.preferredTarget.id]), [["Stride -> Greatsword", "near"], ["Stride -> Stride -> Greatsword", "far"]],
+  "one composite per target: the cheapest target first, with the best weapon");
 assert.equal(approaches[0].averageDamage, 13, "the composite carries its weapon's damage");
 
 // 9. Ranged-ness comes from the weapon, not its reach.
@@ -328,7 +330,8 @@ assert.equal(targetAcPenalty({ conditions: { slugs: ["frightened", "sickened"], 
     assert.ok(shot.score > strike.score, `Hunted Shot (${shot.score}) outscores one bow Strike (${strike.score})`);
     assert.equal(attacksTowardMap(shot), 2, "Hunted Shot's two Strikes both advance MAP");
     const freshPlans = buildTurnPlans(fresh, candidates).plans ?? buildTurnPlans(fresh, candidates);
-    assert.deepEqual(planNames(freshPlans[0]).slice(0, 2), ["Hunt Prey", "Hunted Shot"], "Hunt Prey, then both shots");
+    // Recall Knowledge (when planned) goes first so what it reveals can inform the attack.
+    assert.deepEqual(planNames(freshPlans[0]).filter((name) => name !== "Recall Knowledge").slice(0, 2), ["Hunt Prey", "Hunted Shot"], "Hunt Prey, then both shots");
     const extraShot = planNames(freshPlans[0]).indexOf("Verdant Sting");
     assert.ok(extraShot < 0 || extraShot > 1, "a third bow Strike (at -10) only ever comes after Hunted Shot");
     for (const plan of freshPlans) {

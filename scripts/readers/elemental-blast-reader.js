@@ -39,9 +39,27 @@ function kineticistBlastFlag(actor) {
 
 function elementalBlastConfigs(actor) {
   const flag = kineticistBlastFlag(actor);
-  if (!flag) return [];
-  return Object.values(flag)
-    .filter((entry) => entry && typeof entry === "object" && typeof entry.element === "string");
+  const flagged = flag
+    ? Object.values(flag).filter((entry) => entry && typeof entry === "object" && typeof entry.element === "string")
+    : [];
+  return flagged.length ? flagged : systemElementalBlastConfigs(actor);
+}
+
+// The flag only exists once the kinetic aura is up; PF2e's own ElementalBlast knows the gates
+// before that, so Channel Elements -> Elemental Blast can be planned from a cold start.
+function systemElementalBlastConfigs(actor) {
+  const ElementalBlast = globalThis.game?.pf2e?.ElementalBlast;
+  if (typeof ElementalBlast !== "function" || !elementalBlastItem(actor)) return [];
+  try {
+    return (new ElementalBlast(actor).configs ?? []).map((config) => ({
+      element: String(config?.element ?? ""),
+      dieFaces: Number(config?.dieFaces),
+      damageTypes: (config?.damageTypes ?? []).map((entry) => entry?.value ?? entry).filter(Boolean),
+      range: Number(config?.range?.max ?? config?.range?.increment ?? config?.range) || 30,
+    })).filter((config) => config.element);
+  } catch (_error) {
+    return [];
+  }
 }
 
 export function actorHasElementalBlastConfigs(actor) {

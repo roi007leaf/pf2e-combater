@@ -18,8 +18,10 @@ function mergePlain(base, overlay) {
   return merged;
 }
 
+// The stored base rank comes first: PF2e's runtime `rank` getter already includes auto-heightening
+// (a cantrip on a 5th-level caster reports rank 3), which would leave nothing to heighten.
 export function spellBaseRank(spell) {
-  const rank = Number(spell?.rank ?? spell?.system?.level?.value ?? spell?.system?.rank?.value);
+  const rank = Number(spell?.system?.level?.value ?? spell?.rank ?? spell?.system?.rank?.value);
   return Number.isFinite(rank) ? rank : null;
 }
 

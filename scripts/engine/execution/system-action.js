@@ -75,9 +75,13 @@ export async function executeSystemAction({ actor, step, action, event, choices 
     return { status: "needs-choice", choices: ["target"], patch: {} };
   }
   if (target) setTarget(target.token);
+  // PF2e has no standalone Stabilize: it is Administer First Aid's stabilize variant.
+  const systemAction = actionSlug(action) === "stabilize"
+    ? { ...action, id: "administer-first-aid", slug: "administer-first-aid", name: "Administer First Aid", variant: "stabilize", statistic: action?.statistic ?? action?.skill ?? "medicine" }
+    : action;
   const result = actionSlug(action) === "battle-medicine"
     ? await useBattleMedicineAction({ actor, action, event, targetToken: target?.token ?? null, step })
-    : await usePf2eAction({ actor, action, event, targetToken: target?.token ?? null, step });
+    : await usePf2eAction({ actor, action: systemAction, event, targetToken: target?.token ?? null, step });
   if (!result) {
     return {
       status: "failed",

@@ -65,6 +65,8 @@ const GENERIC_ACTION_DEFS = [
     role: "debuff",
     skill: "intimidation",
     targetSave: "will",
+    // PF2e traits; "mental" lets mindless or mental-immune targets (once known) be skipped.
+    traits: ["auditory", "concentrate", "emotion", "fear", "mental"],
     requiresTarget: true,
     maxRange: 30,
     executable: "pf2e-action",
@@ -379,6 +381,28 @@ const GENERIC_ACTION_DEFS = [
     activityProfile: { includes: ["move", "crawl"], crawlDistance: 5 },
     requiresProne: true,
     executable: "pf2e-action",
+  },
+  {
+    // Spellstrike is spent until recharged (1 action, concentrate). PF2e has no item for it.
+    id: "recharge-spellstrike",
+    name: "Recharge Spellstrike",
+    slug: "recharge-spellstrike",
+    actionCost: 1,
+    role: "resource-recovery",
+    traits: ["concentrate"],
+    requiresSpellstrikeExpended: true,
+    executable: "recharge-spellstrike",
+    activityProfile: { includes: ["resource"], rechargeSpellstrike: true },
+  },
+  {
+    // Start of a dying creature's turn: a flat check (DC 10 + dying) is all it can do.
+    id: "recovery-check",
+    name: "Recovery Check",
+    slug: "recovery-check",
+    actionCost: 0,
+    role: "recovery",
+    requiresDying: true,
+    executable: "recovery-check",
   },
   {
     id: "retch",

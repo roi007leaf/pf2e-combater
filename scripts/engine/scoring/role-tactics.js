@@ -21,6 +21,7 @@ import {
   isAreaAction,
   maxRange,
   saveScoreDelta,
+  targetFullyImmuneToDamage,
 } from "./facts.js";
 import {
   activityMoveReach,
@@ -39,25 +40,53 @@ function saveIntelCategory(action) {
   return action?.saveProfile?.stat === "perception" ? "perception" : "saves";
 }
 
+// Only something that gives back Hit Points brings a dying ally back up; Clear Mind or Cleanse
+// Affliction remove conditions and leave them at 0 HP.
+function restoresHitPoints(action) {
+  const slug = String(action?.slug ?? "").toLowerCase();
+  if (/^(heal|harm|soothe|vital-beacon|life-boost|breath-of-life|heal-companion)$/.test(slug)) return true;
+  const item = action?.effectiveItem ?? action?.item;
+  const text = String(item?.system?.description?.value ?? "").replace(/<[^>]+>/g, " ").toLowerCase();
+  return /\b(?:regains?|restores?|heals?)\b[^.]{0,80}\bhit points\b|\bhit points\b[^.]{0,40}\b(?:regain|restored)\b|@damage\[[^\]]*healing/.test(text);
+}
+
 function healingTactic(acc, { context, action, profile }) {
   if (!isCurated(action)) return;
   // Restoring HP to a dying ally beats Stabilize (+40), which leaves them unconscious at 0 HP.
   const slug = String(action?.slug ?? "").toLowerCase();
   const dying = contextAllies(context).find((ally) => hasCondition(ally, "dying") && !hasCondition(ally, "healed"));
-  if (dying && !/stabilize/.test(slug)) {
+  if (dying && !/stabilize/.test(slug) && restoresHitPoints(action)) {
     acc.score += 50;
     acc.reasons.push(t("ScoreReason.HealsDyingAlly", "Brings {name} back up.", { name: dying.name }));
   }
-  const injuredAlly = contextAllies(context).find((ally) => hpPercent(ally) < 0.5);
+  const injuredAlly = contextAllies(context).filter((ally) => !hasCondition(ally, "dead") && hpPercent(ally) < 0.5)
+    .toSorted((left, right) => hpPercent(left) - hpPercent(right))[0];
   if (hpPercent(profile) < 0.5) {
     acc.score += 34;
     acc.reasons.push(t("ScoreReason.BadlyInjured", "{name} is badly injured.", { name: selfReference(context).name }));
+    // Near death, healing yourself beats one more attack: the next hit ends your turns entirely.
+    if (hpPercent(profile) < 0.25 && restoresHitPoints(action)) {
+      acc.score += 40;
+      acc.reasons.push(t("ScoreReason.HealSelfCritical", "{name} could drop on the next hit.", { name: selfReference(context).name }));
+    }
   } else if (injuredAlly) {
     acc.score += 34;
     acc.reasons.push(t("ScoreReason.BadlyInjured", "{name} is badly injured.", { name: injuredAlly.name }));
+    // An ally one hit from going down: as urgent as healing yourself at that point.
+    if (hpPercent(injuredAlly) < 0.25 && restoresHitPoints(action)) {
+      acc.score += 60;
+      acc.reasons.push(t("ScoreReason.HealAllyCritical", "{name} could drop on the next hit.", { name: injuredAlly.name }));
+    }
   } else {
     acc.score -= 10;
     acc.reasons.push(t("ScoreReason.NoAllyIsBadly", "No ally is badly injured."));
+  }
+  // The 2-action Heal adds 8 HP per rank on top of the dice, from 30 ft: worth more than the touch
+  // version when someone needs it.
+  if (/^(heal|harm)$/.test(slug) && Number(action?.actionCost) === 2 && (dying || injuredAlly || hpPercent(profile) < 0.5)) {
+    const bonus = 8 * (Number(action?.castRank ?? action?.rank) || 1);
+    acc.score += Math.min(40, 10 + bonus);
+    acc.reasons.push(t("ScoreReason.HealBonus", "Adds {bonus} HP over the touch version.", { bonus }));
   }
   // An area heal (3-action Heal) is worth it when it reaches several hurt allies at once.
   if (action?.targetingProfile?.area === true) {
@@ -159,7 +188,8 @@ function areaDamageTactic(acc, { context, action, profile }) {
     allyValues: contextAllies(context),
     maxCastRange: maxRange(action),
   });
-  const enemiesInArea = placement.enemies;
+  // A creature immune to all of the damage isn't a hit worth counting.
+  const enemiesInArea = placement.enemies.filter((enemy) => !targetFullyImmuneToDamage(context, action, enemy));
   const alliesInArea = placement.allies;
   acc.areaHitCount = enemiesInArea.length;
   acc.areaPlacementCenter = placement.areaPlacementCenter;
@@ -262,7 +292,8 @@ function controlOrDebuffTactic(acc, { context, action, profile, target, targetSa
       appliedConditions.length
       && enemiesInArea.every((enemy) => appliedConditions.some((condition) => hasCondition(enemy, condition)))
     ) {
-      acc.score -= 8;
+      // Every creature it would catch already has the condition: recasting it does nothing new.
+      acc.score -= 40;
       acc.reasons.unshift(t("ScoreReason.AreaTargetsAlreadyHave", "{p0} area targets already have {p1}.", { p0: action.name, p1: appliedConditions[0] }));
     } else {
       const centerName = placement.centerTarget?.name ? ` near ${placement.centerTarget.name}` : "";
@@ -334,6 +365,20 @@ function defenseTactic(acc, { action, profile, pressure }) {
   }
 }
 
+function multiAllyBuffRecipients(context, action) {
+  const item = action?.effectiveItem ?? action?.item;
+  const text = String(item?.system?.description?.value ?? "").replace(/<[^>]+>/g, " ").toLowerCase();
+  const match = text.match(/\beach ([a-z]+ )?all(?:y|ies)\b|\ball ([a-z]+ )?allies\b/);
+  if (!match) return 0;
+  const qualifier = (match[1] ?? match[2] ?? "").trim();
+  const range = Number(action?.targetingProfile?.maxRange ?? action?.range?.max) || 30;
+  return contextAllies(context).filter((ally) => hpPercent(ally) > 0
+    && (!Number.isFinite(Number(ally?.distance)) || Number(ally.distance) <= range)
+    && (!qualifier || ["who", "that", "within", "in"].includes(qualifier)
+      || String(ally?.name ?? "").toLowerCase().includes(qualifier)
+      || (Array.isArray(ally?.traits) && ally.traits.map((trait) => String(trait).toLowerCase()).includes(qualifier)))).length;
+}
+
 function buffTactic(acc, { context, action }) {
   if (!isCurated(action)) return;
   // recipient.value (buffs.js) already scores attackBuff/damageBuff, extraAction, defensive
@@ -344,6 +389,14 @@ function buffTactic(acc, { context, action }) {
   const grantsQuickened = actionGrantsQuickened(action);
   const buffValue = Number(recipient?.value) || 0;
   acc.score += buffValue;
+  // "Each ogre ally who hears this command becomes quickened": every qualifying ally in range gains
+  // it, so the value scales with them, not just the single best recipient.
+  const reached = multiAllyBuffRecipients(context, action);
+  if (reached > 1 && buffValue > 0) {
+    // A quickened ally gets a whole extra Strike or Stride: worth about a Strike each.
+    acc.score += grantsQuickened ? (reached - 1) * 80 : Math.round(buffValue * 0.6 * (reached - 1));
+    acc.reasons.push(t("ScoreReason.BuffsSeveralAllies", "Reaches {count} allies at once.", { count: reached }));
+  }
   // Hasting a pure caster buys an extra Stride at best: not a spell slot's worth.
   if (grantsQuickened && hasteOnlyStrikesOrStrides(action) && recipient?.entity && isPrimarySpellcaster(recipient.entity)) {
     acc.score -= 60;
@@ -368,9 +421,19 @@ function stealthDefenseTactic(acc, { context, action }) {
   acc.reasons.unshift(t("ScoreReason.CanMakeHarderToTarget", "{p0} can make {p1} harder to target.", { p0: action.name, p1: recipientName }));
 }
 
-function summonTactic(acc, { action }) {
+function summonTactic(acc, { context, action }) {
   if (!isCurated(action)) return;
   acc.score += 14;
+  // Nothing summoned yet: the first summon sets up every later turn (Undead, Arise! before Attack!).
+  if (!(context?.summons ?? []).length) {
+    acc.score += 40;
+    acc.reasons.push(t("ScoreReason.FirstSummon", "Nothing summoned yet; these fight from next turn on."));
+  }
+  // "Summons two Medium undead entities": more bodies on the field are worth more.
+  const item = action?.effectiveItem ?? action?.item;
+  const text = String(item?.system?.description?.value ?? "").replace(/<[^>]+>/g, " ").toLowerCase();
+  const count = { two: 2, three: 3, four: 4 }[text.match(/\bsummons? (two|three|four)\b/)?.[1]] ?? 1;
+  if (count > 1) acc.score += (count - 1) * 18;
   acc.reasons.unshift(t("ScoreReason.BringsAnAllyOrConstruct", "{p0} brings an ally or construct onto the battlefield.", { p0: action.name }));
 }
 
@@ -459,7 +522,8 @@ export function scoreCuratedRoleTactics(context, action, {
   // Only "Draw X -> Strike" earns the strike value; a plain Draw is just an Interact.
   if (action.activityProfile?.drawsWeapon && action.activityProfile?.includesStrike === true && target) {
     const weaponName = action.activityProfile.weaponName ?? action.item?.name ?? action.name;
-    if (inActionReach(profile, action, target)) {
+    // An approach candidate is scored as it will be after the Stride the planner puts first.
+    if (inActionReach(profile, action, target) || action.needsApproach === true) {
       // Drawing a weapon costs an action. It is the strong play only when no
       // enemy is already in melee reach; otherwise an in-hand Strike on the
       // adjacent enemy is the better use of the turn.

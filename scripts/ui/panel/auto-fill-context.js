@@ -1,5 +1,5 @@
 import { currentTargetSelection } from "../../engine/action/executor.js";
-import { contextTargets } from "../../engine/target-pool.js";
+import { contextEnemies, contextTargets } from "../../engine/target-pool.js";
 
 function targetIdentityValues(target) {
   return [
@@ -23,8 +23,11 @@ export function currentAutoFillTargetKey(lockedTargetIds = []) {
 export function contextWithCurrentAutoFillTargets(context, lockedTargetIds = []) {
   const selectedIds = new Set(currentAutoFillTargetIds(lockedTargetIds));
   if (!selectedIds.size) return context;
-  const selectedTargets = contextTargets(context)
-    .filter((target) => targetIdentityValues(target).some((id) => selectedIds.has(id)));
+  // A locked target may not be the user's current target, so look through every enemy as well.
+  const pool = [...contextTargets(context), ...contextEnemies(context)];
+  const selectedTargets = [...new Map(pool
+    .filter((target) => targetIdentityValues(target).some((id) => selectedIds.has(id)))
+    .map((target) => [targetIdentityValues(target)[0], target])).values()];
   if (!selectedTargets.length) return context;
   return {
     ...context,

@@ -41,6 +41,17 @@ function changedTarget(candidate, projectedTarget) {
   return Boolean(before && after && before !== after);
 }
 
+const AREA_PLACEMENT_KEYS = ["areaHitCount", "areaPlacementCenter", "areaPlacementAimPoint", "areaPlacementOptions"];
+
+// An area re-aimed from the projected position: its template and hit count come from there too.
+function projectedAreaPlacement(candidate, projected) {
+  if (candidate?.targetingProfile?.area !== true || !projected?.activityProfile) return {};
+  const placement = Object.fromEntries(AREA_PLACEMENT_KEYS
+    .filter((key) => projected.activityProfile[key] !== undefined)
+    .map((key) => [key, projected.activityProfile[key]]));
+  return { activityProfile: { ...(candidate.activityProfile ?? {}), ...placement } };
+}
+
 export function createPlanRescorer(baseContext, baseState) {
   const baseSignature = projectionSignature(baseState);
   const baseScores = new Map();
@@ -94,6 +105,7 @@ export function createPlanRescorer(baseContext, baseState) {
       reason: result.projected.reason,
       suggestedTarget: result.projected.suggestedTarget ?? candidate.suggestedTarget,
       ...(retargeted && candidate.preferredTarget ? { preferredTarget: result.projected.suggestedTarget } : {}),
+      ...projectedAreaPlacement(candidate, result.projected),
     };
   }
 
@@ -124,6 +136,7 @@ export function createPlanRescorer(baseContext, baseState) {
           reasons: result.projected.reasons,
           reason: result.projected.reason,
         } : {}),
+        ...projectedAreaPlacement(step, result.projected),
         score: Number(step.score) + shift,
         projectedScoreDelta: delta,
         ...(step.mapBase ? { mapBase: { ...step.mapBase, score: Number(step.mapBase.score) + shift } } : {}),

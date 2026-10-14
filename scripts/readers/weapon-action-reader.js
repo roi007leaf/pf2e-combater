@@ -86,9 +86,11 @@ function isDrawableWeapon(weapon, freeHands = 2) {
 function drawStrikeTarget(context, weapon, range, readyStrikes) {
   // Any reaching Strike makes drawing a ranged weapon pointless, but a held pistol doesn't replace
   // a sheathed rapier: drawing a melee weapon is only redundant if a melee Strike already reaches.
-  const sameKindStrikes = isRangedStrike({ range, item: weapon })
+  // A bare fist never makes a real weapon redundant: it's the fallback the weapon replaces.
+  const sameKindStrikes = (isRangedStrike({ range, item: weapon })
     ? readyStrikes
-    : readyStrikes.filter((ready) => !isRangedStrike(ready));
+    : readyStrikes.filter((ready) => !isRangedStrike(ready)))
+    .filter((ready) => ready?.item?.slug !== "basic-unarmed");
   const targets = contextTargets(context);
   const enemies = contextEnemies(context);
   const open = [...targets, ...enemies].filter((target) => canAttackTarget(target) && !readyStrikeCanReach(sameKindStrikes, target));
@@ -99,7 +101,13 @@ function drawStrikeTarget(context, weapon, range, readyStrikes) {
     : open.toSorted((left, right) => (left?.distance ?? Infinity) - (right?.distance ?? Infinity))[0] ?? null;
 }
 
-function readDrawStrikeActivities(actor, context, readyStrikes) {
+// The weapon's own Strike (its melee usage, not a thrown alternate), ready or not.
+function weaponStrike(weapon, allStrikes) {
+  const id = weapon?.id ?? weapon?._id;
+  return (allStrikes ?? []).find((strike) => (strike?.item?.id ?? strike?.item?._id) === id && strike?.altUsage !== "thrown") ?? null;
+}
+
+function readDrawStrikeActivities(actor, context, readyStrikes, allStrikes = []) {
   const freeHands = actorFreeHands(actor);
   return readWeaponItems(actor)
     .filter((weapon) => isDrawableWeapon(weapon, freeHands))
@@ -126,6 +134,11 @@ function readDrawStrikeActivities(actor, context, readyStrikes) {
         available: reaches,
         ...(reaches ? {} : { unavailableReason: t("Avail.NoEnemyInReach", "No enemy in reach.") }),
         item: weapon,
+        ...(weaponStrike(weapon, allStrikes)?.damageProfile ? { damageProfile: weaponStrike(weapon, allStrikes).damageProfile } : {}),
+        ...(weaponStrike(weapon, allStrikes)?.averageDamage ? { averageDamage: weaponStrike(weapon, allStrikes).averageDamage } : {}),
+        ...(weaponStrike(weapon, allStrikes)?.startsUnloaded ? { startsUnloaded: true } : {}),
+        // The weapon's own Strike: a Sudden Charge after a plain Draw of this weapon lands with it.
+        ...(weaponStrike(weapon, allStrikes) ? { drawnStrike: weaponStrike(weapon, allStrikes) } : {}),
         preferredTarget: target,
         role: "damage",
         activityProfile: {
@@ -155,7 +168,7 @@ function isHeldWeapon(weapon) {
   return weapon.isHeld === true || weaponCarryType(weapon) === "held" || weaponHandsHeld(weapon) > 0;
 }
 
-function readDrawWeaponActions(actor) {
+function readDrawWeaponActions(actor, allStrikes = []) {
   const freeHands = actorFreeHands(actor);
   return readWeaponItems(actor).filter((weapon) => isDrawableWeapon(weapon, freeHands)).map((weapon) => {
     const slug = slugify(weapon.slug ?? weapon.system?.slug ?? weapon.name);
@@ -173,6 +186,8 @@ function readDrawWeaponActions(actor) {
       item: weapon,
       role: "setup",
       activityProfile: { includes: ["draw", "interact"], drawsWeapon: true, weaponName: weapon.name },
+      // The weapon's own Strike: a Sudden Charge after this Draw lands with it.
+      ...(weaponStrike(weapon, allStrikes) ? { drawnStrike: weaponStrike(weapon, allStrikes) } : {}),
       targetingProfile: { self: true },
       reasons: [t("Reason.DrawToReady", "Draw {weapon} to ready it.", { weapon: weapon.name })],
       traits: [],
@@ -294,12 +309,34 @@ function readReloadWeaponActions(actor) {
     });
 }
 
-export function readWeaponActions(actor, context, readyStrikes) {
+// The stowed weapon's own Strike, for the attacks after "Draw X -> Strike" in the same turn. Only
+// valid once the plan has drawn that weapon (the planner checks requiresDrawnWeaponId). Reload
+// weapons are left out: their second shot needs a Reload the composite already accounts for.
+function readAfterDrawStrikes(actor, readyStrikes, allStrikes) {
+  const freeHands = actorFreeHands(actor);
+  const drawable = new Set(readWeaponItems(actor).filter((weapon) => isDrawableWeapon(weapon, freeHands)).map((weapon) => weapon.id));
+  const readyIds = new Set((readyStrikes ?? []).map((strike) => strike?.item?.id).filter(Boolean));
+  return (allStrikes ?? [])
+    .filter((strike) => !readyIds.has(strike?.item?.id) && strike?.altUsage !== "thrown" && drawable.has(strike?.item?.id)
+      && !(Number(strike?.reload ?? strike?.item?.system?.reload?.value) > 0))
+    .map((strike) => ({
+      ...strike,
+      id: `${strike.id ?? strike.slug}-after-draw`,
+      ready: true,
+      available: true,
+      requiresDrawnWeaponId: strike.item.id,
+      // Browse already lists "Draw X -> Strike"; this row only resolves the planner's follow-up.
+      hideFromBuilder: true,
+    }));
+}
+
+export function readWeaponActions(actor, context, readyStrikes, allStrikes = []) {
   // NPC Strikes are always ready in PF2e; inventory weapons stored as "worn" need no Draw.
   if (actor?.type === "npc" || actor?.isOfType?.("npc") === true) return readReloadWeaponActions(actor);
   return [
-    ...readDrawStrikeActivities(actor, context, readyStrikes),
-    ...readDrawWeaponActions(actor),
+    ...readDrawStrikeActivities(actor, context, readyStrikes, allStrikes),
+    ...readDrawWeaponActions(actor, allStrikes),
+    ...readAfterDrawStrikes(actor, readyStrikes, allStrikes),
     ...readSheatheWeaponActions(actor),
     ...readReleaseWeaponActions(actor),
     ...readReloadWeaponActions(actor),

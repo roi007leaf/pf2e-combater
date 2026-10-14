@@ -231,7 +231,9 @@ function hasReactiveStrike(entity) {
 
 export function reactiveStrikeKnown(context, entity) {
   if (isGM(context)) return hasReactiveStrike(entity);
-  return entity?.reactiveStrikeKnown === true
+  // A player's plan only avoids a Reactive Strike the party has learned about (Intel: Actions).
+  return canUseIntelFact(context, entity, "actions", ["reactive-strike", "attack-of-opportunity"])
+    || entity?.reactiveStrikeKnown === true
     || entity?.knownReactiveStrike === true
     || entity?.revealedReactiveStrike === true;
 }

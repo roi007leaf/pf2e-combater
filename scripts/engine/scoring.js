@@ -1,18 +1,21 @@
 import { classTacticAdjustment } from "../rules/class-tactics.js";
 import { canUseIntelCategory } from "../rules/intel-ledger.js";
 import { npcTacticAdjustment } from "../rules/npc-tactics.js";
-import { tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
+import { resolveTacticPersonality, tacticPersonalityAdjustment } from "../rules/tactic-personality.js";
 import { resourceHorizonAdjustment } from "../rules/resource-horizon.js";
 import { backingStrikeForAction, backingStrikesForAction, bestReadyStrikeFromOptions } from "./backing-strike.js";
+import { commanderTacticAdjustment } from "./scoring/commander.js";
 import {
   actionTraitSlugs,
   canUseTargetDefenses,
   canUseTargetSave,
+  isAreaAction,
   isAttackLikeAction,
   isMeleeStrikeFallback,
   isRangedStrike,
   isSpellAction,
   hpPercent,
+  damageAverage,
   maxRange,
 } from "./scoring/facts.js";
 import {
@@ -28,6 +31,7 @@ import { blockedCandidateResult, healingIsIdle } from "./scoring/gates.js";
 import {
   bestTargetForAction,
   distinctTargetsFor,
+  focusFireBonus,
   targetRankingReasons,
 } from "./scoring/targets.js";
 import {
@@ -94,7 +98,50 @@ function systemValueOf(value) {
   return value && typeof value === "object" && "value" in value ? value.value : value;
 }
 
-export function scoreCandidate(context, action, siblingSpells = [], siblingActions = []) {
+// A slotted spell or a 2-action attack spent on a creature a cheap hit would finish. The GM sees the
+// real remaining HP; a player only sees that it is nearly down (under 15%).
+function overkillPenalty(context, action, target) {
+  const slotted = String(action?.source ?? "").startsWith("spell") && Number(action?.castRank ?? action?.rank) > 0
+    && !actionTraitSlugs(action).includes("cantrip") && !actionTraitSlugs(action).includes("focus");
+  const costly = slotted || Number(action?.actionCost) >= 2;
+  if (!costly) return 0;
+  const percent = hpPercent(target);
+  if (!Number.isFinite(percent) || percent <= 0) return 0;
+  const max = Number(target?.actor?.document?.system?.attributes?.hp?.max ?? target?.actor?.system?.attributes?.hp?.max);
+  const average = Number(damageAverage(action)) || 0;
+  if (Number.isFinite(max) && max > 0 && average > 0) {
+    const remaining = percent * max;
+    if (average < remaining * 2.5) return 0;
+    return Math.min(40, Math.round((average - remaining) * 0.6) + (slotted ? 10 : 0));
+  }
+  return percent < 0.15 ? (slotted ? 25 : 12) : 0;
+}
+
+// The best spell a Spellstrike could channel: 1 or 2 actions, a single target, an attack roll or a
+// save, and damage.
+function spellstrikeChannelledSpell(action, siblingSpells) {
+  const isSpellstrike = action?.activityProfile?.spellstrike === true || /(?:^|-)spellstrike$/.test(String(action?.slug ?? "").toLowerCase());
+  if (!isSpellstrike || !Array.isArray(siblingSpells)) return null;
+  return siblingSpells
+    .filter((spell) => Number(spell?.actionCost) >= 1 && Number(spell?.actionCost) <= 2 && spell?.targetingProfile?.area !== true
+      && ["damage", "save-damage"].includes(spell?.role) && spell?.available !== false)
+    .map((spell) => ({ name: spell.name, average: Number(spell.damageProfile?.average ?? spell.averageDamage) || 0 }))
+    .toSorted((left, right) => right.average - left.average)[0] ?? null;
+}
+
+// Quick Draw (and kin) draws the weapon as part of the Strike: it lands with the best stowed
+// weapon, not the fist.
+function drawnBackingStrike(action, allSiblingActions) {
+  const drawsFirst = /(?:^|-)quick-draw$/.test(String(action?.slug ?? "").toLowerCase())
+    || (action?.activityProfile?.includes ?? []).includes("draw");
+  if (!drawsFirst || !Array.isArray(allSiblingActions)) return null;
+  return allSiblingActions.filter((sibling) => sibling?.requiresDrawnWeaponId && !(Number(sibling?.range?.increment) > 0))
+    .toSorted((left, right) => (Number(right.averageDamage) || 0) - (Number(left.averageDamage) || 0))[0] ?? null;
+}
+
+export function scoreCandidate(context, action, siblingSpells = [], allSiblingActions = []) {
+  // A stowed weapon's follow-up Strike isn't an attack in hand: it never stands in for one here.
+  const siblingActions = Array.isArray(allSiblingActions) ? allSiblingActions.filter((sibling) => !sibling?.requiresDrawnWeaponId) : allSiblingActions;
   const profile = context?.profile ?? context?.actor?.profile ?? {};
   const role = action.curated?.role ?? action.role;
   const preference = deterministicPreferenceAdjustment(context, action);
@@ -115,7 +162,7 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     ? distinctTargetsFor(context, action, role)
     : null;
   const backingStrike = (action.activityProfile?.requiresDistinctTargets || action.activityProfile?.requiresBackingStrike)
-    ? action.activityProfile?.backingStrike ?? backingStrikeForAction(action, siblingActions)
+    ? action.activityProfile?.backingStrike ?? drawnBackingStrike(action, allSiblingActions) ?? backingStrikeForAction(action, siblingActions)
     // Frenzy-style counted Strikes: value them like the creature's best melee Strike.
     : action.activityProfile?.countedStrikes >= 2
       ? bestReadyStrikeFromOptions(siblingActions, (strike) => strike?.item?.system?.range == null && !(Number(strike?.range?.increment) > 0))
@@ -123,7 +170,9 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
   const backingStrikes = action.activityProfile?.requiresDualBackingStrike
     ? action.activityProfile?.backingStrikes ?? backingStrikesForAction(action, siblingActions)
     : null;
-  const backingManeuver = action.activityProfile?.npcFamily === "grab-rider"
+  // A Grab that follows a Strike listing it grabs automatically (no check, no MAP); only a grab that
+  // really is an Athletics check is backed by Grapple.
+  const backingManeuver = action.activityProfile?.npcFamily === "grab-rider" && action.activityProfile?.noAttackRoll !== true
     ? GENERIC_ACTIONS.find((generic) => generic.slug === "grapple") ?? null
     : null;
   const suggestedTarget = suggestedTargetFor(context, action, role, target);
@@ -237,6 +286,25 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     }
   }
 
+  // A melee brute stepping back to throw javelins at the creature it just left spends an action to
+  // swap a hit for a weaker one (and usually provokes). Archers, artillery, skirmishers and cautious or cowardly
+  // creatures are meant to back off; everyone else keeps hitting.
+  if (action.activityProfile?.retreatBeforeStrike === true && target) {
+    const tactic = resolveTacticPersonality(context);
+    const role = tactic?.effectiveRole ?? tactic?.role;
+    const temperament = tactic?.effectiveTemperament ?? tactic?.temperament;
+    const backsOff = ["ranged-striker", "artillery", "skirmisher"].includes(role) || ["cautious", "coward"].includes(temperament);
+    const rangedAverage = Number(action.averageDamage ?? action.strike?.averageDamage ?? action.activityProfile?.averageDamage) || 0;
+    const bestMelee = Math.max(0, ...siblingActions
+      .filter((sibling) => sibling.available !== false && sibling.source === "strike" && !isRangedStrike(sibling)
+        && Number(target.distance) <= maxRange(sibling))
+      .map((sibling) => Number(sibling.averageDamage) || 0));
+    if (!backsOff && bestMelee > 0 && bestMelee >= rangedAverage) {
+      score -= 60;
+      reasons.push(t("ScoreReason.KeepsMeleePressure", "Its melee attack hits at least as hard; backing off to throw spends an action for nothing."));
+    }
+  }
+
   // Class, personality, spell and resource terms value the action for this actor, not the hit;
   // the hidden-target flat check must not discount them.
   let actorAdjustment = 0;
@@ -259,6 +327,23 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     score += classAdjustment.scoreDelta;
     actorAdjustment += classAdjustment.scoreDelta;
     reasons.push(...classAdjustment.reasons);
+  }
+
+  // A commander tactic is worth what its squad can do with it (PF2e Commanderer's state).
+  const commanderAdjustment = commanderTacticAdjustment(context, action);
+  if (commanderAdjustment) {
+    score += commanderAdjustment.scoreDelta;
+    actorAdjustment += commanderAdjustment.scoreDelta;
+    reasons.push(...commanderAdjustment.reasons);
+  }
+
+  // Spellstrike delivers a spell along with the Strike: it is worth the spell it would channel too.
+  const channelled = spellstrikeChannelledSpell(action, siblingSpells);
+  if (channelled) {
+    const bonus = Math.min(110, 40 + Math.round(4 * channelled.average));
+    score += bonus;
+    actorAdjustment += bonus;
+    reasons.push(t("ScoreReason.SpellstrikeChannels", "Spellstrike channels {spell} with the Strike.", { spell: channelled.name }));
   }
 
   const npcAdjustment = npcTacticAdjustment(context, action, { target, role, areaHitCount });
@@ -317,6 +402,14 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
     reasons.push(...ownSkillReliability.reasons);
   }
 
+  if (target && isAttackLikeAction(action, role) && !isAreaAction(action, role)) score += focusFireBonus(context, target);
+
+  const overkill = target && !isAreaAction(action, role) ? overkillPenalty(context, action, target) : 0;
+  if (overkill > 0) {
+    score -= overkill;
+    reasons.push(t("ScoreReason.Overkill", "{target} is nearly down: a cheaper attack finishes them.", { target: target.name }));
+  }
+
   if (target && isAttackLikeAction(action, role) && detectionState(target) === "hidden") {
     const targetDependentGain = Math.max(0, score - actorAdjustment - baseScore(action));
     score -= targetDependentGain * HIDDEN_TARGET_FLAT_CHECK_DISCOUNT;
@@ -342,6 +435,10 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
 
   // A move-and-Strike or multi-Strike that reaches nobody can't be used from here: no "commits
   // actions" credit, no role bonus can lift it back into a plan.
+  // An area attack whose best placement catches no (non-immune) enemy does nothing from here; the
+  // planner may still Stride first and re-aim it (see buildCandidates' approach pool).
+  // (Only on a real board: without token positions a placement can't be measured.)
+  if (areaHitCount === 0 && role === "area-damage" && context?.token?.center) score = HARD_BLOCK_SCORE;
   if (outOfReach) {
     score = HARD_BLOCK_SCORE;
     reasons.unshift(t("ScoreReason.OutOfReachThisTurn", "{name} can't reach an enemy from here.", { name: action.name }));
@@ -363,6 +460,8 @@ export function scoreCandidate(context, action, siblingSpells = [], siblingActio
       areaPlacementCenter,
       areaPlacementAimPoint,
       areaPlacementOptions,
+      // How many enemies the best placement catches (null when not an area action).
+      areaHitCount: Number.isFinite(areaHitCount) ? areaHitCount : null,
       ...(distinctTargets ? { distinctTargets } : {}),
       ...(backingStrike ? { backingStrike } : {}),
       ...(backingStrikes ? { backingStrikes } : {}),

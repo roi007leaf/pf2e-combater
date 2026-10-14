@@ -16,6 +16,8 @@ import {
 } from "./projections.js";
 import { footprintPathDistanceFeet, movementFootprintForToken } from "../../rules/token-geometry.js";
 import { contextActorDocument } from "../actor-context.js";
+import { commanderTacticState } from "../../integrations/commanderer.js";
+import { isConfluxSpell } from "../../rules/spellstrike-state.js";
 
 export const BASIC_MOVE_SLUGS = new Set(["crawl", "step", "stride"]);
 
@@ -61,7 +63,11 @@ function targetNeedsRepeatedStride(context, candidate, attackPathAvailable = fal
   const target = targetForCandidate(context, candidate);
   const distance = Number(target?.distance);
   if (!Number.isFinite(distance)) return false;
-  return distance > profileSpeed(context) + profileReach(context);
+  // On a real board the context is projected past earlier moves (it carries the planned square):
+  // still out of reach means another Stride helps. Without geometry, fall back to Speed + reach.
+  return context?.token?.plannedCenter
+    ? distance > profileReach(context)
+    : distance > profileSpeed(context) + profileReach(context);
 }
 
 export function isRepeatablePlanningAction(context, candidate, attackPathAvailable = false) {
@@ -193,18 +199,62 @@ function hasSameTargetHoldConflict(context, candidate, steps) {
   );
 }
 
+// Another Stride is progress while the target is still out of reach from where the earlier moves end
+// (the context here is projected past them). A straight-line check against Speed alone missed walls:
+// the path around them is longer than the distance, so one Stride rarely gets there.
 function canPairRepeatedStride(context, candidate, steps, attackPathAvailable = false) {
-  return targetNeedsRepeatedStride(context, candidate, attackPathAvailable)
-    && steps.every((step) =>
-      !BASIC_MOVE_SLUGS.has(step?.slug) || targetNeedsRepeatedStride(context, step, attackPathAvailable),
-    );
+  if (attackPathAvailable || candidate?.slug !== "stride" || candidate?.source !== "generic") return false;
+  if (!steps.every((step) => !BASIC_MOVE_SLUGS.has(step?.slug) || step?.slug === "stride")) return false;
+  return targetNeedsRepeatedStride(context, candidate, attackPathAvailable);
 }
 
 export function hasAttackPathAvailable(context, candidates) {
+  // Only an attack that can actually be made: an unreachable or blocked composite isn't a path.
   return candidates.some((candidate) =>
-    isAttackAction(candidate)
+    candidate?.available !== false && !candidate?.needsApproach && Number(candidate?.score) > 0
+    && isAttackAction(candidate)
     && (reachesCurrentTarget(context, candidate) || isMoveAndStrike(candidate)),
   );
+}
+
+// PF2e: a commander may use several tactics a round, but each character answers only one tactic per
+// round. A tactic everyone answers leaves nobody for a second one; otherwise the responders the
+// tactics need can't exceed the squad (the commander counts as a squadmate).
+const RESPONDERS_NEEDED = { one: 1, two: 2, "up-to-2": 1, "up-to-3": 1 };
+function tacticResponderConflict(context, candidate, steps) {
+  const isTactic = (step) => (step?.item?.system?.traits?.value ?? []).includes("tactic");
+  if (!isTactic(candidate)) return false;
+  const tactics = [...steps.filter(isTactic), candidate];
+  if (tactics.length < 2) return false;
+  const actor = contextActorDocument(context);
+  const states = tactics.map((step) => commanderTacticState(actor, step.item));
+  if (states.some((state) => !state)) return false;
+  if (states.some((state) => state.definition?.selection === "all")) return true;
+  const needed = states.reduce((total, state) => total + (RESPONDERS_NEEDED[state.definition?.selection] ?? 1), 0);
+  return needed > states[0].members.length + 1;
+}
+
+// Spellstrike is spent once used and stays spent until Recharge Spellstrike or a conflux spell:
+// walk the plan so far to know whether it is charged when this step would come.
+export function isSpellstrikeStep(step) {
+  return step?.activityProfile?.spellstrike === true || /(?:^|-)spellstrike$/.test(String(step?.slug ?? "").toLowerCase()) && !String(step?.slug ?? "").toLowerCase().startsWith("recharge");
+}
+export function rechargesSpellstrike(step) {
+  return step?.activityProfile?.rechargeSpellstrike === true || isConfluxSpell(step?.item);
+}
+function spellstrikeUncharged(context, candidate, steps) {
+  if (!isSpellstrikeStep(candidate)) return false;
+  let charged = (context?.profile ?? context?.actor?.profile)?.combatState?.spellstrikeNeedsRecharge !== true;
+  for (const step of steps) {
+    if (rechargesSpellstrike(step)) charged = true;
+    else if (isSpellstrikeStep(step)) charged = false;
+  }
+  return !charged;
+}
+
+function normalizeRuneSlug(value) {
+  const slug = String(value ?? "").toLowerCase();
+  return /(?:^|-)trace-rune$/.test(slug) ? "trace-rune" : /(?:^|-)invoke-rune$/.test(slug) ? "invoke-rune" : "";
 }
 
 export function hasPlanConflict(context, candidate, steps, attackPathAvailable = false) {
@@ -223,11 +273,52 @@ export function hasPlanConflict(context, candidate, steps, attackPathAvailable =
 
   // A drawn weapon stays in hand: drawing the same rapier twice wastes an action (thrown weapons
   // and bombs draw another one, so they can repeat).
+  // A thrown weapon only needs drawing again once the plan has actually thrown it.
   const drawnItemId = (step) => step?.activityProfile?.drawsWeapon === true
-    && !candidateTraitSlugs(step).some((trait) => trait === "bomb" || trait.startsWith("thrown"))
+    && !candidateTraitSlugs(step).includes("bomb")
     ? step?.item?.id ?? null : null;
+  const thrownItem = (step, id) => (step?.item?.id ?? null) === id
+    && (step?.altUsage === "thrown" || Number(step?.range?.increment) > 0);
+  // Hands: every weapon drawn this turn (that isn't thrown away again) needs a free hand; a third
+  // Draw with both hands full is impossible.
+  const handsFree = Number(context?.profile?.handsFree ?? context?.actor?.profile?.handsFree);
+  if (Number.isFinite(handsFree) && candidate?.activityProfile?.drawsWeapon === true && !candidateTraitSlugs(candidate).includes("bomb")) {
+    const handsOf = (step) => Math.max(1, Number(step?.item?.system?.usage?.hands ?? step?.item?.hands) || 1);
+    const kept = [...steps, candidate].filter((step) => step?.activityProfile?.drawsWeapon === true
+      && !candidateTraitSlugs(step).includes("bomb")
+      && !(step?.altUsage === "thrown" || Number(step?.range?.increment) > 0 && candidateTraitSlugs(step).some((trait) => trait.startsWith("thrown"))));
+    const ids = new Set();
+    const needed = kept.reduce((total, step) => {
+      const id = step?.item?.id ?? step?.id;
+      if (ids.has(id)) return total;
+      ids.add(id);
+      return total + handsOf(step);
+    }, 0);
+    if (needed > handsFree) return true;
+  }
   const drawn = drawnItemId(candidate);
-  if (drawn && steps.some((step) => drawnItemId(step) === drawn)) return true;
+  if (drawn && steps.some((step) => drawnItemId(step) === drawn)
+    && !steps.some((step) => thrownItem(step, drawn))) return true;
+
+  if (tacticResponderConflict(context, candidate, steps)) return true;
+  if (spellstrikeUncharged(context, candidate, steps)) return true;
+
+  // Invoke Rune works on the creature bearing the rune: when this plan traces one, invoke it there.
+  const runeSlug = (step) => normalizeRuneSlug(step?.slug ?? step?.id);
+  const runeTarget = (step) => step?.suggestedTarget?.id ?? step?.preferredTarget?.id ?? null;
+  const traced = [...steps, candidate].filter((step) => runeSlug(step) === "trace-rune" && runeTarget(step));
+  const invoked = [...steps, candidate].filter((step) => runeSlug(step) === "invoke-rune" && runeTarget(step));
+  if (traced.length && invoked.some((step) => !traced.some((trace) => runeTarget(trace) === runeTarget(step)))) return true;
+
+  // A stowed weapon's Strike only exists once this plan has drawn it.
+  if (candidate?.requiresDrawnWeaponId
+    && !steps.some((step) => step?.activityProfile?.drawsWeapon === true && (step?.item?.id ?? null) === candidate.requiresDrawnWeaponId)) return true;
+
+  // A fist right after drawing a weapon: Strike with the weapon you just drew instead.
+  const isFist = (step) => step?.item?.slug === "basic-unarmed" || step?.item?.id === "xxPF2ExUNARMEDxx";
+  const drewWeapon = (step) => step?.activityProfile?.drawsWeapon === true
+    || (step?.activityProfile?.includes ?? []).includes("draw") || /\bquick draw\b/i.test(String(step?.name ?? ""));
+  if (isFist(candidate) && steps.some(drewWeapon)) return true;
 
   // PF2e: one flourish per turn, and one composition per turn.
   const isFlourish = (step) => candidateTraitSlugs(step).includes("flourish");

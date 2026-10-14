@@ -43,6 +43,9 @@ import { promptUnsustainedSpellCleanup } from "./engine/sustained-spells.js";
 import { expiredAreaRegionsForScene } from "./engine/area/duration.js";
 import { INTEL_LEDGER_FLAG, INTEL_REVEAL_MODE_FLAG } from "./rules/intel-ledger.js";
 import { registerRecallKnowledgeChatHooks, resolveRecallKnowledgeRequest } from "./ui/recall-knowledge.js";
+import { registerObservedIntelHooks } from "./rules/observed-intel.js";
+import { registerSpellstrikeHooks } from "./rules/spellstrike-state.js";
+import { initCommandererIntegration } from "./integrations/commanderer.js";
 import { isPlannableActor, isPlannableCombatant } from "./rules/actor-eligibility.js";
 import { respondLiveEngineMatrixPing, runLiveEngineMatrix } from "./runtime/live-engine-matrix.js";
 
@@ -328,6 +331,8 @@ Hooks.once("init", () => {
   registerFlankingHighlightOriginHooks();
   registerCombatTrackerIntel();
   registerRecallKnowledgeChatHooks();
+  registerObservedIntelHooks();
+  registerSpellstrikeHooks();
 
   game.keybindings.register(MODULE_ID, "togglePanel", {
     name: t("Keybind.ToggleName", "Toggle PF2e Combater"),
@@ -448,6 +453,7 @@ Hooks.once("ready", async () => {
   await migrateDeprecatedFlankingRule();
   registerFlankingSizeRuleWrapper();
   registerRechargeTracking();
+  await initCommandererIntegration();
   pruneStaleSharedDrafts().catch((error) => console.warn(`${MODULE_ID} | Plan cleanup failed`, error));
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;

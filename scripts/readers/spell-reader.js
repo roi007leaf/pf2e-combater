@@ -24,6 +24,16 @@ function targetingForSpellActionCost(slug, actionCost, profile) {
   return profile;
 }
 
+// The spell's own range ("30 feet", "touch") when the tactic didn't record one, so Stabilize and
+// Spirit Link aren't planned on an ally 55 ft away.
+function withSpellRange(profile, item) {
+  if (Number.isFinite(Number(profile?.maxRange ?? profile?.range)) && Number(profile?.maxRange ?? profile?.range) > 0) return profile;
+  const text = String(systemValue(item?.system?.range) ?? "").toLowerCase();
+  const feet = /touch/.test(text) ? 5 : Number(text.match(/(\d+)\s*(?:feet|foot|ft)/)?.[1]);
+  if (!Number.isFinite(feet) || feet <= 0) return profile;
+  return { ...(profile ?? {}), maxRange: feet, ...(feet === 5 && /touch/.test(text) ? { touch: true } : {}) };
+}
+
 export function readSpellActions(context) {
   const actor = contextActorDocument(context);
   return collectionValues(actor?.itemTypes?.spell).flatMap((item) => {
@@ -56,13 +66,16 @@ export function readSpellActions(context) {
       const actionIdBase = `${variantGroup}${rankSuffix}`;
 
       return actionCosts.map((actionCost) => {
-        const targetingProfile = targetingForSpellActionCost(slug, actionCost, tactic?.targetingProfile ?? null);
+        const targetingProfile = targetingForSpellActionCost(slug, actionCost, withSpellRange(tactic?.targetingProfile ?? null, effectiveItem));
         const maxRange = Number(targetingProfile?.maxRange ?? targetingProfile?.range);
         const enemyInRange = targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
         return {
         ...(tactic ?? {}),
         id: actionCosts.length > 1 ? `${actionIdBase}-${actionCost}a` : actionIdBase,
-        name: spellNameForRank(curatedForRank?.name ?? item.name, rank, castRank),
+        // Cantrips and focus spells heighten automatically: no "(Rank N)" to tell apart.
+        name: isCantrip(item) || isFocusSpell(item, entry)
+          ? curatedForRank?.name ?? item.name
+          : spellNameForRank(curatedForRank?.name ?? item.name, rank, castRank),
         slug,
         actionCost,
         actualActionCost: parsedTime.actionCost,
@@ -197,7 +210,7 @@ export function readConsumableSpellActions(context) {
     const variantGroup = `consumable-spell-${item.id ?? item._id ?? slug}`;
 
     return actionCosts.map((actionCost) => {
-      const targetingProfile = targetingForSpellActionCost(slug, actionCost, tactic?.targetingProfile ?? null);
+      const targetingProfile = targetingForSpellActionCost(slug, actionCost, withSpellRange(tactic?.targetingProfile ?? null, embeddedSpell));
       const maxRange = Number(targetingProfile?.maxRange ?? targetingProfile?.range);
       const enemyInRange = targetingProfile?.enemy !== true || hasEnemyWithinRange(context, maxRange);
       return {
@@ -599,6 +612,11 @@ function spellRank(spell) {
   return spellBaseRank(spell);
 }
 
+function autoHeightenedRank(spell, baseRank) {
+  const runtime = Number(spell?.rank);
+  return Number.isFinite(runtime) && runtime > baseRank ? runtime : baseRank;
+}
+
 function entrySlotRanks(entry) {
   return Object.keys(entry?.system?.slots ?? {})
     .map(slotRankNumber)
@@ -639,10 +657,12 @@ function spontaneousCastRanks(entry, spell, rank) {
 
 function readSpellCastRanks(spell, entry) {
   const rank = spellRank(spell);
-  if (!Number.isFinite(rank) || isCantrip(spell)) return [rank];
+  if (!Number.isFinite(rank)) return [rank];
+  // Cantrips and focus spells auto-heighten to half the caster's level: PF2e's runtime rank.
+  if (isCantrip(spell)) return [autoHeightenedRank(spell, rank)];
 
   const preparedType = String(systemValue(entry?.system?.prepared) ?? "").toLowerCase();
-  if (preparedType === "focus" || isFocusSpell(spell, entry)) return [rank];
+  if (preparedType === "focus" || isFocusSpell(spell, entry)) return [autoHeightenedRank(spell, rank)];
   if (preparedType === "prepared") {
     // Flexible preparation selects a daily collection through the spell's
     // signature flag; available slots alone do not make the whole spellbook castable.

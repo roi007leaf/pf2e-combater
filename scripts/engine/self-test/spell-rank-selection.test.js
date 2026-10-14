@@ -73,4 +73,22 @@ const depletedBuilder = buildActionBuilderModel({ context, candidates: depleted.
 assert.equal(depletedBuilder.draft.steps[0].action.castRank, 5, "Refreshing after another rank is spent preserves the chosen rank");
 assert.equal(depleted.rejected.find((entry) => entry.action.slug === "fireball" && entry.action.castRank === 4)?.action.available, false, "Spent rank must not remain a usable candidate");
 
+// A cantrip on a 5th-level caster: PF2e's runtime rank is the auto-heightened 3, the stored base is 1.
+// It must cast at rank 3 with rank-3 damage, and keep its plain name.
+const cantrip = {
+  id: "ignition", type: "spell", slug: "ignition", name: "Ignition", rank: 3,
+  system: {
+    slug: "ignition", time: { value: "2" }, level: { value: 1 },
+    location: { value: "arcane" }, traits: { value: ["attack", "cantrip", "fire"] },
+    range: { value: "30 feet" }, target: { value: "1 creature" },
+    damage: { 0: { formula: "2d4", type: "fire" } },
+    heightening: { type: "interval", interval: 1, damage: { 0: "1d4" } },
+  },
+};
+const cantripContext = { ...context, actor: { document: { ...actor, itemTypes: { spell: [cantrip], spellcastingEntry: [entry] }, spellcasting: [entry] } } };
+const ignition = readSpellActions(cantripContext).find((action) => action.slug === "ignition");
+assert.equal(ignition?.castRank, 3, "a cantrip casts at its auto-heightened rank");
+assert.equal(ignition?.name, "Ignition", "an auto-heightened cantrip keeps its plain name");
+assert.equal(ignition?.damageProfile?.average, 10, "a rank-3 Ignition rolls 4d4 (2d4 plus 1d4 per rank above 1)");
+
 console.log("Spell rank selection regressions passed");

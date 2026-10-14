@@ -45,11 +45,20 @@ const FALSE_FACT_FALLBACKS = {
   immunities: ["acid", "bleed", "cold", "death-effects", "disease", "electricity", "fire", "mental", "paralyzed", "poison", "precision", "unconscious"],
 };
 
+// Common creature abilities a GM may plant as false Recall Knowledge.
+const FALSE_ABILITY_FACTS = {
+  strikes: ["Claw", "Jaws", "Fist", "Tail", "Horn", "Tentacle", "Longsword", "Spear", "Greataxe", "Shortbow", "Longbow", "Crossbow"],
+  actions: ["Reactive Strike", "Grab", "Improved Grab", "Knockdown", "Push", "Trample", "Swallow Whole", "Breath Weapon", "Frightful Presence", "Constrict", "Rend", "Pounce", "Sneak Attack", "Shield Block"],
+  passives: ["Ferocity", "Regeneration", "Fast Healing", "Void Healing", "Aura", "All-Around Vision", "Darkvision", "Scent", "Swarm Mind", "Tremorsense"],
+};
+
 function localizedConfigOptions(mapNames, fallback = []) {
   const values = new Map();
   for (const mapName of mapNames) {
-    for (const [id, rawLabel] of Object.entries(globalThis.CONFIG?.PF2E?.[mapName] ?? {})) {
-      const localized = globalThis.game?.i18n?.localize?.(rawLabel) ?? rawLabel;
+    for (const [id, rawEntry] of Object.entries(globalThis.CONFIG?.PF2E?.[mapName] ?? {})) {
+      // Some PF2e maps hold strings ("PF2E.TraitFire"), others objects ({ label, attribute } for skills).
+      const rawLabel = typeof rawEntry === "string" ? rawEntry : String(rawEntry?.label ?? "");
+      const localized = rawLabel ? globalThis.game?.i18n?.localize?.(rawLabel) ?? rawLabel : "";
       values.set(String(id), String(localized || rawLabel || id));
     }
   }
@@ -64,6 +73,12 @@ function falseFactOptions(categoryId) {
   if (categoryId === "perception") return [{ id: "perception", label: t("Intel.Perception", "Perception") }];
   if (categoryId === "identity" || categoryId === "traits") {
     return localizedConfigOptions(["creatureTraits"], FALSE_FACT_FALLBACKS[categoryId]);
+  }
+  if (categoryId === "skills") return localizedConfigOptions(["skills"], ["acrobatics", "athletics", "deception", "intimidation", "stealth", "survival"]);
+  if (categoryId === "languages") return localizedConfigOptions(["languages"], ["common", "draconic", "goblin", "sylvan", "undercommon"]);
+  if (categoryId === "senses") return localizedConfigOptions(["senses"], ["darkvision", "low-light-vision", "scent", "tremorsense", "echolocation"]);
+  if (FALSE_ABILITY_FACTS[categoryId]) {
+    return FALSE_ABILITY_FACTS[categoryId].map((label) => ({ id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label }));
   }
   if (categoryId === "immunities") {
     return localizedConfigOptions(["damageTypes", "conditionTypes"], FALSE_FACT_FALLBACKS.immunities);
@@ -95,6 +110,28 @@ function falseChipLabel(record, options, valueKind) {
   return valueKind === "dc" ? `${label} DC ${value}` : `${label} ${value}`;
 }
 
+// Highest and lowest of a category's values (best/worst save, biggest resistance): only where values
+// differ, and for players only once the whole category is revealed at exact values, so the marks
+// never hint at a hidden fact.
+function extremeFactIds(facts, { canMark = true } = {}) {
+  const valued = facts.filter((fact) => Number.isFinite(Number(fact?.value)));
+  if (!canMark || valued.length < 2) return { highest: new Set(), lowest: new Set() };
+  const values = valued.map((fact) => Number(fact.value));
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  if (max === min) return { highest: new Set(), lowest: new Set() };
+  return {
+    highest: new Set(valued.filter((fact) => Number(fact.value) === max).map((fact) => fact.id)),
+    lowest: new Set(valued.filter((fact) => Number(fact.value) === min).map((fact) => fact.id)),
+  };
+}
+
+function extremeMark(id, extremes) {
+  if (extremes.highest.has(id)) return { extreme: "highest", extremeIcon: "fa-arrow-up", extremeLabel: t("Intel.Highest", "Highest") };
+  if (extremes.lowest.has(id)) return { extreme: "lowest", extremeIcon: "fa-arrow-down", extremeLabel: t("Intel.Lowest", "Lowest") };
+  return {};
+}
+
 function categoryModel(entry, category, index, { editable = false } = {}) {
   const values = editable
     ? entry.available?.[category.id] ?? entry.revealed?.[category.id] ?? []
@@ -111,7 +148,21 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
   // result for this category additionally reveals new ones by default.
   const revealsByDefault = entry.falseInformationRevealCategory === category.id;
   const canRevealFalseInformation = editable || revealsByDefault;
-  const revealedItems = values.map((value) => ({ label: String(value), isFalse: false, tooltip: "" }));
+  const availableCount = (entry.availableFacts?.[category.id] ?? []).length;
+  const playerSeesWholeCategory = entry.values?.[category.id] === true
+    || (availableCount > 0 && selectedCount >= availableCount);
+  const extremes = extremeFactIds(editable ? facts : (entry.revealedFacts?.[category.id] ?? []), {
+    canMark: editable || (playerSeesWholeCategory && normalizeIntelRevealMode(entry.revealMode) === INTEL_REVEAL_MODES.exact),
+  });
+  const revealedFactByLabel = new Map((entry.revealedFacts?.[category.id] ?? []).map((fact) => [String(fact.label), fact]));
+  const revealedItems = values.map((value) => ({
+    label: String(value),
+    isFalse: false,
+    tooltip: "",
+    ...extremeMark(revealedFactByLabel.get(String(value))?.id, extremes),
+    uuid: revealedFactByLabel.get(String(value))?.uuid ?? "",
+    infoLabel: t("Intel.AbilityDetails", "Show details"),
+  }));
   if (!editable) {
     for (const record of revealedFalseInformation) {
       const label = String(record.label || record.text || "").trim();
@@ -134,7 +185,7 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
   }
   const falseValueKind = ["saves", "perception"].includes(category.id)
     ? "dc"
-    : (["weaknesses", "resistances"].includes(category.id) ? "amount" : "none");
+    : (["weaknesses", "resistances", "skills", "strikes"].includes(category.id) ? "amount" : "none");
   return {
     ...category,
     checked: selectedCount > 0,
@@ -144,6 +195,8 @@ function categoryModel(entry, category, index, { editable = false } = {}) {
     revealedItems,
     facts: facts.map((fact) => ({
       ...fact,
+      ...extremeMark(fact.id, extremes),
+      infoLabel: t("Intel.AbilityDetails", "Show details"),
       inputName: inputName(index, category.id),
       checked: selectedIds.includes(fact.id),
     })),
@@ -220,6 +273,7 @@ function entryModel(entry, categories, index, { canResetAttempts = false } = {})
     progressTemplate,
     progressLabel: progressTemplate.replace("{count}", progressCount).replace("{total}", progressTotal),
     progressPercent: progressTotal > 0 ? Math.round((progressCount / progressTotal) * 100) : 0,
+    noneKnownLabel: t("Intel.NothingKnownYet", "Nothing known about this creature yet."),
     revealMode,
     revealModeOptions: [
       {
@@ -602,8 +656,48 @@ export class IntelWindow extends HandlebarsApplicationMixin(ApplicationV2) {
     button.setAttribute("aria-label", label);
   }
 
+  // The ability's own description (Reactive Strike, Ferocity...), shown under its row; a second click
+  // hides it. Enriched with GM-only secrets kept from players.
+  async _toggleAbilityDetails(button) {
+    const uuid = button?.dataset?.intelAbilityInfo;
+    const row = button?.closest("[data-intel-category], .combater-intel-revealed-section");
+    if (!uuid || !row) return;
+    const existing = row.querySelector("[data-intel-ability-details]");
+    const wasSame = existing?.dataset.uuid === uuid;
+    existing?.remove();
+    for (const other of row.querySelectorAll("[data-intel-ability-info].is-open")) other.classList.remove("is-open");
+    if (wasSame) return;
+    const item = await globalThis.fromUuid?.(uuid);
+    if (!item) return;
+    const TextEditor = globalThis.foundry?.applications?.ux?.TextEditor?.implementation ?? globalThis.TextEditor;
+    const raw = item.system?.description?.value ?? "";
+    const description = TextEditor?.enrichHTML
+      ? await TextEditor.enrichHTML(raw, { secrets: globalThis.game?.user?.isGM === true, rollData: item.getRollData?.() ?? {}, relativeTo: item })
+      : raw;
+    const details = document.createElement("div");
+    details.className = "combater-intel-ability-details";
+    details.dataset.intelAbilityDetails = "";
+    details.dataset.uuid = uuid;
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    const body = document.createElement("div");
+    body.className = "combater-intel-ability-description";
+    body.innerHTML = description || t("Intel.NoDescription", "No description.");
+    details.append(title, body);
+    row.append(details);
+    button.classList.add("is-open");
+  }
+
   _onRender(context, options) {
     super._onRender(context, options);
+    for (const button of this.element.querySelectorAll("[data-intel-ability-info]")) {
+      button.addEventListener("click", (event) => {
+        // Inside the fact's <label>: don't tick the checkbox.
+        event.preventDefault();
+        event.stopPropagation();
+        this._toggleAbilityDetails(button);
+      });
+    }
     this.element.querySelector("[data-intel-close]")?.addEventListener("click", () => this.close());
     this.element.querySelector("[data-intel-save]")?.addEventListener("click", (event) => this._save(event.currentTarget));
     for (const button of this.element.querySelectorAll("[data-intel-reset-attempts]")) {

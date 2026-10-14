@@ -183,7 +183,11 @@ export async function resolvePanelRecallKnowledge(panel, step, action) {
     ));
     return;
   }
-  const question = await promptRecallKnowledgeQuestion();
+  const question = await promptRecallKnowledgeQuestion({
+    targetName: target.name ?? target.token?.name ?? "",
+    targetActor,
+    attempt: (Number(attemptState.attempts) || 0) + 1,
+  });
   if (!question) return;
   clearActionPreview();
   const rollResult = await rollRecallKnowledge({ actor, target: target.token, question: question.id });

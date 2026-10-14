@@ -1,6 +1,6 @@
 {
   "name": "pf2e-combater",
-  "version": "2.0.11",
+  "version": "2.1.0",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -38,7 +38,8 @@
     "format:check": "prettier --check .",
     "build": "echo 'No build step required for Foundry VTT modules'",
     "prepublishOnly": "npm run test:ci && npm run lint",
-    "prepare": "husky"
+    "prepare": "husky",
+    "planner:sweep": "node scripts/dev/quality-sweep/run.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

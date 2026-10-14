@@ -116,8 +116,11 @@ function skirmishKitePlan(context, profile, readyStrikes, spells, budget) {
     const rangedPrimary = finisher.average > 0 && finisher.average >= bestMelee;
     if (!fragile && !rangedPrimary) continue;
 
+    // Both hands on the crossbow: no punching first (letting go and re-gripping costs an action).
+    const handsFull = Number(profile?.handsFree) === 0;
     const meleeStrike = readyStrikes
       .filter((strike) => !isRangedStrike(strike) && currentDistance <= strikeMeleeReach(strike))
+      .filter((strike) => !(handsFull && (strike?.item?.slug === "basic-unarmed" || strike?.item?.id === "xxPF2ExUNARMEDxx")))
       .reduce((best, strike) => (!best || candidateAverageDamage(strike) > candidateAverageDamage(best) ? strike : best), null);
     const includeMelee = Boolean(meleeStrike) && (1 + 1 + finisher.actionCost) <= budget;
     if (!includeMelee && (1 + finisher.actionCost) > budget) continue;

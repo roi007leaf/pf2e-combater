@@ -871,6 +871,16 @@ try {
             },
           },
         ],
+        [
+          "administer-first-aid",
+          {
+            variants: [{ slug: "stabilize" }, { slug: "stop-bleeding" }],
+            use: async (options) => {
+              pf2eActionCalls.push({ ...options, action: "administer-first-aid" });
+              return { ok: true };
+            },
+          },
+        ],
       ]),
     },
   };
@@ -1728,6 +1738,16 @@ try {
     },
   });
   assert.equal(raiseShieldResult.status, "done", "Raise a Shield should execute via the legacy action function without asking for a target");
+
+  // PF2e has no Stabilize action: it runs as Administer First Aid's stabilize variant.
+  const stabilizeResult = await executeDraftStep({
+    context: executionContext,
+    step: { instanceId: "stabilize-step" },
+    action: { id: "stabilize", name: "Stabilize", slug: "stabilize", executable: "pf2e-action", role: "healing", skill: "medicine", suggestedTarget: { type: "self", id: "actor-token", name: "Valeros" } },
+  });
+  assert.equal(stabilizeResult.status, "done", "Stabilize should execute through Administer First Aid");
+  assert.equal(pf2eActionCalls.at(-1)?.action, "administer-first-aid");
+  assert.equal(pf2eActionCalls.at(-1)?.variant, "stabilize");
 
   // Drop Prone applies prone; revert clears it.
   const dropProneResult = await executeDraftStep({
@@ -8611,6 +8631,12 @@ assert.equal(selectDisplayPlan(displayPlans, "missing").id, "main");
       ["south"],
       "selected-target Auto-fill context should not leave broader enemy plans in the displayed cycle",
     );
+    // A locked target that isn't in the current target list (only among enemies) still focuses the plan.
+    const lockedOffTarget = contextWithCurrentAutoFillTargets({
+      battlefield: { targets: [northTarget], enemies: [northTarget, southTarget] },
+    }, ["south-token"]);
+    assert.deepEqual(lockedOffTarget.battlefield.enemies.map((target) => target.id), ["south"],
+      "turn-intent locked target must be found among enemies, not only current targets");
   } finally {
     globalThis.game = previousGame;
   }
@@ -15544,6 +15570,98 @@ const scoredImmuneDemoralize = scoreCandidate(immuneDemoralizeContext, {
 });
 assert.equal(scoredImmuneDemoralize.score, -999);
 assert.equal(scoredImmuneDemoralize.reason, "Target is temporarily immune to Demoralize.");
+
+// Demoralize is mental: a mindless zombie (or any mental immunity) is never a valid target.
+const mindlessZombie = { ...fighterContext.targets[0], id: "mindless-zombie", name: "Zombie", distance: 10, traits: ["mindless", "undead", "zombie"] };
+const mentalImmuneGolem = { ...fighterContext.targets[0], id: "mental-golem", name: "Golem", distance: 10, traits: ["construct"], immunities: [{ type: "mental" }] };
+for (const immuneTarget of [mindlessZombie, mentalImmuneGolem]) {
+  const mindlessScore = scoreCandidate({
+    ...fighterContext,
+    isGM: true,
+    targets: [immuneTarget],
+    enemies: [immuneTarget],
+    battlefield: { targets: [immuneTarget], enemies: [immuneTarget], allies: [] },
+  }, nearDemoralize);
+  assert.notEqual(mindlessScore.suggestedTarget?.id, immuneTarget.id, `Demoralize must not target ${immuneTarget.name} (mental immunity)`);
+  assert.ok(mindlessScore.score < 0, `Demoralize against only ${immuneTarget.name} should be blocked`);
+}
+
+// No meta leak: a player who hasn't learned the zombie is mindless still sees Demoralize offered;
+// once the party knows its traits, it's skipped.
+for (const [ledger, blocked] of [[{}, false], [{ traits: true }, true]]) {
+  const npcZombie = { ...mindlessZombie, actor: { type: "npc" }, intelLedger: ledger };
+  const playerScore = scoreCandidate({
+    ...fighterContext,
+    isGM: false,
+    targets: [npcZombie],
+    enemies: [npcZombie],
+    battlefield: { targets: [npcZombie], enemies: [npcZombie], allies: [] },
+  }, nearDemoralize);
+  assert.equal(playerScore.suggestedTarget?.id === npcZombie.id, !blocked,
+    blocked ? "Known mindless: Demoralize skips the zombie" : "Unknown traits: player planning must not reveal the zombie is mindless");
+}
+
+// Recall Knowledge is worth more the less the party knows (the party's own ledger; GMs know all).
+{
+  const recall = readActionSources(fighterContext).find((action) => action.slug === "recall-knowledge");
+  const rkScore = (ledger, isGM) => {
+    const foe = { ...fighterContext.targets[0], id: "rk-foe", name: "Unknown", distance: 20, actor: { type: "npc" }, intelLedger: ledger };
+    return scoreCandidate({ ...fighterContext, isGM, targets: [foe], enemies: [foe], battlefield: { targets: [foe], enemies: [foe], allies: [] } }, recall).score;
+  };
+  const known = { identity: true, traits: true, saves: true, perception: true, weaknesses: true, resistances: true, immunities: true };
+  assert.ok(rkScore({}, false) > rkScore({ saves: true, weaknesses: true }, false), "less unknown, less to learn");
+  assert.ok(rkScore({ saves: true, weaknesses: true }, false) > rkScore(known, false), "nothing left to learn is worth least");
+  assert.equal(rkScore({}, true), rkScore(known, true), "GM view: ledger doesn't change Recall Knowledge");
+}
+
+// Damage the target is wholly immune to does nothing: pick another target (GM view, or once known).
+{
+  const fireBolt = { id: "fire-bolt", name: "Fire Bolt", slug: "fire-bolt", source: "spell", role: "damage", actionCost: 2,
+    available: true, averageDamage: 12, damageTypes: ["fire"], activityProfile: { damageTypes: ["fire"], averageDamage: 12 },
+    targetingProfile: { enemy: true, maxRange: 60 }, range: { max: 60 } };
+  const wildfire = { ...fighterContext.targets[0], id: "wildfire", name: "Wildfire", distance: 10, hpPercent: 0.2, actor: { type: "npc" }, immunities: [{ type: "fire" }], intelLedger: {} };
+  const goblin = { ...fighterContext.targets[0], id: "goblin", name: "Goblin", distance: 20, hpPercent: 1, actor: { type: "npc" }, intelLedger: {} };
+  const scoreFor = (isGM, ledger) => {
+    const foe = { ...wildfire, intelLedger: ledger };
+    return scoreCandidate({ ...fighterContext, isGM, targets: [foe, goblin], enemies: [foe, goblin], battlefield: { targets: [foe, goblin], enemies: [foe, goblin], allies: [] } }, fireBolt);
+  };
+  assert.equal(scoreFor(true, {}).suggestedTarget?.id, "goblin", "GM view: never aim fire at the fire-immune creature");
+  assert.equal(scoreFor(false, { immunities: true }).suggestedTarget?.id, "goblin", "known immunity: aim elsewhere");
+  assert.equal(scoreFor(false, {}).suggestedTarget?.id, "wildfire", "unknown immunity: a player's plan mustn't reveal it");
+}
+
+// Overkill: a slotted spell (or a 2-action attack) on a creature a cheap hit would finish loses value.
+{
+  const bolt = { id: "bolt", name: "Bolt", slug: "bolt", source: "spell", role: "damage", actionCost: 2, castRank: 3,
+    available: true, averageDamage: 24, damageTypes: ["fire"], activityProfile: { damageTypes: ["fire"], averageDamage: 24 },
+    targetingProfile: { enemy: true, maxRange: 60 }, range: { max: 60 } };
+  const jab = { ...bolt, id: "jab", name: "Jab", slug: "jab", actionCost: 1, castRank: 0, traits: ["cantrip"] };
+  const foe = (hpPercent) => ({ ...fighterContext.targets[0], id: `foe-${hpPercent}`, name: "Foe", distance: 20, hpPercent,
+    actor: { type: "npc", document: { type: "npc", system: { attributes: { hp: { max: 40 } } } } } });
+  const scoreOn = (action, hpPercent) => {
+    const target = foe(hpPercent);
+    return scoreCandidate({ ...fighterContext, isGM: true, targets: [target], enemies: [target], battlefield: { targets: [target], enemies: [target], allies: [] } }, action).score;
+  };
+  assert.ok(scoreOn(bolt, 0.05) < scoreOn(bolt, 1) - 10, "a slotted spell on a 2-HP foe is overkill");
+  const jabGap = scoreOn(jab, 1) - scoreOn(jab, 0.05);
+  assert.ok(jabGap < 10, "a cheap cantrip finishing the foe isn't penalized as overkill");
+}
+
+// Dying (unconscious): the only thing to plan is the recovery check at the start of the turn.
+{
+  const dyingProfile = { ...fighterContext.profile, conditions: { slugs: ["dying", "unconscious", "prone"], values: { dying: 1 } } };
+  const dyingContext = { ...fighterContext, profile: dyingProfile, actor: { ...fighterContext.actor, profile: dyingProfile } };
+  const built = buildCandidates(dyingContext);
+  assert.deepEqual(built.candidates.map((action) => action.slug), ["recovery-check"], "a dying PC plans only the recovery check");
+  const plan = buildTurnPlans(dyingContext, built.candidates, { includeCoverage: false })[0];
+  assert.deepEqual(plan?.steps?.map((step) => step.slug), ["recovery-check"]);
+  const awake = buildCandidates(fighterContext).candidates;
+  assert.ok(!awake.some((action) => action.slug === "recovery-check"), "no recovery check when not dying");
+  // Unconscious but stable (0 HP, no longer dying) or asleep: nothing to plan.
+  const stableProfile = { ...fighterContext.profile, conditions: { slugs: ["unconscious", "prone", "wounded"], values: { wounded: 1 } } };
+  const stable = buildCandidates({ ...fighterContext, profile: stableProfile, actor: { ...fighterContext.actor, profile: stableProfile } });
+  assert.deepEqual(stable.candidates, [], "an unconscious, stable PC plans no actions");
+}
 
 // Create a Diversion carries a default PF2e variant so execution doesn't error.
 const diversionAction = readActionSources(fighterContext).find((action) => action.slug === "create-a-diversion");

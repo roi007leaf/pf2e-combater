@@ -178,6 +178,10 @@
       "EnrageBarbariansAtCombatStart": {
         "Name": "Enrage barbarians at combat start",
         "Hint": "At combat start, apply Rage for PCs with Quick-Tempered and a Rage action configured with a self-applied effect. Works without opening the Combater panel."
+      },
+      "LearnObservedIntel": {
+        "Name": "Learn Intel from what the party sees",
+        "Hint": "When an enemy uses a Strike, reaction or ability in plain view, record it in the party's Intel for that creature, as if they had learned it. Abilities posted only to the GM are not learned."
       }
     },
     "Preflight": {
@@ -186,7 +190,17 @@
       "RankingReduces": "PF2e degree outcomes reduce Auto-fill ranking ({delta}).",
       "RankingNeutral": "PF2e degree outcomes leave Auto-fill ranking unchanged.",
       "IncapacitationRaisesTarget": "Incapacitation raises the target's result by one degree.",
-      "IncapacitationLowersCheck": "Incapacitation lowers the acting check's result by one degree."
+      "IncapacitationLowersCheck": "Incapacitation lowers the acting check's result by one degree.",
+      "NativeModifier": "PF2e {statistic} {modifier}",
+      "HitChance": "PF2e Hit {chance}",
+      "TargetFailChance": "PF2e Fails {chance}",
+      "SuccessChance": "PF2e Success {chance}",
+      "PreviewReason": "PF2e check preview: {resolution}.",
+      "ModifierBreakdown": "Modifier breakdown: {breakdown}.",
+      "ApproximateIntel": "Target DC uses revealed approximate Intel.",
+      "InformationalOnly": "Informational only; does not change Auto-fill ranking.",
+      "Strike": "Strike",
+      "Attack": "Attack"
     },
     "ResourceHorizon": {
       "Conserve": "Conserve",
@@ -432,7 +446,12 @@
       "Sustain": "Sustain"
     },
     "Warning": {
-      "ChooseDestExec": "Choose destination at execution."
+      "ChooseDestExec": "Choose destination at execution.",
+      "KnownImmunityBlocks": "Known immunity blocks this.",
+      "KnownResistanceReduces": "Known resistance reduces this.",
+      "SaveLooksHigh": "{save} looks High.",
+      "TargetHidden": "Target hidden.",
+      "DestinationMayProvoke": "Destination may provoke."
     },
     "Tab": {
       "one": "1 Action",
@@ -533,7 +552,9 @@
       "ThrownStrike": "{name} (Thrown)",
       "MeleeStrike": "{name} (Melee)",
       "StrikeStepAway": "{strike} -> Step Away",
-      "Retreat": "Stride Away"
+      "Retreat": "Stride Away",
+      "TakeCover": "Take Cover",
+      "StepArrow": "Step -> "
     },
     "Reason": {
       "StandThenStride": "Stand, then Stride toward {name}.",
@@ -565,7 +586,11 @@
       "ReloadBeforeStrike": "Reload before firing {name}.",
       "StrikeStepAway": "Strike {target}, then Step out of reach.",
       "Retreat": "Badly hurt: Stride out of every enemy's reach.",
-      "StrideAwayStrikeOther": "Stride away from {escaping}, then Strike {target} with {strike}."
+      "StrideAwayStrikeOther": "Stride away from {escaping}, then Strike {target} with {strike}.",
+      "RecoveryCheck": "Dying: roll the recovery check (DC 10 + dying).",
+      "StandStrideMultiattack": "Stand, Stride into reach, and use {action} on {target}.",
+      "StrideTwiceMultiattack": "Stride twice into reach and use {action} on {target}.",
+      "StrideMultiattack": "Stride into reach and use {action} on {target}."
     },
     "Label": {
       "Target": "Target: {name}",
@@ -710,7 +735,10 @@
       "ManualUndo": "Undo {action} manually; its chat output could not be tracked.",
       "ThisAction": "this action",
       "NoRegionApi": "Region creation API is not available.",
-      "Reloaded": "Reloaded {name}."
+      "Reloaded": "Reloaded {name}.",
+      "NoRecoveryApi": "Recovery check API is not available.",
+      "RecoveryRolled": "Recovery check rolled.",
+      "SpellstrikeRecharged": "Spellstrike recharged."
     },
     "ActReason": {
       "ReactionCanPunishA": "Reaction can punish a provoking enemy.",
@@ -762,7 +790,11 @@
       "ActionIsAvailableBut": "Action is available but has no recognized tactical pattern.",
       "MoveAndStrikeActivity": "Move-and-Strike activity is recognized.",
       "MultiStrikeActivityIs": "Multi-Strike activity is recognized.",
-      "StrikeBasedDamageActivity": "Strike-based damage activity is recognized."
+      "StrikeBasedDamageActivity": "Strike-based damage activity is recognized.",
+      "StealthActionMakesActor": "Stealth action makes the actor harder to target.",
+      "DefensiveActionImprovesSurvival": "Defensive action improves survival until the next turn.",
+      "CommandSupportsAllies": "Command action lets an ally contribute this turn.",
+      "CaptureActionCanRestrain": "Capture action can restrain or immobilize a target."
     },
     "SpellReason": {
       "SustainControl": "Sustained spell can keep a control effect active.",
@@ -839,7 +871,9 @@
       "CannotManeuver": "Swarms and troops can't make Athletics maneuvers.",
       "NoExpendedSpell": "No spell has been cast yet today to recover.",
       "SaveForTopSlot": "Save it for one of your top-rank spell slots.",
-      "Mindless": "Mindless creatures don't use this action."
+      "Mindless": "Mindless creatures don't use this action.",
+      "NotDying": "Actor is not dying.",
+      "SpellstrikeCharged": "Spellstrike is already charged."
     },
     "SpellRes": {
       "Prepared": "Prepared {available}/{total}",
@@ -1060,13 +1094,40 @@
       "MoveAnywhere": "Move to any square you choose.",
       "HasteNoStrikes": "{name} has no Strikes to use the extra action on.",
       "FocusFireOne": "An ally is already fighting {target}.",
-      "FocusFireMany": "{count} allies are already fighting {target}."
+      "FocusFireMany": "{count} allies are already fighting {target}.",
+      "HandsFull": "Both hands are full.",
+      "KeepsMeleePressure": "Its melee attack hits at least as hard; backing off to throw spends an action for nothing.",
+      "HealBonus": "Adds {bonus} HP over the touch version.",
+      "DrawArmsLaterTurns": "The drawn weapon stays ready for later turns.",
+      "NothingHiddenToReveal": "No enemy is hidden or invisible.",
+      "HealSelfCritical": "{name} could drop on the next hit.",
+      "NoFlyingEnemy": "No enemy is flying.",
+      "BuffsSeveralAllies": "Reaches {count} allies at once.",
+      "RequiresOwned": "Needs {thing} first.",
+      "FirstSummon": "Nothing summoned yet; these fight from next turn on.",
+      "NothingToDispel": "No enemy has a spell effect to dispel.",
+      "Overkill": "{target} is nearly down: a cheaper attack finishes them.",
+      "MakesSeveralStrikes": "{p0} makes {count} Strikes for one action.",
+      "SpellDcLabel": "spell DC",
+      "ActionDcLabel": "action DC",
+      "HealAllyCritical": "{name} could drop on the next hit.",
+      "SpellstrikeChannels": "Spellstrike channels {spell} with the Strike.",
+      "TacticNotPrepared": "{tactic} isn't prepared today.",
+      "TacticNeedsBanner": "{tactic} needs the banner aura active.",
+      "TacticNoResponders": "No squadmate can respond to {tactic}.",
+      "TacticResponders": "{count} squadmates can answer {tactic}.",
+      "TacticNothingToDo": "{tactic} has nothing to do right now.",
+      "WeakFoesSaveSlots": "Weak foes: save the high-rank slot.",
+      "NoEidolonOnBoard": "No eidolon on the board to take {spell}."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",
       "NotAvailable": "Action is not available in current context.",
       "SpellNotCurated": "Spell is not in curated catalog.",
-      "UnknownHidden": "Unknown custom action hidden by setting."
+      "UnknownHidden": "Unknown custom action hidden by setting.",
+      "UserExcluded": "Hidden from Browse and Auto-fill for this actor.",
+      "Dying": "Unconscious and dying: only the recovery check.",
+      "Unconscious": "Unconscious: can't act."
     },
     "Plan": {
       "NoRecommendation": "No recommendation",
@@ -1077,7 +1138,10 @@
       "QuickenedCastingDiscount": "{name} costs 1 fewer action after Quickened Casting.",
       "LingeringCompositionExtend": "{name} lasts longer after Lingering Composition.",
       "StrideTowardAlly": "Stride toward {name}.",
-      "DrawThen": "Draw -> {name}"
+      "DrawThen": "Draw -> {name}",
+      "StrideIntoArea": "Stride within area range of {name}.",
+      "ProjectedFollowUpStrike": "{name} is in range after the movement.",
+      "TakeCoverAfterProne": "Take Cover after dropping prone."
     },
     "Keybind": {
       "ToggleName": "Toggle PF2e Combater",
@@ -1394,7 +1458,14 @@
       "HelpShort": "Tick facts the party learned. Auto-fill uses a hidden defense only after its fact is ticked.",
       "AddFalseShort": "False fact",
       "AddFalseConfirm": "Add this false fact",
-      "OpenFailed": "Could not open Recall Knowledge intel."
+      "OpenFailed": "Could not open Recall Knowledge intel.",
+      "Highest": "Highest",
+      "Lowest": "Lowest",
+      "AbilityDetails": "Show details",
+      "NoDescription": "No description.",
+      "Ranged": "ranged",
+      "NothingKnownYet": "Nothing known about this creature yet.",
+      "LevelShort": "Level {level}"
     },
     "MinionPlan": {
       "Minion": "Companion",
@@ -1562,7 +1633,10 @@
       "Attempt": "Attempt {number}",
       "ApplicableChecks": "Applicable checks",
       "PickHint": "Click the DC that applies",
-      "GmHint": "The GM decides which check applies; the outcome is only suggested."
+      "GmHint": "The GM decides which check applies; the outcome is only suggested.",
+      "QuestionTarget": "This creature",
+      "QuestionAttempt": "Attempt {attempt} · what are you trying to recall?",
+      "QuestionKnown": "Already known: {categories}"
     },
     "RecordTurn": {
       "TopIsRight": "Auto-fill got it right",

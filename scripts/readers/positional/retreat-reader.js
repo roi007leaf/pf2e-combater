@@ -21,6 +21,7 @@ import {
   uniqueTargets,
 } from "../action/reader-helpers.js";
 import {
+  candidateAverageDamage,
   isRangedStrike,
   rangedStrikeReach,
   strikeMeleeReach,
@@ -100,6 +101,7 @@ export function readRangedRetreatStrikeActivities(context, readyStrikes) {
       detected: true,
       available: true,
       item: strike.item ?? null,
+      averageDamage: candidateAverageDamage(strike) || null,
       preferredTarget: target,
       role: "mobility-attack",
       activityProfile: {

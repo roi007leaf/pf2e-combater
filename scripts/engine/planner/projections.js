@@ -8,6 +8,7 @@ import {
   isSpellAction,
 } from "./rules.js";
 import { t } from "../../i18n.js";
+import { distanceFromCenterToTarget } from "../../readers/action/reach.js";
 
 const BASE_ACTIONS = 3;
 const GENERATED_STRIKE_COMPOSITE_PREFIXES = [
@@ -18,7 +19,10 @@ const GENERATED_STRIKE_COMPOSITE_PREFIXES = [
   "stride-strike-",
   "step-strike-",
   "draw-strike-",
+  "flank-strike-",
 ];
+// The Strike after Striding into a flank hits an off-guard target (-2 AC, about +10% to hit).
+const FLANK_FOLLOW_UP_OFF_GUARD_BONUS = 12;
 const COMPOSITE_MOVE_PART_NAMES = new Set(["crawl", "draw", "interact", "stand", "step", "stride", "stride-away"]);
 const QUICKENED_CASTING_DISCOUNT_BONUS = 8;
 const LINGERING_COMPOSITION_BONUS = 8;
@@ -111,10 +115,15 @@ export function isMoveAndStrike(step) {
 
 
 function generatedStrikeActionKey(candidate) {
+  // A composite aimed at a second target carries that target in its id; the Strike is the same one.
+  const targetId = candidate?.targetingProfile?.preferredTargetId;
+  const targetSuffix = targetId ? `-${normalizeSlug(String(targetId))}` : "";
   const values = [
     candidate?.id,
     candidate?.slug,
-  ].map((value) => String(value ?? "").toLowerCase()).filter(Boolean);
+  ].map((value) => String(value ?? "").toLowerCase())
+    .map((value) => (targetSuffix && value.endsWith(targetSuffix) ? value.slice(0, -targetSuffix.length) : value))
+    .filter(Boolean);
 
   for (const value of values) {
     for (const prefix of GENERATED_STRIKE_COMPOSITE_PREFIXES) {
@@ -165,7 +174,10 @@ function followUpStrikeScore(candidate) {
 
 
 function projectedFollowUpStrikeCandidate(candidate) {
-  if (!isMoveAndStrike(candidate)) return null;
+  // A flank is a plain Stride into a flanking square: the Strike it sets up is priced like the one
+  // after a Stride -> Strike, plus the off-guard it earns.
+  const flank = candidate?.activityProfile?.setsUpFlank === true;
+  if (!isMoveAndStrike(candidate) && !flank) return null;
   if (Number(candidate?.actionCost) >= BASE_ACTIONS) return null;
 
   const id = generatedStrikeActionKey(candidate);
@@ -185,7 +197,10 @@ function projectedFollowUpStrikeCandidate(candidate) {
     attackTrait: true,
     available: true,
     range: Number.isFinite(range) && range >= 0 ? { ...(candidate.range ?? {}), max: range } : candidate.range,
-    score: followUpStrikeScore(candidate),
+    score: flank
+      ? followUpStrikeScore({ ...candidate, score: undefined }) + FLANK_FOLLOW_UP_OFF_GUARD_BONUS
+      : followUpStrikeScore(candidate),
+    ...(flank ? { role: "damage", requiresDestination: false, destination: undefined } : {}),
     reason: t("Plan.ProjectedFollowUpStrike", "{name} is in range after the movement.", { name: strikeLeafName(candidate) }),
     activityProfile: {
       ...(candidate.activityProfile ?? {}),
@@ -308,6 +323,12 @@ export function projectedFollowUpSatisfied(context, candidate, steps) {
   const range = currentAttackRange(candidate);
   if (!Number.isFinite(range) || range < 0) return true;
 
-  const distance = Math.hypot(targetCenter.x - origin.x, targetCenter.y - origin.y) * gridFeetPerPixel();
+  // On a real grid, PF2e distance between footprints: a diagonal neighbour is 5 feet, not the
+  // 7 feet a straight line between centres measures (which rejected every diagonal follow-up).
+  const target = candidate?.preferredTarget ?? candidate?.suggestedTarget ?? candidate?.target;
+  const gridDistance = globalThis.canvas?.grid ? distanceFromCenterToTarget(context, origin, target?.token ?? target) : NaN;
+  const distance = Number.isFinite(gridDistance)
+    ? gridDistance
+    : Math.hypot(targetCenter.x - origin.x, targetCenter.y - origin.y) * gridFeetPerPixel();
   return distance <= range + 1e-6;
 }

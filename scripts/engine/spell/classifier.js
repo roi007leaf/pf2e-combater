@@ -238,9 +238,12 @@ function targetsSelfOnly(spell, rangeProfile) {
 }
 
 function isHealing(spell, traits, damageProfile) {
-  return traits.includes("healing")
-    || damageProfile?.type === "healing"
-    || /\bregain(?:s)? .*hit points\b|\brestore(?:s)? .*hit points\b/.test(spellText(spell));
+  if (traits.includes("healing") || damageProfile?.type === "healing") return true;
+  const text = spellText(spell);
+  // Healer's Blessing: "when the target regains Hit Points ... regains 2 additional" boosts other
+  // healing; it restores nothing by itself.
+  if (/\bwhen (?:the target|it|you|that creature) regains? hit points\b|\badditional hit points\b/.test(text)) return false;
+  return /\bregain(?:s)? .*hit points\b|\brestore(?:s)? .*hit points\b/.test(text);
 }
 
 const CONDITION_PATTERNS = [
@@ -552,7 +555,11 @@ function classifySpellBase(spell) {
     });
   }
 
-  if ((saveProfile || conditionProfile || controlFacts) && !targetsSelfOnly(spell, rangeProfile)) {
+  // Invisibility mentions "off-guard" (to the invisible creature) and Blur makes its target
+  // concealed: with no save, that's a benefit for the target, not a debuff to cast on an enemy.
+  const stealthProfile = readStealthDefenseProfile(spell);
+  const stealthBenefit = !saveProfile && !damageProfile && (stealthProfile?.invisible === true || stealthProfile?.concealed === true);
+  if ((saveProfile || conditionProfile || controlFacts) && !targetsSelfOnly(spell, rangeProfile) && !stealthBenefit) {
     return inferred("control", {
       activityProfile: {
         ...baseProfile(["control"]),

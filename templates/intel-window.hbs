@@ -61,6 +61,8 @@
                               <i class="fa-solid {{#if checked}}fa-check{{else}}fa-plus{{/if}}"></i>
                             </span>
                             <span data-intel-fact-label data-exact-label="{{exactLabel}}" data-band-label="{{bandLabel}}">{{label}}</span>
+                            {{#if extreme}}<i class="fa-solid {{extremeIcon}} combater-intel-extreme is-{{extreme}}" data-tooltip="{{extremeLabel}}" aria-label="{{extremeLabel}}"></i>{{/if}}
+                            {{#if uuid}}<button type="button" class="combater-intel-info" data-intel-ability-info="{{uuid}}" data-tooltip="{{infoLabel}}" aria-label="{{infoLabel}}"><i class="fa-solid fa-circle-info"></i></button>{{/if}}
                           </label>
                         {{/each}}
                         {{#each falseInformation}}
@@ -163,8 +165,10 @@
               </div>
             {{else}}
               <div class="combater-intel-revealed">
+                {{#unless hasRevealed}}<p class="combater-intel-unknown">{{noneKnownLabel}}</p>{{/unless}}
                 {{#each categories}}
-                  <section class="combater-intel-revealed-section {{#unless hasValues}}is-unknown{{/unless}}">
+                  {{#if hasValues}}
+                  <section class="combater-intel-revealed-section">
                     <h4>{{label}}</h4>
                     {{#if hasValues}}
                       <ul>
@@ -172,13 +176,14 @@
                           <li class="{{#if isFalse}}is-false-information{{/if}}" {{#if tooltip}}data-tooltip="{{tooltip}}"{{/if}}>
                             {{#if isFalse}}<i class="fa-solid fa-triangle-exclamation"></i>{{/if}}
                             <span>{{label}}</span>
+                            {{#if extreme}}<i class="fa-solid {{extremeIcon}} combater-intel-extreme is-{{extreme}}" data-tooltip="{{extremeLabel}}" aria-label="{{extremeLabel}}"></i>{{/if}}
+                            {{#if uuid}}<button type="button" class="combater-intel-info" data-intel-ability-info="{{uuid}}" data-tooltip="{{infoLabel}}" aria-label="{{infoLabel}}"><i class="fa-solid fa-circle-info"></i></button>{{/if}}
                           </li>
                         {{/each}}
                       </ul>
-                    {{else}}
-                      <span class="combater-intel-unknown">{{unknownLabel}}</span>
                     {{/if}}
                   </section>
+                  {{/if}}
                 {{/each}}
               </div>
             {{/if}}

@@ -15,6 +15,8 @@ import { normalizedActionFacts } from "../action/facts.js";
 
 function numeric(...values) {
   for (const value of values) {
+    // Number(null) and Number("") are 0: a missing DC must fall through, not read as DC 0.
+    if (value === null || value === undefined || value === "" || typeof value === "object") continue;
     const number = Number(value);
     if (Number.isFinite(number)) return number;
   }

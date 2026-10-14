@@ -15,6 +15,7 @@ const SETTINGS = {
   flankingSizeRule: "flankingSizeRule",
   raisePcShieldsWhenDefending: "raisePcShieldsWhenDefending",
   enrageBarbariansAtCombatStart: "enrageBarbariansAtCombatStart",
+  learnObservedIntel: "learnObservedIntel",
 };
 
 export function registerSettings({ decorateFlankingFormGroup } = {}) {
@@ -160,6 +161,14 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     config: true,
     type: Boolean,
     default: false,
+  });
+  game.settings.register(MODULE_ID, SETTINGS.learnObservedIntel, {
+    name: "PF2E_COMBATER.Settings.LearnObservedIntel.Name",
+    hint: "PF2E_COMBATER.Settings.LearnObservedIntel.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
   });
   game.settings.register(MODULE_ID, "visionerCombatSettingsMigrated", {
     scope: "world",

@@ -135,13 +135,24 @@ function buffRecipients(context, action, { ignoreRange = false } = {}) {
   const targeting = action?.targetingProfile ?? {};
   const recipients = [];
   if (targeting.self !== false) recipients.push({ entity: selfEntity(context), type: "self" });
-  if (targeting.ally) {
+  // No range, no target and no area (Sure Strike, Shield, Mystic Armor): it works on the caster only.
+  const spellSystem = action?.item?.type === "spell" ? action.item.system : null;
+  const casterOnly = Boolean(spellSystem) && !String(spellSystem.range?.value ?? "").trim()
+    && !String(spellSystem.target?.value ?? "").trim() && !spellSystem.area;
+  // "Each ogre ally who hears": only allies of that kind (by name or trait) can receive it.
+  const description = String(action?.item?.system?.description?.value ?? "").replace(/<[^>]+>/g, " ").toLowerCase();
+  const qualifier = description.match(/\beach ([a-z]+) all(?:y|ies)\b/)?.[1];
+  const qualifies = (ally) => !qualifier || ["who", "that", "willing"].includes(qualifier)
+    || String(ally?.name ?? "").toLowerCase().includes(qualifier)
+    || (Array.isArray(ally?.traits) && ally.traits.map((trait) => String(trait).toLowerCase()).includes(qualifier));
+  if (targeting.ally && !casterOnly) {
     // Only allies the spell reaches from here (Haste: 30 ft). The planner moves or adds Reach Spell
     // first when the best one is farther; it must not quietly pick someone out of range.
     const range = maxRange(action);
     for (const ally of contextAllies(context)) {
       const distance = Number(ally?.distance);
       if (!ignoreRange && Number.isFinite(range) && Number.isFinite(distance) && distance > range) continue;
+      if (!qualifies(ally)) continue;
       recipients.push({ entity: ally, type: "ally" });
     }
   }
