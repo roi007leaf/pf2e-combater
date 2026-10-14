@@ -316,7 +316,13 @@
       "WhyLabel": "Why this plan?",
       "WhyTitle": "Why plan {position}",
       "WhyVersus": "Beats plan {position}",
-      "AutoFillCycleHint": "Click for the next plan, right-click for the previous one."
+      "AutoFillCycleHint": "Click for the next plan, right-click for the previous one.",
+      "ProgressDone": "{done}/{total} done",
+      "TurnComplete": "Turn complete",
+      "ClearPlan": "Clear",
+      "ClearPlanTooltip": "Remove every step that hasn't run yet.",
+      "UndoClear": "Undo clear",
+      "UndoClearTooltip": "Put back the steps you just cleared."
     },
     "Summon": {
       "Choose": "Choose summoned creature and plan placement",

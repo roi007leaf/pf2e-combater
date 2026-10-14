@@ -88,6 +88,11 @@
                 </button>
                 {{/if}}
               {{/if}}
+              {{#if canRemoveDraftStep}}{{#unless isExecutionDone}}
+                <button type="button" class="combater-chip-tool combater-step-remove" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.RemoveAria" name=name}}">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              {{/unless}}{{/if}}
               {{#if hasMoreTools}}
                 <button type="button" class="combater-chip-tool combater-step-more-toggle" data-step-more="{{instanceId}}" aria-expanded="{{#if toolsOpen}}true{{else}}false{{/if}}" data-tooltip="{{moreToolsLabel}}" aria-label="{{moreToolsLabel}}">
                   <i class="fa-solid fa-ellipsis"></i>
@@ -159,11 +164,6 @@
                 <button type="button" class="combater-chip-tool has-label" data-duplicate-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.DuplicateStep"}}" aria-label="{{localize "PF2E_COMBATER.Panel.DuplicateStepAria" name=name}}">
                   <i class="fa-solid fa-clone"></i><span>{{moreToolsDuplicateLabel}}</span>
                 </button>
-              {{/if}}
-              {{#if canRemoveDraftStep}}
-              <button type="button" class="combater-chip-tool danger has-label" data-remove-draft-step="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.Remove"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Remove"}}">
-                <i class="fa-solid fa-trash"></i><span>{{moreToolsRemoveLabel}}</span>
-              </button>
               {{/if}}
             </span>
             {{/if}}
@@ -688,7 +688,7 @@
       {{/if}}
     </div>
   {{/if}}
-  {{#if (or planLayout.footer.visible planLayout.complete planLayout.progress planPreference.visible recordTurn.visible)}}
+  {{#if (or planLayout.footer.visible planLayout.undoClear planLayout.complete planLayout.progress planPreference.visible recordTurn.visible)}}
   <footer class="combater-run-footer">
     {{#if planLayout.complete}}
       <div class="combater-run-row">
@@ -703,6 +703,14 @@
           {{#if planLayout.footer.canRunAll}}
             <button type="button" class="combater-run-all" data-run-all data-tooltip="{{planLayout.footer.runAllTooltip}}"><i class="fa-solid fa-forward"></i> {{planLayout.footer.runAllLabel}}</button>
           {{/if}}
+          {{#if planLayout.footer.canClear}}
+            <button type="button" class="combater-run-clear" data-clear-plan data-tooltip="{{planLayout.footer.clearTooltip}}" aria-label="{{planLayout.footer.clearTooltip}}"><i class="fa-solid fa-trash-can"></i> {{planLayout.footer.clearLabel}}</button>
+          {{/if}}
+        </div>
+      {{/if}}
+      {{#if planLayout.undoClear}}
+        <div class="combater-run-row">
+          <button type="button" class="combater-run-undo-clear" data-undo-clear-plan data-tooltip="{{planLayout.undoClear.tooltip}}"><i class="fa-solid fa-rotate-left"></i> {{planLayout.undoClear.label}}</button>
         </div>
       {{/if}}
     {{/if}}

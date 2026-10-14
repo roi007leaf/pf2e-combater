@@ -4148,6 +4148,17 @@
 .pf2e-combater .combater-utilities-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
 .pf2e-combater .combater-browser-recharge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #6a5a30; border-radius: 10px; background: #2c271c; color: #e6c77e; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .pf2e-combater .combater-browser-recharge i { font-size: 10px; }
+/* Remove a step straight from its row; Clear / Undo clear in the footer. */
+.pf2e-combater .combater-step-remove { color: #8a939e; }
+.pf2e-combater .combater-step-remove:hover,
+.pf2e-combater .combater-step-remove:focus-visible { border-color: #8a3b36; background: #3a2220; color: #ff9a92; }
+.pf2e-combater .combater-run-clear,
+.pf2e-combater .combater-run-undo-clear { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid #4b5361; border-radius: 6px; background: #22272e; color: #c4ccd6; font-size: 12px; white-space: nowrap; }
+.pf2e-combater .combater-run-clear:hover,
+.pf2e-combater .combater-run-clear:focus-visible { border-color: #8a3b36; background: #3a2220; color: #ff9a92; }
+.pf2e-combater .combater-run-undo-clear { flex: 1 1 auto; border-color: #5a6b80; color: #dfe8f2; }
+.pf2e-combater .combater-run-undo-clear:hover,
+.pf2e-combater .combater-run-undo-clear:focus-visible { border-color: #79aee8; background: #253244; }
 /* "Why this plan" card, opened from the scale button next to the plan selector. */
 .pf2e-combater .combater-plan-why-toggle { flex: 0 0 auto; width: 30px; min-width: 30px; height: 30px; padding: 0; border: 1px solid #49535e; border-radius: 6px; background: #20262c; color: #b5c3d0; }
 .pf2e-combater .combater-plan-why-toggle:hover,

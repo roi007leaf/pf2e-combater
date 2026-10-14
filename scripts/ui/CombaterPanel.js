@@ -45,6 +45,8 @@ import {
   persistPanelActiveDraftStep,
   readPanelActiveDraftPlan,
   removePanelDraftStep,
+  clearPanelDraft,
+  undoPanelDraftClear,
   removePanelMinionPlanStep,
   reorderPanelDraftStep,
   reorderPanelFavorite,
@@ -819,6 +821,14 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _removeDraftStep(instanceId) {
     return removePanelDraftStep(this, instanceId);
+  }
+
+  async _clearDraft() {
+    return clearPanelDraft(this);
+  }
+
+  async _undoDraftClear() {
+    return undoPanelDraftClear(this);
   }
 
   async _duplicateDraftStep(instanceId) {

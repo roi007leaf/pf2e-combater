@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.10]
+
+### Changed
+
+- **Remove a step in one click.** Each step that hasn't run has an X next to its Run button; Remove is no longer hidden in the step's "..." menu.
+- **Clear the plan.** A Clear button next to Run next / Run all removes every step that hasn't run (executed steps stay). Right after clearing, Undo clear puts them back.
+
 ## [2.0.9]
 
 ### Added

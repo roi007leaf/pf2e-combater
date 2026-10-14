@@ -54,6 +54,9 @@ export function activatePanelRenderBindings(panel, element) {
     button.addEventListener("click", () => panel._removeDraftStep(button.dataset.removeDraftStep));
   }
 
+  element.querySelector("[data-clear-plan]")?.addEventListener("click", () => panel._clearDraft());
+  element.querySelector("[data-undo-clear-plan]")?.addEventListener("click", () => panel._undoDraftClear());
+
   for (const button of element.querySelectorAll("[data-duplicate-draft-step]")) {
     button.addEventListener("click", () => panel._duplicateDraftStep(button.dataset.duplicateDraftStep));
   }

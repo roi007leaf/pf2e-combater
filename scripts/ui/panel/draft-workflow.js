@@ -996,6 +996,43 @@ export async function removePanelDraftStep(panel, instanceId) {
   await panel.render({ force: true });
 }
 
+// Clear the plan: drop every step that hasn't run (executed ones are the turn's record). The
+// previous draft is kept so the next render can offer Undo until anything else changes.
+function draftStepIds(draft) {
+  return [...(draft?.steps ?? []), ...(draft?.uncounted ?? [])].map((step) => step?.instanceId).join("|");
+}
+
+export function canUndoPanelDraftClear(panel, draft) {
+  const cleared = panel?._clearedDraft;
+  return Boolean(cleared && draft && draftStepIds(draft) === cleared.afterIds);
+}
+
+export async function clearPanelDraft(panel) {
+  if (!panel._canEditDraft()) return;
+  if (!panel._context) return;
+  const draft = panel._readActiveDraftPlan();
+  const keep = (step) => executionStatus(step) !== "pending";
+  const steps = (draft.steps ?? []).filter(keep);
+  const uncounted = (draft.uncounted ?? []).filter(keep);
+  if (steps.length === (draft.steps ?? []).length && uncounted.length === (draft.uncounted ?? []).length) return;
+  const cleared = markManualDraft({ ...draft, steps, uncounted });
+  panel._clearedDraft = { previous: draft, afterIds: draftStepIds(cleared) };
+  await panel._writeActiveDraftPlan(cleared);
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+export async function undoPanelDraftClear(panel) {
+  if (!panel._canEditDraft()) return;
+  const draft = panel._readActiveDraftPlan();
+  if (!canUndoPanelDraftClear(panel, draft)) return;
+  const previous = panel._clearedDraft.previous;
+  panel._clearedDraft = null;
+  await panel._writeActiveDraftPlan(previous);
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
 export async function duplicatePanelDraftStep(panel, instanceId) {
   if (!panel._canEditDraft()) return;
   if (!panel._context || !instanceId) return;

@@ -1,4 +1,5 @@
 import { SETTINGS, settingOrDefault } from "../../settings.js";
+import { canUndoPanelDraftClear } from "./draft-workflow.js";
 import { collectionValues } from "../../foundry-data.js";
 import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder/index.js";
 import { refreshDraftAreaPlacements } from "../../engine/action/builder/projection.js";
@@ -182,6 +183,11 @@ export function viewPanelContext(panel, context) {
   const loadoutCount = panel._loadoutAdvice?.length ?? 0;
   const effectClock = panel._effectClock ?? { urgentCount: 0, totalCount: 0 };
   const planLayout = decoratePlanLayout(groupDraftSteps(draftSteps), { openTools: panel._openStepTools });
+  // Right after Clear, offer to put the steps back (until anything else changes the plan).
+  planLayout.undoClear = canUndoPanelDraftClear(panel, panel._readActiveDraftPlan?.()) ? {
+    label: t("Panel.UndoClear", "Undo clear"),
+    tooltip: t("Panel.UndoClearTooltip", "Put back the steps you just cleared."),
+  } : null;
   const tracker = actionTrackerView(context);
   if (tracker.visible) {
     let normalIndex = 0;

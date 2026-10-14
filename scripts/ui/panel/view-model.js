@@ -1197,7 +1197,8 @@ function hasMoreStepTools(step) {
   const live = !step?.isExecutionDone && Boolean(step?.canChooseSummon || step?.summonLabel || step?.canChooseTarget
     || step?.canChooseDestination || step?.canChooseArea || step?.canChooseRecommendedArea || step?.canChooseSwapItems
     || step?.canCycleMovement || step?.canCycleRoute || step?.canCycleDestination || step?.canCycleWeapon);
-  return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep || step?.canRemoveDraftStep);
+  // Remove has its own button on the row; it doesn't need the drawer.
+  return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep);
 }
 
 // Numbers each top-level step, maps pending steps onto the remaining action
@@ -1283,6 +1284,9 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
       canRunAll: runnable.length > 1,
       runAllLabel: t("Panel.RunAll", "Run all"),
       runAllTooltip: t("Panel.RunAllTooltip", "Run the remaining steps in order. Stops at the first step that needs a choice or fails."),
+      canClear: flat.some((step) => step.canRemoveDraftStep && !step.isExecutionDone),
+      clearLabel: t("Panel.ClearPlan", "Clear"),
+      clearTooltip: t("Panel.ClearPlanTooltip", "Remove every step that hasn't run yet."),
     } : { visible: false },
   };
 }
