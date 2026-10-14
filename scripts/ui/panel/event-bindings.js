@@ -19,6 +19,10 @@ export function activatePanelRenderBindings(panel, element) {
 
   element.querySelector("[data-action='toggle-browser']")
     ?.addEventListener("click", () => panel._toggleBrowser());
+  element.querySelector("[data-empty-browse]")
+    ?.addEventListener("click", () => panel._toggleBrowser());
+  element.querySelector("[data-empty-auto-fill]")
+    ?.addEventListener("click", (event) => panel._autoFillDraft({ forceFull: event.shiftKey }));
   element.querySelector("[data-action='toggle-compact']")
     ?.addEventListener("click", () => panel._setExpanded(!panel.expanded));
   element.querySelector("[data-action='refresh']")
@@ -55,6 +59,13 @@ export function activatePanelRenderBindings(panel, element) {
   }
 
   element.querySelector("[data-clear-plan]")?.addEventListener("click", () => panel._clearDraft());
+  element.querySelector("[data-remove-stale-steps]")?.addEventListener("click", (event) =>
+    panel._removeDraftSteps(String(event.currentTarget.dataset.removeStaleSteps ?? "").split(",")));
+  element.querySelector("[data-stale-refill]")?.addEventListener("click", async () => {
+    const ids = element.querySelector("[data-remove-stale-steps]")?.dataset.removeStaleSteps ?? "";
+    await panel._removeDraftSteps(ids.split(","));
+    await panel._autoFillDraft();
+  });
   element.querySelector("[data-undo-clear-plan]")?.addEventListener("click", () => panel._undoDraftClear());
 
   for (const button of element.querySelectorAll("[data-duplicate-draft-step]")) {

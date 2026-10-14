@@ -550,6 +550,19 @@ function combatantTokenReference(combatant) {
     ?? { id: combatant?.tokenId, uuid: combatant?.tokenUuid };
 }
 
+// Summons and eidolons aren't on the tracker but act inside the encounter on their scene; a token
+// on another scene isn't in that fight. Unknown scenes count as in it.
+function encounterOnTokenScene(combat, token) {
+  const sceneId = token?.document?.parent?.id ?? token?.scene?.id ?? globalThis.canvas?.scene?.id ?? null;
+  const sceneIds = collectionValues(combat?.combatants)
+    .map((entry) => entry?.sceneId ?? entry?.token?.parent?.id ?? entry?.parent?.scene?.id ?? null)
+    .filter(Boolean);
+  const combatScene = combat?.scene?.id ?? combat?._source?.scene ?? null;
+  if (combatScene) sceneIds.push(combatScene);
+  if (!sceneId || !sceneIds.length) return true;
+  return sceneIds.includes(sceneId);
+}
+
 function combatantInCombat(combat, combatant) {
   if (!combatant) return false;
   const combatants = collectionValues(combat?.combatants);
@@ -680,7 +693,10 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const activeTokenName = tokenDisplayName(activeToken, actor, combatant);
   const canSeeDefenses = game?.user?.isGM === true;
   const placeables = canvas?.tokens?.placeables ?? [];
-  const encounterCombat = encounterStarted ? combat : null;
+  // The encounter's roster only applies to a creature on it. One outside it (still exploring, or on
+  // another scene while an encounter runs elsewhere) plans out of combat against everyone on its scene.
+  const inEncounter = encounterStarted && (combatantInCombat(combat, combatant) || encounterOnTokenScene(combat, activeToken));
+  const encounterCombat = inEncounter ? combat : null;
   const combatants = collectionValues(encounterCombat?.combatants);
   const combatantForToken = (token) => combatants.find((entry) => tokenMatchesCombatant(token, entry)) ?? null;
   const tokens = placeables
@@ -719,18 +735,18 @@ export function readCombatContext(refreshSource = "manual", options = {}) {
   const targets = targetTokens
     .filter(Boolean)
     .map((token) => tokenEntry(token, activeToken, { canSeeDefenses, combatant: combatantForToken(token) }));
-  const movementSpent = encounterStarted ? movementActionsSpent({ ...combat, combatant }) : 0;
+  const movementSpent = inEncounter ? movementActionsSpent({ ...combat, combatant }) : 0;
   const sceneId = globalThis.canvas?.scene?.id ?? activeToken?.document?.parent?.id ?? "scene";
-  const combatId = encounterStarted ? combat.id : `exploration:${sceneId}`;
+  const combatId = inEncounter ? combat.id : `exploration:${sceneId}`;
 
   return {
     refreshSource,
     isGM: canSeeDefenses,
     combat: {
       id: combatId,
-      round: encounterStarted ? combat.round : null,
-      turn: encounterStarted ? combat.turn : null,
-      started: encounterStarted,
+      round: inEncounter ? combat.round : null,
+      turn: inEncounter ? combat.turn : null,
+      started: inEncounter,
     },
     combatant: {
       id: combatant.id,

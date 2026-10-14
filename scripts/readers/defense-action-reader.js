@@ -14,24 +14,48 @@ function availability(available, reason) {
 // spontaneous slot's value having dropped below its max, both only happen once something has
 // actually been cast. A fully-rested caster (e.g. round 1 of combat) has neither, so there is
 // nothing yet to recover.
-function hasExpendedSpellResource(actor) {
-  const entries = collectionValues(actor?.itemTypes?.spellcastingEntry);
-  return entries.some((entry) => {
-    const slots = entry?.system?.slots ?? {};
-    return Object.values(slots).some((slot) => {
-      const prepared = Array.isArray(slot?.prepared) ? slot.prepared : [];
-      if (prepared.length) return prepared.some((preparedSpell) => preparedSpell?.expended === true);
-      const remaining = Number(systemValue(slot?.value ?? slot?.remaining));
+function slotRank(key) {
+  const rank = Number(String(key).match(/(\d+)$/)?.[1]);
+  return Number.isFinite(rank) ? rank : null;
+}
+
+// Spent and available slot ranks across the actor's casting entries (cantrips aside).
+function spellSlotRanks(actor) {
+  const ranks = { highest: 0, spent: [] };
+  for (const entry of collectionValues(actor?.itemTypes?.spellcastingEntry)) {
+    for (const [key, slot] of Object.entries(entry?.system?.slots ?? {})) {
+      const rank = slotRank(key);
+      if (!rank) continue;
+      const prepared = Array.isArray(slot?.prepared) ? slot.prepared.filter((spell) => spell?.id) : [];
       const max = Number(systemValue(slot?.max ?? slot?.maximum));
-      return Number.isFinite(remaining) && Number.isFinite(max) && remaining < max;
-    });
-  });
+      if (prepared.length || max > 0) ranks.highest = Math.max(ranks.highest, rank);
+      const spent = prepared.length
+        ? prepared.some((spell) => spell?.expended === true)
+        : Number(systemValue(slot?.value ?? slot?.remaining)) < max;
+      if (spent) ranks.spent.push(rank);
+    }
+  }
+  return ranks;
+}
+
+function hasExpendedSpellResource(actor) {
+  return spellSlotRanks(actor).spent.length > 0;
+}
+
+// Drain Bonded Item is once a day: worth it to get back one of your best slots, not a rank 1.
+function hasExpendedTopSlot(actor) {
+  const { highest, spent } = spellSlotRanks(actor);
+  return spent.some((rank) => rank >= highest - 1);
 }
 
 export function readResourceRecoveryAvailability(tactic, context) {
   if (!tactic?.activityProfile?.recoversSpellResource) return availability(true, "");
-  if (hasExpendedSpellResource(contextActorDocument(context))) return availability(true, "");
-  return availability(false, t("Avail.NoExpendedSpell", "No spell has been cast yet today to recover."));
+  const actor = contextActorDocument(context);
+  if (!hasExpendedSpellResource(actor)) {
+    return availability(false, t("Avail.NoExpendedSpell", "No spell has been cast yet today to recover."));
+  }
+  if (hasExpendedTopSlot(actor)) return availability(true, "");
+  return availability(false, t("Avail.SaveForTopSlot", "Save it for one of your top-rank spell slots."));
 }
 
 export function readShieldBlockAvailability(slug, item, context) {

@@ -252,10 +252,6 @@ export function blockedCandidateResult(context, action, {
     );
   }
 
-  if (["step", "stride"].includes(action.slug) && action.source === "generic" && !target) {
-    return blockedAction(action, t("ScoreReason.NoValidEnemyTarget", "No valid enemy target."));
-  }
-
   if (action.source === "strike" && target && !inRange(action, target)) {
     return blockedAction(action, t("ScoreReason.TargetIsOutOf", "Target is out of range."));
   }

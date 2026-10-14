@@ -1309,7 +1309,7 @@ assert.ok(
   "toggling compact mode should also shrink/restore the window width",
 );
 assert.ok(
-  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-waiting\):not\(\[data-choose-target\]\):not\(\[data-choose-destination\]\):not\(\[data-choose-area\]\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
+  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-remove\):not\(\.combater-step-waiting\):not\(\[data-choose-target\]\):not\(\[data-choose-destination\]\):not\(\[data-choose-area\]\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
   "compact mode should hide optional per-step tools but keep Execute/Remove/awaiting-GM and required choice controls visible",
 );
 assert.equal(

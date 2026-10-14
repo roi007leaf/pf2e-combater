@@ -557,6 +557,12 @@ export function scoreRoleTactics(context, action, { role, profile, target, criti
     reasons.push(t("ScoreReason.RetreatOutOfReach", "Gets out of reach of {count} enemies.", { count: Number(action.activityProfile.threatsEscaped) || 1 }));
   }
 
+  // No enemy to close on: a move is still a move (pick any square), just not one Auto-fill pads with.
+  if (["step", "stride"].includes(action.slug) && action.source === "generic" && !target) {
+    score = -10;
+    reasons.push(t("ScoreReason.MoveAnywhere", "Move to any square you choose."));
+  }
+
   if (["step", "stride", "stand-stride"].includes(action.slug) && action.source === "generic" && target) {
     const distance = Number(target.distance ?? Infinity);
     const reach = profileReach(profile);

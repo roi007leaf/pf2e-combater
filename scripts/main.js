@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./constants.js";
+import { pruneStaleSharedDrafts } from "./state/draft-plans.js";
 import { registerRechargeTracking } from "./engine/npc-recharge-state.js";
 import { registerActionTrackerHooks } from "./state/action-tracker.js";
 import { delayedTurn, handleTurnControl, registerTurnControlHooks } from "./state/turn-controls.js";
@@ -447,6 +448,7 @@ Hooks.once("ready", async () => {
   await migrateDeprecatedFlankingRule();
   registerFlankingSizeRuleWrapper();
   registerRechargeTracking();
+  pruneStaleSharedDrafts().catch((error) => console.warn(`${MODULE_ID} | Plan cleanup failed`, error));
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;

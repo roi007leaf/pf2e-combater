@@ -5,7 +5,7 @@ import { livingMarkedTarget, readCombatState, targetHasMarkState, targetHasToken
 import { hasExploitVulnerabilityMark, isExploitVulnerabilityAction } from "../../rules/exploit-vulnerability.js";
 import { actorItems, entityKey } from "../../foundry-data.js";
 import { isSelfCenteredAreaAction } from "../action/requirements.js";
-import { canStrikeTargetFromCurrentPosition } from "../../readers/action/reach.js";
+import { allyThreatensTarget, canStrikeTargetFromCurrentPosition, movementGridMetrics } from "../../readers/action/reach.js";
 import { slugify as slugText } from "../action/text.js";
 import { normalizedActionFacts } from "../action/facts.js";
 import {
@@ -27,7 +27,7 @@ import {
   targetHasMatchingDefense,
   targetTraitSlugs,
 } from "./facts.js";
-import { canAttackTarget, contextEnemies, firstContextTarget } from "../target-pool.js";
+import { canAttackTarget, contextAllies, contextEnemies, firstContextTarget } from "../target-pool.js";
 import { profileReach } from "./tactic-helpers.js";
 import { actionSkillDcSlug, skillCheckScore } from "./skills.js";
 import { t } from "../../i18n.js";
@@ -116,6 +116,18 @@ function attackTargetAc(context, action, target) {
   return Number.isFinite(ac) && ac > 0 ? ac : null;
 }
 
+const FOCUS_FIRE_PER_ALLY = 6;
+
+// Allies in melee with this enemy (their own reach), on the real grid when there is one.
+function alliesEngaging(context, target) {
+  if (!target) return 0;
+  const metrics = globalThis.canvas?.grid ? movementGridMetrics() : null;
+  return contextAllies(context).filter((ally) => {
+    if (Number(ally?.hpPercent) <= 0) return false;
+    return metrics ? allyThreatensTarget(ally, target, metrics) : false;
+  }).length;
+}
+
 function offensiveTargetValue(context, action, role, target) {
   if (!target) return -Infinity;
   if ((action?.targetingProfile?.maxRange || action?.range?.max || action?.range?.increment) && !inRange(action, target)) {
@@ -147,6 +159,8 @@ function offensiveTargetValue(context, action, role, target) {
   const adjustment = damageAdjustment(context, action, target);
   if (adjustment) value += adjustment.scoreDelta;
   value += aggroTargetValue(context, action, role, target);
+  // Focus fire: an enemy your allies are already fighting drops sooner and keeps their flanks.
+  value += Math.min(2, alliesEngaging(context, target)) * FOCUS_FIRE_PER_ALLY;
   value += (1 - hpPercent(target)) * 4;
   return value;
 }
@@ -189,6 +203,12 @@ export function targetRankingReasons(context, action, role, target) {
   if (ac !== null) {
     reasons.push(t("ScoreReason.TargetKnownAcRank", "Known AC {ac} contributed to attack target ranking.", { ac }));
     hasOutcomeReason = true;
+  }
+  const engaged = alliesEngaging(context, target);
+  if (engaged > 0) {
+    reasons.push(engaged === 1
+      ? t("ScoreReason.FocusFireOne", "An ally is already fighting {target}.", { target: target.name })
+      : t("ScoreReason.FocusFireMany", "{count} allies are already fighting {target}.", { count: engaged, target: target.name }));
   }
 
   const defenseSlug = targetDefenseSlug(action);

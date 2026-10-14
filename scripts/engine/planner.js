@@ -680,6 +680,18 @@ function projectedTargetOf(context, candidate) {
   return targetForCandidate(context, candidate);
 }
 
+const STAND_OFF_ROLES = new Set(["spell-damage", "ranged-striker", "artillery", "healer", "buffer", "debuffer", "support"]);
+const OFFENSIVE_ROLES = new Set(["damage", "save-damage", "area-damage", "multiattack", "control", "debuff"]);
+
+function rangedStandOffRange(tactic, candidates) {
+  if (!STAND_OFF_ROLES.has(tactic?.effectiveRole ?? tactic?.role)) return null;
+  const ranges = candidates
+    .filter((candidate) => OFFENSIVE_ROLES.has(candidate?.role) && (candidate.score > HARD_BLOCK_SCORE || candidate.needsApproach))
+    .map((candidate) => Number(candidate?.range?.max ?? candidate?.targetingProfile?.maxRange))
+    .filter((range) => Number.isFinite(range) && range > 10);
+  return ranges.length ? Math.min(60, Math.max(...ranges)) : null;
+}
+
 function isSwarmContext(context) {
   const raw = contextActorDocument(context)?.system?.traits?.value;
   return (raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : []).includes("swarm");
@@ -1048,6 +1060,9 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
     .filter((candidate) => Number.isFinite(candidate.score))
     .filter((candidate) => candidate.score > HARD_BLOCK_SCORE)
     .toSorted((left, right) => right.score - left.score);
+  // Where a caster or archer should stop when it Strides: at the range of its ranged attack, not
+  // in melee. Melee roles keep closing to reach.
+  const standOffRange = rangedStandOffRange(resolvedTactic, [...candidates, ...(approachCandidates ?? [])]);
   let sortedCandidates = withLingeringCompositionCandidates(
     withProjectedFollowUpStrikeCandidates(
       withQuickenedCastingDiscountCandidates(selectPlanningCandidates(eligibleCandidates)),
@@ -1173,7 +1188,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
         const speed = Number(projectedContext.profile?.speed ?? projectedContext.actor?.profile?.speed) || 25;
         // A swarm attacks the creatures in its own space: it Strides onto them, not next to them.
         const reach = isSwarmContext(projectedContext) ? 0
-          : Number(projectedContext.profile?.reach ?? projectedContext.profile?.meleeReach) || 5;
+          : standOffRange && !contextAllies(projectedContext).includes(target) ? standOffRange
+            : Number(projectedContext.profile?.reach ?? projectedContext.profile?.meleeReach) || 5;
         const destination = target ? plannedMoveDestination(projectedContext, target, step ? 5 : speed, reach) : null;
         if (destination) linkedCandidate = { ...linkedCandidate, destination: { x: destination.x, y: destination.y }, plannedDestination: true };
       }

@@ -161,6 +161,45 @@ export function consumeSharedDraftPlanRefreshSuppression(actor) {
   return true;
 }
 
+// Foundry merges flag objects, so writing the plans back without a key keeps it. Removing a plan
+// needs an explicit "-=key" deletion (works on v13 and v14).
+async function writeActorSharedDrafts(actor, next, removedKeys = []) {
+  if (!removedKeys.length || typeof actor?.update !== "function") return actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, next);
+  const payload = { ...next };
+  for (const key of removedKeys) payload[`-=${key}`] = null;
+  return actor.update({ flags: { [MODULE_ID]: { [SHARED_DRAFTS_FLAG]: payload } } });
+}
+
+// Plans for encounters that no longer exist. Out-of-combat ("exploration:") plans are kept.
+function staleSharedDraftKeys(drafts) {
+  const combats = globalThis.game?.combats;
+  if (!combats) return [];
+  const live = new Set(combats.map?.((combat) => combat.id) ?? []);
+  return Object.keys(drafts).filter((key) => {
+    const combatId = key.split("|")[0];
+    return combatId && !combatId.startsWith("exploration:") && !live.has(combatId);
+  });
+}
+
+// GM, once at startup: drop plans left behind by encounters deleted before this cleanup existed.
+export async function pruneStaleSharedDrafts(actors = globalThis.game?.actors) {
+  if (globalThis.game?.user?.isGM !== true) return 0;
+  let removed = 0;
+  for (const actor of actors ?? []) {
+    const drafts = actorSharedDrafts(actor);
+    const stale = staleSharedDraftKeys(drafts);
+    if (!stale.length || typeof actor?.update !== "function") continue;
+    const next = Object.fromEntries(Object.entries(drafts).filter(([key]) => !stale.includes(key)));
+    try {
+      await writeActorSharedDrafts(actor, next, stale);
+      removed += stale.length;
+    } catch (_error) {
+      // Not this client's to clean.
+    }
+  }
+  return removed;
+}
+
 export async function writeSharedDraftPlanActorFlag(context, draft, { suppressRefresh = false } = {}) {
   const actor = actorDocument(context);
   if (typeof actor?.setFlag !== "function") return false;
@@ -174,10 +213,9 @@ export async function writeSharedDraftPlanActorFlag(context, draft, { suppressRe
     suppressedSharedDraftRefreshActors.set(actor, tokens);
   }
   try {
-    await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, {
-      ...drafts,
-      [key]: normalizeSharedDraft(draft),
-    });
+    const stale = staleSharedDraftKeys(drafts).filter((entry) => entry !== key);
+    const kept = Object.fromEntries(Object.entries(drafts).filter(([entry]) => !stale.includes(entry)));
+    await writeActorSharedDrafts(actor, { ...kept, [key]: normalizeSharedDraft(draft) }, stale);
     return true;
   } finally {
     if (suppressionToken) {
@@ -356,10 +394,11 @@ export async function clearCombatDraftPlans(combat) {
 
   await Promise.all(combatActorsByIdentity(combat).map(async (actor) => {
     if (typeof actor?.setFlag !== "function") return;
-    const next = { ...actorSharedDrafts(actor) };
+    const before = actorSharedDrafts(actor);
+    const next = { ...before };
     if (!deleteKeysBySegment(next, 0, combatId)) return;
     try {
-      await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, next);
+      await writeActorSharedDrafts(actor, next, Object.keys(before).filter((entry) => !(entry in next)));
     } catch (_error) {
       // Flag write may be denied for non-owners; the local and shared stores are already cleared.
     }
@@ -381,7 +420,7 @@ export async function clearSharedDraftPlan(context) {
     const next = { ...actorDrafts };
     delete next[key];
     try {
-      await actor.setFlag(MODULE_ID, SHARED_DRAFTS_FLAG, next);
+      await writeActorSharedDrafts(actor, next, [key]);
     } catch (_error) {
       // Flag write may be denied for non-owners; the local store is already cleared.
     }

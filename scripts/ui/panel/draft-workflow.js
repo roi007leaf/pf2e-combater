@@ -913,18 +913,19 @@ async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit,
   const newSteps = atoms.length === 1 && atoms[0] === action
     ? [action]
     : atoms;
+  const added = newSteps.map((atom) => ({ atom, instanceId: draftStepId() }));
   await panel._writeActiveDraftPlan(markManualDraft({
     ...draft,
     [listKey]: [
       ...(draft[listKey] ?? []),
-      ...newSteps.map((atom) => {
+      ...added.map(({ atom, instanceId }) => {
         // A self-centered area (e.g. an emanation) needs no manual placement -- it's always
         // centered on the caster, so pre-fill it here the same way Auto-fill already does,
         // instead of forcing a "Place template" prompt for something with only one possible
         // location.
         const presetAreaMarker = !atom?.areaMarker ? computeAreaMarker(panel._context, atom) : null;
         return {
-          instanceId: draftStepId(),
+          instanceId,
           actionKey: atom === action ? action.key : panel._actionKeyForStep(atom),
           // Persist a display name so the step still reads correctly if its action stops being
           // generated after execution (e.g. a drawn weapon no longer offers its Draw action).
@@ -946,6 +947,9 @@ async function appendAtomizedActionToDraft(panel, actionKey, { listKey, canEdit,
   }));
   clearActionPreview();
   await panel.render({ force: true });
+  // A Stride you just added needs its square: go straight to picking it on the map.
+  const move = added.find(({ atom }) => requiresDestinationForAction(atom) && !atom?.destination);
+  if (move && listKey === "steps") await panel._chooseDestination(move.instanceId);
 }
 
 export async function addPanelSustainSpell(panel, spellId) {
@@ -1029,6 +1033,22 @@ export async function undoPanelDraftClear(panel) {
   const previous = panel._clearedDraft.previous;
   panel._clearedDraft = null;
   await panel._writeActiveDraftPlan(previous);
+  clearActionPreview();
+  await panel.render({ force: true });
+}
+
+// Drop the listed steps (those that can't be done any more) in one write.
+export async function removePanelDraftSteps(panel, instanceIds) {
+  if (!panel._canEditDraft() || !panel._context) return;
+  const ids = new Set((instanceIds ?? []).filter(Boolean));
+  if (!ids.size) return;
+  const draft = panel._readActiveDraftPlan();
+  const keep = (step) => !ids.has(step?.instanceId) || executionStatus(step) !== "pending";
+  await panel._writeActiveDraftPlan(markManualDraft({
+    ...draft,
+    steps: (draft.steps ?? []).filter(keep),
+    uncounted: (draft.uncounted ?? []).filter(keep),
+  }));
   clearActionPreview();
   await panel.render({ force: true });
 }

@@ -261,7 +261,20 @@ function itemHandsHeld(item) {
   return Number.isFinite(usageHands) ? Math.max(1, usageHands) : 1;
 }
 
+// Wolves, oozes and drakes have no hands to Grapple or Disarm with. An NPC of those kinds that
+// carries no weapon item counts as handless (a humanoid trait or a held weapon says otherwise).
+const HANDLESS_TRAITS = ["animal", "beast", "ooze", "plant", "swarm", "dragon", "elemental", "fungus"];
+
+function isHandlessNpc(actor) {
+  if (actor?.type !== "npc") return false;
+  const raw = actor?.system?.traits?.value;
+  const traits = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [];
+  if (traits.includes("humanoid") || !traits.some((trait) => HANDLESS_TRAITS.includes(trait))) return false;
+  return !actorItems(actor).some((item) => item?.type === "weapon");
+}
+
 function readHandsFree(actor) {
+  if (isHandlessNpc(actor)) return 0;
   const nativeHandsFree = numericValue(
     actor?.handsFree
       ?? actor?.system?.hands?.free?.value

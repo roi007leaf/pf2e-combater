@@ -225,10 +225,17 @@ export function readActionRequirementAvailability(action, context) {
 
 const ATHLETICS_MANEUVERS = new Set(["trip", "grapple", "shove", "disarm", "reposition"]);
 
+// Disarming, repositioning, feinting or demoralizing takes a mind; a zombie just bites.
+const MINDLESS_BLOCKED = new Set(["disarm", "reposition", "feint", "create-a-diversion", "demoralize", "bon-mot"]);
+
+function actorTraits(context) {
+  const raw = context?.actor?.document?.system?.traits?.value;
+  return raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [];
+}
+
 // A rat swarm can't Trip anyone; a troop's attacks are its own abilities.
 function cannotManeuver(context) {
-  const raw = context?.actor?.document?.system?.traits?.value;
-  const traits = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [];
+  const traits = actorTraits(context);
   return traits.includes("swarm") || traits.includes("troop");
 }
 
@@ -255,6 +262,9 @@ function readGenericActionAvailabilityForAction(action, context) {
   }
   if (ATHLETICS_MANEUVERS.has(action.slug) && cannotManeuver(context)) {
     return availability(false, t("Avail.CannotManeuver", "Swarms and troops can't make Athletics maneuvers."));
+  }
+  if (MINDLESS_BLOCKED.has(action.slug) && actorTraits(context).includes("mindless")) {
+    return availability(false, t("Avail.Mindless", "Mindless creatures don't use this action."));
   }
   if (action.slug === "raise-a-shield") {
     if (!profile.hasShield) return availability(false, t("Avail.NoShield", "No shield equipped."));

@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.11]
+
+### Changed
+
+- **Planning a move is obvious.** Adding a Stride from Browse goes straight to picking the square on the map, and the step shows a "Choose square" button until one is set. Planned moves say where they end ("Ends next to Hobgoblin", "Ends 20 ft from Ed").
+- **What a step needs is on the step.** Choose square, Choose target, Place template, Choose summon and Choose items sit on the row (highlighted until set) instead of the "..." menu, which now only holds optional tweaks. Remove stays visible in compact mode.
+- **A clear start.** An empty plan says what to do next, with Auto-fill and Browse buttons right there. The action badge reads "2 actions left to plan" / "All actions planned" instead of "0 normal actions left".
+- **Broken steps are flagged.** When a planned step can't be done any more (spent slot, recharging, target gone), a notice above the plan offers Remove it / Auto-fill again.
+- **Haste goes to someone who can use it:** a martial ally rather than a wizard with no Strikes, and only to allies in range (Auto-fill moves or adds Reach Spell first when the best one is farther).
+- **Casters keep their distance:** when a caster or archer moves up, it stops at spell or weapon range instead of walking into melee.
+- **Focus fire:** enemies your allies are already fighting rank higher as targets.
+- Drain Bonded Item waits until one of your top two slot ranks is spent instead of filling spare actions.
+
+### Fixed
+
+- Stride and Step showed "No valid enemy target" when nothing was targeted; a plain move is always plannable.
+- A creature outside the running encounter (on another scene, or exploring) saw no allies or enemies and planned in a vacuum.
+- Plans saved for deleted encounters were never really removed from actors and piled up; they are cleaned up now, including old ones.
+- Animals and other handless creatures planned Grapple and Disarm; mindless creatures planned Disarm, Feint and Demoralize.
+
 ## [2.0.10]
 
 ### Changed

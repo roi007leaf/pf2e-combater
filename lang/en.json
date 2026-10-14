@@ -322,7 +322,24 @@
       "ClearPlan": "Clear",
       "ClearPlanTooltip": "Remove every step that hasn't run yet.",
       "UndoClear": "Undo clear",
-      "UndoClearTooltip": "Put back the steps you just cleared."
+      "UndoClearTooltip": "Put back the steps you just cleared.",
+      "ChooseSquare": "Choose square",
+      "ChangeSquare": "Change where this move ends.",
+      "ChooseSquareTooltip": "Click, then click the square on the map where this move should end.",
+      "ChooseItems": "Choose items",
+      "ChooseSummon": "Choose summon",
+      "EmptyPlanTitle": "Plan this turn",
+      "EmptyPlanHint": "Press Auto-fill for a suggested turn, or pick actions yourself in Browse.",
+      "EmptyPlanHintNoAuto": "Pick actions for this turn in Browse.",
+      "EmptyPlanBrowse": "Browse actions",
+      "MoveSquareChosen": "Square chosen",
+      "MoveEndsNextTo": "Ends next to {name}",
+      "MoveEndsFrom": "Ends {feet} ft from {name}",
+      "StaleOne": "1 step can't be done any more ({name}).",
+      "StaleMany": "{count} steps can't be done any more.",
+      "StaleRemoveOne": "Remove it",
+      "StaleRemoveMany": "Remove them",
+      "StaleRefill": "Auto-fill again"
     },
     "Summon": {
       "Choose": "Choose summoned creature and plan placement",
@@ -437,7 +454,11 @@
       "TotalActionLeft": "{count} total action left",
       "TotalActionsLeft": "{count} total actions left",
       "ReactionPlanned": "Reaction planned",
-      "ReactionOpen": "Reaction open"
+      "ReactionOpen": "Reaction open",
+      "AllPlanned": "All actions planned",
+      "LeftToPlanQuickened": "{normal} + {quickened} quickened left to plan",
+      "OneLeftToPlan": "1 action left to plan",
+      "LeftToPlan": "{count} actions left to plan"
     },
     "Sustain": {
       "Sustained": "Sustained",
@@ -815,7 +836,10 @@
       "NoFocusPoints": "No focus points remaining.",
       "NoMatchingSpellcasting": "No spellcasting entry can cast this item's spell.",
       "Recharging": "Recharging: usable again on round {round}.",
-      "CannotManeuver": "Swarms and troops can't make Athletics maneuvers."
+      "CannotManeuver": "Swarms and troops can't make Athletics maneuvers.",
+      "NoExpendedSpell": "No spell has been cast yet today to recover.",
+      "SaveForTopSlot": "Save it for one of your top-rank spell slots.",
+      "Mindless": "Mindless creatures don't use this action."
     },
     "SpellRes": {
       "Prepared": "Prepared {available}/{total}",
@@ -1032,7 +1056,11 @@
       "NoValidHealingRecipient": "No creature here can receive {name}.",
       "HealsDyingAlly": "Brings {name} back up.",
       "DrawWeaponInstead": "A weapon is a Draw away; a fist is the fallback.",
-      "RetreatOutOfReach": "Gets out of reach of {count} enemies."
+      "RetreatOutOfReach": "Gets out of reach of {count} enemies.",
+      "MoveAnywhere": "Move to any square you choose.",
+      "HasteNoStrikes": "{name} has no Strikes to use the extra action on.",
+      "FocusFireOne": "An ally is already fighting {target}.",
+      "FocusFireMany": "{count} allies are already fighting {target}."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",

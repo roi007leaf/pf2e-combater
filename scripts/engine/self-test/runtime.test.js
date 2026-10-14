@@ -5338,9 +5338,11 @@ const untargetedStep = scoreCandidate({
   source: "generic",
   actionCost: 1,
 });
-assert.equal(untargetedStep.score, -999);
+// A Step with no enemy is still a legal move the player can plan (no warning), but scores
+// below the unused-action penalty so Auto-fill never pads a turn with it.
+assert.equal(untargetedStep.score, -10);
 assert.equal(untargetedStep.suggestedTarget, null);
-assert.equal(untargetedStep.reason, "No valid enemy target.");
+assert.equal(untargetedStep.reason, "Move to any square you choose.");
 
 const noTargetBuild = buildCandidates({
   actor: {
@@ -5365,7 +5367,10 @@ const noTargetBuild = buildCandidates({
   battlefield: { targets: [], enemies: [] },
   targets: undefined,
 });
-assert.equal(noTargetBuild.candidates.some((action) => ["step", "stride", "strike"].includes(action.slug)), false);
+// No enemy: no Strike. Step/Stride stay plannable by hand (pick any square) but score below zero,
+// so Auto-fill never fills a turn with aimless moves.
+assert.equal(noTargetBuild.candidates.some((action) => action.slug === "strike"), false);
+assert.ok(noTargetBuild.candidates.filter((action) => ["step", "stride"].includes(action.slug)).every((action) => action.score < 0));
 
 const sickenedGenericContext = {
   actor: {

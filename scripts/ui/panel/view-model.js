@@ -12,6 +12,7 @@ import { canPlanSummon } from "../../integrations/summons-assistant.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
+import { distanceFromCenterToTarget } from "../../readers/action/reach.js";
 import {
   mergeMovementOptions,
   minionStepKey,
@@ -654,6 +655,22 @@ function signedNumber(value) {
   return `${value >= 0 ? "+" : "−"}${Math.abs(value)}`;
 }
 
+// "Ends next to Hobgoblin" / "Ends 20 ft from Unknown": where a planned move actually stops, on the
+// real grid, so a Stride reads at a glance without hovering for the ghost.
+function moveEndLabel(step, context) {
+  const destination = step?.destination;
+  if (!destination) return "";
+  const targetId = Array.isArray(step?.targetTokenIds) ? step.targetTokenIds[0] : null;
+  const token = targetId ? globalThis.canvas?.tokens?.get?.(String(targetId).split(".").at(-1)) : null;
+  if (!token?.center) return t("Panel.MoveSquareChosen", "Square chosen");
+  const feet = distanceFromCenterToTarget(context, destination, token);
+  const name = token.name ?? token.document?.name ?? "";
+  if (!Number.isFinite(feet)) return t("Panel.MoveSquareChosen", "Square chosen");
+  return feet <= 5
+    ? t("Panel.MoveEndsNextTo", "Ends next to {name}", { name })
+    : t("Panel.MoveEndsFrom", "Ends {feet} ft from {name}", { feet: Math.round(feet), name });
+}
+
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
@@ -701,10 +718,20 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     ? t("Panel.ChooseMultipleTargets", "Target up to {count} tokens in Foundry, then click to use them. Shift-click to use Best target.", { count: maxTargets })
     : t("Panel.UseCurrentTarget", "Use current Foundry target. Shift-click to use Best target.");
   const canChooseDestination = requiresDestination && canRunStep && !isExecutionDone;
+  // Picking the square is the whole point of a Stride: say so on the row until one is chosen.
+  const hasDestination = Boolean(step?.destination);
+  const destinationButtonLabel = hasDestination ? "" : t("Panel.ChooseSquare", "Choose square");
+  const destinationButtonTooltip = hasDestination
+    ? t("Panel.ChangeSquare", "Change where this move ends.")
+    : t("Panel.ChooseSquareTooltip", "Click, then click the square on the map where this move should end.");
   const canChooseArea = requiresManualArea && canRunStep && !isExecutionDone;
   const recommendedAreaPlacement = recommendedAreaPlacementView(step, action ?? step, context, { canRunStep, isExecutionDone });
   const swapItems = swapItemsView(step, action ?? step);
   const canChooseSwapItems = swapItems.visible && canRunStep && !isExecutionDone;
+  // Choices a step needs before it can run live on its row, labeled until they're made.
+  const needsTargetChoice = canChooseTarget && !(Array.isArray(step?.targetTokenIds) && step.targetTokenIds.length);
+  const needsAreaChoice = canChooseArea && !step?.areaMarker;
+  const needsSwapChoice = canChooseSwapItems && !(step?.swapHeldItemId && step?.swapDrawItemId);
   const canEditStepOrder = readonly !== true && reorderLocked !== true;
   const canDuplicateStep = readonly !== true && !step?.groupId && !step?.quickenedNextTurn && !minionPlanAsChildren;
   const canRemoveDraftStep = readonly !== true && !minionPlanAsChildren;
@@ -782,6 +809,12 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canChooseTarget,
     targetToolTip,
     canChooseDestination,
+    destinationButtonLabel,
+    destinationButtonTooltip,
+    targetButtonLabel: needsTargetChoice ? t("Panel.ChooseTarget", "Choose target") : "",
+    areaButtonLabel: needsAreaChoice ? t("Panel.PlaceTemplate", "Place template") : "",
+    swapButtonLabel: needsSwapChoice ? t("Panel.ChooseItems", "Choose items") : "",
+    summonButtonLabel: !step?.summonPlan?.actorName ? t("Panel.ChooseSummon", "Choose summon") : "",
     canChooseArea,
     canChooseRecommendedArea: recommendedAreaPlacement.canChoose,
     areaPlacementToolLabel: recommendedAreaPlacement.label,
@@ -841,7 +874,10 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     traitChips: compactTraits.chips,
     traitOverflow: compactTraits.overflow,
     hasTraitChips: stepTraitChips.length > 0,
-    hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || swapItems.label || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged),
+    moveLabel: isExecutionDone ? "" : moveEndLabel(step, context),
+    // Can't be done any more (spent slot, recharging, target gone, out of reach): flagged for re-planning.
+    unavailable: !isExecutionDone && !step?.quickenedNextTurn && (step?.stale === true || action?.available === false),
+    hasStepDetails: Boolean(targetLabel || (!minionPlanAsChildren && (minionPlan || minionPlanLabel)) || stepAreaLabel || swapItems.label || warning || isAwaitingGm || stepTraitChips.length > 0 || display.isRanged || (!isExecutionDone && step?.destination)),
   };
 }
 
@@ -896,17 +932,19 @@ function searchTerms(query) {
   return String(query ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 
+// What's still free to plan, not what's left this turn: "0 actions left" read as "you can't act".
 function remainingActionPoolSummary(builder) {
   const normal = Number(builder?.remainingNormalActions ?? 0);
   const quickened = Number(builder?.remainingQuickenedActions ?? 0);
+  if (normal <= 0 && quickened <= 0) return t("Summary.AllPlanned", "All actions planned");
   if (quickened <= 0) {
     return t(
-      normal === 1 ? "Summary.NormalActionLeft" : "Summary.NormalActionsLeft",
-      normal === 1 ? "{count} normal action left" : "{count} normal actions left",
+      normal === 1 ? "Summary.OneLeftToPlan" : "Summary.LeftToPlan",
+      normal === 1 ? "1 action left to plan" : "{count} actions left to plan",
       { count: normal },
     );
   }
-  return t("Summary.NormalQuickenedLeft", "{normal} normal, {quickened} quickened left", { normal, quickened });
+  return t("Summary.LeftToPlanQuickened", "{normal} + {quickened} quickened left to plan", { normal, quickened });
 }
 
 function decoratedSustainedSpells(entries, { readonly = false } = {}) {
@@ -1194,8 +1232,8 @@ function realStepImg(img) {
 }
 
 function hasMoreStepTools(step) {
-  const live = !step?.isExecutionDone && Boolean(step?.canChooseSummon || step?.summonLabel || step?.canChooseTarget
-    || step?.canChooseDestination || step?.canChooseArea || step?.canChooseRecommendedArea || step?.canChooseSwapItems
+  // Target, square, template, summon and swap choices are on the row; the drawer is for tweaks.
+  const live = !step?.isExecutionDone && Boolean(step?.canChooseRecommendedArea
     || step?.canCycleMovement || step?.canCycleRoute || step?.canCycleDestination || step?.canCycleWeapon);
   // Remove has its own button on the row; it doesn't need the drawer.
   return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep);
@@ -1254,6 +1292,7 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
     const summary = shown[index].why?.summary;
     if (summary && summary === shown[index + 1].why?.summary) shown[index].why = { ...shown[index].why, hasReasons: false };
   }
+  const unavailable = flat.filter((step) => step.unavailable && step.canRemoveDraftStep);
   const runnable = flat.filter((step) => step.canShowExecuteStep && !step.isExecutionDone && !step.quickenedNextTurn);
   const next = runnable[0] ?? null;
   const counted = flat.filter((step) => !step.quickenedNextTurn);
@@ -1274,6 +1313,14 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
       intelTooltip: intelStep?.targetIntelTooltip ?? "",
     } : null,
     progress,
+    staleNotice: unavailable.length ? {
+      text: unavailable.length === 1
+        ? t("Panel.StaleOne", "1 step can't be done any more ({name}).", { name: unavailable[0].name })
+        : t("Panel.StaleMany", "{count} steps can't be done any more.", { count: unavailable.length }),
+      ids: unavailable.map((step) => step.instanceId).join(","),
+      removeLabel: unavailable.length === 1 ? t("Panel.StaleRemoveOne", "Remove it") : t("Panel.StaleRemoveMany", "Remove them"),
+      refillLabel: t("Panel.StaleRefill", "Auto-fill again"),
+    } : null,
     complete: complete ? { label: t("Panel.TurnComplete", "Turn complete") } : null,
     footer: next ? {
       visible: true,

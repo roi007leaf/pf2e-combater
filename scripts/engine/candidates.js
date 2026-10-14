@@ -1,3 +1,4 @@
+import { outOfRangeBuffRecipient } from "./scoring/buffs.js";
 import { readActionSources } from "../readers/action/reader.js";
 import { readConsumableSpellActions, readSpellActions } from "../readers/spell-reader.js";
 import { npcTacticRejection } from "../rules/npc-tactics.js";
@@ -158,6 +159,13 @@ export function buildCandidates(context) {
       continue;
     }
     candidates.push(scored);
+    // A buff whose best recipient is out of range (Haste on the fighter 40 ft away): also offer it
+    // as an approach, so the planner can Stride toward them or add Reach Spell first.
+    const farAlly = scored.role === "buff" ? outOfRangeBuffRecipient(context, scored) : null;
+    if (farAlly) {
+      const reference = { id: farAlly.id, name: farAlly.name, type: "ally" };
+      approachable.push({ ...scored, available: true, needsApproach: true, suggestedTarget: reference, preferredTarget: reference });
+    }
   }
 
   return { candidates, rejected, detected, approachable };

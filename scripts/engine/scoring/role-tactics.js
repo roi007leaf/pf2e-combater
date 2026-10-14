@@ -3,6 +3,8 @@ import { aggroProfile } from "../../rules/aggro.js";
 import {
   actionGrantsQuickened,
   bestBuffRecipient,
+  isPrimarySpellcaster,
+  isStrikeOrStrideQuickening as hasteOnlyStrikesOrStrides,
   targetAlreadyHasBuff,
 } from "./buffs.js";
 import { attackableEnemies } from "./targets.js";
@@ -342,6 +344,11 @@ function buffTactic(acc, { context, action }) {
   const grantsQuickened = actionGrantsQuickened(action);
   const buffValue = Number(recipient?.value) || 0;
   acc.score += buffValue;
+  // Hasting a pure caster buys an extra Stride at best: not a spell slot's worth.
+  if (grantsQuickened && hasteOnlyStrikesOrStrides(action) && recipient?.entity && isPrimarySpellcaster(recipient.entity)) {
+    acc.score -= 60;
+    acc.reasons.push(t("ScoreReason.HasteNoStrikes", "{name} has no Strikes to use the extra action on.", { name: recipient.entity.name ?? t("ScoreReason.TargetWord", "Target") }));
+  }
   if (recipient?.entity && targetAlreadyHasBuff(recipient.entity, action)) {
     acc.reasons.push(t("ScoreReason.RecipientAlreadyHas", "{recipient} already has {action}.", { recipient: recipient.entity.name ?? t("ScoreReason.TargetWord", "Target"), action: action.name }));
   }

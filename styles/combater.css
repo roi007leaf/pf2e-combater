@@ -595,7 +595,7 @@
   display: flex;
 }
 
-.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]):not([data-choose-summon]) {
+.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-remove):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]):not([data-choose-summon]) {
   display: none;
 }
 
@@ -4148,6 +4148,27 @@
 .pf2e-combater .combater-utilities-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
 .pf2e-combater .combater-browser-recharge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #6a5a30; border-radius: 10px; background: #2c271c; color: #e6c77e; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .pf2e-combater .combater-browser-recharge i { font-size: 10px; }
+.pf2e-combater .combater-detail-chip.is-move-end { border-color: #3c5a78; background: #1d2a38; color: #b9d4ef; }
+/* Steps that can't be done any more: say so above the plan, with the two ways out. */
+.pf2e-combater .combater-stale-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; padding: 7px 10px; border: 1px solid #6a4730; border-radius: 7px; background: #2b2018; color: #f1c9a8; font-size: 12px; }
+.pf2e-combater .combater-stale-notice > i { color: #f1b27e; }
+.pf2e-combater .combater-stale-notice > span { flex: 1 1 140px; min-width: 0; }
+.pf2e-combater .combater-stale-notice button { flex: 0 0 auto; width: auto; height: 26px; padding: 0 10px; border: 1px solid #6a5446; border-radius: 5px; background: #33261d; color: #f3dcc8; font-size: 11px; white-space: nowrap; }
+.pf2e-combater .combater-stale-notice button.is-primary { border-color: #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
+.pf2e-combater .combater-stale-notice button:hover { border-color: #e6c77e; }
+/* Empty plan: say what to do next, with both ways to start right there. */
+.pf2e-combater .combater-empty-plan { display: grid; gap: 6px; width: 100%; padding: 12px 14px; border: 1px dashed #4b5664; border-radius: 8px; background: #1b2026; color: #c9d3de; font-size: 12px; text-align: center; }
+.pf2e-combater .combater-empty-plan strong { color: #f0eee8; font-size: 13px; }
+.pf2e-combater .combater-empty-plan-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+.pf2e-combater .combater-empty-plan-actions button { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; width: auto; height: 32px; padding: 0 14px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
+.pf2e-combater .combater-empty-plan-autofill { border: 1px solid #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
+.pf2e-combater .combater-empty-plan-autofill:hover { background: #43351f; color: #fff1cc; }
+.pf2e-combater .combater-empty-plan-browse { border: 1px solid #4b5361; background: #22272e; color: #dfe8f2; }
+.pf2e-combater .combater-empty-plan-browse:hover { border-color: #79aee8; background: #253244; }
+/* A choice the step needs before it can run (square, target, template, summon, items): the next thing to do, so it stands out. */
+.pf2e-combater .combater-step-required.is-needed { gap: 5px; padding: 0 9px; border-color: #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
+.pf2e-combater .combater-step-required.is-needed:hover,
+.pf2e-combater .combater-step-required.is-needed:focus-visible { border-color: #e6c77e; background: #43351f; color: #fff1cc; }
 /* Remove a step straight from its row; Clear / Undo clear in the footer. */
 .pf2e-combater .combater-step-remove { color: #8a939e; }
 .pf2e-combater .combater-step-remove:hover,

@@ -41,6 +41,7 @@
                 {{#if hasStepDetails}}
                 <span class="combater-step-details {{#if minionPlan}}has-minion-plan{{/if}}">
                   {{#if targetLabel}}{{#unless hideTarget}}<span class="combater-chip-target{{#if canOpenTargetIntel}} is-intel-target{{/if}}"{{#if canOpenTargetIntel}} data-open-target-intel="{{targetIntelKey}}" data-tooltip="{{targetIntelTooltip}}"{{/if}}>{{#if targetName}}<span class="combater-target-pill"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i>{{targetName}}</span>{{else}}{{targetLabel}}{{/if}}</span>{{/unless}}{{/if}}
+                  {{#if moveLabel}}<span class="combater-detail-chip is-move-end"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{moveLabel}}</span>{{/if}}
                   {{#if areaLabel}}<span class="combater-chip-target">{{areaLabel}}</span>{{/if}}
                   {{#if swapItemsLabel}}<span class="combater-detail-chip is-swap-items"><i class="fa-solid fa-right-left"></i> {{swapItemsLabel}}</span>{{/if}}
                   {{#if isRanged}}<span class="combater-detail-chip is-range"><i class="fa-solid fa-ruler-horizontal"></i> {{rangeLabel}}</span>{{/if}}
@@ -74,6 +75,31 @@
                   <i class="fa-solid fa-hourglass-half fa-spin"></i>
                 </span>
                 {{else}}
+                {{#if canChooseSummon}}
+                <button type="button" class="combater-chip-tool combater-step-required {{#if summonButtonLabel}}has-label is-needed{{/if}}" data-choose-summon="{{instanceId}}" data-tooltip="{{#if summonLabel}}{{summonLabel}}{{else}}{{localize "PF2E_COMBATER.Summon.Choose"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Summon.Choose"}}">
+                  <i class="fa-solid fa-paw"></i>{{#if summonButtonLabel}}<span>{{summonButtonLabel}}</span>{{/if}}
+                </button>
+                {{/if}}
+                {{#if canChooseTarget}}
+                <button type="button" class="combater-chip-tool combater-step-required {{#if targetButtonLabel}}has-label is-needed{{/if}}" data-choose-target="{{instanceId}}" data-tooltip="{{targetToolTip}}" aria-label="{{targetToolTip}}">
+                  <i class="fa-solid fa-crosshairs"></i>{{#if targetButtonLabel}}<span>{{targetButtonLabel}}</span>{{/if}}
+                </button>
+                {{/if}}
+                {{#if canChooseArea}}
+                <button type="button" class="combater-chip-tool combater-step-required {{#if areaButtonLabel}}has-label is-needed{{/if}}" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}">
+                  <i class="fa-solid fa-draw-polygon"></i>{{#if areaButtonLabel}}<span>{{areaButtonLabel}}</span>{{/if}}
+                </button>
+                {{/if}}
+                {{#if canChooseSwapItems}}
+                <button type="button" class="combater-chip-tool combater-step-required {{#if swapButtonLabel}}has-label is-needed{{/if}}" data-choose-swap-items="{{instanceId}}" data-tooltip="{{swapItemsTooltip}}" aria-label="{{swapItemsTooltip}}">
+                  <i class="fa-solid fa-right-left"></i>{{#if swapButtonLabel}}<span>{{swapButtonLabel}}</span>{{/if}}
+                </button>
+                {{/if}}
+                {{#if canChooseDestination}}
+                <button type="button" class="combater-chip-tool combater-step-required combater-step-destination {{#if destinationButtonLabel}}has-label is-needed{{/if}}" data-choose-destination="{{instanceId}}" data-tooltip="{{destinationButtonTooltip}}" aria-label="{{destinationButtonTooltip}}">
+                  <i class="fa-solid fa-location-crosshairs"></i>{{#if destinationButtonLabel}}<span>{{destinationButtonLabel}}</span>{{/if}}
+                </button>
+                {{/if}}
                 {{#if canShowExecuteStep}}
                 <button type="button" class="combater-chip-tool combater-step-run is-execute {{#if executionBlocked}}is-disabled{{/if}}" data-execute-draft-step="{{instanceId}}" data-tooltip="{{executeTooltip}}" aria-label="{{executeTooltip}}" {{#if executionBlocked}}disabled{{/if}}>
                   <i class="fa-solid fa-play"></i>
@@ -102,33 +128,9 @@
             {{#if hasMoreTools}}
             <span class="combater-step-more-tools">
               {{#unless isExecutionDone}}
-                {{#if canChooseSummon}}
-                  <button type="button" class="combater-chip-tool" data-choose-summon="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Summon.Choose"}}" aria-label="{{localize "PF2E_COMBATER.Summon.Choose"}}"><i class="fa-solid fa-paw"></i></button>
-                {{/if}}
-                {{#if summonLabel}}<span class="combater-chip-target">{{summonLabel}}</span>{{/if}}
-                {{#if canChooseTarget}}
-                  <button type="button" class="combater-chip-tool has-label" data-choose-target="{{instanceId}}" data-tooltip="{{targetToolTip}}" aria-label="{{targetToolTip}}">
-                    <i class="fa-solid fa-crosshairs"></i><span>{{moreToolsTargetLabel}}</span>
-                  </button>
-                {{/if}}
-                {{#if canChooseDestination}}
-                  <button type="button" class="combater-chip-tool" data-choose-destination="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetDestination"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetDestination"}}">
-                    <i class="fa-solid fa-location-crosshairs"></i>
-                  </button>
-                {{/if}}
-                {{#if canChooseArea}}
-                  <button type="button" class="combater-chip-tool" data-choose-area="{{instanceId}}" data-tooltip="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}" aria-label="{{localize "PF2E_COMBATER.Panel.SetTemplate"}}">
-                    <i class="fa-solid fa-draw-polygon"></i>
-                  </button>
-                {{/if}}
                 {{#if canChooseRecommendedArea}}
                   <button type="button" class="combater-chip-tool combater-area-placement" data-choose-recommended-area="{{instanceId}}" data-tooltip="{{areaPlacementToolTip}}" aria-label="{{areaPlacementToolTip}}">
                     <i class="fa-solid fa-bullseye"></i><span class="combater-area-placement-value">{{areaPlacementToolLabel}}</span>
-                  </button>
-                {{/if}}
-                {{#if canChooseSwapItems}}
-                  <button type="button" class="combater-chip-tool" data-choose-swap-items="{{instanceId}}" data-tooltip="{{swapItemsTooltip}}" aria-label="{{swapItemsTooltip}}">
-                    <i class="fa-solid fa-right-left"></i>
                   </button>
                 {{/if}}
                 {{#if canCycleMovement}}
@@ -256,6 +258,14 @@
         {{/if}}
       </div>
     {{/if}}
+    {{#if planLayout.staleNotice}}
+      <div class="combater-stale-notice" role="status">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>{{planLayout.staleNotice.text}}</span>
+        <button type="button" data-remove-stale-steps="{{planLayout.staleNotice.ids}}">{{planLayout.staleNotice.removeLabel}}</button>
+        {{#if showAutoFill}}<button type="button" class="is-primary" data-stale-refill>{{planLayout.staleNotice.refillLabel}}</button>{{/if}}
+      </div>
+    {{/if}}
     <div class="combater-sequence" data-drag-list aria-label="{{localize "PF2E_COMBATER.Panel.PlannedSequenceAria"}}">
       {{#each headerSteps}}
         {{#if isGroup}}
@@ -314,7 +324,20 @@
           {{/if}}
         {{/if}}
       {{else}}
+        {{#if (and @root.builder (not @root.builder.readonly))}}
+        <div class="combater-empty-plan">
+          <strong>{{localize "PF2E_COMBATER.Panel.EmptyPlanTitle"}}</strong>
+          <span>{{#if @root.showAutoFill}}{{localize "PF2E_COMBATER.Panel.EmptyPlanHint"}}{{else}}{{localize "PF2E_COMBATER.Panel.EmptyPlanHintNoAuto"}}{{/if}}</span>
+          <div class="combater-empty-plan-actions">
+            {{#if @root.showAutoFill}}
+            <button type="button" class="combater-empty-plan-autofill" data-empty-auto-fill><i class="fa-solid fa-wand-magic-sparkles"></i> {{localize "PF2E_COMBATER.Panel.AutoFill"}}</button>
+            {{/if}}
+            <button type="button" class="combater-empty-plan-browse" data-empty-browse><i class="fa-solid fa-layer-group"></i> {{localize "PF2E_COMBATER.Panel.EmptyPlanBrowse"}}</button>
+          </div>
+        </div>
+        {{else}}
         <span class="combater-empty-chip">{{localize "PF2E_COMBATER.Panel.NoSelectedActions"}}</span>
+        {{/if}}
       {{/each}}
     </div>
     {{#if headerSummary}}

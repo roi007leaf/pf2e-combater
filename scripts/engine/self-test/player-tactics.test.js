@@ -14,6 +14,10 @@ import { classifySystemAction } from "../action/classifier.js";
 import { endPositionDanger } from "../planner/danger.js";
 import { nextTurnReadiness } from "../planner/lookahead.js";
 import { planComparison } from "../../ui/plan-selection.js";
+import { outOfRangeBuffRecipient } from "../scoring/buffs.js";
+import { readResourceRecoveryAvailability } from "../../readers/defense-action-reader.js";
+import { readGenericActions } from "../../readers/generic-action-reader.js";
+import { pruneStaleSharedDrafts } from "../../state/draft-plans.js";
 import { isRepeatablePlanningAction } from "../planner/conflicts.js";
 import { stepSatisfiesPreviousRequirement } from "../planner/rules.js";
 import { damageAverage } from "../scoring/facts.js";
@@ -382,4 +386,79 @@ console.log("Player tactic audit tests passed.");
   const hurtDanger = endPositionDanger(hurt, createPlanState(hurt), [charge], "cautious");
   const healthyDanger = endPositionDanger(healthy, createPlanState(healthy), [charge], "cautious");
   assert.ok(hurtDanger.scoreDelta < healthyDanger.scoreDelta, `ending next to the orc costs more at 10% HP (${hurtDanger.scoreDelta} vs ${healthyDanger.scoreDelta})`);
+}
+
+function buildCandidatesForTest(context, action) {
+  const scored = scoreCandidate(context, action);
+  const ally = outOfRangeBuffRecipient(context, scored);
+  return ally ? [{ ...scored, needsApproach: true, preferredTarget: { id: ally.id, name: ally.name } }] : [];
+}
+
+// ---- Haste: worth it on someone who can Strike --------------------------------------------------
+{
+  const haste = { id: "haste", slug: "haste", name: "Haste", source: "spell-curated", role: "buff", actionCost: 2,
+    targetingProfile: { self: true, ally: true, maxRange: 30 }, activityProfile: { appliesCondition: "quickened" } };
+  // The live panel keeps the profile on context.actor, not context.profile.
+  const wizard = (allies = []) => ({ isGM: true, actor: { name: "Ezren", profile: { actorType: "character", classSlug: "wizard", classSlugs: ["wizard"], hp: { percent: 1 }, conditions: { slugs: [], values: {} } } },
+    battlefield: { allies, enemies: [{ id: "orc", name: "Orc", distance: 30, hpPercent: 1, conditions: { slugs: [], values: {} } }], targets: [] } });
+  const alone = scoreCandidate(wizard(), haste);
+  assert.ok(alone.reasons.some((reason) => /no Strikes/.test(reason)), "a wizard hasting himself gains only a Stride");
+  const fighter = { id: "valeros", name: "Valeros", distance: 15, hpPercent: 1, classSlug: "fighter", classSlugs: ["fighter"], conditions: { slugs: [], values: {} } };
+  const shared = scoreCandidate(wizard([fighter]), haste);
+  assert.equal(shared.suggestedTarget?.name, "Valeros", "Haste goes to the fighter");
+  assert.ok(shared.score > alone.score + 40, `hasting the fighter beats hasting yourself (${shared.score} vs ${alone.score})`);
+
+  // Out of range (40 ft, Haste reaches 30): never picked from here, but offered as an approach so
+  // the planner can Stride toward the fighter or add Reach Spell first.
+  const farFighter = { ...fighter, distance: 40 };
+  const far = scoreCandidate(wizard([farFighter]), haste);
+  assert.notEqual(far.suggestedTarget?.name, "Valeros", "Haste can't reach Valeros at 40 ft");
+  const build = buildCandidatesForTest(wizard([farFighter]), haste);
+  assert.ok(build.some((entry) => entry.needsApproach && entry.preferredTarget?.name === "Valeros"), "Haste on the far fighter is offered as an approach");
+}
+
+
+// ---- Engine follow-ups: Drain Bonded Item, mindless creatures, stale plans ---------------------
+{
+  // Drain Bonded Item is once a day: only worth it to recover one of the top two slot ranks.
+  const wizardWith = (spentRanks) => ({ actor: { document: { itemTypes: { spellcastingEntry: [{ system: { slots: {
+    slot1: { max: 3, prepared: [{ id: "a", expended: spentRanks.includes(1) }, { id: "b" }, { id: "c" }] },
+    slot2: { max: 3, prepared: [{ id: "d", expended: spentRanks.includes(2) }, { id: "e" }] },
+    slot3: { max: 2, prepared: [{ id: "f", expended: spentRanks.includes(3) }, { id: "g" }] },
+  } } }] } } } });
+  const drain = { activityProfile: { recoversSpellResource: true } };
+  assert.equal(readResourceRecoveryAvailability(drain, wizardWith([])).available, false, "nothing spent");
+  assert.equal(readResourceRecoveryAvailability(drain, wizardWith([1])).available, false, "only a rank 1 slot spent: save it");
+  assert.equal(readResourceRecoveryAvailability(drain, wizardWith([2])).available, true, "a rank 2 slot (top two of 3) is worth it");
+  assert.equal(readResourceRecoveryAvailability(drain, wizardWith([3])).available, true);
+
+  // Mindless creatures don't Disarm or Demoralize.
+  const zombie = { actor: { document: { type: "npc", system: { traits: { value: ["mindless", "undead", "zombie"] } } } },
+    profile: { actorType: "npc", conditions: { slugs: [], values: {} }, skills: {} },
+    battlefield: { enemies: [{ id: "pc", name: "Valeros", distance: 5, hpPercent: 1, conditions: { slugs: [], values: {} } }], allies: [], targets: [] } };
+  const zombieActions = readGenericActions(zombie);
+  for (const slug of ["disarm", "demoralize"]) {
+    const action = zombieActions.find((entry) => entry.slug === slug);
+    if (action) assert.equal(action.available, false, `a zombie doesn't ${slug}`);
+  }
+}
+
+// Plans left on actors by deleted encounters are removed (a plain re-write can't delete a key).
+{
+  const savedGame = globalThis.game;
+  try {
+    let update = null;
+    const actor = {
+      flags: { "pf2e-combater": { sharedDraftPlans: { "gone|a": { steps: [] }, "live|a": { steps: [] }, "exploration:scene|a": { steps: [] } } } },
+      getFlag(scope, key) { return this.flags[scope]?.[key]; },
+      async update(data) { update = data; },
+    };
+    globalThis.game = { user: { isGM: true }, combats: [{ id: "live" }] };
+    assert.equal(await pruneStaleSharedDrafts([actor]), 1);
+    const written = update.flags["pf2e-combater"].sharedDraftPlans;
+    assert.ok("-=gone|a" in written, "the deleted encounter's plan is explicitly removed");
+    assert.ok("live|a" in written && "exploration:scene|a" in written, "live and out-of-combat plans stay");
+  } finally {
+    globalThis.game = savedGame;
+  }
 }
