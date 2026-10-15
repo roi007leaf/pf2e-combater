@@ -19,6 +19,20 @@ export function finisherOptions(item) {
     return [...seen.values()];
   } catch { return []; }
 }
+// A strike with no Item document (PF2e's Fist or basic unarmed attack, a rule-element strike such
+// as Jaws): Animater takes a { actor, name, slug } descriptor and keeps the pick on the actor.
+// `action` is a strike candidate (its item may be the live synthetic weapon); `actor` stands in
+// when the item does not name its actor.
+export function strikeFinisherTarget(action, { actor = null } = {}) {
+  if (action?.source !== "strike" && action?.executable !== "strike") return null;
+  const item = action.item ?? action.strike?.item ?? null;
+  // The item's own name, not the step's ("Dagger (Thrown)").
+  const name = item?.name ?? action.strike?.label ?? null;
+  const slug = item?.slug ?? item?.system?.slug ?? action.strike?.slug ?? null;
+  const owner = item?.actor ?? actor;
+  if (!owner || !(name || slug)) return null;
+  return { actor: owner, name: name ?? undefined, slug: slug ?? undefined };
+}
 export const currentFinisher = (item) => { try { return animaterFinishers()?.getChoice(item) ?? null; } catch { return null; } };
 export async function chooseFinisher(item, id) {
   const api = animaterFinishers();

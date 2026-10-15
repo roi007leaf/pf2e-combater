@@ -28,10 +28,15 @@ async function runAll(panel, event) {
 }
 
 // A finisher option click: Animater stores the pick on the item (or warns), then the plan redraws.
-export async function chooseStepFinisher(panel, itemUuid, id) {
+// A synthetic strike (no item uuid) is sent as { actor, name, slug }; Animater keeps it on the actor.
+export async function chooseStepFinisher(panel, itemUuid, id, strike = null) {
   let item = null;
   try {
     item = itemUuid ? globalThis.fromUuidSync?.(itemUuid) ?? null : null;
+    if (!item && !itemUuid && strike?.actorUuid && (strike.name || strike.slug)) {
+      const actor = globalThis.fromUuidSync?.(strike.actorUuid) ?? null;
+      item = actor ? { actor, name: strike.name || undefined, slug: strike.slug || undefined } : null;
+    }
   } catch (_error) {
     item = null;
   }
@@ -53,7 +58,8 @@ export function activatePlanLayoutBindings(panel, element) {
     menu?.addEventListener("click", (event) => {
       const option = event.target.closest("[data-finisher-choice]");
       if (option) {
-        chooseStepFinisher(panel, menu.dataset.finisherItem, option.dataset.finisherChoice)
+        const strike = { actorUuid: menu.dataset.finisherActor, name: menu.dataset.finisherStrikeName, slug: menu.dataset.finisherStrikeSlug };
+        chooseStepFinisher(panel, menu.dataset.finisherItem, option.dataset.finisherChoice, strike)
           .catch((error) => console.warn("pf2e-combater | Finisher choice failed", error));
       }
     });

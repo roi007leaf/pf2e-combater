@@ -159,7 +159,7 @@
                   <button type="button" class="combater-finisher-toggle" data-finisher-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="{{finisherAria}}" data-tooltip="{{finisherAria}}">
                     <i class="fa-solid fa-burst"></i><span>{{finisherPillText}}</span><i class="fa-solid fa-chevron-down combater-profile-caret"></i>
                   </button>
-                  <div class="combater-finisher-menu" data-finisher-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.FinisherAria"}}" data-finisher-item="{{finisherItemUuid}}">
+                  <div class="combater-finisher-menu" data-finisher-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.FinisherAria"}}" data-finisher-item="{{finisherItemUuid}}" data-finisher-actor="{{finisherActorUuid}}" data-finisher-strike-name="{{finisherStrikeName}}" data-finisher-strike-slug="{{finisherStrikeSlug}}">
                   {{#each finisherOptions}}
                     <button type="button" class="{{#if active}}is-active{{/if}}" data-finisher-choice="{{id}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">{{name}}</button>
                   {{/each}}

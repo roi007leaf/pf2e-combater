@@ -9,7 +9,7 @@ import {
 import { executionAction, executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
 import { canPlanSummon } from "../../integrations/summons-assistant.js";
-import { currentFinisher, finisherOptions } from "../../integrations/animater.js";
+import { currentFinisher, finisherOptions, strikeFinisherTarget } from "../../integrations/animater.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
@@ -672,9 +672,7 @@ function moveEndLabel(step, context) {
     : t("Panel.MoveEndsFrom", "Ends {feet} ft from {name}", { feet: Math.round(feet), name });
 }
 
-// The live item a step uses (weapon, spell, feat or action), for Animater's finisher picker.
-function stepItem(step, action) {
-  const uuid = (action?.item ?? step?.action?.item ?? step?.item)?.uuid;
+function resolveUuid(uuid) {
   if (!uuid) return null;
   try {
     return globalThis.fromUuidSync?.(uuid) ?? null;
@@ -683,11 +681,24 @@ function stepItem(step, action) {
   }
 }
 
+// The live item a step uses (weapon, spell, feat or action), for Animater's finisher picker. A
+// synthetic strike (Fist, basic unarmed, a rule-element strike) has no Item document: it gets a
+// strike descriptor { actor, name, slug } instead. A rule-element strike shares its feat's id,
+// so a document of another type than the strike's item is not that strike.
+function stepItem(step, action, context = null) {
+  const source = action ?? step?.action ?? step;
+  const raw = source?.item ?? step?.action?.item ?? step?.item ?? null;
+  const item = resolveUuid(raw?.uuid);
+  if (item && !(raw?.type && item.type && raw.type !== item.type)) return item;
+  const contextActor = context?.actor?.testUserPermission ? context.actor : resolveUuid(context?.actor?.uuid);
+  return strikeFinisherTarget({ ...source, item: raw }, { actor: contextActor });
+}
+
 // "Finisher animation: Launch" pill and its menu (named apart from PF2e's finisher trait);
 // a pick that is no longer offered shows as None.
 function finisherPicker(item, canEdit) {
   const choices = item && canEdit ? finisherOptions(item) : [];
-  if (!choices.length) return { canChooseFinisher: false, finisherOptions: [], finisherLabel: "", finisherPillText: "", finisherAria: "", finisherItemUuid: "" };
+  if (!choices.length) return { canChooseFinisher: false, finisherOptions: [], finisherLabel: "", finisherPillText: "", finisherAria: "", finisherItemUuid: "", finisherActorUuid: "", finisherStrikeName: "", finisherStrikeSlug: "" };
   const picked = currentFinisher(item);
   const current = choices.some((choice) => choice.id === picked) ? picked : null;
   const options = [
@@ -701,7 +712,11 @@ function finisherPicker(item, canEdit) {
     finisherLabel,
     finisherPillText: t("Panel.FinisherLabel", "Finisher animation: {name}", { name: finisherLabel }),
     finisherAria: t("Panel.FinisherAriaCurrent", "Choose this action's finisher animation (current: {name})", { name: finisherLabel }),
-    finisherItemUuid: item.uuid,
+    finisherItemUuid: item.uuid ?? "",
+    // A strike descriptor (no uuid) is rebuilt from these when an option is chosen.
+    finisherActorUuid: item.uuid ? "" : item.actor?.uuid ?? "",
+    finisherStrikeName: item.uuid ? "" : item.name ?? "",
+    finisherStrikeSlug: item.uuid ? "" : item.slug ?? "",
   };
 }
 
@@ -901,7 +916,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canCycleWeapon,
     weaponToolLabel,
     weaponToolTip,
-    ...finisherPicker(stepItem(step, action), canRunStep),
+    ...finisherPicker(stepItem(step, action, context), canRunStep),
     canDragStep: canEditStepOrder,
     canRevertStep: !minionPlanAsChildren && isExecutionDone && canRunStep,
     warning,
