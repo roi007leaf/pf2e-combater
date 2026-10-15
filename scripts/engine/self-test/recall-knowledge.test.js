@@ -19,7 +19,7 @@ import {
 } from "../../ui/recall-knowledge.js";
 import { canUseIntelFact, intelLedgerView, normalizeIntelFalseInformation } from "../../rules/intel-ledger.js";
 import { reactiveStrikeKnown } from "../scoring/rk-warnings.js";
-import { observedIntelFact, recordObservedIntel } from "../../rules/observed-intel.js";
+import { combatForMessage, observedIntelFact, recordObservedIntel } from "../../rules/observed-intel.js";
 import { isConfluxSpell, spellstrikeEvent, spellstrikeExpended } from "../../rules/spellstrike-state.js";
 import { hasPlanConflict } from "../planner/conflicts.js";
 import { playerVisibleMeleeReach } from "../../state/combat-context.js";
@@ -736,6 +736,14 @@ try {
   assert.equal(observedIntelFact(secret), null, "an ability posted only to the GM isn't learned");
   const passive = { item: { type: "action", name: "Ferocity", system: { actionType: { value: "passive" } } }, actor: npc };
   assert.equal(observedIntelFact(passive), null);
+  {
+    const fight = { id: "fight", started: true, active: false, scene: { id: "ruins" }, combatants: [{ tokenId: "ogre-token" }] };
+    const elsewhere = { id: "elsewhere", started: true, active: true, scene: { id: "landing" }, combatants: [] };
+    const unstarted = { id: "prep", started: false, active: false, scene: { id: "camp" }, combatants: [{ tokenId: "horse-token" }] };
+    const message = (scene, token) => ({ speaker: { scene, token } });
+    assert.equal(combatForMessage(message("ruins", "ogre-token"), [elsewhere, fight])?.id, "fight", "observed Intel follows the speaker's scene, not the GM's viewed scene");
+    assert.equal(combatForMessage(message("camp", "horse-token"), [elsewhere, fight, unstarted]), null, "nothing is learned outside a started combat on that scene");
+  }
   assert.equal(observedIntelFact({ item: { type: "melee", name: "Fist" }, actor: { type: "character" } }), null, "PCs aren't Intel targets");
 
   const flags = {};

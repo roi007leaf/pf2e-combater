@@ -34,18 +34,32 @@ export async function recordObservedIntel(actor, category, factId) {
   return true;
 }
 
+// The started combat the message happened in: the one on the speaker's scene, not whichever scene
+// the GM happens to be viewing (game.combat follows the viewed scene).
+export function combatForMessage(message, combats = globalThis.game?.combats?.contents ?? []) {
+  const sceneId = message?.speaker?.scene ?? null;
+  const tokenId = message?.speaker?.token ?? null;
+  const started = combats.filter((combat) => combat?.started);
+  const onScene = started.filter((combat) => !sceneId || !combat.scene || combat.scene.id === sceneId);
+  return onScene.find((combat) => tokenId && combat.combatants?.some?.((combatant) => combatant.tokenId === tokenId))
+    ?? onScene.find((combat) => combat.active)
+    ?? onScene[0]
+    ?? null;
+}
+
 export function registerObservedIntelHooks() {
   Hooks.on("createChatMessage", (message) => {
     // One writer: the active GM's client.
     if (game.user?.isActiveGM !== true) return;
     if (!settingOrDefault(SETTINGS.learnObservedIntel, true)) return;
-    if (!game.combat?.started) return;
+    const combat = combatForMessage(message);
+    if (!combat) return;
     const observed = observedIntelFact(message);
     if (!observed) return;
     const facts = [observed];
     // A Strike rolled outside the creature's own turn is a reaction: if it has Reactive Strike (or
     // Attack of Opportunity), the party just watched it.
-    if (observed.category === "strikes" && game.combat.combatant?.actor?.id !== observed.actor.id) {
+    if (observed.category === "strikes" && combat.combatant?.actor?.id !== observed.actor.id) {
       const reaction = observed.actor.itemTypes?.action?.find((item) => /^(reactive strike|attack of opportunity)$/i.test(String(item.name ?? "")));
       if (reaction) facts.push({ actor: observed.actor, category: "actions", factId: intelAbilityFactId(reaction.name) });
     }

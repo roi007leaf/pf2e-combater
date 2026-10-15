@@ -210,7 +210,7 @@
       "AddSustain": "呪文を〈維持〉に追加",
       "SustainAria": "〈維持〉：{name}",
       "UncountedActions": "カウントされないアクション",
-      "ChooseTarget": "現在のFoundryのターゲットを使用する。Shiftクリックで最適なターゲットを使用する。",
+      "ChooseTarget": "ターゲットを選択",
       "ChooseTargetAria": "{name}のターゲットを選択。Shiftクリックで最適なターゲットを使用する。",
       "ChooseDestination": "目的地を選択",
       "ChooseDestinationAria": "{name}の目的地を選択",

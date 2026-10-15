@@ -595,7 +595,7 @@
   display: flex;
 }
 
-.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-remove):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]):not([data-choose-summon]) {
+.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-remove):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]):not([data-choose-summon]):not([data-choose-swap-items]) {
   display: none;
 }
 
@@ -4166,7 +4166,7 @@
 .pf2e-combater .combater-empty-plan-browse { border: 1px solid #4b5361; background: #22272e; color: #dfe8f2; }
 .pf2e-combater .combater-empty-plan-browse:hover { border-color: #79aee8; background: #253244; }
 /* A choice the step needs before it can run (square, target, template, summon, items): the next thing to do, so it stands out. */
-.pf2e-combater .combater-step-required.is-needed { gap: 5px; padding: 0 9px; border-color: #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
+.pf2e-combater .combater-step-required.is-needed { flex: 0 0 auto; width: auto; white-space: nowrap; gap: 5px; padding: 0 9px; border-color: #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
 .pf2e-combater .combater-step-required.is-needed:hover,
 .pf2e-combater .combater-step-required.is-needed:focus-visible { border-color: #e6c77e; background: #43351f; color: #fff1cc; }
 /* Remove a step straight from its row; Clear / Undo clear in the footer. */

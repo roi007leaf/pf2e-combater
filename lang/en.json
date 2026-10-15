@@ -181,7 +181,7 @@
       },
       "LearnObservedIntel": {
         "Name": "Learn Intel from what the party sees",
-        "Hint": "When an enemy uses a Strike, reaction or ability in plain view, record it in the party's Intel for that creature, as if they had learned it. Abilities posted only to the GM are not learned."
+        "Hint": "During combat, when an enemy uses a Strike, reaction or ability in plain view, record it in the party's Intel for that creature, as if they had learned it. Abilities posted only to the GM are not learned."
       }
     },
     "Preflight": {
@@ -262,7 +262,7 @@
       "AddSustain": "Add Sustain a Spell",
       "SustainAria": "Sustain {name}",
       "UncountedActions": "Uncounted actions",
-      "ChooseTarget": "Use current Foundry target. Shift-click to use Best target.",
+      "ChooseTarget": "Choose target",
       "ChooseTargetAria": "Choose target for {name}. Shift-click to use Best target.",
       "ChooseDestination": "Choose destination",
       "ChooseDestinationAria": "Choose destination for {name}",
