@@ -208,6 +208,12 @@ function selectedTokenCombatant() {
 
 function refreshSceneControls() {
   try {
+    // Scene controls keep their built tool objects across renders (getSceneControlButtons only
+    // runs on a reset), so the toggle's active state has to be synced on the live tool.
+    const tools = currentTokenControl()?.tools;
+    const name = `${MODULE_ID}-toggle-panel`;
+    const tool = Array.isArray(tools) ? tools.find((entry) => entry?.name === name) : tools?.[name];
+    if (tool) tool.active = Boolean(activePanel);
     ui?.controls?.render?.({ force: true });
   } catch (_error) {
     // Toolbar active state is cosmetic; ignore render failures.

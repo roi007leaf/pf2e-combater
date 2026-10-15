@@ -6,6 +6,7 @@
 
 - Buttons that need your input on a step (Choose target, Place template, Choose square, Choose items, Choose summon) wrapped their label into a narrow column; they now fit their text. Choose items stays visible in the compact panel.
 - The Choose target button showed its full tooltip as its label.
+- The Combater token-tools button stayed highlighted after the window was closed.
 - "Learn Intel from what the party sees" didn't learn anything while the GM was viewing a different scene from the fight. The setting's hint now says it works during combat.
 
 ## [2.1.0]
