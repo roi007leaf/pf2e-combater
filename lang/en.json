@@ -1118,7 +1118,9 @@
       "TacticResponders": "{count} squadmates can answer {tactic}.",
       "TacticNothingToDo": "{tactic} has nothing to do right now.",
       "WeakFoesSaveSlots": "Weak foes: save the high-rank slot.",
-      "NoEidolonOnBoard": "No eidolon on the board to take {spell}."
+      "NoEidolonOnBoard": "No eidolon on the board to take {spell}.",
+      "NoVisibleCover": "No cover Auto-fill can see (prone or a tower shield).",
+      "TowerShieldCover": "Taking cover behind a raised tower shield: +4 AC."
     },
     "Reject": {
       "Duplicate": "Duplicate detected action replaced by preferred source.",

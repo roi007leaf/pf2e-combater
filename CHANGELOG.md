@@ -2,6 +2,11 @@
 
 ## [2.1.1]
 
+### Added
+
+- **Tower shields.** A creature holding a tower or fortress shield plans Raise a Shield, then Take Cover behind it (+4 AC). Nothing that moves or attacks is planned after Take Cover, since either ends the cover.
+- Take Cover is always in Browse so you can add it yourself when you're behind cover. Auto-fill still only plans it from cover it can see: prone, or a tower shield.
+
 ### Fixed
 
 - Buttons that need your input on a step (Choose target, Place template, Choose square, Choose items, Choose summon) wrapped their label into a narrow column; they now fit their text. Choose items stays visible in the compact panel.

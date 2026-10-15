@@ -74,7 +74,7 @@ import {
   movementReachableCenters as actionMovementReachableCenters,
   reachableAttackCenters,
 } from "../../readers/action/reach.js";
-import { readActorProfile, readEffects, actorMovementOptions } from "../../readers/actor-profile.js";
+import { isTowerShield, readActorProfile, readEffects, actorMovementOptions } from "../../readers/actor-profile.js";
 import { readConsumableSpellActions, readSpellActions } from "../../readers/spell-reader.js";
 import {
   favoriteKey,
@@ -16684,9 +16684,10 @@ const hiddenAction = readActionSources(fighterContext).find((action) => action.s
 assert.equal(hiddenAction.available, false);
 assert.equal(hiddenAction.unavailableReason, "No cover or concealment detected.");
 
-// Take Cover is only ever offered after Drop Prone -- the generic "hasCover" flag (which DOES
-// gate other cover-requiring actions like Hide) is deliberately irrelevant to it, since this
-// module has no reliable way to tell a tactically relevant wall from an irrelevant nearby one.
+// Take Cover is always available to add by hand (the player knows when they're behind cover), but
+// Auto-fill only plans it from cover it can see -- prone or a tower shield. The generic "hasCover"
+// flag (which DOES gate Hide) is deliberately irrelevant, since this module has no reliable way to
+// tell a tactically relevant wall from an irrelevant nearby one.
 const noAdjacentWallTakeCover = readActionSources({
   ...fighterContext,
   token: { center: { x: 0, y: 0 } },
@@ -16695,8 +16696,13 @@ const noAdjacentWallTakeCover = readActionSources({
     hasCover: true,
   },
 }).find((action) => action.slug === "take-cover");
-assert.equal(noAdjacentWallTakeCover.available, false);
-assert.equal(noAdjacentWallTakeCover.unavailableReason, "Actor is not prone.");
+assert.equal(noAdjacentWallTakeCover.available, true, "Take Cover can always be added manually");
+assert.equal(builderActionCategory(noAdjacentWallTakeCover).id, "defense", "Take Cover shows in Browse's defense list, not hidden as situational");
+assert.equal(
+  scoreCandidate({ ...fighterContext, profile: { ...fighterContext.profile, hasCover: true } }, noAdjacentWallTakeCover).score,
+  -999,
+  "Auto-fill doesn't plan Take Cover without a cover source it can see",
+);
 
 const systemTakeCoverNoWallCanvas = globalThis.canvas;
 try {
@@ -16733,8 +16739,9 @@ try {
     },
   };
   assert.equal(
-    buildCandidates(systemTakeCoverNoWallContext).candidates.some((action) => action.slug === "take-cover"),
+    buildCandidates(systemTakeCoverNoWallContext).candidates.some((action) => action.slug === "take-cover" && action.score > -999),
     false,
+    "Auto-fill never plans Take Cover from wall proximity alone",
   );
 } finally {
   globalThis.canvas = systemTakeCoverNoWallCanvas;
@@ -16751,15 +16758,16 @@ try {
       }],
     },
   };
-  // A wall merely adjacent to the token no longer grants Take Cover on its own -- it might be
-  // behind the actor, or bound an unrelated room, with no enemy it actually blocks. Only Drop
-  // Prone (see the noAdjacentWallTakeCover/takeCoverAfterDropProne cases) grants it now.
+  // A wall merely adjacent to the token doesn't let Auto-fill plan Take Cover -- it might be
+  // behind the actor, or bound an unrelated room, with no enemy it actually blocks. Only prone or
+  // a tower shield does; the action itself stays available to add by hand.
   const adjacentWallTakeCover = readActionSources({
     ...fighterContext,
     token: { center: { x: 0, y: 0 } },
   }).find((action) => action.slug === "take-cover");
-  assert.equal(adjacentWallTakeCover.available, false);
-  assert.equal(adjacentWallTakeCover.unavailableReason, "Actor is not prone.");
+  assert.equal(adjacentWallTakeCover.available, true);
+  assert.equal(adjacentWallTakeCover.activityProfile?.requiresProneCover, undefined);
+  assert.equal(adjacentWallTakeCover.activityProfile?.towerShieldCover, undefined);
 
   // Prone still grants it even with a wall present -- the wall is simply irrelevant either way.
   const proneWithWallTakeCover = readActionSources({
@@ -16773,6 +16781,42 @@ try {
   assert.equal(proneWithWallTakeCover.available, true);
 } finally {
   globalThis.canvas = previousTakeCoverWallCanvas;
+}
+
+// Tower shield: Raise a Shield, then Take Cover behind it (+4 AC). The reader spots tower and
+// fortress shields; Take Cover is flagged towerShieldCover, needs the shield raised first, and ends
+// the turn's movement and attacks.
+{
+  assert.equal(isTowerShield({ type: "shield", name: "Tower Shield", system: { baseItem: "tower-shield" } }), true);
+  assert.equal(isTowerShield({ type: "shield", name: "Sturdy Fortress Shield (Minor)", system: { baseItem: null } }), true);
+  assert.equal(isTowerShield({ type: "shield", name: "Steel Shield", system: { baseItem: "steel-shield" } }), false);
+  const towerContext = {
+    ...fighterContext,
+    profile: { ...fighterContext.profile, hasShield: true, hasTowerShield: true },
+  };
+  const towerCover = readActionSources(towerContext).find((action) => action.slug === "take-cover");
+  assert.equal(towerCover.activityProfile?.towerShieldCover, true);
+  assert.ok(scoreCandidate(towerContext, towerCover).score > 0, "Auto-fill can plan Take Cover behind a tower shield");
+  const raise = readActionSources(towerContext).find((action) => action.slug === "raise-a-shield");
+  assert.equal(hasPlanConflict(towerContext, towerCover, []), true, "the tower shield must be raised before taking cover");
+  assert.equal(hasPlanConflict(towerContext, towerCover, [raise]), false, "Raise a Shield, then Take Cover");
+  const raisedContext = {
+    ...towerContext,
+    profile: { ...towerContext.profile, combatState: { ...(towerContext.profile.combatState ?? {}), raisedShieldActive: true } },
+  };
+  assert.equal(hasPlanConflict(raisedContext, towerCover, []), false, "a shield already up can be taken cover behind");
+  const towerCandidates = buildCandidates(towerContext).candidates;
+  const strike = { id: "tower-longsword", name: "Longsword", slug: "longsword", source: "strike", actionCost: 1, traits: ["attack"], activityProfile: { includesStrike: true } };
+  assert.ok(strike, "fighter has a Strike");
+  const stride = towerCandidates.find((action) => action.slug === "stride") ?? readActionSources(towerContext).find((action) => action.slug === "stride");
+  assert.ok(stride, "fighter has Stride");
+  assert.equal(hasPlanConflict(towerContext, strike, [raise, towerCover]), true, "an attack after Take Cover ends the cover");
+  assert.equal(hasPlanConflict(towerContext, stride, [raise, towerCover]), true, "moving after Take Cover ends the cover");
+  const plan = bestTurnPlan(raisedContext, buildCandidates(raisedContext).candidates);
+  const slugs = (plan?.steps ?? []).map((step) => step.slug);
+  if (slugs.includes("take-cover")) {
+    assert.ok(slugs.indexOf("take-cover") === slugs.length - 1, "Take Cover closes the turn");
+  }
 }
 
 // Drain Bonded Item's real trigger requires a spell "prepared today and already cast" -- a fully

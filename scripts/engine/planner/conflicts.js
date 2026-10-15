@@ -42,6 +42,24 @@ function requiresProneForCover(step) {
   return step?.slug === "take-cover" && step?.activityProfile?.requiresProneCover === true;
 }
 
+// Taking cover behind a tower shield needs it raised: already up, or Raise a Shield earlier this turn.
+function towerCoverWithoutRaisedShield(context, candidate, steps) {
+  if (candidate?.slug !== "take-cover" || candidate?.activityProfile?.towerShieldCover !== true) return false;
+  if (context?.profile?.combatState?.raisedShieldActive === true) return false;
+  return !steps.some((step) => step?.slug === "raise-a-shield" || step?.action?.slug === "raise-a-shield");
+}
+
+// Take Cover's bonus ends when you leave your space or use an attack action, so nothing after it
+// in the same turn may do either.
+function breaksTakenCover(candidate) {
+  const includes = (Array.isArray(candidate?.activityProfile?.includes) ? candidate.activityProfile.includes : [])
+    .map((entry) => String(entry ?? "").toLowerCase());
+  return isAttackAction(candidate)
+    || BASIC_MOVE_SLUGS.has(candidate?.slug)
+    || isMoveAndStrike(candidate)
+    || includes.some((entry) => BASIC_MOVE_SLUGS.has(entry));
+}
+
 function stridesWithoutStanding(step) {
   if (includesStand(step)) return false;
   const profile = step?.activityProfile ?? {};
@@ -258,6 +276,8 @@ function normalizeRuneSlug(value) {
 }
 
 export function hasPlanConflict(context, candidate, steps, attackPathAvailable = false) {
+  if (towerCoverWithoutRaisedShield(context, candidate, steps)) return true;
+  if (steps.some((step) => step?.slug === "take-cover") && breaksTakenCover(candidate)) return true;
   if (candidate?.variantGroup && steps.some((step) => step?.variantGroup === candidate.variantGroup)) {
     return true;
   }

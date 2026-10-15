@@ -193,6 +193,8 @@ export function readGenericActions(context) {
     // prone-triggered Take Cover is inherently the "stay prone for cover" tactic -- it conflicts
     // with also Standing up in the same plan (see requiresProneForCover in planner.js).
     const proneCover = action.slug === "take-cover" && hasCondition(profile, "prone");
+    // Behind a raised tower shield instead (Raise a Shield first if it isn't up).
+    const towerShieldCover = action.slug === "take-cover" && !proneCover && profile?.hasTowerShield === true;
     return {
       ...action,
       ...(action.slug === "stride" && profile?.movementAction
@@ -208,6 +210,7 @@ export function readGenericActions(context) {
       activityProfile: {
         ...(action.activityProfile ?? {}),
         ...(proneCover ? { requiresProneCover: true } : {}),
+        ...(towerShieldCover ? { towerShieldCover: true } : {}),
       },
       targetingProfile: {
         ...(action.targetingProfile ?? {}),

@@ -187,6 +187,11 @@ export function blockedCandidateResult(context, action, {
     && String(profile?.actorType ?? "").toLowerCase() !== "npc") {
     return blockedAction(action, t("ScoreReason.HandsFull", "Both hands are full."));
   }
+  // Take Cover is always in Browse, but Auto-fill only plans it behind cover it can see.
+  if (action?.slug === "take-cover" && action.activityProfile?.requiresProneCover !== true
+    && action.activityProfile?.towerShieldCover !== true) {
+    return blockedAction(action, t("ScoreReason.NoVisibleCover", "No cover Auto-fill can see (prone or a tower shield)."));
+  }
   if ((role === "buff" || action?.activityProfile?.spellBuff === true) && !isSummonBuff(action)
     && action?.activityProfile?.spellshape !== true && buffAlreadyCoversEveryone(context, action)) {
     return blockedAction(action, t("ScoreReason.BuffAlreadyActive", "Everyone in reach already has {name}.", { name: action.name }));

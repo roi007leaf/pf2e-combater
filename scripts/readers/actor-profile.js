@@ -251,6 +251,27 @@ function readHasShield(actor) {
       && item?.isDestroyed !== true);
 }
 
+// A tower or fortress shield lets its bearer Take Cover behind it while it's raised (+4 AC).
+const TOWER_SHIELD_BASES = new Set(["tower-shield", "fortress-shield"]);
+
+export function isTowerShield(item) {
+  if (!item) return false;
+  const base = String(systemValue(item.system?.baseItem) ?? "").toLowerCase();
+  const slug = String(item.slug ?? item.system?.slug ?? "").toLowerCase();
+  return TOWER_SHIELD_BASES.has(base) || TOWER_SHIELD_BASES.has(slug) || /\b(tower|fortress) shield\b/i.test(String(item.name ?? ""));
+}
+
+function readHasTowerShield(actor) {
+  const heldShield = actor?.heldShield;
+  if (heldShield) return heldShield.isBroken !== true && heldShield.isDestroyed !== true && isTowerShield(heldShield);
+  return actorItems(actor).some((item) =>
+    isShieldLike(item)
+      && isEquipped(item)
+      && item?.isBroken !== true
+      && item?.isDestroyed !== true
+      && isTowerShield(item));
+}
+
 function itemHandsHeld(item) {
   const explicit = numericValue(item?.handsHeld ?? item?.system?.equipped?.handsHeld, null);
   if (Number.isFinite(explicit)) return Math.max(0, explicit);
@@ -494,6 +515,7 @@ export function readActorProfile(actor) {
     maneuverReach: readManeuverReach(actor),
     defenses: readDefenses(actor),
     hasShield: readHasShield(actor),
+    hasTowerShield: readHasTowerShield(actor),
     equippedRangedWeapon: readHasRangedWeapon(actor),
     handsFree: readHandsFree(actor),
   };

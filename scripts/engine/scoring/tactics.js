@@ -291,7 +291,14 @@ function raiseAShieldTactic(acc, { context, profile, pressure }) {
   if (threats > 0) acc.reasons.push(t("ScoreReason.EnemiesHaveAClear", "Enemies have a clear attack line."));
 }
 
-function takeCoverTactic(acc, { profile, pressure }) {
+function takeCoverTactic(acc, { action, context, profile, pressure }) {
+  if (action?.activityProfile?.towerShieldCover === true) {
+    // Behind a raised tower shield: the shield's +2 becomes +4 against every attack, melee too.
+    const threats = meleeThreatCount(context, pressure) + (pressure.hasOpenEnemyLine ? 1 : 0);
+    acc.score += selfDefenseValue(profile, threats, 2);
+    acc.reasons.push(t("ScoreReason.TowerShieldCover", "Taking cover behind a raised tower shield: +4 AC."));
+    return;
+  }
   // Cover (+2 AC) only matters against attacks that come from range.
   const rangedThreats = pressure.hasOpenEnemyLine ? 2 : 0;
   acc.score += selfDefenseValue(profile, rangedThreats, 2);
