@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.1]
+
+### Fixed
+
+- Buttons that need your input on a step (Choose target, Place template, Choose square, Choose items, Choose summon) wrapped their label into a narrow column; they now fit their text. Choose items stays visible in the compact panel.
+- The Choose target button showed its full tooltip as its label.
+- "Learn Intel from what the party sees" didn't learn anything while the GM was viewing a different scene from the fight. The setting's hint now says it works during combat.
+
 ## [2.1.0]
 
 ### Added
