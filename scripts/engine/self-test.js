@@ -34,6 +34,7 @@ await import("./self-test/pending-quickened.test.js");
 await import("./self-test/next-turn-actions.test.js");
 await import("./self-test/turn-controls.test.js");
 await import("./self-test/plan-layout.test.js");
+await import("./self-test/animater-finishers.test.js");
 await import("./self-test/autofill-engine.test.js");
 await import("./self-test/player-tactics.test.js");
 await import("./self-test/upcoming-turns.test.js");

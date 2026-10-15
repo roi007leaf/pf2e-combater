@@ -9,6 +9,7 @@ import {
 import { executionAction, executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
 import { canPlanSummon } from "../../integrations/summons-assistant.js";
+import { currentFinisher, finisherOptions } from "../../integrations/animater.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
@@ -671,6 +672,39 @@ function moveEndLabel(step, context) {
     : t("Panel.MoveEndsFrom", "Ends {feet} ft from {name}", { feet: Math.round(feet), name });
 }
 
+// The live item a step uses (weapon, spell, feat or action), for Animater's finisher picker.
+function stepItem(step, action) {
+  const uuid = (action?.item ?? step?.action?.item ?? step?.item)?.uuid;
+  if (!uuid) return null;
+  try {
+    return globalThis.fromUuidSync?.(uuid) ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+// "Finisher animation: Launch" pill and its menu (named apart from PF2e's finisher trait);
+// a pick that is no longer offered shows as None.
+function finisherPicker(item, canEdit) {
+  const choices = item && canEdit ? finisherOptions(item) : [];
+  if (!choices.length) return { canChooseFinisher: false, finisherOptions: [], finisherLabel: "", finisherPillText: "", finisherAria: "", finisherItemUuid: "" };
+  const picked = currentFinisher(item);
+  const current = choices.some((choice) => choice.id === picked) ? picked : null;
+  const options = [
+    { id: "", name: t("Panel.FinisherNone", "None"), active: !current },
+    ...choices.map((choice) => ({ id: choice.id, name: choice.name, active: choice.id === current })),
+  ];
+  const finisherLabel = options.find((option) => option.active).name;
+  return {
+    canChooseFinisher: true,
+    finisherOptions: options,
+    finisherLabel,
+    finisherPillText: t("Panel.FinisherLabel", "Finisher animation: {name}", { name: finisherLabel }),
+    finisherAria: t("Panel.FinisherAriaCurrent", "Choose this action's finisher animation (current: {name})", { name: finisherLabel }),
+    finisherItemUuid: item.uuid,
+  };
+}
+
 function decorateDraftStep(step, index, { readonly = false, gmExecute = false, reorderLocked = false, awaitingGm = null, movementOptions = [], weaponOptions = [], context = null } = {}) {
   const isAwaitingGm = awaitingGm?.has?.(step?.instanceId) === true;
   const action = step?.action ? decorateAction(step.action) : null;
@@ -867,6 +901,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     canCycleWeapon,
     weaponToolLabel,
     weaponToolTip,
+    ...finisherPicker(stepItem(step, action), canRunStep),
     canDragStep: canEditStepOrder,
     canRevertStep: !minionPlanAsChildren && isExecutionDone && canRunStep,
     warning,
@@ -1236,7 +1271,7 @@ function hasMoreStepTools(step) {
   const live = !step?.isExecutionDone && Boolean(step?.canChooseRecommendedArea
     || step?.canCycleMovement || step?.canCycleRoute || step?.canCycleDestination || step?.canCycleWeapon);
   // Remove has its own button on the row; it doesn't need the drawer.
-  return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep);
+  return live || Boolean((step?.hasAreaMarker && !step?.readonly) || step?.canDuplicateStep || step?.canChooseFinisher);
 }
 
 // Numbers each top-level step, maps pending steps onto the remaining action

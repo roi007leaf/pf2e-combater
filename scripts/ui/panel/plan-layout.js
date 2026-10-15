@@ -1,5 +1,6 @@
 import { t } from "../../i18n.js";
 import { bindPopoverMenu } from "./utility-menu.js";
+import { chooseFinisher } from "../../integrations/animater.js";
 
 function draftStep(panel, instanceId) {
   return (panel._builder?.draft?.steps ?? []).find((step) => step?.instanceId === instanceId) ?? null;
@@ -26,11 +27,37 @@ async function runAll(panel, event) {
   }
 }
 
+// A finisher option click: Animater stores the pick on the item (or warns), then the plan redraws.
+export async function chooseStepFinisher(panel, itemUuid, id) {
+  let item = null;
+  try {
+    item = itemUuid ? globalThis.fromUuidSync?.(itemUuid) ?? null : null;
+  } catch (_error) {
+    item = null;
+  }
+  if (!item) return panel.render({ force: true });
+  // Animater's hook and the item update redraw on success; only a refusal needs the redraw.
+  if (await chooseFinisher(item, id || null)) return;
+  await panel.render({ force: true });
+}
+
 export function activatePlanLayoutBindings(panel, element) {
   panel._openStepTools ??= new Set();
 
   bindPopoverMenu(element, element.querySelector("[data-profile-menu-toggle]"), element.querySelector("[data-profile-menu]"),
     { closeOn: "button" });
+
+  for (const toggle of element.querySelectorAll("[data-finisher-menu-toggle]")) {
+    const menu = toggle.parentElement?.querySelector("[data-finisher-menu]");
+    bindPopoverMenu(element, toggle, menu, { closeOn: "button" });
+    menu?.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-finisher-choice]");
+      if (option) {
+        chooseStepFinisher(panel, menu.dataset.finisherItem, option.dataset.finisherChoice)
+          .catch((error) => console.warn("pf2e-combater | Finisher choice failed", error));
+      }
+    });
+  }
 
   // Budget steppers re-render the panel; reopen the popover so repeated clicks work.
   const adjustToggle = element.querySelector("[data-tracker-adjust-toggle]");

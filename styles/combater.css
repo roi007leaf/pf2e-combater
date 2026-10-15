@@ -4306,7 +4306,8 @@
 
 /* Plan setup: one dropdown instead of five loose chips. */
 .pf2e-combater .combater-setup-row { flex-wrap: nowrap; }
-.pf2e-combater .combater-setup-row .combater-profile-toggle {
+.pf2e-combater .combater-setup-row .combater-profile-toggle,
+.pf2e-combater .combater-finisher-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4319,7 +4320,8 @@
   font-size: 12px;
 }
 .pf2e-combater .combater-profile-caret { font-size: 9px; opacity: .7; }
-.pf2e-combater .combater-profile-menu {
+.pf2e-combater .combater-profile-menu,
+.pf2e-combater .combater-finisher-menu {
   position: fixed;
   inset: auto;
   margin: 0;
@@ -4332,7 +4334,8 @@
   color: #e5ecf4;
   box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
 }
-.pf2e-combater .combater-setup-row .combater-profile-menu button {
+.pf2e-combater .combater-setup-row .combater-profile-menu button,
+.pf2e-combater .combater-finisher-menu button {
   display: flex;
   justify-content: flex-start;
   gap: 8px;
@@ -4348,7 +4351,16 @@
   text-align: left;
 }
 .pf2e-combater .combater-setup-row .combater-profile-menu button:hover,
-.pf2e-combater .combater-setup-row .combater-profile-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+.pf2e-combater .combater-setup-row .combater-profile-menu button:focus-visible,
+.pf2e-combater .combater-finisher-menu button:hover,
+.pf2e-combater .combater-finisher-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+/* Finisher pick in a plan step's drawer: the Plan setup pill, sized for the tool row. */
+.pf2e-combater .combater-finisher-picker { display: inline-flex; }
+.pf2e-combater .combater-finisher-toggle { width: auto; min-height: 24px; margin: 0; height: 24px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.pf2e-combater .combater-finisher-toggle:hover,
+.pf2e-combater .combater-finisher-toggle:focus-visible { border-color: #5b6b80; color: #fff; }
+.pf2e-combater .combater-finisher-menu { min-width: 160px; }
+.pf2e-combater .combater-finisher-menu button.is-active { background: #2c3a4c; color: #fff; font-weight: 600; }
 
 /* Alternative plans: previous / Plan N of M / next. */
 .pf2e-combater .combater-plan-toolbar .combater-header-alternatives {

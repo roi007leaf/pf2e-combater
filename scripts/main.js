@@ -46,6 +46,7 @@ import { registerRecallKnowledgeChatHooks, resolveRecallKnowledgeRequest } from 
 import { registerObservedIntelHooks } from "./rules/observed-intel.js";
 import { registerSpellstrikeHooks } from "./rules/spellstrike-state.js";
 import { initCommandererIntegration } from "./integrations/commanderer.js";
+import { initAnimaterIntegration } from "./integrations/animater.js";
 import { isPlannableActor, isPlannableCombatant } from "./rules/actor-eligibility.js";
 import { respondLiveEngineMatrixPing, runLiveEngineMatrix } from "./runtime/live-engine-matrix.js";
 
@@ -460,6 +461,7 @@ Hooks.once("ready", async () => {
   registerFlankingSizeRuleWrapper();
   registerRechargeTracking();
   await initCommandererIntegration();
+  initAnimaterIntegration(() => activePanel?.render?.({ force: true })?.catch?.((error) => console.warn(`${MODULE_ID} | Finisher refresh failed`, error)));
   pruneStaleSharedDrafts().catch((error) => console.warn(`${MODULE_ID} | Plan cleanup failed`, error));
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;

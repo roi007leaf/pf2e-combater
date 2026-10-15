@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0]
+
+### Added
+
+- **Animater finishers.** With Animater active, a plan step whose weapon, spell, feat or action has finishers shows a "Finisher animation" pill in its drawer. Pick one of the finishers the GM gave you, or None. Animater stores and checks the pick and plays it.
+- The picker only appears on items of player-owned actors, since Animater plays the GM's own finishers on NPC items. The GM sees the finishers of the players who own the actor.
+
 ## [2.1.1]
 
 ### Added
