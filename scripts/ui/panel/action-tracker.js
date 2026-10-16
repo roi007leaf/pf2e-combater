@@ -67,8 +67,37 @@ export function actionTrackerView(context) {
       ? t("ActionTracker.StunnedDuration", "Stunned")
       : t("ActionTracker.Stunned", "Stunned {value}", { value: pool.stunned })),
   ].filter(Boolean).join(" · ");
+  // Slowed/Stunned gained mid-turn only cost actions the next time the creature regains them.
+  const next = tracker.nextTurnPool;
+  const pendingConditions = forecast || !next ? "" : [
+    next.slowed > pool.slowed && t("ActionTracker.Slowed", "Slowed {value}", { value: next.slowed }),
+    (next.stunned > pool.stunned || (next.stunnedDuration && !pool.stunnedDuration)) && (next.stunnedDuration
+      ? t("ActionTracker.StunnedDuration", "Stunned")
+      : t("ActionTracker.Stunned", "Stunned {value}", { value: next.stunned })),
+  ].filter(Boolean).join(" · ");
+  // Minimal bar: PF2e's condition icons with a value badge instead of the text chips.
+  const icon = (slug, value, pending) => {
+    const name = slug === "stunned" && !value
+      ? t("ActionTracker.StunnedDuration", "Stunned")
+      : t(slug === "slowed" ? "ActionTracker.Slowed" : "ActionTracker.Stunned",
+        slug === "slowed" ? "Slowed {value}" : "Stunned {value}", { value });
+    return {
+      slug, value: value || "", pending,
+      img: `systems/pf2e/icons/conditions/${slug}.webp`,
+      tooltip: pending
+        ? `${t("ActionTracker.PendingConditions", "{conditions} · next turn", { conditions: name })}. ${t("ActionTracker.PendingConditionsHint", "Gained during this turn: it reduces the actions this creature regains at the start of its next turn.")}`
+        : name,
+    };
+  };
+  const conditionIcons = forecast ? [] : [
+    pool.slowed && icon("slowed", pool.slowed, false),
+    (pool.stunned || pool.stunnedDuration) && icon("stunned", pool.stunnedDuration ? 0 : pool.stunned, false),
+    next && next.slowed > pool.slowed && icon("slowed", next.slowed, true),
+    next && (next.stunned > pool.stunned || (next.stunnedDuration && !pool.stunnedDuration))
+      && icon("stunned", next.stunnedDuration ? 0 : next.stunned, true),
+  ].filter(Boolean);
   return {
-    visible: true, editable, forecast, glyphControls,
+    visible: true, editable, forecast, glyphControls, conditionIcons,
     label: forecast ? t("ActionTracker.NextTurn", "Next turn") : t("ActionTracker.Label", "Actions left"),
     countLabel: forecast
       ? t(budget.totalActions === 1 ? "ActionTracker.ExpectedAction" : "ActionTracker.ExpectedActions",
@@ -93,6 +122,10 @@ export function actionTrackerView(context) {
     canSpendQuickened: editable && budget.quickenedActions > 0,
     canRefundQuickened: editable && budget.quickenedActions < pool.quickenedActions,
     conditions,
+    pendingConditions: pendingConditions
+      ? t("ActionTracker.PendingConditions", "{conditions} · next turn", { conditions: pendingConditions })
+      : "",
+    pendingConditionsHint: t("ActionTracker.PendingConditionsHint", "Gained during this turn: it reduces the actions this creature regains at the start of its next turn."),
     quickenedLabel: t("ActionTracker.Quickened", "Quickened"),
     quickenedHint: tracker.quickenedAllowed.length
       ? canConfigureQuickened

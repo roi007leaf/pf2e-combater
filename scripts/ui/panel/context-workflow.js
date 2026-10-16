@@ -45,7 +45,7 @@ import { t } from "../../i18n.js";
 import { trackedActionContext } from "../../state/action-tracker.js";
 import { actionTrackerView } from "./action-tracker.js";
 import { turnControlsView } from "./turn-controls.js";
-import { upcomingTurnsView } from "./upcoming-turns.js";
+import { upcomingTurnLimit, upcomingTurnsView } from "./upcoming-turns.js";
 
 function ownershipLevelValue(level) {
   if (Number.isFinite(Number(level))) return Number(level);
@@ -216,7 +216,7 @@ export function viewPanelContext(panel, context) {
       ariaLabel: t("Panel.PlanSetup", "Plan setup"),
     },
     turnControls: turnControlsView(context),
-    upcomingTurns: upcomingTurnsView(),
+    upcomingTurns: upcomingTurnsView(undefined, undefined, { limit: upcomingTurnLimit(panel) }),
     token: context?.token ?? null,
     plan: autoFill,
     headerSteps: planLayout.steps,

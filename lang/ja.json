@@ -61,6 +61,8 @@
       "PipsHint": "クリック：アクションを消費 · 右クリック：1つ戻す",
       "ReactionAvailable": "リアクション使用可能",
       "ReactionHint": "クリック：リアクションを使用 · 右クリック：戻す",
+      "PendingConditions": "{conditions} · 次の手番",
+      "PendingConditionsHint": "この手番中に得た状態：次の手番開始時に回復するアクション数を減らす。",
       "AllowanceTitle": "加速状態のアクション",
       "AllowanceHint": "使用できる単一アクションをコンマ区切りで入力してください（例：strike, stride または step）。この加速状態が続く間、設定が保存されます。空欄にすると手動で管理します。",
       "Save": "保存",

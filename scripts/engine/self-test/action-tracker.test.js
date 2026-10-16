@@ -55,6 +55,16 @@ assert.equal(actionTrackerView(newlyQuickened).canRefundQuickened, false);
 assert.equal(actionBudget(trackedActionContext(context, { combat, messages: [card] })).totalActions, 1, "pending quickened does not refund actions already spent");
 actor.itemTypes.condition = [];
 assert.equal(actionTrackerView(trackedActionContext(context, { combat, messages: [] })).quickened, false, "removing pending quickened removes its indicator");
+actor.itemTypes.condition = [condition("slowed", 1)];
+const newlySlowed = actionTrackerView(trackedActionContext(context, { combat, messages: [] }));
+assert.equal(newlySlowed.conditions, "", "slowed gained mid-turn does not change this turn's conditions");
+assert.equal(newlySlowed.pendingConditions, "Slowed 1 · next turn", "slowed gained mid-turn shows as a next-turn chip");
+assert.deepEqual(newlySlowed.conditionIcons.map(({ slug, value, pending }) => ({ slug, value, pending })),
+  [{ slug: "slowed", value: 1, pending: true }], "the minimal bar shows a pending slowed icon");
+actor.itemTypes.condition = [condition("stunned", 2)];
+assert.equal(actionTrackerView(trackedActionContext(context, { combat, messages: [] })).pendingConditions, "Stunned 2 · next turn");
+actor.itemTypes.condition = [];
+assert.equal(actionTrackerView(trackedActionContext(context, { combat, messages: [] })).pendingConditions, "", "no pending chip without a new condition");
 actor.itemTypes.condition = [{ ...condition("quickened"), active: false }];
 assert.equal(actionTrackerView(trackedActionContext(context, { combat, messages: [] })).quickened, false, "inactive quickened is not shown as pending");
 actor.itemTypes.condition = [condition("slowed", 2), condition("stunned", 1), condition("quickened")];

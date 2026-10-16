@@ -665,6 +665,8 @@
   min-width: 0;
   margin: 0 0 0 4px;
   overflow: hidden;
+  /* A whole circuit is listed; whatever doesn't fit fades out at the right edge. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 
 /* No scrolling in the bar: chips shrink (names ellipsize) and anything that still doesn't fit
@@ -713,9 +715,11 @@
 
 /* Hierarchy instead of evenly squeezed chips: the next turn keeps its name, later turns are
    portrait-only avatars (their tooltip still names them and their round). */
+/* The next chip keeps its name (it only shrinks if it alone is wider than the strip); later
+   avatars that don't fit are the ones that fade out. */
 .pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li:has(.is-next) {
-  flex-shrink: 1;
-  min-width: min(100%, 130px);
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li:has(.is-following) {
@@ -779,8 +783,7 @@
 
 /* The glyphs already show what's left, so the bar drops the count text. Clicking the glyphs spends
    and refunds, so the adjust menu and the "planned" sub-line stay in the full panel. */
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-text > strong,
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-text > small:not(.combater-tracker-conditions),
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text,
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-toggle,
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-menu {
   display: none;
@@ -821,20 +824,61 @@
   opacity: 0.55;
 }
 
-/* Slowed / Stunned stay visible as a small amber chip: they explain the missing glyphs. */
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-text:not(:has(.combater-tracker-conditions)) {
+/* Slowed / Stunned as PF2e's condition icons with a value badge: they explain the missing
+   glyphs. Gained mid-turn (applies next turn): dimmed with a dashed amber ring, like the
+   pending Quickened bolt. The full panel keeps its text line instead. */
+.pf2e-combater .combater-tracker-condition-icons {
   display: none;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-conditions {
-  padding: 2px 7px;
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-condition-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pf2e-combater .combater-condition-icon {
+  position: relative;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  padding: 2px;
   border: 1px solid #a8824a;
-  border-radius: 999px;
-  background: #3a2e1c;
-  color: #f2cf8c;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
+  border-radius: 50%;
+  background: #2a2117;
+  cursor: help;
+}
+
+.pf2e-combater .combater-condition-icon img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+}
+
+.pf2e-combater .combater-condition-icon.is-pending {
+  border-style: dashed;
+  background: transparent;
+}
+
+.pf2e-combater .combater-condition-icon.is-pending img {
+  opacity: 0.6;
+}
+
+.pf2e-combater .combater-condition-value {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #e0b35a;
+  color: #1b1408;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
 }
 
 /* The Quickened badge shrinks to its bolt; its tooltip still explains it. */

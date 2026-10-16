@@ -11,14 +11,20 @@ function dispositionKey(combatant, user) {
   return "neutral";
 }
 
-export function upcomingTurnsView(combat = globalThis.game?.combat, user = globalThis.game?.user) {
+// The full panel previews two turns; the minimal bar has room for a whole circuit.
+export function upcomingTurnLimit(panel) {
+  return panel?.expanded === false ? 8 : 2;
+}
+
+
+export function upcomingTurnsView(combat = globalThis.game?.combat, user = globalThis.game?.user, { limit = 2 } = {}) {
   const turns = combat?.turns ?? [];
   if (!settingOrDefault(SETTINGS.showTurnNavigation, true) || !combat?.started || !turns.length) return { visible: false, entries: [] };
   const current = combat.turn ?? -1;
   const entries = [];
   // One circuit includes the current creature's next-round turn in small
-  // encounters, without repeating a single creature in both preview slots.
-  for (let offset = 1; offset <= turns.length && entries.length < 2; offset += 1) {
+  // encounters, without repeating a single creature in the preview.
+  for (let offset = 1; offset <= turns.length && entries.length < limit; offset += 1) {
     const position = current + offset;
     const combatant = turns[position % turns.length];
     if (combat.settings?.skipDefeated && combatant.isDefeated) continue;
@@ -43,9 +49,9 @@ export function upcomingTurnsView(combat = globalThis.game?.combat, user = globa
   };
 }
 
-export async function panToUpcomingCombatant(id, combatId) {
+export async function panToUpcomingCombatant(id, combatId, { limit = 2 } = {}) {
   const combat = globalThis.game?.combat;
-  if (combat?.id !== combatId || !upcomingTurnsView(combat).entries.some((entry) => entry.id === id)) return false;
+  if (combat?.id !== combatId || !upcomingTurnsView(combat, undefined, { limit }).entries.some((entry) => entry.id === id)) return false;
   const combatant = combat.turns.find((entry) => entry.id === id);
   const canvas = globalThis.canvas;
   // Resolve the placeable on the current canvas directly: a combat not linked to
@@ -91,7 +97,7 @@ export function activateUpcomingTurnBindings(panel, element) {
   const cards = Array.from(track.querySelectorAll("[data-upcoming-combatant]"));
   for (const card of cards) {
     card.addEventListener("click", () => {
-      panToUpcomingCombatant(card.dataset.upcomingCombatant, track.dataset.combatId)
+      panToUpcomingCombatant(card.dataset.upcomingCombatant, track.dataset.combatId, { limit: upcomingTurnLimit(panel) })
         .catch((error) => globalThis.ui?.notifications?.warn?.(error.message));
     });
   }

@@ -547,10 +547,12 @@
       <section class="combater-action-tracker {{#if actionTracker.forecast}}is-forecast{{else}}is-current{{/if}}" aria-label="{{actionTracker.label}}"{{#if expanded}} data-tooltip="{{actionTracker.hint}}"{{/if}} aria-live="polite">
         <span class="combater-tracker-pips{{#if actionTracker.glyphControls}} is-editable{{/if}}" aria-hidden="true"{{#if actionTracker.glyphControls}} data-tracker-pips data-tooltip="{{actionTracker.pipsHint}}"{{/if}}>{{#each actionTracker.pips}}<span class="combater-pip {{#if quickened}}is-quickened{{/if}} {{#if spent}}is-spent{{/if}}" data-pip="{{slot}}"><span class="action-glyph">1</span>{{#if owner}}<span class="combater-pip-owner">{{owner}}</span>{{/if}}</span>{{/each}}</span>
         {{#if actionTracker.reaction}}<span class="combater-tracker-reaction{{#if actionTracker.reaction.used}} is-used{{/if}}{{#if actionTracker.glyphControls}} is-editable" data-tracker-reaction data-tooltip="{{actionTracker.reaction.label}}. {{actionTracker.reaction.hint}}"{{else}}" data-tooltip="{{actionTracker.reaction.label}}"{{/if}} aria-label="{{actionTracker.reaction.label}}"><span class="action-glyph">R</span></span>{{/if}}
+        {{#if actionTracker.conditionIcons.length}}<span class="combater-tracker-condition-icons">{{#each actionTracker.conditionIcons}}<span class="combater-condition-icon{{#if pending}} is-pending{{/if}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}"><img src="{{img}}" alt="">{{#if value}}<span class="combater-condition-value">{{value}}</span>{{/if}}</span>{{/each}}</span>{{/if}}
         <span class="combater-tracker-text">
           <strong><span class="combater-tracker-label">{{actionTracker.label}}</span> {{actionTracker.countLabel}}</strong>
           {{#if actionTracker.plannedLabel}}<small class="{{#if actionTracker.overPlanned}}is-over{{/if}}">{{actionTracker.plannedLabel}}</small>{{/if}}
           {{#if actionTracker.conditions}}<small class="combater-tracker-conditions">{{actionTracker.conditions}}</small>{{/if}}
+          {{#if actionTracker.pendingConditions}}<small class="combater-tracker-conditions is-pending" data-tooltip="{{actionTracker.pendingConditionsHint}}">{{actionTracker.pendingConditions}}</small>{{/if}}
         </span>
         {{#if actionTracker.quickened}}
           {{#if actionTracker.quickenedPending}}

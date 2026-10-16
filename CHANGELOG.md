@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.1]
+
+### Changed
+
+- **Minimal bar: conditions as icons.** Slowed and Stunned show as PF2e's condition icons with a value badge instead of text chips, so the turn carousel keeps its room. Hover for the full text.
+- **Minimal bar: carousel fills the row.** The next turn keeps its full name; after it, the rest of the round follows as avatars up to End turn, fading out at the edge if they don't all fit.
+
+### Added
+
+- **Slowed/Stunned gained mid-turn.** These only cost actions the next time the creature regains them, so the minimal bar now shows them as a dimmed icon with a dashed ring (like the pending Quickened bolt), and the full panel adds a "Slowed 1 · next turn" line.
+
 ## [2.3.0]
 
 ### Added

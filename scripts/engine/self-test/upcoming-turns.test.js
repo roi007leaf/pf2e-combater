@@ -18,6 +18,8 @@ try {
   assert.equal(view.entries[0].next, true);
   assert.equal(view.entries[1].next, false);
   assert.ok(view.entries.every((entry) => entry.round === 4 && !entry.nextRound));
+  assert.deepEqual(ids(upcomingTurnsView(combat, player, { limit: 8 })), ["b", "c", "d", "a"],
+    "the minimal bar previews a whole circuit, ending with the current creature's next turn");
 
   combat.turn = 2;
   view = upcomingTurnsView();

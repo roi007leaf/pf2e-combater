@@ -105,6 +105,8 @@
       "PipsHint": "Click: spend an action · Right-click: refund one",
       "ReactionAvailable": "Reaction available",
       "ReactionHint": "Click: use the reaction · Right-click: give it back",
+      "PendingConditions": "{conditions} · next turn",
+      "PendingConditionsHint": "Gained during this turn: it reduces the actions this creature regains at the start of its next turn.",
       "AllowanceTitle": "Quickened actions",
       "AllowanceHint": "Enter allowed single actions, separated by commas (for example: strike, stride or step). Saved while this Quickened condition remains. Leave empty for manual tracking.",
       "Save": "Save",
