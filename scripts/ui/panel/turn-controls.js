@@ -415,7 +415,7 @@ async function useReadied(panel, combatant, event) {
   return true;
 }
 
-async function sendTurnControl(request) {
+export async function sendTurnControl(request) {
   const user = globalThis.game?.user;
   const activeGM = globalThis.game?.users?.activeGM;
   const result = user?.isGM && (!activeGM || activeGM.id === user.id)

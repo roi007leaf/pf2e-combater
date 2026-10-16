@@ -1,4 +1,6 @@
 import { adjustTrackedActions, setQuickenedAllowance } from "../../state/action-tracker.js";
+import { reactionUsed, turnIdentity } from "../../state/turn-controls.js";
+import { sendTurnControl } from "./turn-controls.js";
 import { pf2eActionName, t } from "../../i18n.js";
 import { CARD_DIALOG_CLASS, cardPickerHtml, checkedValues } from "../card-picker.js";
 
@@ -31,6 +33,22 @@ function quickenedOptions(panel, allowed) {
   return options;
 }
 
+// The creature's reaction, for the minimal bar (the full panel shows a "Reaction used" badge).
+function trackerReactionView(context) {
+  const id = context?.combatant?.id;
+  if (!id) return null;
+  const combatant = globalThis.game?.combat?.turns?.find?.((entry) => entry.id === id) ?? context.combatant;
+  const used = reactionUsed(combatant);
+  return {
+    used,
+    combatantId: id,
+    label: used
+      ? t("TurnControls.ReactionUsed", "Reaction used")
+      : t("ActionTracker.ReactionAvailable", "Reaction available"),
+    hint: t("ActionTracker.ReactionHint", "Click: use the reaction · Right-click: give it back"),
+  };
+}
+
 export function actionTrackerView(context) {
   const tracker = context?.actionTracker;
   if (!tracker) return { visible: false };
@@ -39,6 +57,8 @@ export function actionTrackerView(context) {
   const actor = context.actor?.document ?? context.combatant?.actor;
   const editable = !forecast && (globalThis.game?.user?.isGM === true || actor?.isOwner === true);
   const canConfigureQuickened = globalThis.game?.user?.isGM === true;
+  // Click/right-click on the glyphs is a GM shortcut; players keep the adjust menu.
+  const glyphControls = editable && globalThis.game?.user?.isGM === true;
   const quickened = pool.quickened > 0 || tracker.quickenedPending === true;
   const quickenedNeedsConfiguration = quickened && !tracker.quickenedAllowed.length;
   const conditions = [
@@ -48,7 +68,7 @@ export function actionTrackerView(context) {
       : t("ActionTracker.Stunned", "Stunned {value}", { value: pool.stunned })),
   ].filter(Boolean).join(" · ");
   return {
-    visible: true, editable, forecast,
+    visible: true, editable, forecast, glyphControls,
     label: forecast ? t("ActionTracker.NextTurn", "Next turn") : t("ActionTracker.Label", "Actions left"),
     countLabel: forecast
       ? t(budget.totalActions === 1 ? "ActionTracker.ExpectedAction" : "ActionTracker.ExpectedActions",
@@ -82,12 +102,56 @@ export function actionTrackerView(context) {
     hint: forecast
       ? t("ActionTracker.ForecastHint", "Expected actions at the start of your next turn, based on current conditions. Auto-fill uses this budget.")
       : t("ActionTracker.Hint", "Tracks this turn's chat cards and completed actions. Use + to refund a reference-only post; use − for an unposted action."),
+    reaction: trackerReactionView(context),
+    pipsHint: t("ActionTracker.PipsHint", "Click: spend an action · Right-click: refund one"),
     spendLabel: t("ActionTracker.Spend", "Spend one action"),
     refundLabel: t("ActionTracker.Refund", "Refund one action"),
   };
 }
 
 export function activateActionTrackerBindings(panel, element) {
+  // Glyphs as a shortcut for the adjust menu: click spends, right-click refunds. The quickened
+  // glyph adjusts the quickened pool; any other glyph the normal pool.
+  const pips = element.querySelector?.("[data-tracker-pips]");
+  const adjustFromPip = async (event, amount) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const view = actionTrackerView(panel._context);
+    if (!view.glyphControls) return;
+    const quickened = Boolean(event.target.closest?.(".combater-pip.is-quickened"));
+    const allowed = quickened
+      ? (amount > 0 ? view.canSpendQuickened : view.canRefundQuickened)
+      : (amount > 0 ? view.canSpend : view.canRefund);
+    if (!allowed || pips.dataset.busy) return;
+    pips.dataset.busy = "1";
+    try {
+      await adjustTrackedActions(panel._context, quickened ? "quickened" : "normal", amount);
+      await panel.refresh("chat-actions");
+    } catch (error) {
+      globalThis.ui?.notifications?.error?.(error.message);
+    } finally { delete pips.dataset.busy; }
+  };
+  pips?.addEventListener("click", (event) => adjustFromPip(event, 1));
+  pips?.addEventListener("contextmenu", (event) => adjustFromPip(event, -1));
+
+  // Reaction glyph: click spends it, right-click gives it back. Combatant flags need the GM,
+  // so this goes through the turn-control request like Ready/Delay.
+  const reaction = element.querySelector?.("[data-tracker-reaction]");
+  const setReaction = async (event, used) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const view = actionTrackerView(panel._context);
+    if (!view.glyphControls || !view.reaction || view.reaction.used === used || reaction.dataset.busy) return;
+    reaction.dataset.busy = "1";
+    try {
+      await sendTurnControl({ ...turnIdentity(globalThis.game?.combat), action: "reaction", reactionId: view.reaction.combatantId, used });
+      await panel.refresh("turn-controls");
+    } catch (error) {
+      globalThis.ui?.notifications?.warn?.(error.message);
+    } finally { delete reaction.dataset.busy; }
+  };
+  reaction?.addEventListener("click", (event) => setReaction(event, true));
+  reaction?.addEventListener("contextmenu", (event) => setReaction(event, false));
   for (const button of element.querySelectorAll("[data-tracker-adjust]")) {
     button.addEventListener("click", async () => {
       if (!actionTrackerView(panel._context).editable) return;

@@ -661,9 +661,9 @@
 .pf2e-combater .combater-shell.is-minimal .combater-upcoming {
   grid-area: upcoming;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
-  margin: 0;
+  margin: 0 0 0 4px;
   overflow: hidden;
 }
 
@@ -676,6 +676,7 @@
 }
 
 .pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li {
+  display: flex;
   flex: 0 1 auto;
   min-width: 0;
 }
@@ -685,18 +686,158 @@
   max-width: 100%;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-upcoming-name {
-  min-width: 0;
+/* Only the next chip keeps its caption; later turns are avatars (see below). */
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following .combater-upcoming-label {
+  display: none;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-upcoming-label {
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next .combater-upcoming-label {
+  flex-shrink: 0;
+  padding-left: 8px;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-round {
   flex-shrink: 0;
   white-space: nowrap;
 }
 
-/* Narrow bar: names matter more than the "Next turn / Then" captions (order already says it). */
-@container combater-shell (max-width: 680px) {
-  .pf2e-combater .combater-shell.is-minimal .combater-upcoming-label {
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-portrait {
+  flex-shrink: 0;
+}
+
+/* Hierarchy instead of evenly squeezed chips: the next turn keeps its name, later turns are
+   portrait-only avatars (their tooltip still names them and their round). */
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li:has(.is-next) {
+  flex-shrink: 1;
+  min-width: min(100%, 130px);
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li:has(.is-following) {
+  flex-shrink: 0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track {
+  align-items: center;
+  gap: 4px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn {
+  height: 34px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next {
+  padding: 2px 12px 2px 2px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next .combater-upcoming-portrait {
+  width: 28px;
+  height: 28px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next .combater-upcoming-name {
+  font-size: 13px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.85;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following:hover {
+  opacity: 1;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following .combater-upcoming-portrait {
+  width: 30px;
+  height: 30px;
+}
+
+/* A quiet chevron between turns so the avatars read as a sequence. */
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li + li::before {
+  content: "\203A";
+  align-self: center;
+  padding: 0 4px 0 2px;
+  color: #6f7a86;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following .combater-upcoming-name,
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following .combater-upcoming-round {
+  display: none;
+}
+
+/* The glyphs already show what's left, so the bar drops the count text. Clicking the glyphs spends
+   and refunds, so the adjust menu and the "planned" sub-line stay in the full panel. */
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text,
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-toggle,
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-menu {
+  display: none;
+}
+
+/* Reaction glyph: minimal bar only (the full panel has its "Reaction used" badge). */
+.pf2e-combater .combater-tracker-reaction {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 6px;
+  border-left: 1px solid rgb(255 255 255 / 15%);
+  color: #b8deff;
+  cursor: help;
+}
+
+.pf2e-combater .combater-tracker-reaction .action-glyph {
+  font-family: "Pathfinder2eActions", sans-serif;
+  font-size: 20px;
+  font-weight: normal;
+  line-height: 1;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-editable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-editable:hover {
+  text-shadow: 0 0 6px currentColor;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-used {
+  color: #6f7a86;
+  opacity: 0.55;
+}
+
+/* The Quickened badge shrinks to its bolt; its tooltip still explains it. */
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-quickened-text {
+  display: none;
+}
+
+.pf2e-combater .combater-tracker-quickened > i + .combater-tracker-quickened-text {
+  margin-left: 5px;
+}
+
+/* Narrower bar: the caption goes first, then the round marker. */
+@container combater-shell (max-width: 640px) {
+  .pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next .combater-upcoming-label {
+    display: none;
+  }
+}
+
+@container combater-shell (max-width: 560px) {
+  .pf2e-combater .combater-shell.is-minimal .combater-upcoming-round {
     display: none;
   }
 }
@@ -4143,6 +4284,8 @@
 .pf2e-combater .combater-action-tracker button:focus-visible { outline: 2px solid #b5d4ff; }
 .pf2e-combater .combater-action-tracker button:disabled { opacity: 0.45; cursor: default; }
 .pf2e-combater .combater-tracker-pips { display: inline-flex; align-items: center; gap: 2px; color: #b8deff; }
+.pf2e-combater .combater-tracker-pips.is-editable { cursor: pointer; user-select: none; }
+.pf2e-combater .combater-tracker-pips.is-editable .combater-pip:hover { text-shadow: 0 0 6px currentColor; }
 .pf2e-combater .combater-tracker-pips .action-glyph {
   font-family: "Pathfinder2eActions", sans-serif;
   font-size: 18px;
@@ -4289,6 +4432,8 @@
 .pf2e-combater .combater-empty-plan-autofill:hover { background: #43351f; color: #fff1cc; }
 .pf2e-combater .combater-empty-plan-browse { border: 1px solid #4b5361; background: #22272e; color: #dfe8f2; }
 .pf2e-combater .combater-empty-plan-browse:hover { border-color: #79aee8; background: #253244; }
+.pf2e-combater .combater-empty-plan-actions .combater-empty-plan-minimize { border: 1px solid #4b5361; background: #22272e; color: #b7aea0; }
+.pf2e-combater .combater-empty-plan-actions .combater-empty-plan-minimize:hover { border-color: #79aee8; background: #253244; color: #dfe8f2; }
 /* A choice the step needs before it can run (square, target, template, summon, items): the next thing to do, so it stands out. */
 .pf2e-combater .combater-step-required.is-needed { flex: 0 0 auto; width: auto; white-space: nowrap; gap: 5px; padding: 0 9px; border-color: #b08a3c; background: #33291a; color: #f0cf86; font-weight: 600; }
 .pf2e-combater .combater-step-required.is-needed:hover,

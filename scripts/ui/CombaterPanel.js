@@ -1226,7 +1226,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
-      if (event.target.closest("button, a, input, select, textarea")) return;
+      if (event.target.closest("button, a, input, select, textarea, [data-tracker-pips], [data-tracker-reaction]")) return;
 
       const startBox = element.getBoundingClientRect();
       const startX = event.clientX;

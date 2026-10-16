@@ -1313,6 +1313,10 @@ assert.ok(
   "minimal mode should offer its own button to open the full panel",
 );
 assert.ok(
+  /class="combater-empty-plan-minimize" data-action="toggle-compact"/.test(panelTemplateSource),
+  "empty plan card should offer minimal mode, since the toolbar's menu is hidden then",
+);
+assert.ok(
   /\.combater-panel\.is-minimal > \.window-header,[\s\S]*?display:\s*none;/.test(panelStyleSource),
   "minimal mode should drop the window frame so the bar floats",
 );

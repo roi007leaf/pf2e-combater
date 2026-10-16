@@ -57,6 +57,22 @@ function reactionSpendChanges(combatant, round) {
   return changes;
 }
 
+// Gives the reaction back: clears our marker, PF2e Reaction Checker's flag, and Sundry's
+// "Reaction Used" effect, so a mis-click on the glyph is fully undone.
+async function refundReaction(combatant) {
+  const changes = { [`flags.${MODULE_ID}.-=${REACTION_FLAG}`]: null };
+  const checker = globalThis.game?.modules?.get?.(REACTION_CHECKER_ID);
+  if (checker?.active && combatant?.flags?.[REACTION_CHECKER_ID]?.state === false) {
+    changes[`flags.${REACTION_CHECKER_ID}.state`] = true;
+  }
+  await combatant.update(changes, { turnEvents: false });
+  const actor = combatant.actor;
+  const effects = collectionValues(actor?.itemTypes?.effect)
+    .filter((item) => (item.slug ?? item.system?.slug) === REACTION_USED_EFFECT_SLUG)
+    .map((item) => item.id);
+  if (effects.length) await actor.deleteEmbeddedDocuments("Item", effects);
+}
+
 export function ownsTurn(combatant, user = globalThis.game?.user) {
   return Boolean(user?.isGM || combatant?.actor?.testUserPermission?.(user, "OWNER"));
 }
@@ -225,6 +241,19 @@ async function performTurnControl(request, senderId) {
     const spent = request.used === true ? reactionSpendChanges(holder, combat.round) : {};
     await holder.update({ [`flags.${MODULE_ID}.-=${READY_FLAG}`]: null, ...spent }, { turnEvents: false });
     if (request.used === true) await notifySundryReaction(holder.actor);
+    return true;
+  }
+  if (request.action === "reaction") {
+    const holder = combat.combatants.get(request.reactionId);
+    if (!holder) throw Error(t("TurnControls.NotCurrent", "This turn is no longer active."));
+    if (!ownsTurn(holder, user)) throw Error(t("TurnControls.NotOwner", "You can only control your own turn."));
+    if (request.used === true) {
+      if (reactionUsed(holder)) return true;
+      await holder.update(reactionSpendChanges(holder, combat.round), { turnEvents: false });
+      await notifySundryReaction(holder.actor);
+    } else if (reactionUsed(holder)) {
+      await refundReaction(holder);
+    }
     return true;
   }
   const expected = turnIdentity(combat);
