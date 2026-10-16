@@ -413,7 +413,7 @@
     </div>
 
     {{#if turnControls.readied}}
-      <div class="combater-readied {{#if turnControls.readied.hasMovement}}has-movement{{/if}}" data-tooltip="{{turnControls.readied.hint}}"{{#if turnControls.readied.hasMovement}} data-readied-preview="{{turnControls.readied.id}}"{{/if}}>
+      <div class="combater-readied {{#if turnControls.readied.hasMovement}}has-movement{{/if}}" data-tooltip="{{turnControls.readied.title}}. {{turnControls.readied.hint}}"{{#if turnControls.readied.hasMovement}} data-readied-preview="{{turnControls.readied.id}}"{{/if}}>
         <i class="fa-solid fa-bullseye"></i>
         <span class="combater-readied-text"><strong>{{turnControls.readied.title}}</strong></span>
         {{#if turnControls.readied.canUse}}

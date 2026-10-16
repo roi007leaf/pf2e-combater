@@ -621,7 +621,6 @@
 
 .pf2e-combater .combater-shell.is-minimal > :not(.combater-compact),
 .pf2e-combater .combater-shell.is-minimal .combater-identity,
-.pf2e-combater .combater-shell.is-minimal .combater-readied,
 .pf2e-combater .combater-shell.is-minimal .combater-compact > .combater-turn-controls,
 .pf2e-combater .combater-shell.is-minimal .combater-planning,
 .pf2e-combater .combater-shell.is-minimal .combater-header-clock {
@@ -630,8 +629,8 @@
 
 .pf2e-combater .combater-shell.is-minimal .combater-compact {
   display: grid;
-  grid-template-areas: "tracker upcoming turn expand";
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "tracker readied upcoming turn expand";
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
   padding: 6px;
@@ -652,6 +651,28 @@
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-text {
   flex: 0 1 auto;
   white-space: nowrap;
+}
+
+/* A readied action rides in the bar as a compact pill: bullseye plus its change-destination /
+   Use / discard buttons; the action's name is in the pill's tooltip. */
+.pf2e-combater .combater-shell.is-minimal .combater-readied {
+  grid-area: readied;
+  gap: 5px;
+  margin: 0;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-readied-text {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-readied .combater-turn-button {
+  height: 26px;
+  min-height: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
 .pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-header {
@@ -888,6 +909,11 @@
 
 .pf2e-combater .combater-tracker-quickened > i + .combater-tracker-quickened-text {
   margin-left: 5px;
+}
+
+/* A crowded bar (readied pill or condition icons) drops the "Next turn" caption before the name. */
+.pf2e-combater .combater-shell.is-minimal .combater-compact:has(.combater-readied, .combater-tracker-condition-icons) .combater-upcoming-turn.is-next .combater-upcoming-label {
+  display: none;
 }
 
 /* Narrower bar: the caption goes first, then the round marker. */

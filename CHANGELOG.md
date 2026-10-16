@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.3]
+
+### Added
+
+- **Readied actions in minimal mode.** A readied action now shows in the minimal bar as a compact pill: the bullseye plus its change-destination, Use and discard buttons. Hover the pill for the action's name. When the bar is crowded, the next turn drops its "Next turn" caption so the creature's name stays readable.
+
 ## [2.3.2]
 
 ### Changed
