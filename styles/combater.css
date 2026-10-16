@@ -4738,6 +4738,15 @@
 .pf2e-combater .combater-pip.is-quickened { color: #f0c96f; }
 .pf2e-combater .combater-pip.is-quickened .combater-pip-owner { color: #ffe3a3; }
 .pf2e-combater .combater-pip.is-quickened.is-spent { color: #8f805d; }
+/* Spent glyphs look like the used reaction glyph: grey and half-faded, on any tracker. */
+.pf2e-combater .combater-action-tracker .combater-tracker-pips .combater-pip.is-spent,
+.pf2e-combater .combater-action-tracker.is-current .combater-tracker-pips .combater-pip.is-spent:not(.is-quickened),
+.pf2e-combater .combater-action-tracker.is-forecast .combater-tracker-pips .combater-pip.is-spent:not(.is-quickened) {
+  color: #6f7a86;
+  opacity: 0.55;
+}
+/* Not this creature's turn (forecast): the glyphs take the tracker's blue, not the live green. */
+.pf2e-combater .combater-action-tracker.is-forecast .combater-tracker-pips .combater-pip:not(.is-quickened):not(.is-spent) { color: #91c8ff; }
 .pf2e-combater .combater-pip.is-lit { color: #c8f5d9; text-shadow: 0 0 6px rgb(200 245 217 / 85%); }
 .pf2e-combater .combater-pip.is-quickened.is-lit { color: #ffe3a3; text-shadow: 0 0 6px rgb(255 227 163 / 85%); }
 .pf2e-combater .combater-tracker-text { display: flex; flex-direction: column; flex: 1 1 auto; gap: 1px; min-width: 0; line-height: 1.2; }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.2]
+
+### Changed
+
+- **Clearer spent actions.** Spent action glyphs now look like a used reaction glyph (grey and half-faded) instead of a slightly darker green, so it's easy to see what's left.
+- **Glyphs match the tracker on other creatures' turns.** When the tracker shows a creature's next-turn forecast (blue), its action glyphs are blue too instead of the live green.
+
 ## [2.3.1]
 
 ### Changed
