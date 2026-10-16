@@ -464,6 +464,7 @@
     },
     "Warning": {
       "ChooseDestExec": "Choose destination at execution.",
+      "PressNeedsMap": "Press: needs an earlier attack this turn (multiple attack penalty).",
       "KnownImmunityBlocks": "Known immunity blocks this.",
       "KnownResistanceReduces": "Known resistance reduces this.",
       "SaveLooksHigh": "{save} looks High.",

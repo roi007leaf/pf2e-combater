@@ -6,6 +6,10 @@
 
 - **Readied actions in minimal mode.** A readied action now shows in the minimal bar as a compact pill: the bullseye plus its change-destination, Use and discard buttons. Hover the pill for the action's name. When the bar is crowded, the next turn drops its "Next turn" caption so the creature's name stays readable.
 
+### Fixed
+
+- **Press actions.** Auto-fill now respects the press trait: a press feat (Brutish Shove, Certain Strike, Combat Grab, etc.) is only planned after another attack this turn, and always ordered after it. A press step drafted before any attack shows a warning.
+
 ## [2.3.2]
 
 ### Changed

@@ -14,11 +14,13 @@ import {
   isAttackAction,
   isCompositionExtenderCandidate,
   isGrabRider,
+  isPressAction,
   isSpellAction,
   isStrikeAction,
   isStrikeLikeCandidate,
   previousActionRequirements,
   previousActionSatisfied,
+  pressStepsAfterAttack,
   requiresPreviousAction,
   requiresTargetCondition,
   stepSatisfiesPreviousRequirements,
@@ -541,7 +543,7 @@ function orderPlanSteps(steps) {
     return steps.indexOf(left) - steps.indexOf(right);
   });
 
-  return dependencyOrderedSteps(priorityOrdered);
+  return pressStepsAfterAttack(dependencyOrderedSteps(priorityOrdered));
 }
 
 export function mapPenalty(candidate, attackIndex) {
@@ -636,15 +638,17 @@ export function rebalancePlanMap(steps) {
     strikeSlots.forEach((slot, position) => { next[slot] = order[position]; });
     let attackCount = start;
     let cost = 0;
+    let pressOpens = false;
     const dealt = next.map((step) => {
       if (!step?.mapBase) return step;
+      if (attackCount === 0 && isPressAction(step)) pressOpens = true;
       const penalty = mapPenalty(step, attackCount);
       const placed = withMapAt(step, penalty, attackCount + 1);
       cost += stepMapScoreCost(step, step.mapBase.score, attackCount);
       attackCount += attacksTowardMap(step);
       return placed;
     });
-    return { dealt, cost };
+    return { dealt, cost: pressOpens ? Infinity : cost };
   };
   let best = deal(strikes);
   for (const order of permutations(strikes)) {
@@ -951,7 +955,7 @@ export function planScore(context, steps, sortedCandidates, budget) {
 }
 
 function toPlan(context, steps, sortedCandidates, budget, resolvedTactic = null, simulation = null) {
-  const executionOrder = applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps));
+  const executionOrder = pressStepsAfterAttack(applyTurnIntentToPlan(context?.turnIntent, orderPlanSteps(steps)));
   const simulated = simulation ? simulation.rescorer.simulate(context, simulation.initialState, executionOrder) : executionOrder;
   const drawnBacking = withDrawnWeaponBacking(rebalancePlanMap(simulated));
   const orderedSteps = drawnBacking.steps;
@@ -1387,6 +1391,8 @@ export function buildTurnPlans(context, candidates, { reservedSteps = [], includ
       if (currentUses > 0 && !repeatableAction) continue;
       if (currentUses >= 3) continue;
       if (strikeAction && planState.strikeCount >= MAX_STRIKE_STEPS) continue;
+      // Press: only once the turn already has a multiple attack penalty.
+      if (isPressAction(linkedCandidate) && !(planState.attackCount > 0)) continue;
       if (!projectedFollowUpSatisfied(context, linkedCandidate, steps)) continue;
       if (!previousActionSatisfied(projectedContext, linkedCandidate, prerequisiteSteps)) continue;
       if (!targetConditionSatisfied(projectedContext, linkedCandidate, steps)) continue;

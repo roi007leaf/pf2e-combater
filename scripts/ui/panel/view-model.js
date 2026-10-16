@@ -11,6 +11,7 @@ import { confidenceLabel } from "../../engine/confidence.js";
 import { canPlanSummon } from "../../integrations/summons-assistant.js";
 import { currentFinisher, finisherOptions, strikeFinisherTarget } from "../../integrations/animater.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
+import { isPressAction } from "../../engine/planner/rules.js";
 import { rkWarningLabel, rkWarningsForStep } from "../../engine/scoring/rk-warnings.js";
 import { t } from "../../i18n.js";
 import { distanceFromCenterToTarget } from "../../readers/action/reach.js";
@@ -758,7 +759,10 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
   const rawWarning = step?.warning === "Choose a destination." ? t("Warning.ChooseDestExec", "Choose destination at execution.") : step?.warning;
   const rkWarnings = isExecutionDone ? [] : rkWarningsForStep(context, step, action ?? step);
   const advisoryWarning = rkWarningLabel(rkWarnings);
-  const warning = isExecutionDone || step?.quickenedNextTurn ? "" : (readiness.warning || rawWarning || advisoryWarning);
+  const pressWarning = step?.pressWithoutMap && !(Number(step?.mapOverride) > 0)
+    ? t("Warning.PressNeedsMap", "Press: needs an earlier attack this turn (multiple attack penalty).")
+    : "";
+  const warning = isExecutionDone || step?.quickenedNextTurn ? "" : (readiness.warning || rawWarning || pressWarning || advisoryWarning);
   const canShowExecuteStep = !minionPlanAsChildren && canRunStep && !isExecutionDone && Boolean(action) && step?.stale !== true;
   const executionBlocked = canShowExecuteStep && readiness.status !== "ready";
   const canChooseTarget = requiresTarget && canRunStep && !isExecutionDone;
@@ -1046,8 +1050,9 @@ function injectMapInfo(steps, startCount = 0) {
       i += 1;
       continue;
     }
+    const pressWithoutMap = attackCount === 0 && isPressAction(action);
     if (!isAttackAction(action)) {
-      tagged.push(step);
+      tagged.push(pressWithoutMap ? { ...step, pressWithoutMap } : step);
       i += 1;
       continue;
     }
@@ -1070,6 +1075,7 @@ function injectMapInfo(steps, startCount = 0) {
         attackIndex: level + 1,
         mapPenalty: penalty,
         mapPinned: override !== null,
+        ...(pressWithoutMap ? { pressWithoutMap } : {}),
         action: groupStep?.action ? { ...groupStep.action, mapPenalty: penalty } : groupStep?.action,
       });
     }

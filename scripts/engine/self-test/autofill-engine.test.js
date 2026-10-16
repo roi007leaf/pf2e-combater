@@ -15,6 +15,7 @@ import { flanksTarget } from "../../readers/positional/flank-reader.js";
 import { readSkirmishKiteActivities } from "../../readers/positional/kite-reader.js";
 import { readWeaponActions } from "../../readers/weapon-action-reader.js";
 import { fighterContext } from "../fixtures.js";
+import { pressStepsAfterAttack } from "../planner/rules.js";
 import { scoreCandidate } from "../scoring.js";
 import { nextRecallKnowledgeAttempts } from "../../rules/recall-knowledge.js";
 import { actorStrikeOptions } from "../../readers/action/reader.js";
@@ -145,6 +146,17 @@ const mapStep = (name, score, agile, attackIndex) => ({
 });
 const rebalanced = rebalancePlanMap([mapStep("Claw", 100, true, 1), mapStep("Scythe", 120, false, 2)]);
 assert.deepEqual(rebalanced.map((step) => [step.name, step.mapPenalty]), [["Scythe", 0], ["Claw", 4]]);
+
+// Press needs an existing MAP: the rebalance never deals a press Strike first, and ordering
+// moves a plain attack ahead of a press step that would open the turn's attacks.
+const pressStep = { ...mapStep("Brutish Shove", 200, false, 2), traits: ["press"] };
+const pressBalanced = rebalancePlanMap([mapStep("Sword", 100, false, 1), pressStep]);
+assert.deepEqual(pressBalanced.map((step) => step.name), ["Sword", "Brutish Shove"], "press is never the first attack");
+const pressStride = { id: "stride", slug: "stride", name: "Stride", actionCost: 1 };
+assert.deepEqual(
+  pressStepsAfterAttack([pressStep, pressStride, mapStep("Sword", 100, false, 1)]).map((step) => step.name),
+  ["Sword", "Brutish Shove", "Stride"],
+);
 
 // Follow-up 1. Flanking follows the PF2e line rule: opposite corners flank, adjacent sides don't.
 const square = (x, y, size = 5) => ({ x, y, width: size, height: size });

@@ -24,6 +24,24 @@ export function isAttackAction(candidate) {
 }
 
 
+// PF2e press: usable only while you already have a multiple attack penalty this turn.
+export function isPressAction(candidate) {
+  return candidateTraitSlugs(candidate).includes("press");
+}
+
+// Moves the first plain attack ahead of any press step that would otherwise open the turn's attacks.
+export function pressStepsAfterAttack(steps) {
+  const ordered = [...steps];
+  const firstAttack = ordered.findIndex((step) => isAttackAction(step) || isPressAction(step));
+  if (firstAttack < 0 || !isPressAction(ordered[firstAttack])) return ordered;
+  const opener = ordered.findIndex((step, index) => index > firstAttack && isAttackAction(step) && !isPressAction(step));
+  if (opener < 0) return ordered;
+  const [attack] = ordered.splice(opener, 1);
+  ordered.splice(firstAttack, 0, attack);
+  return ordered;
+}
+
+
 export function isStrikeAction(candidate) {
   return normalizedActionFacts(candidate).resolution.strike;
 }
