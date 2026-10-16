@@ -23,8 +23,9 @@ export function activatePanelRenderBindings(panel, element) {
     ?.addEventListener("click", () => panel._toggleBrowser());
   element.querySelector("[data-empty-auto-fill]")
     ?.addEventListener("click", (event) => panel._autoFillDraft({ forceFull: event.shiftKey }));
-  element.querySelector("[data-action='toggle-compact']")
-    ?.addEventListener("click", () => panel._setExpanded(!panel.expanded));
+  for (const button of element.querySelectorAll("[data-action='toggle-compact']")) {
+    button.addEventListener("click", () => panel._setExpanded(!panel.expanded));
+  }
   element.querySelector("[data-action='refresh']")
     ?.addEventListener("click", () => panel.refresh("button"));
   element.querySelector("[data-configure-tactic]")

@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Minimal mode** replaces compact mode. The panel becomes a flat, see-through floating bar (one row) with only the action tracker, End turn and the upcoming-turns strip. It has no window frame, turns solid on hover, and you can drag it anywhere by its background. The corner button opens the full Combater, and each mode remembers its own position. Switch to it from the panel's "…" menu. The "Minimal mode by default" client setting (formerly "Compact by default") picks the starting mode.
 - **GM: auto-open only on NPC turns** (client setting). The panel opens by itself on NPC turns and puts itself away on turns of player-owned creatures, unless you opened it yourself. For tables where players plan their own turns without Combater.
 - **Show spent-reaction badge on tokens** (client setting, on by default). Turn it off if another module already shows used reactions (such as Sundry's "Reaction Used" effect), so the two don't stack.
 - **Animater finishers on synthetic strikes.** Fist, the basic unarmed attack and rule-element strikes (Jaws, Claw) have no item to resolve, so their plan steps showed no "Finisher animation" pill. They now pass Animater a strike `{ actor, name, slug }`, which keeps the pick on the actor; the pill shows and picks on these steps, and the GM still sees the union of the owning players' finishers. A rule-element strike no longer resolves to its feat.

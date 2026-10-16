@@ -130,8 +130,8 @@
         "Hint": "Draw an orange badge on a token whose reaction is spent. Turn it off if another module already shows used reactions."
       },
       "CompactDefault": {
-        "Name": "Compact by default",
-        "Hint": "Open the panel in compact mode before any saved panel state exists."
+        "Name": "Minimal mode by default",
+        "Hint": "Open the panel as the small floating bar (action tracker, upcoming turns, End turn) before any saved panel state exists."
       },
       "RememberPanelPosition": {
         "Name": "Remember panel position",
@@ -262,9 +262,9 @@
       "BrowseClose": "Close the action browser",
       "BrowseAria": "Toggle action browser",
       "Refresh": "Refresh",
-      "CompactExpand": "Expand plan",
-      "CompactCollapse": "Compact plan",
-      "CompactToggleAria": "Toggle compact mode",
+      "CompactExpand": "Open full Combater",
+      "CompactCollapse": "Minimal mode",
+      "CompactToggleAria": "Toggle minimal mode",
       "SustainedSpells": "Sustained spells",
       "OneAction": "1 action",
       "AddSustain": "Add Sustain a Spell",

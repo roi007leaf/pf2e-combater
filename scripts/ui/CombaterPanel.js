@@ -233,6 +233,8 @@ async function createGuidance(step, actor) {
   globalThis.ui?.notifications?.info?.(`${name}: ${step?.reason ?? t("Guidance.ReviewShort", "Review recommendation.")}`);
 }
 
+const MINIMAL_PANEL_WIDTH = 720;
+
 class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: `${MODULE_ID}-panel`,
@@ -262,12 +264,13 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   constructor(options = {}) {
-    super(options);
     const state = readPanelState();
-    this.refreshSource = options.refreshSource ?? "manual";
-    this.expanded = typeof state.expanded === "boolean"
+    const expanded = typeof state.expanded === "boolean"
       ? state.expanded
       : !settingOrDefault(SETTINGS.compactDefault, true);
+    super(expanded ? options : { ...options, position: { ...options.position, width: MINIMAL_PANEL_WIDTH } });
+    this.refreshSource = options.refreshSource ?? "manual";
+    this.expanded = expanded;
     this.activeTab = TABS.has(state.activeTab) ? state.activeTab : DEFAULT_TAB;
     this.searchQuery = typeof state.searchQuery === "string" ? state.searchQuery : "";
     this.resourceHorizon = normalizeResourceHorizon(state.resourceHorizon);
@@ -454,6 +457,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     // refreshToken hook when the cursor passes over a token) would otherwise make the
     // hover overlay vanish. The preview is managed by step hover and explicit actions, and
     // the destination-picker overlay is re-shown below.
+    this.element?.classList.toggle("is-minimal", !this.expanded);
     this._restorePosition();
     activatePanelRenderBindings(this, this.element);
     this._restoreDestinationPickerPreview();
@@ -523,11 +527,29 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  // Minimal mode (expanded === false) is a frameless, see-through floating bar with only the
+  // action tracker, the upcoming-turns strip, and End turn. Each mode remembers its own spot.
   _setExpanded(expanded) {
+    if (this.expanded === expanded) return;
+    this._savePosition();
     this.expanded = expanded;
     writePanelState({ expanded });
-    this.setPosition({ width: expanded ? 720 : 360 });
+    this.element?.classList.toggle("is-minimal", !expanded);
+    this.setPosition({ width: expanded ? 720 : MINIMAL_PANEL_WIDTH, height: "auto", ...this._modePosition() });
     this.render({ force: true });
+  }
+
+  _positionKeys() {
+    return this.expanded ? { left: "left", top: "top" } : { left: "minimalLeft", top: "minimalTop" };
+  }
+
+  _modePosition() {
+    const keys = this._positionKeys();
+    const saved = this._modePositions?.[this.expanded ? "full" : "minimal"]
+      ?? (settingOrDefault(SETTINGS.rememberPanelPosition, true) ? readPanelState() : {});
+    const left = saved[keys.left];
+    const top = saved[keys.top];
+    return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : {};
   }
 
   async _configureTacticPersonality() {
@@ -1162,7 +1184,7 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     if (this._restoredPosition || !settingOrDefault(SETTINGS.rememberPanelPosition, true)) return;
     this._restoredPosition = true;
 
-    const { left, top } = readPanelState();
+    const { left, top } = this._modePosition();
     if (!Number.isFinite(left) || !Number.isFinite(top)) return;
 
     if (typeof this.setPosition === "function") {
@@ -1174,12 +1196,18 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   _savePosition() {
-    if (!settingOrDefault(SETTINGS.rememberPanelPosition, true)) return;
+    if (!this.element) return;
     const box = this.element.getBoundingClientRect();
-    writePanelState({
-      left: Math.round(box.left),
-      top: Math.round(box.top),
-    });
+    const keys = this._positionKeys();
+    const position = {
+      [keys.left]: Math.round(box.left),
+      [keys.top]: Math.round(box.top),
+    };
+    // Kept in memory too, so switching modes returns each one to its spot even when the
+    // "remember panel position" setting is off.
+    this._modePositions = { ...this._modePositions, [this.expanded ? "full" : "minimal"]: position };
+    if (!settingOrDefault(SETTINGS.rememberPanelPosition, true)) return;
+    writePanelState(position);
   }
 
   _moveTo(left, top) {

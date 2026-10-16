@@ -74,8 +74,8 @@
         "Hint": "戦闘員のターンが開始したときに、PF2e Combaterパネルを開く。"
       },
       "CompactDefault": {
-        "Name": "デフォルトでコンパクトにする",
-        "Hint": "保存されたパネルの状態が存在しない場合、パネルをコンパクトモードで開く。"
+        "Name": "デフォルトでミニマルモードにする",
+        "Hint": "保存されたパネルの状態が存在しない場合、パネルを小さなフローティングバー（アクショントラッカー、次の手番、ターン終了）で開く。"
       },
       "RememberPanelPosition": {
         "Name": "パネルの位置を記憶する",
@@ -202,9 +202,9 @@
       "BrowseClose": "アクション・ブラウザを閉じる",
       "BrowseAria": "アクション・ブラウザの切り替え",
       "Refresh": "更新",
-      "CompactExpand": "プランを展開",
-      "CompactCollapse": "プランを縮小",
-      "CompactToggleAria": "コンパクトモードの切り替え",
+      "CompactExpand": "Combaterをすべて表示",
+      "CompactCollapse": "ミニマルモード",
+      "CompactToggleAria": "ミニマルモードの切り替え",
       "SustainedSpells": "維持されている呪文",
       "OneAction": "1アクション",
       "AddSustain": "呪文を〈維持〉に追加",

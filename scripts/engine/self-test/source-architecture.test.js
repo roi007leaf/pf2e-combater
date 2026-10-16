@@ -1301,25 +1301,25 @@ assert.ok(
   "panel header should expose a compact-mode toggle button",
 );
 assert.ok(
-  panelTemplateSource.includes('combater-shell{{#unless expanded}} is-compact{{/unless}}'),
-  "panel shell should flag compact mode via a CSS class driven by the expanded flag",
+  panelTemplateSource.includes('combater-shell{{#unless expanded}} is-minimal{{/unless}}'),
+  "panel shell should flag minimal mode via a CSS class driven by the expanded flag",
 );
 assert.ok(
-  /_setExpanded\(expanded\) \{[\s\S]*?setPosition\(\{ width: expanded \? 720 : 360 \}\)/.test(panelSource),
-  "toggling compact mode should also shrink/restore the window width",
+  /_setExpanded\(expanded\) \{[\s\S]*?setPosition\(\{ width: expanded \? 720 : MINIMAL_PANEL_WIDTH/.test(panelSource),
+  "toggling minimal mode should also shrink/restore the window width",
 );
 assert.ok(
-  /\.combater-shell\.is-compact \.combater-step-tools \.combater-chip-tool:not\(\.is-execute\):not\(\.danger\):not\(\.combater-step-remove\):not\(\.combater-step-waiting\):not\(\[data-choose-target\]\):not\(\[data-choose-destination\]\):not\(\[data-choose-area\]\)[\s\S]*?display:\s*none;/.test(panelStyleSource),
-  "compact mode should hide optional per-step tools but keep Execute/Remove/awaiting-GM and required choice controls visible",
+  /\{\{#unless expanded\}\}\s*<button type="button" class="combater-minimal-expand" data-action="toggle-compact"/.test(panelTemplateSource),
+  "minimal mode should offer its own button to open the full panel",
 );
-assert.equal(
-  /headerSummary:\s*draftSteps\.length/.test(panelSource),
-  false,
-  "selected step count should not render as visible header summary over the plan rows",
+assert.ok(
+  /\.combater-panel\.is-minimal > \.window-header,[\s\S]*?display:\s*none;/.test(panelStyleSource),
+  "minimal mode should drop the window frame so the bar floats",
 );
-assert.equal(panelTemplateSource.includes("combater-confidence"), false,
-  "the vestigial static \"Draft\" mode badge should be gone from the header");
-assert.equal(panelSource.includes("headerMode"), false, "headerMode is removed; no frozen mode label");
+assert.ok(
+  /\.combater-shell\.is-minimal > :not\(\.combater-compact\),[\s\S]*?\.combater-planning,[\s\S]*?display:\s*none;/.test(panelStyleSource),
+  "minimal mode should hide everything but the tracker, upcoming turns and End turn",
+);
 assert.ok(panelTemplateSource.includes("PF2E_COMBATER.Panel.NoSelectedActions"), "panel template should start with empty draft copy");
 assert.equal(
   panelSource.includes(": \"No selected actions.\""),

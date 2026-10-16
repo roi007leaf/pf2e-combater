@@ -1,4 +1,4 @@
-<div class="combater-shell{{#unless expanded}} is-compact{{/unless}}">
+<div class="combater-shell{{#unless expanded}} is-minimal{{/unless}}">
   {{#*inline "minionPlanDetails"}}
     {{#if minionPlan}}
       <span class="combater-minion-subturn" data-tooltip="{{minionPlan.label}}">
@@ -533,7 +533,7 @@
           <button type="button" class="icon-button combater-utilities-toggle" data-panel-utilities aria-expanded="false" data-tooltip="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}" aria-label="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}"><i class="fa-solid fa-ellipsis"></i></button>
           <div class="combater-utilities-menu" data-panel-utilities-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}">
             <button type="button" data-action="refresh"><i class="fa-solid fa-arrows-rotate"></i><span>{{localize "PF2E_COMBATER.Panel.Refresh"}}</span></button>
-            <button type="button" data-action="toggle-compact" aria-pressed="{{#if expanded}}false{{else}}true{{/if}}"><i class="fa-solid {{#if expanded}}fa-compress{{else}}fa-expand{{/if}}"></i><span>{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}</span></button>
+            <button type="button" data-action="toggle-compact" aria-pressed="{{#if expanded}}false{{else}}true{{/if}}"><i class="fa-solid {{#if expanded}}fa-down-left-and-up-right-to-center{{else}}fa-up-right-and-down-left-from-center{{/if}}"></i><span>{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}</span></button>
           </div>
         </div>
       </div>
@@ -591,6 +591,9 @@
         {{/if}}
     </div>
     {{/if}}
+    {{#unless expanded}}
+      <button type="button" class="combater-minimal-expand" data-action="toggle-compact" data-tooltip="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{#if actor}}: {{actor.name}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+    {{/unless}}
   </header>
 
   {{#if builder}}

@@ -583,20 +583,144 @@
   outline-offset: -2px;
 }
 
-/* Compact mode (header toggle, driven by the `expanded` flag) keeps identity, the action-pool
-   count, and each step's Play/Remove controls visible while hiding secondary editing tools and
-   detail text, so a finished plan fits in less vertical space on smaller screens. */
-.pf2e-combater .combater-shell.is-compact .combater-step-details,
-.pf2e-combater .combater-shell.is-compact .combater-sustained-panel {
+/* Minimal mode (header toggle, driven by the `expanded` flag): a frameless, see-through floating
+   bar with only the action tracker, End turn, and the upcoming-turns strip. Drag it anywhere by
+   its background; the corner button opens the full panel. No `filter`/backdrop-filter here --
+   it would re-composite over the live canvas every frame (see .combater-panel above). */
+.pf2e-combater.combater-panel.is-minimal {
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pf2e-combater.combater-panel.is-minimal > .window-header,
+.pf2e-combater.combater-panel.is-minimal > .window-resize-handle {
   display: none;
 }
 
-.pf2e-combater .combater-shell.is-compact .combater-step-details.has-minion-plan {
+.pf2e-combater.combater-panel.is-minimal .window-content {
+  overflow: visible;
+  background: transparent;
+}
+
+.pf2e-combater .combater-shell.is-minimal {
+  overflow: visible;
+  border-color: rgb(61 65 72 / 55%);
+  background: rgb(23 25 29 / 55%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 28%);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.pf2e-combater .combater-shell.is-minimal:hover,
+.pf2e-combater .combater-shell.is-minimal:focus-within {
+  border-color: var(--combater-line);
+  background: rgb(23 25 29 / 92%);
+}
+
+.pf2e-combater .combater-shell.is-minimal > :not(.combater-compact),
+.pf2e-combater .combater-shell.is-minimal .combater-identity,
+.pf2e-combater .combater-shell.is-minimal .combater-readied,
+.pf2e-combater .combater-shell.is-minimal .combater-compact > .combater-turn-controls,
+.pf2e-combater .combater-shell.is-minimal .combater-planning,
+.pf2e-combater .combater-shell.is-minimal .combater-header-clock {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-compact {
+  display: grid;
+  grid-template-areas: "tracker upcoming turn expand";
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-top-row,
+.pf2e-combater .combater-shell.is-minimal .combater-turn-status {
+  display: contents;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-action-tracker {
+  grid-area: tracker;
+  flex-wrap: nowrap;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text {
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-header {
+  grid-area: turn;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming {
+  grid-area: upcoming;
   display: flex;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
-.pf2e-combater .combater-shell.is-compact .combater-step-tools .combater-chip-tool:not(.is-execute):not(.danger):not(.combater-step-remove):not(.combater-step-waiting):not([data-choose-target]):not([data-choose-destination]):not([data-choose-area]):not([data-choose-summon]):not([data-choose-swap-items]) {
-  display: none;
+/* No scrolling in the bar: chips shrink (names ellipsize) and anything that still doesn't fit
+   is clipped, so the wheel never scrolls the strip and no scrollbar appears. */
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-name {
+  min-width: 0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Narrow bar: names matter more than the "Next turn / Then" captions (order already says it). */
+@container combater-shell (max-width: 680px) {
+  .pf2e-combater .combater-shell.is-minimal .combater-upcoming-label {
+    display: none;
+  }
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-expand {
+  grid-area: expand;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--combater-line);
+  border-radius: 6px;
+  background: var(--combater-surface);
+  color: var(--combater-muted);
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-expand:hover,
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-expand:focus-visible {
+  border-color: var(--combater-focus);
+  color: var(--combater-ink);
 }
 
 /* Step state reads as a colored left spine rather than a full boxy outline. */
