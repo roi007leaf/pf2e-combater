@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.js";
+import { SETTINGS, settingOrDefault } from "../settings.js";
 import { REACTION_CHECKER_ID, REACTION_USED_EFFECT_SLUG, reactionUsed, readiedAction } from "../state/turn-controls.js";
 
 // Canvas markers for turn state: a readied action (dashed amber ring plus a
@@ -116,7 +117,8 @@ export function syncReadyMarker(token) {
   const combatant = combatantForToken(token);
   const visible = markerVisibleTo(token);
   syncMarker(token, READY_KEY, Boolean(combatant && readiedAction(combatant)) && visible, drawReadyMarker);
-  syncMarker(token, REACTION_KEY, Boolean(combatant && reactionUsed(combatant)) && visible, drawReactionMarker);
+  const showReaction = settingOrDefault(SETTINGS.showReactionMarker, true) !== false;
+  syncMarker(token, REACTION_KEY, showReaction && Boolean(combatant && reactionUsed(combatant)) && visible, drawReactionMarker);
 }
 
 function syncAll() {
@@ -133,6 +135,7 @@ export function registerReadyMarkerHooks() {
   const hooks = globalThis.Hooks;
   hooks.on("refreshToken", (token) => syncReadyMarker(token));
   hooks.on("canvasReady", syncAll);
+  hooks.on("pf2e-combater.reactionMarkerChanged", syncAll);
   for (const event of ["createCombat", "deleteCombat", "updateCombat", "deleteCombatant"]) hooks.on(event, syncAll);
   hooks.on("updateCombatant", (_combatant, changed) => {
     if (changesTurnFlags(changed)) syncAll();

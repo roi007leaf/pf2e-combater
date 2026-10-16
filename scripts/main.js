@@ -53,6 +53,9 @@ import { respondLiveEngineMatrixPing, runLiveEngineMatrix } from "./runtime/live
 let activePanel = null;
 let refreshTimer = null;
 let autoOpenSuppressed = false;
+// Whether the open panel was opened by a turn change rather than by the user, so the GM's
+// "auto-open only on NPC turns" mode may put it away again on a player-owned turn.
+let panelAutoOpened = false;
 
 function tokenIdentityValues(value) {
   const document = value?.document ?? value;
@@ -226,7 +229,10 @@ function activeContext() {
 }
 
 function handlePanelClosed(panel) {
-  if (activePanel === panel) activePanel = null;
+  if (activePanel === panel) {
+    activePanel = null;
+    panelAutoOpened = false;
+  }
   refreshSceneControls();
 }
 
@@ -236,11 +242,21 @@ function resetMovementPreview() {
 }
 
 async function openCurrent(source) {
+  const wasOpen = Boolean(activePanel);
   activePanel = await openPanelForCurrentCombatant(activePanel, source, {
     onClose: handlePanelClosed,
     combatant: panelCombatantForAutomaticOpen(),
   });
+  if (!wasOpen && activePanel) panelAutoOpened = true;
   refreshSceneControls();
+}
+
+// GM's "auto-open only on NPC turns": a turn of a player-owned creature (PC, companion, eidolon)
+// is the players' to plan, so the panel stays out of the way.
+function skipAutoOpenForTurn(combat) {
+  if (game.user?.isGM !== true || !setting(SETTINGS.autoOpenNpcTurnsOnly)) return false;
+  const combatant = combat?.combatant;
+  return Boolean(combatant && (combatant.hasPlayerOwner ?? combatant.actor?.hasPlayerOwner));
 }
 
 async function promptPreviousTurnSustainedCleanup(combat) {
@@ -259,6 +275,7 @@ async function promptPreviousTurnSustainedCleanup(combat) {
 }
 
 async function openSelectedOrCurrent(source) {
+  panelAutoOpened = false;
   activePanel = await openPanelForCurrentCombatant(activePanel, source, {
     onClose: handlePanelClosed,
     combatant: panelCombatantForTokenTool(),
@@ -346,6 +363,7 @@ Hooks.once("init", () => {
     hint: t("Keybind.ToggleHint", "Open or close the PF2e Combater tactical advisor panel."),
     editable: [{ key: "KeyC", modifiers: ["Alt", "Shift"] }],
     onDown: async () => {
+      panelAutoOpened = false;
       activePanel = await togglePanelForCurrentCombatant(activePanel, "keybinding", {
         onClose: handlePanelClosed,
         combatant: panelCombatantForAutomaticOpen(),
@@ -466,6 +484,7 @@ Hooks.once("ready", async () => {
   await sweepExpiredAreaTemplates();
   if (!setting(SETTINGS.autoOpen)) return;
   if (!game.combat?.started) return;
+  if (skipAutoOpenForTurn(game.combat)) return;
   await openCurrent("ready");
 });
 
@@ -595,6 +614,19 @@ Hooks.on("updateCombat", async (combat, changed, options = {}) => {
   await promptPreviousTurnSustainedCleanup(combat);
   clearEndedTurnDraft(combat);
   resetMovementPreview();
+  if (skipAutoOpenForTurn(combat)) {
+    if (activePanel && panelAutoOpened) {
+      // Put away the panel this mode opened; one the GM opened themselves stays.
+      const panel = activePanel;
+      activePanel = null;
+      panelAutoOpened = false;
+      await panel.close();
+      refreshSceneControls();
+    } else if (activePanel) {
+      await activePanel.refresh("combat-turn");
+    }
+    return;
+  }
   if (!setting(SETTINGS.autoOpen) && !activePanel) return;
   if (autoOpenSuppressed && !activePanel) return;
   // The window follows the selected token (GM and players), so a turn change just refreshes the

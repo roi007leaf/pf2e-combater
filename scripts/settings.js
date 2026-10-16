@@ -2,6 +2,8 @@ import { MODULE_ID } from "./constants.js";
 
 const SETTINGS = {
   autoOpen: "autoOpen",
+  autoOpenNpcTurnsOnly: "autoOpenNpcTurnsOnly",
+  showReactionMarker: "showReactionMarker",
   compactDefault: "compactDefault",
   rememberPanelPosition: "rememberPanelPosition",
   showTurnNavigation: "showTurnNavigation",
@@ -26,6 +28,26 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     config: true,
     type: Boolean,
     default: true,
+  });
+
+  // GM only: open the window by itself on NPC turns, and put it away on player-owned turns.
+  game.settings.register(MODULE_ID, SETTINGS.autoOpenNpcTurnsOnly, {
+    name: "PF2E_COMBATER.Settings.AutoOpenNpcTurnsOnly.Name",
+    hint: "PF2E_COMBATER.Settings.AutoOpenNpcTurnsOnly.Hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.showReactionMarker, {
+    name: "PF2E_COMBATER.Settings.ShowReactionMarker.Name",
+    hint: "PF2E_COMBATER.Settings.ShowReactionMarker.Hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => Hooks.callAll("pf2e-combater.reactionMarkerChanged"),
   });
 
   game.settings.register(MODULE_ID, SETTINGS.compactDefault, {

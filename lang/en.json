@@ -121,6 +121,14 @@
         "Name": "Auto-open on turn start",
         "Hint": "Open the PF2e Combater panel when a combatant's turn starts."
       },
+      "AutoOpenNpcTurnsOnly": {
+        "Name": "GM: auto-open only on NPC turns",
+        "Hint": "For the GM. The panel opens by itself on NPC turns and closes itself on turns of player-owned creatures (unless you opened it yourself). Use it when players plan their own turns without Combater."
+      },
+      "ShowReactionMarker": {
+        "Name": "Show spent-reaction badge on tokens",
+        "Hint": "Draw an orange badge on a token whose reaction is spent. Turn it off if another module already shows used reactions."
+      },
       "CompactDefault": {
         "Name": "Compact by default",
         "Hint": "Open the panel in compact mode before any saved panel state exists."
