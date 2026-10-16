@@ -550,7 +550,7 @@
         <span class="combater-tracker-text">
           <strong><span class="combater-tracker-label">{{actionTracker.label}}</span> {{actionTracker.countLabel}}</strong>
           {{#if actionTracker.plannedLabel}}<small class="{{#if actionTracker.overPlanned}}is-over{{/if}}">{{actionTracker.plannedLabel}}</small>{{/if}}
-          {{#if actionTracker.conditions}}<small>{{actionTracker.conditions}}</small>{{/if}}
+          {{#if actionTracker.conditions}}<small class="combater-tracker-conditions">{{actionTracker.conditions}}</small>{{/if}}
         </span>
         {{#if actionTracker.quickened}}
           {{#if actionTracker.quickenedPending}}

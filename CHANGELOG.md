@@ -4,7 +4,7 @@
 
 ### Added
 
-- **Minimal mode** replaces compact mode. The panel becomes a flat, see-through floating bar: action glyphs, the reaction glyph, the next turn (portrait and name) followed by the later turns as avatars, End turn, and a button that opens the full Combater. It has no window frame, turns solid on hover, and you can drag it anywhere by its background; each mode remembers its own position. Switch to it from the panel's "…" menu or the "Minimal mode" button on the empty-plan card. The "Minimal mode by default" client setting (formerly "Compact by default") picks the starting mode.
+- **Minimal mode** replaces compact mode. The panel becomes a flat, see-through floating bar: action glyphs, the reaction glyph, a Slowed/Stunned chip when one applies, the next turn (portrait and name) followed by the later turns as avatars, End turn, and a button that opens the full Combater. It has no window frame, turns solid on hover, and you can drag it anywhere by its background; each mode remembers its own position. Switch to it from the panel's "…" menu or the "Minimal mode" button on the empty-plan card. The "Minimal mode by default" client setting (formerly "Compact by default") picks the starting mode.
 - **GM: click the glyphs to adjust the tracker.** Left-click an action glyph to spend an action, right-click to refund one (the quickened glyph adjusts the quickened action), with no adjust menu needed. In the minimal bar, left-click the reaction glyph to mark it used and right-click to give it back; giving it back also clears Reaction Checker's flag and Sundry's "Reaction Used" effect. Players keep the adjust menu.
 
 ## [2.2.1]

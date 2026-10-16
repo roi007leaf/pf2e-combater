@@ -779,7 +779,8 @@
 
 /* The glyphs already show what's left, so the bar drops the count text. Clicking the glyphs spends
    and refunds, so the adjust menu and the "planned" sub-line stay in the full panel. */
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-text,
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text > strong,
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text > small:not(.combater-tracker-conditions),
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-toggle,
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-menu {
   display: none;
@@ -818,6 +819,22 @@
 .pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-used {
   color: #6f7a86;
   opacity: 0.55;
+}
+
+/* Slowed / Stunned stay visible as a small amber chip: they explain the missing glyphs. */
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text:not(:has(.combater-tracker-conditions)) {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-conditions {
+  padding: 2px 7px;
+  border: 1px solid #a8824a;
+  border-radius: 999px;
+  background: #3a2e1c;
+  color: #f2cf8c;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* The Quickened badge shrinks to its bolt; its tooltip still explains it. */
