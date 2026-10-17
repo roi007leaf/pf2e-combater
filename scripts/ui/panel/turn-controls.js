@@ -29,10 +29,21 @@ export function turnControlsView(context, combat = globalThis.game?.combat, user
   const readyReason = connected ? readyUnavailableReason(combat) : unavailable;
   const canDelay = controlsCurrent && connected && !delayReason && delayTargets(combat, user).length > 0;
   const canReady = controlsCurrent && connected && !readyReason;
-  const delayed = user?.isGM ? combat.turns.filter((entry) => delayedTurn(entry) && entry.id !== active?.id).map((entry) => ({
+  // The GM can queue any other waiting creature without selecting it; the viewed one uses Jump in.
+  const delayed = user?.isGM && connected && active ? combat.turns.filter((entry) => delayedTurn(entry)
+    && entry.id !== active.id && entry.id !== selected?.id && delayedTurn(entry).afterId !== active.id).map((entry) => ({
     id: entry.id, name: turnCombatantName(entry, user),
-    tooltip: t("TurnControls.BringInHint", "End the current turn and bring {name} in now.", { name: turnCombatantName(entry, user) }),
+    tooltip: t("TurnControls.RejoinNamedHint", "{name} takes its delayed turn when {active}'s turn ends.", {
+      name: turnCombatantName(entry, user), active: turnCombatantName(active, user),
+    }),
   })) : [];
+  // The waiting creature's owner picks the moment to come back: the end of the current turn.
+  const rejoin = waiting && active && selected.id !== active.id && waiting.afterId !== active.id
+    && connected && ownsTurn(selected, user) ? {
+      id: selected.id,
+      label: t("TurnControls.Rejoin", "Jump in"),
+      tooltip: t("TurnControls.RejoinHint", "Take your delayed turn when {name}'s turn ends.", { name: turnCombatantName(active, user) }),
+    } : null;
   const ready = readiedAction(selected);
   const readied = ready ? {
     id: selected.id, label: ready.label,
@@ -50,8 +61,7 @@ export function turnControlsView(context, combat = globalThis.game?.combat, user
     reactionUsedHint: t("TurnControls.ReactionUsedHint", "Regained at the start of this creature's next turn."),
     controlsCurrent, canEnd: controlsCurrent && connected, canDelay, canReady,
     canOpenMenu: controlsCurrent,
-    delayHint: delayReason || t("TurnControls.DelayHint", "Choose whose turn to return after."),
-    delayDetail: canDelay ? t("TurnControls.DelayDetail", "Leave initiative and return after another creature.") : delayReason,
+    delayDetail: canDelay ? t("TurnControls.DelayDetail", "Leave initiative; jump back in after any creature's turn.") : delayReason,
     readyDetail: canReady ? t("TurnControls.ReadyDetail", "2 actions: act on a trigger before your next turn.") : readyReason,
     endHint: connected
       ? t("TurnControls.EndHint", "End {name}'s current turn.", { name: turnCombatantName(active, user) })
@@ -62,9 +72,14 @@ export function turnControlsView(context, combat = globalThis.game?.combat, user
     moreLabel: t("TurnControls.More", "More turn options"),
     delayLabel: t("TurnControls.Delay", "Delay"),
     readyLabel: t("TurnControls.Ready", "Ready"),
-    bringInLabel: t("TurnControls.BringIn", "Bring in now"),
-    waitingLabel: waiting ? t("TurnControls.WaitingAfter", "Delaying · after {name}", { name: after ? turnCombatantName(after, user) : t("TurnControls.Unknown", "Unknown creature") }) : "",
-    waitingHint: t("TurnControls.WaitingHint", "Your turn resumes at the chosen position. No reactions while delaying."),
+    jumpInLabel: t("TurnControls.Rejoin", "Jump in"),
+    waitingLabel: !waiting ? ""
+      : waiting.afterId ? t("TurnControls.WaitingAfter", "Delaying · after {name}", { name: after ? turnCombatantName(after, user) : t("TurnControls.Unknown", "Unknown creature") })
+        : t("TurnControls.Waiting", "Delaying"),
+    waitingHint: waiting?.afterId
+      ? t("TurnControls.WaitingHint", "Your turn resumes at the chosen position. No reactions while delaying.")
+      : t("TurnControls.WaitingOpenHint", "Jump in at the end of any creature's turn. If your next turn comes first, the delayed turn is lost. No reactions while delaying."),
+    rejoin,
     delayed,
     readied,
   };
@@ -458,7 +473,8 @@ export function activateTurnControlBindings(panel, element) {
         const combat = globalThis.game?.combat;
         const request = { ...turnIdentity(combat), action: button.dataset.turnControl };
         let announce = null;
-        if (request.action === "delay") {
+        // Delay is one click; Shift-click still names the creature to return after.
+        if (request.action === "delay" && event.shiftKey) {
           const choices = delayTargets(combat);
           if (!choices.length) return;
           const escape = globalThis.foundry.utils.escapeHTML;
@@ -492,7 +508,7 @@ export function activateTurnControlBindings(panel, element) {
           }
           Object.assign(request, ready);
           announce = { combatant: combat.combatant, ready };
-        } else if (request.action === "return") request.delayedId = button.dataset.delayedId;
+        } else if (request.action === "rejoin") request.delayedId = button.dataset.delayedId;
         else if (request.action === "ready-move") {
           const combatant = combat?.combatants?.get?.(button.dataset.readiedId);
           const slug = readiedAction(combatant)?.movement?.slug;

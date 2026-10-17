@@ -128,6 +128,7 @@ try {
   assert.match(turnControlsView(context(combat, "a"), combat, players[0]).waitingLabel, /Unknown creature/, "GM scheduling cannot expose a hidden target to the waiting player");
   combat.combatants.get("c").hidden = false;
   assert.equal(turnControlsView(context(combat), combat, gm).delayed[0].id, "a");
+  assert.equal(turnControlsView(context(combat, "a"), combat, gm).delayed.length, 0, "the viewed waiting creature uses Jump in, not the GM list");
   combat.combatants.get("a").actor.itemTypes.condition = [];
   assert.equal(trackedActionContext(context(combat, "a")).turnActionPool.normalActions, 2, "waiting tracker shows the preserved turn allowance");
   await combat.nextTurn();
@@ -143,12 +144,50 @@ try {
   await act(combat, "delay", { afterId: "c" });
   assert.deepEqual(combat.turns.map((entry) => entry.id), ["b", "c", "a", "d"], "native PF2e tie priorities give an exact position");
   assert.ok(combat.turns.every((entry) => entry.initiative === 20));
-  await assert.rejects(act(combat, "return", { delayedId: "a" }, "p-a"), /Only the GM/);
-  await act(combat, "return", { delayedId: "a" }, "gm");
-  assert.equal(combat.combatant.id, "a");
+  await assert.rejects(act(combat, "rejoin", { delayedId: "a" }, "p-b"), /own turn/);
+  await act(combat, "rejoin", { delayedId: "a" }, "gm");
+  assert.equal(combat.combatant.id, "b", "the GM's Jump in waits for the current turn to end");
   assert.deepEqual(combat.turns.map((entry) => entry.id), ["b", "a", "c", "d"]);
-  assert.deepEqual(upcomingTurnsView(combat).entries.map((entry) => entry.id), ["c", "d"], "GM return advances the preview");
+  assert.deepEqual(upcomingTurnsView(combat).entries.map((entry) => entry.id), ["a", "c"], "Jump in moves the preview");
+  await combat.nextTurn();
+  assert.equal(combat.combatant.id, "a");
   assert.equal(combat.previous.combatantId, "b");
+
+  // One-click Delay names no creature: the waiting player jumps in at the end of
+  // whichever turn they choose, and the current turn still ends normally.
+  combat = fixture();
+  await act(combat, "delay");
+  assert.deepEqual(combat.turns.map((entry) => entry.id), ["a", "b", "c", "d"], "an open Delay keeps its slot");
+  assert.equal(combat.combatant.id, "b");
+  assert.equal(delayedTurn(combat.combatants.get("a")).afterId, null);
+  setSocket({ executeAsUser: async () => true });
+  let waitingView = turnControlsView(context(combat, "a"), combat, players[0]);
+  assert.equal(waitingView.waitingLabel, "Delaying");
+  assert.equal(waitingView.rejoin.id, "a", "the waiting player can jump in after the current turn");
+  assert.equal(turnControlsView(context(combat, "a"), combat, players[1]).rejoin, null, "only the owner jumps in");
+  await assert.rejects(act(combat, "rejoin", { delayedId: "a" }, "p-b"), /own turn/);
+  const eventsBefore = combat.events.length;
+  await act(combat, "rejoin", { delayedId: "a" }, "p-a");
+  assert.deepEqual(combat.turns.map((entry) => entry.id), ["b", "a", "c", "d"]);
+  assert.equal(combat.combatant.id, "b", "jumping in does not end the current turn");
+  assert.equal(combat.events.length, eventsBefore, "jumping in runs no turn events");
+  assert.equal(delayedTurn(combat.combatants.get("a")).afterId, "b");
+  waitingView = turnControlsView(context(combat, "a"), combat, players[0]);
+  assert.match(waitingView.waitingLabel, /after B/);
+  assert.equal(waitingView.rejoin, null, "already queued behind the current turn");
+  setSocket(null);
+  await combat.nextTurn();
+  assert.equal(combat.combatant.id, "a");
+  assert.equal(combat.events.filter((event) => event.startsWith("start:a:")).length, 0, "jumping in resumes the delayed turn");
+
+  combat = fixture();
+  await act(combat, "delay");
+  await combat.nextTurn();
+  await combat.nextTurn();
+  await combat.nextTurn();
+  assert.equal(combat.combatant.id, "a");
+  assert.ok(combat.events.includes("start:a:2"), "an open Delay never rejoined loses the delayed turn");
+  assert.equal(delayedTurn(combat.combatant), null);
 
   combat = fixture({ active: "d" });
   assert.ok(delayTargets(combat, players[3]).every((entry) => entry.nextRound));
@@ -210,18 +249,21 @@ try {
     assert.deepEqual(combat.events, [`end:${active}:1`, `start:${originalNext}:${combat.round}`], "initiative changes run exactly one end/start pair");
   }
 
-  // Two waiting creatures sit before the GM's current turn. Bringing the group
-  // back moves that current turn backwards, which core would treat as a rewind.
+  // Two waiting creatures sit before the GM's current turn. Queuing the group
+  // moves that current turn's index backwards; it must stay the same turn.
   combat = fixture();
   combat.combatants.get("a").flags[MODULE_ID] = { delayedTurn: { afterId: "d", round: 1, pool: combat.flags[MODULE_ID].actionTurn.pool, quickenedAllowed: [] } };
   combat.combatants.get("b").flags[MODULE_ID] = { delayedTurn: { afterId: "a", round: 1, pool: combat.flags[MODULE_ID].actionTurn.pool, quickenedAllowed: [] } };
   combat.turn = 3;
   combat.flags[MODULE_ID].actionTurn = createTurnSnapshot(combat);
-  await act(combat, "return", { delayedId: "a" }, "gm");
+  await act(combat, "rejoin", { delayedId: "a" }, "gm");
   assert.deepEqual(combat.turns.map((entry) => entry.id), ["c", "d", "a", "b"]);
+  assert.equal(combat.combatant.id, "d", "queuing a waiting group keeps the current turn");
+  assert.equal(combat.events.length, 0, "queuing runs no turn events");
+  await combat.nextTurn();
   assert.equal(combat.combatant.id, "a");
   assert.equal(combat.previous.combatantId, "d");
-  assert.ok(combat.events.includes("end:d:1"), "GM return ends the current turn even when a waiting group changes its index");
+  assert.ok(combat.events.includes("end:d:1"), "the current turn ends once, then the group comes in");
 
   // Ready: 2 actions, the turn ends, and the readied action lasts until the
   // start of the creature's next turn.

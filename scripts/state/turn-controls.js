@@ -2,7 +2,7 @@ import { MODULE_ID } from "../constants.js";
 import { collectionValues } from "../foundry-data.js";
 import { t } from "../i18n.js";
 import { actionBudget } from "../engine/action/budget.js";
-import { currentActionTurn, trackedActionContext } from "./action-tracker.js";
+import { currentActionTurn, resumesDelayedTurn, trackedActionContext } from "./action-tracker.js";
 
 export const DELAY_FLAG = "delayedTurn";
 export const READY_FLAG = "readiedAction";
@@ -211,7 +211,8 @@ export function orderAfter(combat, moverId, afterId) {
 }
 
 async function moveAndAdvance(combat, mover, afterId, nextId, round, delay = null) {
-  const { ordered, updates } = orderAfter(combat, mover.id, afterId);
+  // An open-ended Delay keeps its slot until the creature picks where to jump in.
+  const { ordered, updates } = afterId ? orderAfter(combat, mover.id, afterId) : { ordered: [...combat.turns], updates: [] };
   if (delay) {
     let update = updates.find((entry) => entry._id === mover.id);
     if (!update) updates.push(update = { _id: mover.id, flags: {} });
@@ -274,18 +275,19 @@ async function performTurnControl(request, senderId) {
     throw Error(t("TurnControls.NotCurrent", "This turn is no longer active."));
   }
   const active = combat.combatant;
-  if (request.action === "return") {
-    if (!user.isGM) throw Error(t("TurnControls.GmOnly", "Only the GM can bring a delayed creature in."));
+  if (request.action === "rejoin") {
+    // Delay (Player Core): return at the end of any other creature's turn. The
+    // waiting creature queues behind the current turn, which then ends normally.
     const mover = combat.turns.find((entry) => entry.id === request.delayedId && delayedTurn(entry));
     if (!mover || mover.id === active.id) throw Error(t("TurnControls.NotDelayed", "This creature is no longer delaying."));
+    if (!ownsTurn(mover, user)) throw Error(t("TurnControls.NotOwner", "You can only control your own turn."));
     const { ordered, updates } = orderAfter(combat, mover.id, active.id);
-    // A waiting group can currently be before the active creature. Reorder with
-    // that creature still active, then use native nextTurn: a backwards index
-    // jump would otherwise be interpreted as a rewind rather than a new turn.
-    if (updates.length) await combat.update({ combatants: updates, turn: ordered.findIndex((entry) => entry.id === active.id) }, {
+    let update = updates.find((entry) => entry._id === mover.id);
+    if (!update) updates.push(update = { _id: mover.id, flags: {} });
+    update.flags[MODULE_ID] = { [DELAY_FLAG]: { ...delayedTurn(mover), afterId: active.id } };
+    await combat.update({ combatants: updates, turn: ordered.findIndex((entry) => entry.id === active.id) }, {
       turnEvents: false, diff: false, combaterNextCombatantId: active.id,
     });
-    await combat.nextTurn();
     return true;
   }
   if (!ownsTurn(active, user)) throw Error(t("TurnControls.NotOwner", "You can only control your own turn."));
@@ -304,7 +306,8 @@ async function performTurnControl(request, senderId) {
   if (request.action !== "delay") throw Error(t("TurnControls.InvalidRequest", "Unknown turn control."));
   const reason = delayUnavailableReason(combat);
   if (reason) throw Error(reason);
-  if (!delayTargets(combat, user).some((target) => target.id === request.afterId)) {
+  const afterId = request.afterId || null;
+  if (afterId && !delayTargets(combat, user).some((target) => target.id === afterId)) {
     throw Error(t("TurnControls.InvalidTarget", "Choose another creature to return after."));
   }
   const index = combat.turns.indexOf(active);
@@ -313,12 +316,12 @@ async function performTurnControl(request, senderId) {
   if (!next) throw Error(t("TurnControls.NoNext", "No other creature can take a turn."));
   const tracked = trackedActionContext({ combat, combatant: active, actor: active.actor }, { combat });
   const delay = {
-    afterId: request.afterId, round: combat.round, originalInitiative: active.initiative,
+    afterId, round: combat.round, originalInitiative: active.initiative,
     originalPreviousId: combat.turns[(index + combat.turns.length - 1) % combat.turns.length]?.id,
     pool: tracked.actionTracker.pool, quickenedAllowed: tracked.quickenedAllowed,
   };
   const nextRound = combat.round + Number(combat.turns.indexOf(next) < index);
-  await moveAndAdvance(combat, active, request.afterId, next.id, nextRound, delay);
+  await moveAndAdvance(combat, active, afterId, next.id, nextRound, delay);
   return true;
 }
 
@@ -343,8 +346,7 @@ export function registerTurnControlHooks(refresh) {
     const delay = delayedTurn(next);
     const round = changed.round ?? combat.round;
     if (!delay) return;
-    const resumed = round === delay.round || (round === delay.round + 1 && delay.afterId !== delay.originalPreviousId);
-    if (resumed) {
+    if (resumesDelayedTurn(delay, round)) {
       const snapshot = changed[`flags.${MODULE_ID}.actionTurn`];
       if (snapshot) Object.assign(snapshot, { pool: delay.pool, quickenedAllowed: delay.quickenedAllowed });
       const updates = changed.combatants ??= [];

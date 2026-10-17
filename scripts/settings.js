@@ -5,6 +5,8 @@ const SETTINGS = {
   autoOpenNpcTurnsOnly: "autoOpenNpcTurnsOnly",
   showReactionMarker: "showReactionMarker",
   compactDefault: "compactDefault",
+  panelMode: "panelMode",
+  playerPanelMode: "playerPanelMode",
   rememberPanelPosition: "rememberPanelPosition",
   showTurnNavigation: "showTurnNavigation",
   enableSpellRecommendations: "enableSpellRecommendations",
@@ -57,6 +59,37 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     config: true,
     type: Boolean,
     default: false,
+  });
+
+  // Tracker only: the minimal bar (action tracker, End turn, Delay/Ready) with the planner
+  // switched off. The GM picks what players get by default; each user can override it.
+  game.settings.register(MODULE_ID, SETTINGS.panelMode, {
+    name: "PF2E_COMBATER.Settings.PanelMode.Name",
+    hint: "PF2E_COMBATER.Settings.PanelMode.Hint",
+    scope: "client",
+    config: true,
+    type: String,
+    choices: {
+      default: "PF2E_COMBATER.Settings.PanelMode.Choices.Default",
+      tracker: "PF2E_COMBATER.Settings.PanelMode.Choices.Tracker",
+      full: "PF2E_COMBATER.Settings.PanelMode.Choices.Full",
+    },
+    default: "default",
+    onChange: () => Hooks.callAll("pf2e-combater.panelModeChanged"),
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.playerPanelMode, {
+    name: "PF2E_COMBATER.Settings.PlayerPanelMode.Name",
+    hint: "PF2E_COMBATER.Settings.PlayerPanelMode.Hint",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      full: "PF2E_COMBATER.Settings.PanelMode.Choices.Full",
+      tracker: "PF2E_COMBATER.Settings.PanelMode.Choices.Tracker",
+    },
+    default: "full",
+    onChange: () => Hooks.callAll("pf2e-combater.panelModeChanged"),
   });
 
   game.settings.register(MODULE_ID, SETTINGS.rememberPanelPosition, {
@@ -236,6 +269,13 @@ export function playerAccessAllowed() {
   } catch (_error) {
     return true;
   }
+}
+
+// The user's own choice wins; otherwise players get the GM's default and the GM gets the planner.
+export function trackerOnlyMode() {
+  const own = settingOrDefault(SETTINGS.panelMode, "default");
+  if (own === "tracker" || own === "full") return own === "tracker";
+  return game.user?.isGM !== true && settingOrDefault(SETTINGS.playerPanelMode, "full") === "tracker";
 }
 
 export function setting(key) {

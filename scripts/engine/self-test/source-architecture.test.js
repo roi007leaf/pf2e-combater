@@ -1305,12 +1305,12 @@ assert.ok(
   "panel shell should flag minimal mode via a CSS class driven by the expanded flag",
 );
 assert.ok(
-  /_setExpanded\(expanded\) \{[\s\S]*?setPosition\(\{ width: expanded \? 720 : MINIMAL_PANEL_WIDTH/.test(panelSource),
+  /_setExpanded\(expanded(?:, \{ persist = true \} = \{\})?\) \{[\s\S]*?setPosition\(\{ width: expanded \? 720 : MINIMAL_PANEL_WIDTH/.test(panelSource),
   "toggling minimal mode should also shrink/restore the window width",
 );
 assert.ok(
-  /\{\{#unless expanded\}\}\s*<button type="button" class="combater-minimal-expand" data-action="toggle-compact"/.test(panelTemplateSource),
-  "minimal mode should offer its own button to open the full panel",
+  /\{\{#unless \(or expanded trackerOnly\)\}\}\s*<button type="button" class="combater-minimal-expand" data-action="toggle-compact"/.test(panelTemplateSource),
+  "minimal mode should offer its own button to open the full panel (not in Tracker only)",
 );
 assert.ok(
   /class="combater-empty-plan-minimize" data-action="toggle-compact"/.test(panelTemplateSource),

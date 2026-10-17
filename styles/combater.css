@@ -621,7 +621,7 @@
 
 .pf2e-combater .combater-shell.is-minimal > :not(.combater-compact),
 .pf2e-combater .combater-shell.is-minimal .combater-identity,
-.pf2e-combater .combater-shell.is-minimal .combater-compact > .combater-turn-controls,
+.pf2e-combater .combater-shell.is-minimal .combater-compact > .combater-turn-controls:not(.is-delayed),
 .pf2e-combater .combater-shell.is-minimal .combater-planning,
 .pf2e-combater .combater-shell.is-minimal .combater-header-clock {
   display: none;
@@ -647,8 +647,8 @@
 
 .pf2e-combater .combater-shell.is-minimal .combater-compact {
   display: grid;
-  grid-template-areas: "tracker readied upcoming turn expand";
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "tracker readied delayed upcoming turn expand";
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
   padding: 6px;
@@ -691,6 +691,31 @@
   padding: 0 8px;
   border-radius: 999px;
   font-size: 12px;
+}
+
+/* Delay rides in the bar too: the waiting label or Jump in, and the GM's Jump in for other waiting creatures. */
+.pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-delayed {
+  grid-area: delayed;
+  flex-wrap: nowrap;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-delayed .combater-turn-waiting {
+  margin-right: 0;
+  white-space: nowrap;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-delayed .combater-turn-button {
+  height: 26px;
+  min-height: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .pf2e-combater .combater-shell.is-minimal .combater-turn-controls.is-header {
@@ -4473,7 +4498,7 @@
 .pf2e-combater .combater-readied-text small { color: #d8c79f; font-size: 12px; overflow-wrap: anywhere; }
 .pf2e-combater .combater-turn-button.is-ready-use { color: #ffe8b8; border-color: #b18b49; background: #493b23; }
 .pf2e-combater .combater-turn-button.is-ready-clear { padding: 5px 8px; color: #c9b993; border-color: #6d6658; background: #2b2924; }
-.pf2e-combater .combater-turn-button.is-return { color: #c4e4ff; border-color: #558dc1; background: #243e55; }
+.pf2e-combater .combater-turn-button.is-rejoin { color: #c4e4ff; border-color: #558dc1; background: #243e55; }
 .pf2e-combater .combater-turn-button:hover:not(:disabled), .pf2e-combater .combater-turn-button:focus-visible { filter: brightness(1.2); box-shadow: 0 0 0 1px currentColor; }
 .pf2e-combater .combater-turn-button:disabled { opacity: .45; cursor: not-allowed; }
 .pf2e-combater .combater-turn-waiting { margin-right: auto; color: #f5d68c; font-size: 12px; }

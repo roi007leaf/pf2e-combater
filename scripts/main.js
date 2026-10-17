@@ -468,6 +468,11 @@ Hooks.on("pf2e-combater.playerAccessChanged", () => {
   closeActivePanel().catch((error) => console.warn(`${MODULE_ID} | Access-change close failed`, error));
 });
 
+// Tracker only / Full planner applies to the open window right away, without a reload.
+Hooks.on("pf2e-combater.panelModeChanged", () => {
+  activePanel?._applyPanelMode?.();
+});
+
 Hooks.on("pf2e-combater.preflightSettingChanged", () => {
   scheduleRefresh("preflight-setting");
 });

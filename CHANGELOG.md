@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.4.0]
+
+### Added
+
+- **Tracker only mode.** A new *Combater mode* setting (Tracker only / Full planner) switches off the planner and keeps the small bar: action tracker, End turn, Delay and Ready. The GM sets the default for players with *Default Combater mode for players*; each player can still pick their own mode.
+- **Jump in from Delay.** Once you've delayed, Delay becomes **Jump in**: in the ▾ turn menu, or as the bar button when you don't have the menu. It queues your delayed turn right after the current creature's turn, the way Delay works at the table. The current turn still ends normally.
+
+### Changed
+
+- **One-click Delay.** Delay no longer asks whose turn to return after; jump back in whenever you like. If your own turn comes round again first, the delayed turn is lost and you start a fresh one. Shift-click Delay still lets you pick the creature up front.
+- **Delay in the minimal bar.** The minimal bar now shows that you're delaying and the **Jump in** button.
+- **GM Jump in.** The GM's "Bring in now" (which ended the current turn at once) is now **{name} · Jump in**: it queues a waiting creature after the current turn, like a player's Jump in. It's hidden for the creature you're viewing, which has its own Jump in.
+
 ## [2.3.7]
 
 ### Fixed

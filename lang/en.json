@@ -12,7 +12,6 @@
       "End": "End turn",
       "EndNamed": "End {name}'s turn",
       "Delay": "Delay",
-      "BringIn": "Bring in now",
       "Unknown": "Unknown creature",
       "NotCurrent": "This turn is no longer active.",
       "Unavailable": "An active GM is required for turn controls.",
@@ -20,16 +19,18 @@
       "TrackerRequired": "Wait for the turn's action tracker to initialize.",
       "DelayAtStart": "Delay is available at turn start, before spending actions.",
       "InvalidTarget": "Choose another creature to return after.",
-      "GmOnly": "Only the GM can bring a delayed creature in.",
       "NotDelayed": "This creature is no longer delaying.",
       "NotOwner": "You can only control your own turn.",
       "InvalidRequest": "Unknown turn control.",
       "NoNext": "No other creature can take a turn.",
-      "BringInHint": "End the current turn and bring {name} in now.",
-      "DelayHint": "Choose whose turn to return after.",
       "EndHint": "End {name}'s current turn.",
       "WaitingAfter": "Delaying · after {name}",
       "WaitingHint": "Your turn resumes at the chosen position. No reactions while delaying.",
+      "Waiting": "Delaying",
+      "WaitingOpenHint": "Jump in at the end of any creature's turn. If your next turn comes first, the delayed turn is lost. No reactions while delaying.",
+      "Rejoin": "Jump in",
+      "RejoinHint": "Take your delayed turn when {name}'s turn ends.",
+      "RejoinNamedHint": "{name} takes its delayed turn when {active}'s turn ends.",
       "NextRound": "next round",
       "Initiative": "Initiative",
       "Order": "Turn order {order}",
@@ -39,7 +40,7 @@
       "ReadiedHint": "Use it as a reaction when the declared trigger happens, before this creature's next turn.",
       "ReadiedUse": "Use",
       "ReadiedClear": "Discard",
-      "DelayDetail": "Leave initiative and return after another creature.",
+      "DelayDetail": "Leave initiative; jump back in after any creature's turn.",
       "ReadyDetail": "2 actions: act on a trigger before your next turn.",
       "More": "More turn options",
       "Ready": "Ready",
@@ -166,6 +167,19 @@
       "ShowDebugTab": {
         "Name": "Show GM debug tab",
         "Hint": "Allow GMs to inspect scoring inputs, rejected actions, and detected actor actions."
+      },
+      "PanelMode": {
+        "Name": "Combater mode",
+        "Hint": "Tracker only shows the action tracker, End turn, and Delay/Ready in a small bar, with no planning. Full planner is the complete Combater window. Default uses the GM's choice for players.",
+        "Choices": {
+          "Default": "Default",
+          "Tracker": "Tracker only",
+          "Full": "Full planner"
+        }
+      },
+      "PlayerPanelMode": {
+        "Name": "Default Combater mode for players",
+        "Hint": "What players get unless they choose a mode themselves. Tracker only hides the planner and keeps the action tracker and turn buttons."
       },
       "DisableForPlayers": {
         "Name": "Disable PF2e Combater for players",

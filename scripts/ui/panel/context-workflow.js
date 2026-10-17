@@ -230,6 +230,7 @@ export function viewPanelContext(panel, context) {
     },
     builder: panel._builder,
     expanded: panel.expanded,
+    trackerOnly: panel.trackerOnly === true,
     minimalIdleLabel: globalThis.game?.combat?.started
       ? t("Panel.MinimalIdleWaiting", "Waiting for a combatant")
       : t("Panel.MinimalIdle", "No active encounter"),
@@ -336,6 +337,11 @@ export function preparePanelContext(panel) {
   if (!context) {
     clearPanelPreparedContext(panel);
     return viewPanelContext(panel, null);
+  }
+  // Tracker only: no candidates, Auto-fill or draft -- just the tracker and turn controls.
+  if (panel.trackerOnly) {
+    clearPanelPreparedContext(panel);
+    return viewPanelContext(panel, context);
   }
 
   const draft = readDraftPlan(context);

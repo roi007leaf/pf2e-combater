@@ -1,5 +1,5 @@
 import { MODULE_ID, STORAGE_KEYS } from "../constants.js";
-import { SETTINGS, playerAccessAllowed, settingOrDefault } from "../settings.js";
+import { SETTINGS, playerAccessAllowed, settingOrDefault, trackerOnlyMode } from "../settings.js";
 import { projectContextForDraftDestination, SUSTAIN_A_SPELL_ACTION } from "../engine/action/builder/index.js";
 import { requiresDestinationForAction } from "../engine/action/requirements.js";
 import { buildCandidates } from "../engine/candidates.js";
@@ -265,9 +265,9 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   constructor(options = {}) {
     const state = readPanelState();
-    const expanded = typeof state.expanded === "boolean"
+    const expanded = !trackerOnlyMode() && (typeof state.expanded === "boolean"
       ? state.expanded
-      : !settingOrDefault(SETTINGS.compactDefault, true);
+      : !settingOrDefault(SETTINGS.compactDefault, true));
     super(expanded ? options : { ...options, position: { ...options.position, width: MINIMAL_PANEL_WIDTH } });
     this.refreshSource = options.refreshSource ?? "manual";
     this.expanded = expanded;
@@ -529,14 +529,31 @@ class CombaterPanel extends HandlebarsApplicationMixin(ApplicationV2) {
 
   // Minimal mode (expanded === false) is a frameless, see-through floating bar with only the
   // action tracker, the upcoming-turns strip, and End turn. Each mode remembers its own spot.
-  _setExpanded(expanded) {
+  _setExpanded(expanded, { persist = true } = {}) {
+    if (expanded && this.trackerOnly) return;
     if (this.expanded === expanded) return;
     this._savePosition();
     this.expanded = expanded;
-    writePanelState({ expanded });
+    if (persist) writePanelState({ expanded });
     this.element?.classList.toggle("is-minimal", !expanded);
     this.setPosition({ width: expanded ? 720 : MINIMAL_PANEL_WIDTH, height: "auto", ...this._modePosition() });
     this.render({ force: true });
+  }
+
+  get trackerOnly() {
+    return trackerOnlyMode();
+  }
+
+  // Switching mode collapses to the bar (Tracker only) or restores the last full/minimal choice.
+  _applyPanelMode() {
+    if (this.trackerOnly) {
+      if (this.expanded) this._setExpanded(false, { persist: false });
+      else this.refresh("panel-mode");
+      return;
+    }
+    const saved = readPanelState().expanded;
+    if (saved === true && !this.expanded) this._setExpanded(true);
+    else this.refresh("panel-mode");
   }
 
   _positionKeys() {

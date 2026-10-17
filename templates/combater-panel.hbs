@@ -404,7 +404,11 @@
           <button type="button" class="combater-turn-button is-end" data-turn-control="end" data-tooltip="{{turnControls.endHint}}" {{#unless turnControls.canEnd}}disabled{{/unless}}><i class="fa-solid fa-forward-step"></i> {{turnControls.endLabel}}</button>
           <button type="button" class="combater-turn-button is-more" data-turn-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="{{turnControls.moreLabel}}" data-tooltip="{{turnControls.moreLabel}}" {{#unless turnControls.canOpenMenu}}disabled{{/unless}}><i class="fa-solid fa-chevron-down"></i></button>
           <div class="combater-turn-menu" data-turn-menu popover="auto" role="group" aria-label="{{turnControls.moreLabel}}">
-            <button type="button" data-turn-control="delay" {{#unless turnControls.canDelay}}disabled{{/unless}}><i class="fa-solid fa-hourglass-half"></i><span><strong>{{turnControls.delayLabel}}</strong><small>{{turnControls.delayDetail}}</small></span></button>
+            {{#if turnControls.rejoin}}
+              <button type="button" data-turn-control="rejoin" data-delayed-id="{{turnControls.rejoin.id}}"><i class="fa-solid fa-hourglass-half"></i><span><strong>{{turnControls.rejoin.label}}</strong><small>{{turnControls.rejoin.tooltip}}</small></span></button>
+            {{else}}
+              <button type="button" data-turn-control="delay" {{#unless turnControls.canDelay}}disabled{{/unless}}><i class="fa-solid fa-hourglass-half"></i><span><strong>{{turnControls.delayLabel}}</strong><small>{{turnControls.delayDetail}}</small></span></button>
+            {{/if}}
             <button type="button" data-turn-control="ready" {{#unless turnControls.canReady}}disabled{{/unless}}><i class="fa-solid fa-bullseye"></i><span><strong>{{turnControls.readyLabel}} <span class="action-glyph">2</span></strong><small>{{turnControls.readyDetail}}</small></span></button>
           </div>
         </div>
@@ -426,10 +430,14 @@
       </div>
     {{/if}}
     {{#if (or turnControls.waitingLabel turnControls.delayed.length)}}
-      <div class="combater-turn-controls">
-        {{#if turnControls.waitingLabel}}<span class="combater-turn-waiting" data-tooltip="{{turnControls.waitingHint}}"><i class="fa-solid fa-hourglass-half"></i> {{turnControls.waitingLabel}}</span>{{/if}}
+      <div class="combater-turn-controls is-delayed">
+        {{#if (and turnControls.rejoin (not turnControls.controlsCurrent))}}
+          <button type="button" class="combater-turn-button is-rejoin" data-turn-control="rejoin" data-delayed-id="{{turnControls.rejoin.id}}" data-tooltip="{{turnControls.rejoin.tooltip}} {{turnControls.waitingHint}}"><i class="fa-solid fa-hourglass-half"></i> {{turnControls.rejoin.label}}</button>
+        {{else if turnControls.waitingLabel}}
+          <span class="combater-turn-waiting" data-tooltip="{{turnControls.waitingHint}}"><i class="fa-solid fa-hourglass-half"></i> {{turnControls.waitingLabel}}</span>
+        {{/if}}
         {{#each turnControls.delayed}}
-          <button type="button" class="combater-turn-button is-return" data-turn-control="return" data-delayed-id="{{id}}" data-tooltip="{{tooltip}}"><i class="fa-solid fa-arrow-right-to-bracket"></i> {{name}} · {{../turnControls.bringInLabel}}</button>
+          <button type="button" class="combater-turn-button is-rejoin" data-turn-control="rejoin" data-delayed-id="{{id}}" data-tooltip="{{tooltip}}"><i class="fa-solid fa-hourglass-half"></i> {{name}} · {{../turnControls.jumpInLabel}}</button>
         {{/each}}
       </div>
     {{/if}}
@@ -574,10 +582,10 @@
         {{/if}}
     </div>
     {{/if}}
-    {{#unless (or expanded actionTracker.visible upcomingTurns.visible turnControls.readied)}}
+    {{#unless (or expanded actionTracker.visible upcomingTurns.visible turnControls.readied turnControls.waitingLabel turnControls.delayed.length)}}
       <span class="combater-minimal-idle"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> {{minimalIdleLabel}}</span>
     {{/unless}}
-    {{#unless expanded}}
+    {{#unless (or expanded trackerOnly)}}
       <button type="button" class="combater-minimal-expand" data-action="toggle-compact" data-tooltip="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{#if actor}}: {{actor.name}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
     {{/unless}}
   </header>

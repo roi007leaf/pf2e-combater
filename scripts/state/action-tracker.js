@@ -94,13 +94,19 @@ function receiptData(context, snapshot) {
   };
 }
 
+// A delayed turn resumes only once its creature has chosen where to return. One
+// still waiting when its own slot comes round again lost that turn and starts fresh.
+export function resumesDelayedTurn(delay, round) {
+  return Boolean(delay?.afterId) && (round === delay.round
+    || (round === delay.round + 1 && delay.afterId !== delay.originalPreviousId));
+}
+
 function forecastActionContext(context, combat) {
   const actor = actorDocument(context);
   const index = combat.turns.findIndex((entry) => entry.id === context.combatant.id);
   const delay = combat.turns[index]?.flags?.[MODULE_ID]?.delayedTurn;
   const expectedRound = combat.round + Number(index <= combat.turn);
-  const resumesDelay = delay && (expectedRound === delay.round
-    || (expectedRound === delay.round + 1 && delay.afterId !== delay.originalPreviousId));
+  const resumesDelay = resumesDelayedTurn(delay, expectedRound);
   const pool = resumesDelay ? delay.pool : turnActionPool(conditionProfile(actor));
   const quickenedAllowed = resumesDelay && delay.quickenedAllowed?.length ? delay.quickenedAllowed : quickenedAllowance(actor);
   return {
