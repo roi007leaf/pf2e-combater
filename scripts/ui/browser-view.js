@@ -1,4 +1,5 @@
 import { t } from "../i18n.js";
+import { actionArt } from "./action-art.js";
 
 const NOT_ENOUGH_ACTIONS = () => t("Disabled.NotEnoughActions", "Not enough actions remaining.");
 
@@ -52,7 +53,19 @@ function browserRow(action, { sharedTarget, expanded }) {
   };
 }
 
-export function browserViewContext(base, { expanded = null, sort = "best" } = {}) {
+// Compact mode's tile: everything the row says, in its tooltip.
+function tileTooltip(row) {
+  const what = [row.name, row.rowTarget].filter(Boolean).join(" ");
+  const why = row.rowWarning || row.reason || "";
+  const odds = row.odds ? `(${row.odds})` : "";
+  const how = row.readonly ? "" : row.overBudget
+    ? [row.disabledReason, row.hideUncounted ? "" : t("Browser.TileHintOver", "Shift-click to add as uncounted.")].filter(Boolean).join(" ")
+    : row.hideUncounted ? t("Browser.TileHintNoUncounted", "Click to add. Right-click to star.")
+      : t("Browser.TileHint", "Click to add, Shift-click as uncounted. Right-click to star.");
+  return [[what, odds].filter(Boolean).join(" "), why, how].filter(Boolean).join(" · ");
+}
+
+export function browserViewContext(base, { expanded = null, sort = "best", compact = false } = {}) {
   const builder = base?.builder;
   if (!builder) return base;
   const tabs = builder.tabsList ?? [];
@@ -62,7 +75,12 @@ export function browserViewContext(base, { expanded = null, sort = "best" } = {}
   const shared = mostCommon(visibleActions.map(bestTargetName));
   const sharedTarget = shared.count >= 2 ? shared.value : "";
   const decorateSection = (section) => {
-    const actions = (section.actions ?? []).map((action) => browserRow(action, { sharedTarget, expanded }));
+    const actions = (section.actions ?? []).map((action) => browserRow(action, { sharedTarget, expanded }))
+      .map((row) => (compact ? {
+        ...row,
+        tileTooltip: tileTooltip({ ...row, readonly: base.readonly }),
+        tileImg: actionArt(row.slug, row.img),
+      } : row));
     if (sort === "name" && !section.isFavoritesSection) actions.sort(byName);
     return { ...section, actions, hasActions: actions.length > 0 };
   };
@@ -84,6 +102,10 @@ export function browserViewContext(base, { expanded = null, sort = "best" } = {}
       sharedTargetLabel: sharedTarget ? t("Browser.SharedTargetPrefix", "Best target") : "",
       sharedTarget,
     },
+    compact,
+    compactTooltip: compact
+      ? t("Browser.CompactOff", "Show the full list")
+      : t("Browser.CompactOn", "Compact: icon tiles"),
     sortLabel: sort === "name" ? t("Browser.SortName", "A–Z") : t("Browser.SortBest", "Best"),
     sortTooltip: t("Browser.SortTooltip", "Sort actions by planner score or by name."),
     hiddenLabel: t("Browser.HiddenToggle", "Hidden"),

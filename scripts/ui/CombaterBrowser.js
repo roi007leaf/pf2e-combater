@@ -21,6 +21,8 @@ function writeBrowserState(patch) {
   }
 }
 
+const COMPACT_SIZE = { width: 330, height: 460 };
+
 // Separate window holding the action browser (cost tabs, search, action sections). It is a thin
 // view over the owning CombaterPanel: it renders the panel's already-computed builder model and
 // routes every mutation back through the panel, which re-renders both windows.
@@ -53,6 +55,7 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this._restoredPosition = false;
     this._expanded = new Set();
     this._sort = readBrowserState().sort === "name" ? "name" : "best";
+    this._compact = readBrowserState().compact === true;
   }
 
   get title() {
@@ -65,7 +68,7 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext(options) {
     await super._prepareContext(options);
     const base = this._panel?.browserViewContext?.() ?? { builder: null, readonly: true, showDebug: false, debug: {} };
-    return browserViewContext(base, { expanded: this._expanded, sort: this._sort });
+    return browserViewContext(base, { expanded: this._expanded, sort: this._sort, compact: this._compact });
   }
 
   _restorePosition() {
@@ -75,8 +78,10 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const patch = {};
     if (Number.isFinite(saved.left)) patch.left = saved.left;
     if (Number.isFinite(saved.top)) patch.top = saved.top;
-    if (Number.isFinite(saved.width)) patch.width = saved.width;
-    if (Number.isFinite(saved.height)) patch.height = saved.height;
+    const size = this._compact ? saved.compactSize : saved;
+    if (Number.isFinite(size?.width)) patch.width = size.width;
+    if (Number.isFinite(size?.height)) patch.height = size.height;
+    else if (this._compact) Object.assign(patch, COMPACT_SIZE);
     if (Object.keys(patch).length) {
       this.setPosition(patch);
       return;
@@ -87,9 +92,20 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     if (rect) this.setPosition({ left: Math.round(rect.right + 8), top: Math.round(rect.top) });
   }
 
+  // Each layout keeps its own size; the position is shared.
   _savePosition() {
     const { left, top, width, height } = this.position ?? {};
-    writeBrowserState({ left, top, width, height });
+    writeBrowserState(this._compact ? { left, top, compactSize: { width, height } } : { left, top, width, height });
+  }
+
+  _toggleCompact() {
+    this._savePosition();
+    this._compact = !this._compact;
+    writeBrowserState({ compact: this._compact });
+    const saved = readBrowserState();
+    const size = this._compact ? saved.compactSize ?? COMPACT_SIZE : { width: saved.width ?? 460, height: saved.height ?? 620 };
+    this.setPosition({ width: size.width, height: size.height });
+    this.render();
   }
 
   _onRender(context, options) {
@@ -135,6 +151,24 @@ export class CombaterBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       writeBrowserState({ sort: this._sort });
       this.render();
     });
+
+    element.querySelector("[data-browser-compact]")?.addEventListener("click", () => this._toggleCompact());
+    // Compact tiles: click adds; Shift-click adds as uncounted (also when out of actions).
+    for (const tile of element.querySelectorAll("[data-tile-add]")) {
+      tile.addEventListener("click", (event) => {
+        const key = tile.dataset.tileAdd;
+        if (event.shiftKey && !("tileNoUncounted" in tile.dataset)) panel._addUncountedAction(key);
+        else if (!("tileOver" in tile.dataset)) panel._addAction(key);
+      });
+    }
+    // Compact tiles: right-click stars the action (pins it to the top).
+    for (const tile of element.querySelectorAll("[data-tile-favorite]")) {
+      tile.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        globalThis.game?.tooltip?.deactivate?.();
+        panel._toggleFavorite(tile.dataset.tileFavorite);
+      });
+    }
 
     element.querySelector("[data-show-excluded]")?.addEventListener("click", () => panel._toggleExcludedVisibility());
     for (const button of element.querySelectorAll("[data-exclude-action]")) {

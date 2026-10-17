@@ -1,4 +1,19 @@
 <div class="combater-shell{{#unless expanded}} is-minimal{{/unless}}{{#each minimalHidden}} hide-{{this}}{{/each}}">
+  {{#*inline "quickStepChip"}}
+            <button type="button" class="combater-quick-step{{#if isNext}} is-next{{/if}}{{#if needsChoice}} needs-choice{{/if}}{{#if blocked}} is-blocked{{/if}}" data-quick-step{{#unless blocked}} data-{{attr}}="{{instanceId}}"{{/unless}} data-preview-draft-step="{{instanceId}}"{{#if pipSlots}} data-step-pips="{{pipSlots}}"{{/if}} data-tooltip="{{tooltip}}" data-tooltip-direction="UP" aria-label="{{tooltip}}" aria-haspopup="true">
+              {{#if img}}<img src="{{img}}" alt="">{{else}}<span class="combater-quick-step-number">{{stepNumber}}</span>{{/if}}
+              <i class="fa-solid {{icon}}" aria-hidden="true"></i>
+              {{#if mapBadge}}<span class="combater-quick-step-map">{{mapBadge}}</span>{{/if}}
+            </button>
+            {{#if tools.length}}
+            <div class="combater-quick-tools" data-quick-tools popover="auto" role="group" aria-label="{{title}}">
+              <span class="combater-quick-tools-title">{{title}}</span>
+              {{#each tools}}
+                <button type="button" class="combater-quick-tool{{#if needed}} is-needed{{/if}}{{#if run}} is-run{{/if}}{{#if danger}} is-danger{{/if}}" data-{{attr}}="{{../instanceId}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}" {{#if disabled}}disabled{{/if}}><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{#if text}}<span>{{text}}</span>{{/if}}</button>
+              {{/each}}
+            </div>
+            {{/if}}
+  {{/inline}}
   {{#*inline "planSetupItems"}}
         {{#if tacticPersonality.visible}}
           <button type="button" class="combater-header-tactic {{#if tacticPersonality.isOverride}}is-override{{/if}}" data-configure-tactic data-tooltip="{{tacticPersonality.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.TacticAria"}}">
@@ -554,7 +569,16 @@
     </div>
     {{#if (and (not expanded) builder (not builder.readonly))}}
       <span class="combater-minimal-tools" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.PlanToolbar"}}">
-        {{#if showAutoFill}}<button type="button" class="combater-minimal-tool is-autofill" data-auto-fill data-tooltip="{{localize "PF2E_COMBATER.Panel.AutoFillTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.AutoFillAria"}}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>{{/if}}
+        {{#if showAutoFill}}
+        <span class="combater-minimal-autofill">
+          <button type="button" class="combater-minimal-tool is-autofill" data-auto-fill{{#if autoFillCycle.why.visible}} data-plan-why-context aria-haspopup="dialog"{{/if}} data-tooltip="{{localize "PF2E_COMBATER.Panel.AutoFillTooltip"}}{{#if autoFillCycle.why.visible}} {{autoFillCycle.why.contextHint}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.AutoFillAria"}}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+          {{#if autoFillCycle.why.visible}}
+          <div class="combater-plan-why" data-plan-why popover="auto" role="dialog" aria-label="{{autoFillCycle.why.title}}">
+            {{> planWhyBody}}
+          </div>
+          {{/if}}
+        </span>
+        {{/if}}
         <button type="button" class="combater-minimal-tool is-browse{{#if browserOpen}} is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}{{localize "PF2E_COMBATER.Panel.BrowseClose"}}{{else}}{{localize "PF2E_COMBATER.Panel.BrowseOpen"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.BrowseAria"}}" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}"><i class="fa-solid fa-layer-group"></i></button>
         {{#if (or tacticPersonality.visible intelLedger.visible resourceHorizon.visible turnIntent.visible loadoutAdvisor.visible)}}
         <span class="combater-minimal-setup">
@@ -565,19 +589,11 @@
         </span>
         {{/if}}
         {{#if showAutoFill}}
-        {{#if autoFillCycle.canCycle}}
+        {{#if autoFillCycle.inBar}}
         <span class="combater-minimal-cycle" role="group" aria-label="{{autoFillCycle.ariaLabel}}" data-tooltip="{{autoFillCycle.tooltip}}">
           <button type="button" data-cycle-auto-fill-previous aria-label="{{autoFillCycle.previousLabel}}"><i class="fa-solid fa-chevron-left"></i></button>
           <span class="combater-minimal-cycle-position">{{autoFillCycle.position}}/{{autoFillCycle.total}}</span>
           <button type="button" data-cycle-auto-fill aria-label="{{autoFillCycle.nextLabel}}"><i class="fa-solid fa-chevron-right"></i></button>
-        </span>
-        {{/if}}
-        {{#if autoFillCycle.why.visible}}
-        <span class="combater-minimal-why">
-          <button type="button" class="combater-minimal-tool is-why" data-plan-why-toggle aria-expanded="false" aria-haspopup="dialog" data-tooltip="{{autoFillCycle.why.label}}" aria-label="{{autoFillCycle.why.label}}"><i class="fa-solid fa-scale-balanced"></i></button>
-          <div class="combater-plan-why" data-plan-why popover="auto" role="dialog" aria-label="{{autoFillCycle.why.title}}">
-            {{> planWhyBody}}
-          </div>
         </span>
         {{/if}}
         {{/if}}
@@ -588,20 +604,13 @@
     {{#if (and (not expanded) planLayout.quickSteps.length)}}
       <ol class="combater-minimal-plan" aria-label="{{localize "PF2E_COMBATER.Panel.QuickPlan"}}">
         {{#each planLayout.quickSteps}}
-          <li>
-            <button type="button" class="combater-quick-step{{#if isNext}} is-next{{/if}}{{#if needsChoice}} needs-choice{{/if}}{{#if blocked}} is-blocked{{/if}}" data-quick-step{{#unless blocked}} data-{{attr}}="{{instanceId}}"{{/unless}} data-preview-draft-step="{{instanceId}}"{{#if pipSlots}} data-step-pips="{{pipSlots}}"{{/if}} data-tooltip="{{tooltip}}" data-tooltip-direction="UP" aria-label="{{tooltip}}" aria-haspopup="true">
-              {{#if img}}<img src="{{img}}" alt="">{{else}}<span class="combater-quick-step-number">{{stepNumber}}</span>{{/if}}
-              <i class="fa-solid {{icon}}" aria-hidden="true"></i>
-            </button>
-            {{#if tools.length}}
-            <div class="combater-quick-tools" data-quick-tools popover="auto" role="group" aria-label="{{title}}">
-              <span class="combater-quick-tools-title">{{title}}</span>
-              {{#each tools}}
-                <button type="button" class="combater-quick-tool{{#if needed}} is-needed{{/if}}{{#if run}} is-run{{/if}}{{#if danger}} is-danger{{/if}}" data-{{attr}}="{{../instanceId}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}" {{#if disabled}}disabled{{/if}}><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{#if text}}<span>{{text}}</span>{{/if}}</button>
-              {{/each}}
-            </div>
-            {{/if}}
-          </li>
+          {{#if isGroup}}
+            <li class="combater-quick-group" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}">
+              {{#each chips}}{{#unless @first}}<i class="fa-solid fa-plus combater-quick-join" aria-hidden="true"></i>{{/unless}}<span class="combater-quick-slot">{{> quickStepChip}}</span>{{/each}}
+            </li>
+          {{else}}
+            <li>{{> quickStepChip}}</li>
+          {{/if}}
         {{/each}}
       </ol>
     {{/if}}

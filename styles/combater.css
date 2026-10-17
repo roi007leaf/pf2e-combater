@@ -839,7 +839,7 @@
 }
 
 .pf2e-combater .combater-shell.is-minimal .combater-minimal-setup,
-.pf2e-combater .combater-shell.is-minimal .combater-minimal-why {
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-autofill {
   display: contents;
 }
 
@@ -974,7 +974,6 @@
 .pf2e-combater .combater-shell.is-minimal.hide-browse .combater-minimal-tool.is-browse,
 .pf2e-combater .combater-shell.is-minimal.hide-setup .combater-minimal-setup,
 .pf2e-combater .combater-shell.is-minimal.hide-cycle .combater-minimal-cycle,
-.pf2e-combater .combater-shell.is-minimal.hide-cycle .combater-minimal-why,
 .pf2e-combater .combater-shell.is-minimal.hide-plan .combater-minimal-plan,
 .pf2e-combater .combater-shell.is-minimal.hide-tracker .combater-action-tracker,
 .pf2e-combater .combater-shell.is-minimal.hide-readied .combater-readied,
@@ -4872,6 +4871,10 @@
 .pf2e-combater .combater-plan-why-toggle[aria-expanded="true"] { border-color: #79aee8; color: #e5f1ff; }
 .pf2e-combater .combater-plan-why-toggle:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
 .pf2e-combater .combater-plan-why {
+  /* Same type everywhere: the minimal bar's header would otherwise pass down its larger, bold text. */
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
   position: fixed;
   inset: auto;
   margin: 0;
@@ -6129,4 +6132,248 @@
 
 .pf2e-combater-minimal-parts .combater-minimal-parts-footer button {
   flex: 1 1 auto;
+}
+
+/* Compact browser: glyph-only tabs, icon-only toggles, and actions as icon tiles. */
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-tabs button > span:not(.combater-tab-count),
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-browser-toggle-label {
+  display: none;
+}
+
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-browser-toggle {
+  min-width: 32px;
+  padding: 0 8px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-alt-head {
+  padding-bottom: 4px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tiles > .combater-empty {
+  grid-column: 1 / -1;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #3a424b;
+  border-radius: 8px;
+  background: #1d2126;
+  cursor: pointer;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile > img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: cover;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-name {
+  padding: 2px;
+  overflow: hidden;
+  color: #d6dee6;
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+  word-break: break-word;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile:hover,
+.pf2e-combater.combater-browser .combater-browser-tile:focus-visible {
+  border-color: #6fc493;
+  box-shadow: 0 0 0 1px #3f8a5f;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile.is-over,
+.pf2e-combater.combater-browser .combater-browser-tile.is-disabled,
+.pf2e-combater.combater-browser .combater-browser-tile.is-excluded {
+  opacity: 0.45;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile.is-over {
+  cursor: not-allowed;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-star {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  color: #f5c74d;
+  font-size: 10px;
+  text-shadow: 0 0 2px #000;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 0 3px;
+  border-top-left-radius: 5px;
+  background: rgb(15 17 20 / 85%);
+  color: #c9b7ff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-badge.is-recharge {
+  color: #f5d68c;
+}
+
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-action-section {
+  padding: 8px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-action-section .combater-alt-head {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-shell.is-compact .combater-favorites-hint {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.pf2e-combater .combater-shell .combater-plan-why li,
+.pf2e-combater .combater-shell .combater-plan-why-chip {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Minimal bar carousel: portraits only. The next creature gets a ring; its name, the
+   "Next turn" caption and round markers live in each portrait's tooltip. */
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn .combater-upcoming-label,
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn .combater-upcoming-name,
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn .combater-upcoming-round {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-track > li:has(.is-next) {
+  flex: 0 0 auto;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid #6fc493;
+  border-radius: 999px;
+  background: none;
+  box-shadow: 0 0 0 1px #2f5a41;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-next .combater-upcoming-portrait {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-upcoming-turn.is-following .combater-upcoming-portrait {
+  width: 26px;
+  height: 26px;
+}
+
+/* Steps of one activity (Flurry of Blows) sit together in one outlined group. */
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-plan > li.combater-quick-group {
+  /* Chips keep their full size; the outline sits outside them, so the row stays aligned. */
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  /* A tinted plate exactly as tall as the chips; with the "+" it reads as one unit. */
+  background: #2c3d5c;
+}
+
+/* "+" between the steps of one activity. */
+.pf2e-combater .combater-shell.is-minimal .combater-quick-join {
+  flex: 0 0 auto;
+  color: #9fb8e0;
+  font-size: 8px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-slot {
+  display: contents;
+}
+
+/* Compact tiles carry a caption: icon on top, the name under it (two lines at most). */
+.pf2e-combater.combater-browser .combater-browser-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  aspect-ratio: auto;
+  min-height: 62px;
+  padding: 5px 3px 4px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile > img {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-name {
+  display: -webkit-box;
+  width: 100%;
+  padding: 0 1px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #d6dee6;
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile:not(:has(img)) .combater-browser-tile-name {
+  font-size: 11.5px;
+}
+
+.pf2e-combater.combater-browser .combater-browser-tile-badge {
+  top: 0;
+  right: 0;
+  bottom: auto;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 5px;
+}
+
+/* Later attacks in the minimal plan carry their MAP in the chip's top-left corner. */
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step-map {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0 3px;
+  border-bottom-right-radius: 5px;
+  background: rgb(15 17 20 / 85%);
+  color: #f1b27e;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
 }

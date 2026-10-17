@@ -1,5 +1,6 @@
 import "./self-test/source-architecture.test.js";
 import "./self-test/combat-automation.test.js";
+import "./self-test/browser-view.test.js";
 import "./self-test/flanking-settings-ui.test.js";
 import "./self-test/action-facts.test.js";
 import "./self-test/roll-preflight.test.js";
@@ -28,6 +29,7 @@ await import("./self-test/resource-horizon.test.js");
 await import("./self-test/turn-intent.test.js");
 await import("./self-test/action-tracker.test.js");
 await import("./self-test/grouped-draft-refresh.test.js");
+await import("./self-test/grouped-sudden-charge.test.js");
 await import("./self-test/repeated-strike-draft.test.js");
 await import("./self-test/mid-turn-stunned.test.js");
 await import("./self-test/pending-quickened.test.js");

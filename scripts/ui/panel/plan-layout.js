@@ -95,6 +95,13 @@ export function activatePlanLayoutBindings(panel, element) {
     button.addEventListener("click", () => panel._cycleAutoFillDraft(-1));
   }
 
+  // Minimal bar: tooltips open upward, so they never cover the bar's popovers below it.
+  if (panel.expanded === false) {
+    for (const node of element.querySelectorAll(".combater-compact [data-tooltip]:not([data-tooltip-direction])")) {
+      node.dataset.tooltipDirection = "UP";
+    }
+  }
+
   // Minimal bar: right-click a plan chip for that step's buttons, as a tiny popover.
   for (const chip of element.querySelectorAll("[data-quick-step]")) {
     const tools = chip.parentElement?.querySelector("[data-quick-tools]");

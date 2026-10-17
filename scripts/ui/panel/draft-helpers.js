@@ -201,6 +201,15 @@ function candidateReachesTarget(context, action, target) {
     : Number.isFinite(target?.distance) && target.distance <= meleeReach(contextProfile(context));
 }
 
+// The first step of the contiguous run of steps sharing this step's group (one activity's atoms).
+function groupStartInstanceId(draft, step) {
+  const steps = Array.isArray(draft?.steps) ? draft.steps : [];
+  let index = steps.findIndex((entry) => entry?.instanceId === step?.instanceId);
+  if (index < 0) return step?.instanceId;
+  while (index > 0 && steps[index - 1]?.groupId === step.groupId) index -= 1;
+  return steps[index]?.instanceId ?? step?.instanceId;
+}
+
 export function findProjectedDraftAction(context, draft, step) {
   if (isSustainAction(step)) {
     return {
@@ -213,7 +222,11 @@ export function findProjectedDraftAction(context, draft, step) {
   }
   const stepContext = projectContextForDraftStepOrigin(context, draft, step?.instanceId);
   if (step?.groupId) {
-    const original = buildCandidates(stepContext).candidates.find((candidate) =>
+    // Re-find the activity from where it STARTS (its first atom), not from this atom's origin: by
+    // Sudden Charge's Strike the group's own Strides are already projected, and from there the
+    // activity itself no longer qualifies, which left the Strike "no longer available".
+    const groupContext = projectContextForDraftStepOrigin(context, draft, groupStartInstanceId(draft, step));
+    const original = buildCandidates(groupContext).candidates.find((candidate) =>
       (candidate.activityProfile?.requiresDistinctTargets || candidate.activityProfile?.requiresBackingStrike)
       && String(candidate.name ?? "").split(" -> ")[0] === step.groupLabel);
     if (original) {
@@ -229,10 +242,11 @@ export function findProjectedDraftAction(context, draft, step) {
           .find((option) => option.id === step.weaponId);
         if (chosenWeapon) {
           const leafName = String(atom.name ?? "").split(" -> ")[0];
-          return { ...atom, ...backingStrikeOverrideFields(chosenWeapon, leafName) };
+          return withStepTargetReach(stepContext, step, { ...atom, ...backingStrikeOverrideFields(chosenWeapon, leafName) }, { always: true });
         }
       }
-      if (atom) return atom;
+      // The activity still exists; whether its Strike lands is judged from this atom's own square.
+      if (atom) return withStepTargetReach(stepContext, step, atom, { always: true });
     }
   }
   const keys = draftStepLookupKeys(step);
@@ -241,6 +255,10 @@ export function findProjectedDraftAction(context, draft, step) {
     rows.find((action) => actionLookupValues(action).includes(key))) ?? rows.find((action) =>
     actionLookupValues(action).some((value) => keys.has(value) || keys.has(stripDuplicateKeySuffix(value))),
   ) ?? null;
+  return withStepTargetReach(stepContext, step, matched);
+}
+
+function withStepTargetReach(stepContext, step, matched, { always = false } = {}) {
   if (!matched || (matched.source !== "strike" && !requiresMeleeReach(matched))) return matched;
 
   // The freshly-matched candidate independently re-derives its own "best" target on every render,
@@ -255,7 +273,9 @@ export function findProjectedDraftAction(context, draft, step) {
   // -- so a step committed to an enemy that isn't the current reticle target reads as unavailable
   // against that unrelated enemy's distance instead of its own.
   const stepTarget = stepTargetFromContext(stepContext, step);
-  if (!stepTarget || sameTargetIdentity(matched.preferredTarget, stepTarget)) return matched;
+  // A grouped atom was matched from where its activity starts, so its own target pick says nothing
+  // about this atom's square: always re-check reach there.
+  if (!stepTarget || (!always && sameTargetIdentity(matched.preferredTarget, stepTarget))) return matched;
 
   const reachable = candidateReachesTarget(stepContext, matched, stepTarget);
   const reason = reachable

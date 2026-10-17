@@ -8,6 +8,7 @@ import {
 } from "../../engine/action/requirements.js";
 import { executionAction, executionReadinessForStep, nextPendingExecutionStep } from "../../engine/execution/state.js";
 import { confidenceLabel } from "../../engine/confidence.js";
+import { actionArt } from "../action-art.js";
 import { canPlanSummon } from "../../integrations/summons-assistant.js";
 import { currentFinisher, finisherOptions, strikeFinisherTarget } from "../../integrations/animater.js";
 import { attacksTowardMap, isAttackAction, mapPenalty } from "../../engine/planner.js";
@@ -905,6 +906,7 @@ function decorateDraftStep(step, index, { readonly = false, gmExecute = false, r
     awaitingGmLabel: t("Panel.AwaitingGm", "Waiting for the GM\u2026"),
     canCycleMap: isAttackStep && canRunStep && !isExecutionDone && !step?.quickenedNextTurn,
     mapToolLabel,
+    mapPenaltyValue: isAttackStep ? mapPenaltyValue : 0,
     mapToolTip,
     mapPinned,
     canCycleMovement,
@@ -1283,8 +1285,15 @@ function starRow(score, best) {
 // PF2e's cost glyphs and placeholder icons duplicate the row's own cost glyph; only real art shows.
 const GENERIC_STEP_IMG = /icons\/actions\/(?:One|Two|Three|Free|Passive|Reaction|Empty|OneThree|OneTwo|TwoThree|Longer)[A-Za-z]*\.webp$|default-icons\//;
 
-function realStepImg(img) {
-  return img && !GENERIC_STEP_IMG.test(String(img)) ? img : "";
+// A move that sets up a Strike (Stride to Flank) carries the weapon's art; it's still a Stride.
+function isSetupMove(step) {
+  return /^flank-/.test(String(step?.slug ?? step?.action?.slug ?? ""))
+    || (step?.requiresDestination === true && /^stride\b/i.test(String(step?.name ?? "")));
+}
+
+// Generic cost-diamond art is dropped; basic actions get recognizable art instead (Stride's boots).
+function realStepImg(img, slug) {
+  return img && !GENERIC_STEP_IMG.test(String(img)) ? img : actionArt(slug, "");
 }
 
 function hasMoreStepTools(step) {
@@ -1322,17 +1331,36 @@ function quickStepTools(step) {
   return tools;
 }
 
-// The minimal bar's plan: every step still to run, clickable in any order.
+// The minimal bar's plan: every step still to run, clickable in any order. Steps of one
+// activity (Flurry of Blows' two Strikes) stay together as a group of chips.
 function quickPlanSteps(steps, nextId) {
+  return steps.flatMap((entry) => {
+    if (!entry?.isGroup) return quickChips([entry], nextId);
+    const chips = quickChips((entry.children ?? []).map((child) => ({ ...child, stepNumber: entry.stepNumber, activity: entry.groupLabel ?? "" })), nextId);
+    if (chips.length < 2) return chips;
+    const name = entry.groupLabel ?? "";
+    return [{
+      isGroup: true,
+      instanceId: entry.instanceId,
+      name,
+      stepNumber: entry.stepNumber,
+      tooltip: t("Panel.QuickGroup", "{number}. {name} · {count} steps", { number: entry.stepNumber, name, count: chips.length }),
+      chips,
+    }];
+  });
+}
+
+function quickChips(steps, nextId) {
   const plainExecute = t("Panel.ExecuteStep", "Execute this step");
   return steps
-    .flatMap((entry) => (entry?.isGroup ? (entry.children ?? []).map((child) => ({ ...child, stepNumber: entry.stepNumber })) : [entry]))
     .filter((step) => step?.instanceId && !step.isExecutionDone && !step.quickenedNextTurn && !step.awaitingGm)
     .flatMap((step) => {
       const choice = QUICK_CHOICES.find((entry) => entry.when(step));
       if (!choice && !step.canShowExecuteStep) return [];
       const blocked = !choice && step.executionBlocked;
-      const what = [`${step.stepNumber ? `${step.stepNumber}. ` : ""}${step.name}`, step.targetName ? `→ ${step.targetName}` : step.targetLabel].filter(Boolean).join(" ");
+      // A grouped step names its activity: "2. Flurry of Blows: Fist".
+      const name = step.activity ? `${step.activity}: ${step.name}` : step.name;
+      const what = [`${step.stepNumber ? `${step.stepNumber}. ` : ""}${name}`, step.targetName ? `→ ${step.targetName}` : step.targetLabel].filter(Boolean).join(" ");
       const does = choice ? choice.label(step)
         : blocked ? step.executeTooltip
           : step.executeTooltip && step.executeTooltip !== plainExecute ? `${t("Panel.QuickRun", "Click to run.")} ${step.executeTooltip}`
@@ -1343,6 +1371,8 @@ function quickPlanSteps(steps, nextId) {
         img: step.img,
         name: step.name,
         pipSlots: step.pipSlots ?? "",
+        // Later attacks say their penalty, so two Fist chips aren't identical.
+        mapBadge: Number(step.mapPenaltyValue) > 0 ? `−${step.mapPenaltyValue}` : "",
         attr: choice?.attr ?? "execute-draft-step",
         icon: choice?.icon ?? "fa-play",
         needsChoice: Boolean(choice),
@@ -1372,7 +1402,7 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
     stepNumber,
     pipSlots: slots,
     hideTarget: Boolean(shared && step.targetLabel === shared),
-    img: realStepImg(step.img),
+    img: isSetupMove(step) ? actionArt("stride", "") : realStepImg(step.img, step.slug),
     toolsOpen: Boolean(openTools?.has?.(step.instanceId)),
     hasMoreTools: hasMoreStepTools(step),
     moreToolsLabel: t("Panel.MoreStepTools", "More options"),

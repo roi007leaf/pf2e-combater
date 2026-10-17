@@ -40,12 +40,24 @@ assert.deepEqual(layout.steps[3].why.stars.map((star) => star.on), [true, false,
 assert.equal(layout.steps[3].toolsOpen, true, "the open tools tray survives a re-render");
 assert.equal(layout.footer.instanceId, "f1", "Run next starts with the first pending step");
 assert.equal(layout.footer.canRunAll, true);
-assert.deepEqual(layout.quickSteps.map((entry) => entry.instanceId), ["f1", "f2", "s1", "s3", "q1"], "the minimal plan lists every step still to run");
-assert.equal(layout.quickSteps[0].isNext, true);
-assert.equal(layout.quickSteps[1].stepNumber, 1, "group children carry their group's number");
-assert.equal(layout.quickSteps[2].pipSlots, "1", "hovering a chip lights its diamonds");
-assert.equal(layout.quickSteps[2].attr, "execute-draft-step");
-assert.match(layout.quickSteps[2].tooltip, /^2\. s1 Riding Horse\. Click to run\. Execute Right-click for options\.$/);
+const flank = decoratePlanLayout([step("fl", { slug: "flank-strike-fist", name: "Stride to Flank (Fist's Reach)", img: "systems/pf2e/icons/features/classes/powerful-fist.webp", requiresDestination: true })]).steps[0];
+assert.equal(flank.img, "icons/skills/movement/feet-winged-boots-brown.webp", "a Stride that sets up a Strike shows Stride's art, not the weapon's");
+const quickChips = layout.quickSteps.flatMap((entry) => (entry.isGroup ? entry.chips : [entry]));
+assert.deepEqual(quickChips.map((entry) => entry.instanceId), ["f1", "f2", "s1", "s3", "q1"], "the minimal plan lists every step still to run");
+assert.equal(layout.quickSteps[0].isGroup, true, "an activity's steps stay together");
+assert.deepEqual(layout.quickSteps[0].chips.map((chip) => chip.instanceId), ["f1", "f2"]);
+const flurryChips = decoratePlanLayout([{ ...flurry, groupLabel: "Flurry of Blows", children: [
+  step("f1", { mapPenaltyValue: 0 }), step("f2", { mapPenaltyValue: 5 }),
+] }]).quickSteps[0].chips;
+assert.deepEqual(flurryChips.map((chip) => chip.mapBadge), ["", "−5"], "later attacks show their MAP");
+assert.equal(decoratePlanLayout([{ ...flurry, groupLabel: "Flurry of Blows" }]).quickSteps[0].tooltip, "1. Flurry of Blows · 2 steps", "the group's plate names the activity");
+assert.match(flurryChips[0].tooltip, /^1\. Flurry of Blows: f1 /, "a grouped chip names its activity");
+assert.match(flurryChips[0].title, /^1\. Flurry of Blows: f1/);
+assert.equal(quickChips[0].isNext, true);
+assert.equal(quickChips[1].stepNumber, 1, "group children carry their group's number");
+assert.equal(quickChips[2].pipSlots, "1", "hovering a chip lights its diamonds");
+assert.equal(quickChips[2].attr, "execute-draft-step");
+assert.match(quickChips[2].tooltip, /^2\. s1 Riding Horse\. Click to run\. Execute Right-click for options\.$/);
 const choosing = decoratePlanLayout([
   step("t", { canChooseTarget: true, targetButtonLabel: "Choose target", executionBlocked: true }),
   step("m", { canChooseDestination: true, destinationButtonLabel: "Choose square", executionBlocked: true }),

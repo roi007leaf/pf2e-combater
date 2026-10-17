@@ -154,6 +154,7 @@ function planWhyView(plan, cycle, position) {
   return {
     visible: true,
     label: t("Panel.WhyLabel", "Why this plan?"),
+    contextHint: t("Panel.WhyContextHint", "Right-click: why this plan."),
     title: t("Panel.WhyTitle", "Why plan {position}", { position }),
     versus: comparison ? t("Panel.WhyVersus", "Beats plan {position}", { position: comparison.position }) : "",
     margin: comparison ? (comparison.margin >= 0 ? `+${comparison.margin}` : String(comparison.margin)) : "",
@@ -281,6 +282,9 @@ export function viewPanelContext(panel, context) {
     showAutoFill,
     autoFillCycle: {
       canCycle: autoFillCycle.length > 1,
+      // The minimal bar only offers other plans once Auto-fill has filled this one.
+      inBar: autoFillCycle.length > 1 && panel._builder?.draft?.source === "auto-fill"
+        && (panel._builder?.draft?.steps?.length ?? 0) > 0,
       label: `${autoFillCyclePosition}/${Math.max(1, autoFillCycle.length)}`,
       position: autoFillCyclePosition,
       total: Math.max(1, autoFillCycle.length),

@@ -6,10 +6,10 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 function partLabels() {
   return {
-    autofill: [t("MinimalParts.AutoFill", "Auto-fill"), t("MinimalParts.AutoFillHint", "Fill the turn with the best plan.")],
+    autofill: [t("MinimalParts.AutoFill", "Auto-fill"), t("MinimalParts.AutoFillHint", "Fill the turn with the best plan; right-click for why this plan.")],
     browse: [t("MinimalParts.Browse", "Browse"), t("MinimalParts.BrowseHint", "Open the action browser to add steps.")],
     setup: [t("MinimalParts.Setup", "Plan setup"), t("MinimalParts.SetupHint", "Tactic, intel, resources, turn intent and loadout.")],
-    cycle: [t("MinimalParts.Cycle", "Plan choice"), t("MinimalParts.CycleHint", "Step through Auto-fill's plans, and why this one.")],
+    cycle: [t("MinimalParts.Cycle", "Plan choice"), t("MinimalParts.CycleHint", "Step through Auto-fill's plans.")],
     plan: [t("MinimalParts.Plan", "Plan steps"), t("MinimalParts.PlanHint", "Your planned steps; click one to run it or make the choice it needs, right-click for its options.")],
     tracker: [t("MinimalParts.Tracker", "Action tracker"), t("MinimalParts.TrackerHint", "Action and reaction glyphs, and condition icons.")],
     readied: [t("MinimalParts.Readied", "Readied action"), t("MinimalParts.ReadiedHint", "A readied action with its Use and Discard buttons.")],

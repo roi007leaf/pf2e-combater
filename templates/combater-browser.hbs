@@ -1,4 +1,4 @@
-<div class="combater-browser-shell">
+<div class="combater-browser-shell{{#if compact}} is-compact{{/if}}">
   {{#if builder}}
     {{#*inline "actionRows"}}
       {{#each actions}}
@@ -60,10 +60,28 @@
         {{/if}}
       {{/each}}
     {{/inline}}
+    {{#*inline "actionTiles"}}
+      <div class="combater-browser-tiles">
+      {{#each actions}}
+        <button type="button" class="combater-browser-tile{{#if favorite}} is-favorite{{/if}}{{#if disabled}} is-disabled{{/if}}{{#if userExcluded}} is-excluded{{/if}}{{#if overBudget}} is-over{{/if}}"{{#unless readonly}}{{#unless blockedByExclusion}} data-tile-add="{{key}}"{{#if overBudget}} data-tile-over{{/if}}{{#if hideUncounted}} data-tile-no-uncounted{{/if}}{{/unless}} data-tile-favorite="{{key}}"{{/unless}} data-tooltip="{{tileTooltip}}" aria-label="{{tileTooltip}}">
+          {{#if tileImg}}<img src="{{tileImg}}" alt="">{{/if}}
+          <span class="combater-browser-tile-name">{{name}}</span>
+          {{#if favorite}}<i class="fa-solid fa-star combater-browser-tile-star" aria-hidden="true"></i>{{/if}}
+          {{#if recharge}}<span class="combater-browser-tile-badge is-recharge"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>{{recharge.rounds}}</span>{{else if odds}}<span class="combater-browser-tile-badge">{{odds}}</span>{{/if}}
+        </button>
+      {{else}}
+        {{#if isFavoritesSection}}
+          <p class="combater-empty combater-favorites-hint">{{@root.labels.favoritesHint}}</p>
+        {{else}}
+          <p class="combater-empty">{{localize "PF2E_COMBATER.Browser.NoActions"}}</p>
+        {{/if}}
+      {{/each}}
+      </div>
+    {{/inline}}
     <div class="combater-browser-header">
       <nav class="combater-tabs" aria-label="{{localize "PF2E_COMBATER.Browser.TabsAria"}}">
         {{#each builder.tabsList}}
-          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}">
+          <button type="button" data-tab="{{id}}" class="{{#if active}}active{{/if}}"{{#if @root.compact}} data-tooltip="{{label}}" aria-label="{{label}}"{{/if}}>
             <img class="combater-tab-glyph" src="{{glyphIcon}}" alt="">
             <span>{{label}}</span>
             <span class="combater-tab-count">{{count}}</span>
@@ -76,9 +94,10 @@
           <input type="search" data-search-actions value="{{builder.searchQuery}}" placeholder="{{localize "PF2E_COMBATER.Browser.SearchPlaceholder" label=builder.activeTabLabel}}" aria-label="{{localize "PF2E_COMBATER.Browser.SearchAria" label=builder.activeTabLabel}}" autocomplete="off">
         </div>
         {{#unless readonly}}
-        <button type="button" class="combater-browser-toggle" data-show-excluded aria-pressed="{{showExcluded}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.ShowHidden"}}"><i class="fa-solid fa-eye-slash"></i> {{hiddenLabel}}</button>
+        <button type="button" class="combater-browser-toggle" data-show-excluded aria-pressed="{{showExcluded}}" data-tooltip="{{localize "PF2E_COMBATER.Browser.ShowHidden"}}"><i class="fa-solid fa-eye-slash"></i><span class="combater-browser-toggle-label"> {{hiddenLabel}}</span></button>
         {{/unless}}
-        <button type="button" class="combater-browser-toggle" data-browser-sort data-tooltip="{{sortTooltip}}"><i class="fa-solid fa-arrow-down-wide-short"></i> {{sortLabel}}</button>
+        <button type="button" class="combater-browser-toggle" data-browser-sort data-tooltip="{{sortTooltip}}{{#if compact}}: {{sortLabel}}{{/if}}"><i class="fa-solid fa-arrow-down-wide-short"></i><span class="combater-browser-toggle-label"> {{sortLabel}}</span></button>
+        <button type="button" class="combater-browser-toggle is-compact-toggle" data-browser-compact aria-pressed="{{#if compact}}true{{else}}false{{/if}}" data-tooltip="{{compactTooltip}}" aria-label="{{compactTooltip}}"><i class="fa-solid {{#if compact}}fa-list{{else}}fa-table-cells{{/if}}"></i></button>
       </div>
       {{#if browserBar}}
       <div class="combater-browser-bar {{#if browserBar.over}}is-over{{/if}}">
@@ -102,7 +121,7 @@
                 </span>
               </div>
               <div class="combater-alt-details" {{#if isFavoritesSection}}data-drag-list{{/if}}>
-                {{> actionRows}}
+                {{#if @root.compact}}{{> actionTiles}}{{else}}{{> actionRows}}{{/if}}
               </div>
             </article>
           {{else}}
@@ -120,7 +139,7 @@
                     </span>
                   </div>
                   <div class="combater-alt-details" {{#if isFavoritesSection}}data-drag-list{{/if}}>
-                    {{> actionRows}}
+                    {{#if @root.compact}}{{> actionTiles}}{{else}}{{> actionRows}}{{/if}}
                   </div>
                 </article>
               {{/each}}
