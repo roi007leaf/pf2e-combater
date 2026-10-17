@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.5.0]
 
 ### Added
 
@@ -8,13 +8,16 @@
 - **Customize minimal bar.** A new *Customize minimal bar* button in Combater's settings lets each user choose which parts the minimal bar shows: Auto-fill, Browse, plan setup, plan choice, plan steps, action tracker, readied action, Delay, upcoming turns and End turn.
 - **Plan tools in the minimal bar.** Small buttons at the bar's left edge: Auto-fill, Browse, plan setup (tactic, intel, resources, turn intent, loadout), Auto-fill's plan cycle (‹ 1/33 ›, shown once Auto-fill has filled the plan). Right-click Auto-fill for Why this plan. Build and tune a plan without opening the full window.
 - **Tidier minimal bar.** Its tooltips open upward, so they no longer cover a right-click row below the bar. The upcoming-turns carousel shows portraits only (the next creature is ringed in green); names and rounds are in each portrait's tooltip.
-- **Sudden Charge and other move-and-Strike activities.** Their Strike step no longer turns into "Action is no longer available" when the board changes after planning (for example the target steps up next to you). The activity is re-matched from where it starts, and if the target is out of reach from the planned squares, the Strike now says "No target in range." so you know to re-pick the squares or Auto-fill again.
 - **Stride to Flank shows boots.** A Stride that sets up a Strike uses Stride's art instead of the weapon's.
 - **Art for basic actions.** Stride, Step, Recall Knowledge, Learn a Spell, Treat Wounds, Drop Prone, Raise a Shield, Interact and Delay show a real icon instead of the generic action diamond (PF2e's own action art first, then a core Foundry icon), in the plan and the compact browser.
 - **MAP on plan chips.** Later attacks in the minimal bar show their multiple attack penalty (−5, −10) in the chip's corner.
 - **Grouped steps in the minimal bar.** Steps of one activity, like Flurry of Blows' two Strikes, sit together on a tinted plate the same height as the other chips, joined by "+"; hover the plate for "Flurry of Blows · 2 steps". Each Strike still runs on its own.
 - **Step options on right-click.** Right-click a plan chip in the minimal bar for a tiny row of that step's buttons: target, square, template, items, summon, MAP, run and remove.
 - **Plan in the minimal bar.** Left of the action glyphs, each step still to run is a small chip (its icon, with the next step outlined in green). Click any chip to run that step, in any order. If the step still needs something, the chip's badge shows it and the click does that instead: choose target, choose square (Stride), place template, choose items or choose summon. Hover a chip to see the step and target, preview it on the canvas, and light the glyphs it spends.
+
+### Fixed
+
+- **Sudden Charge and other move-and-Strike activities.** Their Strike step no longer turns into "Action is no longer available" when the board changes after planning (for example the target steps up next to you). The activity is re-matched from where it starts, and if the target is out of reach from the planned squares, the Strike now says "No target in range." so you know to re-pick the squares or Auto-fill again.
 
 ## [2.4.0]
 
