@@ -574,6 +574,9 @@
         {{/if}}
     </div>
     {{/if}}
+    {{#unless (or expanded actionTracker.visible upcomingTurns.visible turnControls.readied)}}
+      <span class="combater-minimal-idle"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> {{minimalIdleLabel}}</span>
+    {{/unless}}
     {{#unless expanded}}
       <button type="button" class="combater-minimal-expand" data-action="toggle-compact" data-tooltip="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{#if actor}}: {{actor.name}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.CompactExpand"}}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
     {{/unless}}

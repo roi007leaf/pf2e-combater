@@ -627,6 +627,24 @@
   display: none;
 }
 
+/* Nothing to show (no encounter): one muted line so the bar isn't an empty strip. */
+.pf2e-combater .combater-minimal-idle {
+  grid-area: upcoming;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  color: #9aa6b4;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pf2e-combater .combater-minimal-idle i {
+  margin-right: 4px;
+  color: #6f7a86;
+}
+
 .pf2e-combater .combater-shell.is-minimal .combater-compact {
   display: grid;
   grid-template-areas: "tracker readied upcoming turn expand";

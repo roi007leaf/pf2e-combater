@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.7]
+
+### Fixed
+
+- **Empty minimal bar.** With no encounter running, the minimal bar now says "No active encounter" instead of showing an empty strip.
+
 ## [2.3.6]
 
 ### Fixed

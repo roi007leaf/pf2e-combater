@@ -253,6 +253,8 @@
       "RemoveAria": "Remove {name}",
       "NoSelectedActions": "No selected actions",
       "NoActiveCombatant": "No active combatant",
+      "MinimalIdle": "No active encounter",
+      "MinimalIdleWaiting": "Waiting for a combatant",
       "NoActiveCombatantHint": "Start combat or select readable active actor.",
       "Reset": "Reset",
       "ResetTooltip": "Revert every executed step",

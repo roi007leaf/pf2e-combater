@@ -230,6 +230,9 @@ export function viewPanelContext(panel, context) {
     },
     builder: panel._builder,
     expanded: panel.expanded,
+    minimalIdleLabel: globalThis.game?.combat?.started
+      ? t("Panel.MinimalIdleWaiting", "Waiting for a combatant")
+      : t("Panel.MinimalIdle", "No active encounter"),
     activeTab: panel.activeTab,
     browserOpen: Boolean(panel._browser),
     tacticPersonality: tacticPersonalityView(context),
