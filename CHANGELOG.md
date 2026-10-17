@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.6]
+
+### Fixed
+
+- **Sundry reaction effect.** Spending a reaction in Combater no longer adds Sundry's "Reaction Used" effect while Sundry's own reaction tracking is set to off.
+- **Delay / Ready reasons.** A blocked Delay or Ready now names the condition ("Confused prevents Ready.") instead of "This condition".
+
 ## [2.3.5]
 
 ### Added

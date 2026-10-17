@@ -184,8 +184,8 @@ try {
   globalThis.game.messages = [{ id: "spent", flags: { [MODULE_ID]: { actionSpend: { turnKey: snapshot.key, cost: 1, slug: "seek" } } } }];
   await assert.rejects(act(combat, "delay", { afterId: "b" }), /before spending/);
   globalThis.game.messages = [];
-  combat.combatant.actor.itemTypes.condition = [{ slug: "fleeing", system: {} }];
-  await assert.rejects(act(combat, "delay", { afterId: "b" }), /condition prevents/);
+  combat.combatant.actor.itemTypes.condition = [{ slug: "fleeing", name: "Fleeing", system: {} }];
+  await assert.rejects(act(combat, "delay", { afterId: "b" }), /Fleeing prevents Delay/);
   combat.combatant.actor.itemTypes.condition = [];
   combat.combatants.get("b").hidden = true;
   await assert.rejects(act(combat, "delay", { afterId: "b" }), /another creature/);
@@ -308,6 +308,14 @@ try {
   await act(combat, "ready", ready);
   await act(combat, "ready-clear", { readiedId: "a", used: true }, "p-a");
   assert.deepEqual(sundryCalls, [["a"]], "using a readied action is reported to Sundry's reaction tracker");
+  combat = fixture();
+  globalThis.game.modules = new Map([["sundry", { active: true }]]);
+  const savedSettings = globalThis.game.settings;
+  globalThis.game.settings = { get: (module, key) => (module === "sundry" && key === "track.reaction-usage" ? "off" : savedSettings?.get?.(module, key)) };
+  await act(combat, "ready", ready);
+  await act(combat, "ready-clear", { readiedId: "a", used: true }, "p-a");
+  assert.deepEqual(sundryCalls, [["a"]], "Sundry gets no effect while its reaction tracking is off");
+  globalThis.game.settings = savedSettings;
   delete globalThis.sundry;
 
   combat = fixture();
@@ -319,8 +327,8 @@ try {
   globalThis.game.messages.push({ id: "move", flags: { [MODULE_ID]: { actionSpend: { turnKey: readySnapshot.key, cost: 1, slug: "seek" } } } });
   await assert.rejects(act(combat, "ready", ready), /2 actions remaining/);
   globalThis.game.messages = [];
-  combat.combatant.actor.itemTypes.condition = [{ slug: "confused", system: {} }];
-  await assert.rejects(act(combat, "ready", ready), /prevents Ready/);
+  combat.combatant.actor.itemTypes.condition = [{ slug: "confused", name: "Confused", system: {} }];
+  await assert.rejects(act(combat, "ready", ready), /^Error: Confused prevents Ready\.$/, "the reason names the blocking condition");
 } finally {
   setSocket(null);
   globalThis.game = previous.game;

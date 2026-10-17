@@ -36,9 +36,19 @@ export function reactionUsed(combatant) {
   return hasReactionUsedEffect(combatant?.actor);
 }
 
+// Sundry's reaction tracking setting ("all" / "reaction-only" / "off"); its API adds the effect
+// regardless, so we only call it when the GM turned that tracking on.
+function sundryTracksReactions() {
+  try {
+    return globalThis.game?.settings?.get?.(SUNDRY_ID, "track.reaction-usage") !== "off";
+  } catch {
+    return false;
+  }
+}
+
 // Sundry tracks reactions as an actor effect with a use counter; ask it to count ours.
 async function notifySundryReaction(actor) {
-  if (!actor || !globalThis.game?.modules?.get?.(SUNDRY_ID)?.active) return;
+  if (!actor || !globalThis.game?.modules?.get?.(SUNDRY_ID)?.active || !sundryTracksReactions()) return;
   try {
     await globalThis.sundry?.api?.reactionUsed?.([actor]);
   } catch (error) {
@@ -104,13 +114,18 @@ export function delayTargets(combat, user = globalThis.game?.user) {
     }));
 }
 
+// Fleeing and Confused forbid Delay and Ready: the blocking condition's name, or "".
+function turnBlockingCondition(combatant) {
+  const blocker = collectionValues(combatant?.actor?.itemTypes?.condition)
+    .find((item) => item.active !== false && !item.system?.expired && ["fleeing", "confused"].includes(item.slug ?? item.system?.slug));
+  return blocker ? blocker.name ?? blocker.slug ?? blocker.system?.slug : "";
+}
+
 export function delayUnavailableReason(combat) {
   const active = combat?.combatant;
   if (!combat?.started || !active || delayedTurn(active)) return t("TurnControls.NotCurrent", "This turn is no longer active.");
-  const conditions = collectionValues(active.actor?.itemTypes?.condition).filter((item) => item.active !== false && !item.system?.expired);
-  if (conditions.some((item) => ["fleeing", "confused"].includes(item.slug ?? item.system?.slug))) {
-    return t("TurnControls.CannotDelay", "This condition prevents Delay.");
-  }
+  const blocker = turnBlockingCondition(active);
+  if (blocker) return t("TurnControls.CannotDelay", "{condition} prevents Delay.", { condition: blocker });
   const context = trackedActionContext({ combat, combatant: active, actor: active.actor }, { combat });
   if (!context.actionTracker) return t("TurnControls.TrackerRequired", "Wait for the turn's action tracker to initialize.");
   if (context.actionTracker.entries.length || context.actionsSpent.total > 0) {
@@ -124,10 +139,8 @@ export function delayUnavailableReason(combat) {
 export function readyUnavailableReason(combat) {
   const active = combat?.combatant;
   if (!combat?.started || !active || delayedTurn(active)) return t("TurnControls.NotCurrent", "This turn is no longer active.");
-  const conditions = collectionValues(active.actor?.itemTypes?.condition).filter((item) => item.active !== false && !item.system?.expired);
-  if (conditions.some((item) => ["fleeing", "confused"].includes(item.slug ?? item.system?.slug))) {
-    return t("TurnControls.CannotReady", "This condition prevents Ready.");
-  }
+  const blocker = turnBlockingCondition(active);
+  if (blocker) return t("TurnControls.CannotReady", "{condition} prevents Ready.", { condition: blocker });
   const context = trackedActionContext({ combat, combatant: active, actor: active.actor }, { combat });
   if (!context.actionTracker) return t("TurnControls.TrackerRequired", "Wait for the turn's action tracker to initialize.");
   if (actionBudget(context).normalActions < READY_COST) {
