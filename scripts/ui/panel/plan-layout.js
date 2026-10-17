@@ -49,8 +49,9 @@ export async function chooseStepFinisher(panel, itemUuid, id, strike = null) {
 export function activatePlanLayoutBindings(panel, element) {
   panel._openStepTools ??= new Set();
 
-  bindPopoverMenu(element, element.querySelector("[data-profile-menu-toggle]"), element.querySelector("[data-profile-menu]"),
-    { closeOn: "button" });
+  for (const toggle of element.querySelectorAll("[data-profile-menu-toggle]")) {
+    bindPopoverMenu(element, toggle, toggle.parentElement?.querySelector("[data-profile-menu]"), { closeOn: "button" });
+  }
 
   for (const toggle of element.querySelectorAll("[data-finisher-menu-toggle]")) {
     const menu = toggle.parentElement?.querySelector("[data-finisher-menu]");
@@ -90,12 +91,42 @@ export function activatePlanLayoutBindings(panel, element) {
     });
   }
 
-  element.querySelector("[data-cycle-auto-fill-previous]")
-    ?.addEventListener("click", () => panel._cycleAutoFillDraft(-1));
+  for (const button of element.querySelectorAll("[data-cycle-auto-fill-previous]")) {
+    button.addEventListener("click", () => panel._cycleAutoFillDraft(-1));
+  }
 
-  element.querySelector("[data-run-next]")?.addEventListener("click", (event) => {
-    panel._executeDraftStep(event.currentTarget.dataset.runNext, event);
-  });
+  // Minimal bar: right-click a plan chip for that step's buttons, as a tiny popover.
+  for (const chip of element.querySelectorAll("[data-quick-step]")) {
+    const tools = chip.parentElement?.querySelector("[data-quick-tools]");
+    if (!tools) continue;
+    chip.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      // The chip's tooltip would sit on top of the row it opens.
+      globalThis.game?.tooltip?.deactivate?.();
+      tools.showPopover();
+      const anchor = chip.getBoundingClientRect();
+      const box = tools.getBoundingClientRect();
+      const viewport = element.ownerDocument.defaultView;
+      tools.style.left = `${Math.max(8, Math.min(anchor.left, viewport.innerWidth - box.width - 8))}px`;
+      const below = anchor.bottom + 5;
+      tools.style.top = `${below + box.height > viewport.innerHeight - 8 ? Math.max(8, anchor.top - box.height - 5) : below}px`;
+      tools.querySelector("button:not(:disabled)")?.focus();
+    });
+    tools.addEventListener("click", (event) => {
+      if (event.target.closest("button")) tools.hidePopover();
+    });
+    tools.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); tools.hidePopover(); chip.focus(); }
+    });
+  }
+
+  // The full panel's footer and the minimal bar's play button both run the next step.
+  for (const button of element.querySelectorAll("[data-run-next]")) {
+    button.addEventListener("click", (event) => {
+      panel._executeDraftStep(event.currentTarget.dataset.runNext, event);
+    });
+  }
   const runAllButton = element.querySelector("[data-run-all]");
   runAllButton?.addEventListener("click", async (event) => {
     if (panel._runAllInFlight) return;

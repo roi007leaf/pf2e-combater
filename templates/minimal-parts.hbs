@@ -1,0 +1,17 @@
+<div class="combater-minimal-parts">
+  <p class="combater-minimal-parts-intro">{{intro}}</p>
+  <div class="combater-minimal-parts-list">
+    {{#each parts}}
+      <label class="combater-minimal-part">
+        <input type="checkbox" name="{{part}}" {{#if checked}}checked{{/if}}>
+        <span class="combater-minimal-part-text">
+          <strong>{{label}}</strong>
+          <small>{{hint}}</small>
+        </span>
+      </label>
+    {{/each}}
+  </div>
+  <footer class="combater-minimal-parts-footer">
+    <button type="submit"><i class="fa-solid fa-floppy-disk"></i> {{saveLabel}}</button>
+  </footer>
+</div>

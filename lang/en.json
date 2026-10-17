@@ -119,6 +119,31 @@
       "AllowanceCards": "Pick the single actions this Quickened condition allows. Saved while the condition remains; pick none to track it manually.",
       "AllowanceOther": "Other action slugs (comma separated)"
     },
+    "MinimalParts": {
+      "Title": "Customize minimal bar",
+      "Intro": "Choose what the minimal bar shows. Only affects you.",
+      "Save": "Save",
+      "AutoFill": "Auto-fill",
+      "AutoFillHint": "Fill the turn with the best plan.",
+      "Browse": "Browse",
+      "BrowseHint": "Open the action browser to add steps.",
+      "Setup": "Plan setup",
+      "SetupHint": "Tactic, intel, resources, turn intent and loadout.",
+      "Cycle": "Plan choice",
+      "CycleHint": "Step through Auto-fill's plans, and why this one.",
+      "Plan": "Plan steps",
+      "PlanHint": "Your planned steps; click one to run it or make the choice it needs, right-click for its options.",
+      "Tracker": "Action tracker",
+      "TrackerHint": "Action and reaction glyphs, and condition icons.",
+      "Readied": "Readied action",
+      "ReadiedHint": "A readied action with its Use and Discard buttons.",
+      "Delay": "Delay",
+      "DelayHint": "Delaying, Jump in, and the GM's Jump in for waiting creatures.",
+      "Upcoming": "Upcoming turns",
+      "UpcomingHint": "Who acts next.",
+      "Turn": "End turn",
+      "TurnHint": "End turn, with Delay and Ready in its menu."
+    },
     "Settings": {
       "ShowTurnNavigation": {
         "Name": "Show turn navigation",
@@ -176,6 +201,11 @@
           "Tracker": "Tracker only",
           "Full": "Full planner"
         }
+      },
+      "MinimalParts": {
+        "Name": "Customize minimal bar",
+        "Label": "Customize",
+        "Hint": "Choose which parts the minimal bar shows: Auto-fill, Browse, plan setup, plan choice, plan steps, action tracker, readied action, Delay, upcoming turns, End turn. Only affects you."
       },
       "PlayerPanelMode": {
         "Name": "Default Combater mode for players",
@@ -339,6 +369,9 @@
       "FinisherAria": "Choose this action's finisher animation",
       "FinisherAriaCurrent": "Choose this action's finisher animation (current: {name})",
       "SharedTargetPrefix": "All steps target",
+      "QuickPlan": "Plan",
+      "QuickRun": "Click to run.",
+      "QuickMore": "Right-click for options.",
       "RunNext": "Run next: {name}",
       "RunAll": "Run all",
       "RunAllTooltip": "Run the remaining steps in order. Stops at the first step that needs a choice or fails.",

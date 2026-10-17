@@ -7,6 +7,7 @@ const SETTINGS = {
   compactDefault: "compactDefault",
   panelMode: "panelMode",
   playerPanelMode: "playerPanelMode",
+  minimalParts: "minimalParts",
   rememberPanelPosition: "rememberPanelPosition",
   showTurnNavigation: "showTurnNavigation",
   enableSpellRecommendations: "enableSpellRecommendations",
@@ -22,7 +23,15 @@ const SETTINGS = {
   learnObservedIntel: "learnObservedIntel",
 };
 
-export function registerSettings({ decorateFlankingFormGroup } = {}) {
+// Parts of the minimal bar a user can switch off (Customize minimal bar).
+export const MINIMAL_PARTS = ["autofill", "browse", "setup", "cycle", "plan", "tracker", "readied", "delay", "upcoming", "turn"];
+
+export function minimalHiddenParts() {
+  const shown = settingOrDefault(SETTINGS.minimalParts, {}) ?? {};
+  return MINIMAL_PARTS.filter((part) => shown[part] === false);
+}
+
+export function registerSettings({ decorateFlankingFormGroup, minimalPartsMenu } = {}) {
   game.settings.register(MODULE_ID, SETTINGS.autoOpen, {
     name: "PF2E_COMBATER.Settings.AutoOpen.Name",
     hint: "PF2E_COMBATER.Settings.AutoOpen.Hint",
@@ -91,6 +100,25 @@ export function registerSettings({ decorateFlankingFormGroup } = {}) {
     default: "full",
     onChange: () => Hooks.callAll("pf2e-combater.panelModeChanged"),
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.minimalParts, {
+    scope: "client",
+    config: false,
+    type: Object,
+    default: {},
+    onChange: () => Hooks.callAll("pf2e-combater.minimalPartsChanged"),
+  });
+
+  if (minimalPartsMenu) {
+    game.settings.registerMenu(MODULE_ID, "minimalPartsMenu", {
+      name: "PF2E_COMBATER.Settings.MinimalParts.Name",
+      label: "PF2E_COMBATER.Settings.MinimalParts.Label",
+      hint: "PF2E_COMBATER.Settings.MinimalParts.Hint",
+      icon: "fa-solid fa-sliders",
+      type: minimalPartsMenu,
+      restricted: false,
+    });
+  }
 
   game.settings.register(MODULE_ID, SETTINGS.rememberPanelPosition, {
     name: "PF2E_COMBATER.Settings.RememberPanelPosition.Name",

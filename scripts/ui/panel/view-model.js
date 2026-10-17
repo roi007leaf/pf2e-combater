@@ -1297,6 +1297,64 @@ function hasMoreStepTools(step) {
 
 // Numbers each top-level step, maps pending steps onto the remaining action
 // diamonds, ranks reasons as stars, and lifts a target every step shares.
+// What a click on a step's chip in the minimal bar does: make the choice the step is still
+// missing (in the order the full row shows them), otherwise run it.
+const QUICK_CHOICES = [
+  { attr: "choose-summon", icon: "fa-paw", when: (step) => step.canChooseSummon && step.summonButtonLabel, label: (step) => step.summonButtonLabel },
+  { attr: "choose-target", icon: "fa-crosshairs", when: (step) => step.canChooseTarget && step.targetButtonLabel, label: (step) => step.targetButtonLabel },
+  { attr: "choose-area", icon: "fa-draw-polygon", when: (step) => step.canChooseArea && step.areaButtonLabel, label: (step) => step.areaButtonLabel },
+  { attr: "choose-swap-items", icon: "fa-right-left", when: (step) => step.canChooseSwapItems && step.swapButtonLabel, label: (step) => step.swapButtonLabel },
+  { attr: "choose-destination", icon: "fa-location-crosshairs", when: (step) => step.canChooseDestination && step.destinationButtonLabel, label: (step) => step.destinationButtonLabel },
+];
+
+// Right-click on a minimal-bar chip: the row's buttons, icons only.
+function quickStepTools(step) {
+  const tools = [];
+  const add = (when, attr, icon, tooltip, extra = {}) => { if (when) tools.push({ attr, icon, tooltip, ...extra }); };
+  add(step.canChooseSummon, "choose-summon", "fa-paw", step.summonLabel || t("Summon.Choose", "Choose summon"));
+  add(step.canChooseTarget, "choose-target", "fa-crosshairs", step.targetToolTip, { needed: Boolean(step.targetButtonLabel) });
+  add(step.canChooseArea, "choose-area", "fa-draw-polygon", t("Panel.SetTemplate", "Place template"), { needed: Boolean(step.areaButtonLabel) });
+  add(step.canChooseSwapItems, "choose-swap-items", "fa-right-left", step.swapItemsTooltip, { needed: Boolean(step.swapButtonLabel) });
+  add(step.canChooseDestination, "choose-destination", "fa-location-crosshairs", step.destinationButtonTooltip, { needed: Boolean(step.destinationButtonLabel) });
+  add(step.canCycleMap, "cycle-map", "fa-burst", step.mapToolTip, { text: step.attackBonusLabel || step.mapToolLabel });
+  add(step.canShowExecuteStep, "execute-draft-step", "fa-play", step.executeTooltip, { run: true, disabled: Boolean(step.executionBlocked) });
+  add(step.canRemoveDraftStep, "remove-draft-step", "fa-xmark", t("Panel.Remove", "Remove"), { danger: true });
+  return tools;
+}
+
+// The minimal bar's plan: every step still to run, clickable in any order.
+function quickPlanSteps(steps, nextId) {
+  const plainExecute = t("Panel.ExecuteStep", "Execute this step");
+  return steps
+    .flatMap((entry) => (entry?.isGroup ? (entry.children ?? []).map((child) => ({ ...child, stepNumber: entry.stepNumber })) : [entry]))
+    .filter((step) => step?.instanceId && !step.isExecutionDone && !step.quickenedNextTurn && !step.awaitingGm)
+    .flatMap((step) => {
+      const choice = QUICK_CHOICES.find((entry) => entry.when(step));
+      if (!choice && !step.canShowExecuteStep) return [];
+      const blocked = !choice && step.executionBlocked;
+      const what = [`${step.stepNumber ? `${step.stepNumber}. ` : ""}${step.name}`, step.targetName ? `→ ${step.targetName}` : step.targetLabel].filter(Boolean).join(" ");
+      const does = choice ? choice.label(step)
+        : blocked ? step.executeTooltip
+          : step.executeTooltip && step.executeTooltip !== plainExecute ? `${t("Panel.QuickRun", "Click to run.")} ${step.executeTooltip}`
+            : t("Panel.QuickRun", "Click to run.");
+      return [{
+        instanceId: step.instanceId,
+        stepNumber: step.stepNumber,
+        img: step.img,
+        name: step.name,
+        pipSlots: step.pipSlots ?? "",
+        attr: choice?.attr ?? "execute-draft-step",
+        icon: choice?.icon ?? "fa-play",
+        needsChoice: Boolean(choice),
+        blocked,
+        isNext: step.instanceId === nextId,
+        tooltip: `${what}. ${does} ${t("Panel.QuickMore", "Right-click for options.")}`,
+        title: what,
+        tools: quickStepTools(step),
+      }];
+    });
+}
+
 export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
   const entries = Array.isArray(headerSteps) ? headerSteps : [];
   const flat = entries.flatMap((entry) => (entry?.isGroup ? entry.children ?? [] : [entry])).filter((step) => step?.instanceId);
@@ -1360,6 +1418,7 @@ export function decoratePlanLayout(headerSteps, { openTools = null } = {}) {
   } : null;
   return {
     steps,
+    quickSteps: quickPlanSteps(steps, next?.instanceId ?? null),
     pipOwners,
     quickenedOwner,
     sharedTarget: shared ? {

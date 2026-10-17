@@ -593,6 +593,9 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+  /* The bar shrinks to its parts (see .combater-shell.is-minimal); the empty rest of the
+     window must not swallow canvas clicks. */
+  pointer-events: none;
 }
 
 .pf2e-combater.combater-panel.is-minimal > .window-header,
@@ -601,11 +604,19 @@
 }
 
 .pf2e-combater.combater-panel.is-minimal .window-content {
+  /* The narrow-bar queries measure the window here; a container shell couldn't shrink to fit. */
+  container: combater-shell / inline-size;
+  align-items: flex-start;
   overflow: visible;
   background: transparent;
 }
 
+/* Only as wide as the parts it shows, so hiding one (Customize minimal bar) closes the gap. */
 .pf2e-combater .combater-shell.is-minimal {
+  container-type: normal;
+  width: fit-content;
+  max-width: 100%;
+  pointer-events: auto;
   overflow: visible;
   border-color: rgb(61 65 72 / 55%);
   background: rgb(23 25 29 / 55%);
@@ -647,8 +658,8 @@
 
 .pf2e-combater .combater-shell.is-minimal .combater-compact {
   display: grid;
-  grid-template-areas: "tracker readied delayed upcoming turn expand";
-  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "tools run tracker readied delayed upcoming turn expand";
+  grid-template-columns: auto auto auto auto auto minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
   padding: 6px;
@@ -691,6 +702,286 @@
   padding: 0 8px;
   border-radius: 999px;
   font-size: 12px;
+}
+
+/* The plan, compact: one chip per step still to run, clickable in any order. The icon says what a
+   click does (run, or the choice the step still needs); hover previews it and lights its glyphs. */
+.pf2e-combater .combater-minimal-plan {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-plan {
+  grid-area: run;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-plan > li {
+  display: contents;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #4a5560;
+  border-radius: 8px;
+  background: #20262c;
+  color: #f2fff7;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step > img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: cover;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step-number {
+  color: #b5c3d0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step > i {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: #3f8a5f;
+  color: #f2fff7;
+  font-size: 8px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step.is-next {
+  border-color: #6fc493;
+  box-shadow: 0 0 0 1px #3f8a5f;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step.needs-choice {
+  border-color: #c9a24d;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step.needs-choice > i {
+  background: #8a6a2a;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step:hover:not(:disabled),
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step:focus-visible {
+  border-color: #9fe0b9;
+  box-shadow: 0 0 0 1px #6fc493;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Auto-fill and Browse, icon-only, at the bar's left edge. */
+.pf2e-combater .combater-minimal-tools {
+  display: none;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tools {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #49535e;
+  border-radius: 7px;
+  background: #20262c;
+  color: #b5c3d0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool.is-autofill {
+  color: #c9b7ff;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool.is-active {
+  border-color: #6f9fd0;
+  color: #c4e4ff;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool:hover,
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool:focus-visible {
+  border-color: #8a96a3;
+  color: #f2f6fa;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-setup,
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-why {
+  display: contents;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-tool[aria-expanded="true"] {
+  border-color: #79aee8;
+  color: #e5f1ff;
+}
+
+/* Auto-fill's plan cycle, compact: < 1/33 >. */
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-cycle {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid #49535e;
+  border-radius: 7px;
+  background: #20262c;
+  color: #b5c3d0;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-cycle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-cycle button:hover,
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-cycle button:focus-visible {
+  color: #f2f6fa;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-minimal-cycle-position {
+  min-width: 30px;
+  color: #e6edf3;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Right-click on a plan chip: that step's buttons in a small floating row. */
+.pf2e-combater .combater-quick-tools {
+  position: fixed;
+  inset: auto;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid #49535e;
+  border-radius: 8px;
+  background: #17191d;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 40%);
+  color: #e6edf3;
+}
+
+.pf2e-combater .combater-quick-tools:popover-open {
+  display: flex;
+}
+
+.pf2e-combater .combater-quick-tools-title {
+  max-width: 160px;
+  padding: 0 4px;
+  overflow: hidden;
+  color: #b5c3d0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pf2e-combater .combater-quick-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 28px;
+  width: auto;
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid #49535e;
+  border-radius: 6px;
+  background: #20262c;
+  color: #d6dee6;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pf2e-combater .combater-quick-tool.is-needed {
+  border-color: #c9a24d;
+  color: #f5d68c;
+}
+
+.pf2e-combater .combater-quick-tool.is-run {
+  border-color: #6fc493;
+  background: #3f8a5f;
+  color: #f2fff7;
+}
+
+.pf2e-combater .combater-quick-tool.is-danger {
+  color: #f0a3a3;
+}
+
+.pf2e-combater .combater-quick-tool:hover:not(:disabled),
+.pf2e-combater .combater-quick-tool:focus-visible {
+  border-color: #9fe0b9;
+}
+
+.pf2e-combater .combater-quick-tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pf2e-combater .combater-shell.is-minimal .combater-quick-step.is-blocked {
+  opacity: 0.55;
+  cursor: context-menu;
+}
+
+/* Customize minimal bar: parts the user switched off. */
+.pf2e-combater .combater-shell.is-minimal.hide-autofill .combater-minimal-tool.is-autofill,
+.pf2e-combater .combater-shell.is-minimal.hide-browse .combater-minimal-tool.is-browse,
+.pf2e-combater .combater-shell.is-minimal.hide-setup .combater-minimal-setup,
+.pf2e-combater .combater-shell.is-minimal.hide-cycle .combater-minimal-cycle,
+.pf2e-combater .combater-shell.is-minimal.hide-cycle .combater-minimal-why,
+.pf2e-combater .combater-shell.is-minimal.hide-plan .combater-minimal-plan,
+.pf2e-combater .combater-shell.is-minimal.hide-tracker .combater-action-tracker,
+.pf2e-combater .combater-shell.is-minimal.hide-readied .combater-readied,
+.pf2e-combater .combater-shell.is-minimal.hide-delay .combater-turn-controls.is-delayed,
+.pf2e-combater .combater-shell.is-minimal.hide-upcoming .combater-upcoming,
+.pf2e-combater .combater-shell.is-minimal.hide-turn .combater-turn-controls.is-header {
+  display: none;
 }
 
 /* Delay rides in the bar too: the waiting label or Jump in, and the GM's Jump in for other waiting creatures. */
@@ -5763,3 +6054,79 @@
 .pf2e-combater .combater-upcoming-turn.is-secret { border-color: color-mix(in srgb, var(--upcoming-disposition) 70%, #1d2228); }
 .pf2e-combater .combater-upcoming-turn.is-next { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--upcoming-disposition) 45%, transparent); }
 .pf2e-combater .combater-upcoming-turn .combater-upcoming-portrait { border: 2px solid var(--upcoming-disposition); }
+
+/* Customize minimal bar (settings menu). */
+.pf2e-combater-minimal-parts .window-content {
+  padding: 12px;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-parts-intro {
+  margin: 0;
+  color: #9aa6b4;
+  font-size: 13px;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-parts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #3a424b;
+  border-radius: 8px;
+  background: #1d2126;
+  cursor: pointer;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part:hover {
+  border-color: #5b6672;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part:has(input:not(:checked)) {
+  opacity: 0.6;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part input {
+  margin: 0;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part-text strong {
+  color: #e6edf3;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-part-text small {
+  color: #9aa6b4;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-parts-footer {
+  display: flex;
+  margin-top: 2px;
+}
+
+.pf2e-combater-minimal-parts .combater-minimal-parts-footer button {
+  flex: 1 1 auto;
+}

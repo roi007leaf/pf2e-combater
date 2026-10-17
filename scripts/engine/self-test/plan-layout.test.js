@@ -40,6 +40,27 @@ assert.deepEqual(layout.steps[3].why.stars.map((star) => star.on), [true, false,
 assert.equal(layout.steps[3].toolsOpen, true, "the open tools tray survives a re-render");
 assert.equal(layout.footer.instanceId, "f1", "Run next starts with the first pending step");
 assert.equal(layout.footer.canRunAll, true);
+assert.deepEqual(layout.quickSteps.map((entry) => entry.instanceId), ["f1", "f2", "s1", "s3", "q1"], "the minimal plan lists every step still to run");
+assert.equal(layout.quickSteps[0].isNext, true);
+assert.equal(layout.quickSteps[1].stepNumber, 1, "group children carry their group's number");
+assert.equal(layout.quickSteps[2].pipSlots, "1", "hovering a chip lights its diamonds");
+assert.equal(layout.quickSteps[2].attr, "execute-draft-step");
+assert.match(layout.quickSteps[2].tooltip, /^2\. s1 Riding Horse\. Click to run\. Execute Right-click for options\.$/);
+const choosing = decoratePlanLayout([
+  step("t", { canChooseTarget: true, targetButtonLabel: "Choose target", executionBlocked: true }),
+  step("m", { canChooseDestination: true, destinationButtonLabel: "Choose square", executionBlocked: true }),
+  step("w", { executionBlocked: true, executeTooltip: "Waiting on a choice" }),
+]).quickSteps;
+assert.deepEqual(choosing.map((entry) => entry.attr), ["choose-target", "choose-destination", "execute-draft-step"], "a chip makes the step's missing choice before running it");
+assert.equal(choosing[0].blocked, false, "a needed choice keeps the chip clickable");
+assert.equal(choosing[2].blocked, true);
+const tooled = decoratePlanLayout([step("x", {
+  canChooseTarget: true, targetToolTip: "Use target", canCycleMap: true, mapToolLabel: "MAP -5", mapToolTip: "Cycle MAP",
+  canRemoveDraftStep: true, executionBlocked: true,
+})]).quickSteps[0].tools;
+assert.deepEqual(tooled.map((tool) => tool.attr), ["choose-target", "cycle-map", "execute-draft-step", "remove-draft-step"], "right-click shows the row's buttons in row order");
+assert.equal(tooled[1].text, "MAP -5");
+assert.equal(tooled[2].disabled, true, "run stays disabled until the step is ready");
 
 const mixed = decoratePlanLayout([step("a"), step("b", { targetLabel: "Goblin" })]);
 assert.equal(mixed.sharedTarget, null, "different targets keep per-row labels");

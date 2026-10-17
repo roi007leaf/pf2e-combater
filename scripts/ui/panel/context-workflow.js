@@ -1,4 +1,4 @@
-import { SETTINGS, settingOrDefault } from "../../settings.js";
+import { SETTINGS, minimalHiddenParts, settingOrDefault } from "../../settings.js";
 import { canUndoPanelDraftClear } from "./draft-workflow.js";
 import { collectionValues } from "../../foundry-data.js";
 import { buildActionBuilderModel, projectContextForDraftDestination } from "../../engine/action/builder/index.js";
@@ -231,6 +231,7 @@ export function viewPanelContext(panel, context) {
     builder: panel._builder,
     expanded: panel.expanded,
     trackerOnly: panel.trackerOnly === true,
+    minimalHidden: minimalHiddenParts(),
     minimalIdleLabel: globalThis.game?.combat?.started
       ? t("Panel.MinimalIdleWaiting", "Waiting for a combatant")
       : t("Panel.MinimalIdle", "No active encounter"),

@@ -1,5 +1,7 @@
 export function activatePanelUtilityBindings(element) {
-  bindPopoverMenu(element, element.querySelector("[data-plan-why-toggle]"), element.querySelector("[data-plan-why]"), { closeOn: null });
+  for (const toggle of element.querySelectorAll("[data-plan-why-toggle]")) {
+    bindPopoverMenu(element, toggle, toggle.parentElement?.querySelector("[data-plan-why]"), { closeOn: null });
+  }
 }
 
 // Anchors a popover menu under its toggle's right edge, with arrow-key navigation.

@@ -160,8 +160,8 @@ activatePanelRenderBindings(
     querySelector(selector) {
       return selector === '[data-cycle-resource-horizon]' ? horizonButton : null;
     },
-    querySelectorAll() {
-      return [];
+    querySelectorAll(selector) {
+      return selector === '[data-cycle-resource-horizon]' ? [horizonButton] : [];
     },
     addEventListener() {},
     contains() {

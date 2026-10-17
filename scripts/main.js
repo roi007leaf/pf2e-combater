@@ -13,6 +13,7 @@ import { mountFlankingSettingsCards, registerFlankingSettingsCardClicks } from "
 import { collectionValues } from "./foundry-data.js";
 import { clearMovementCollisionCache } from "./readers/action/reach.js";
 import { promptRetchDc, promptRetchResult } from "./ui/retch-decision.js";
+import { MinimalPartsMenu } from "./ui/minimal-parts-menu.js";
 import { setSocket } from "./socket.js";
 import { t } from "./i18n.js";
 import { documentRelevantToContext } from "./state/context-relevance.js";
@@ -349,7 +350,7 @@ Hooks.once("init", () => {
       runLiveEngineMatrix,
     });
   }
-  registerSettings({ decorateFlankingFormGroup: mountFlankingSettingsCards });
+  registerSettings({ decorateFlankingFormGroup: mountFlankingSettingsCards, minimalPartsMenu: MinimalPartsMenu });
   registerFlankingSettingsCardClicks();
   Hooks.on("renderSettingsConfig", (_app, html) => mountFlankingSettingsCards(html));
   registerFlankingHighlightOriginHooks();
@@ -466,6 +467,10 @@ Hooks.on("pf2e-combater.playerAccessChanged", () => {
   ui?.combat?.render?.(true);
   if (playerAccessAllowed() || !activePanel) return;
   closeActivePanel().catch((error) => console.warn(`${MODULE_ID} | Access-change close failed`, error));
+});
+
+Hooks.on("pf2e-combater.minimalPartsChanged", () => {
+  activePanel?.render?.({ force: true });
 });
 
 // Tracker only / Full planner applies to the open window right away, without a reload.

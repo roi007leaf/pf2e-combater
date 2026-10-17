@@ -17,8 +17,9 @@ export function activatePanelRenderBindings(panel, element) {
   panel._activateDrag(element);
   panel._activateActionListScrollPerformance(element);
 
-  element.querySelector("[data-action='toggle-browser']")
-    ?.addEventListener("click", () => panel._toggleBrowser());
+  for (const button of element.querySelectorAll("[data-action='toggle-browser']")) {
+    button.addEventListener("click", () => panel._toggleBrowser());
+  }
   element.querySelector("[data-empty-browse]")
     ?.addEventListener("click", () => panel._toggleBrowser());
   element.querySelector("[data-empty-auto-fill]")
@@ -28,22 +29,23 @@ export function activatePanelRenderBindings(panel, element) {
   }
   element.querySelector("[data-action='refresh']")
     ?.addEventListener("click", () => panel.refresh("button"));
-  element.querySelector("[data-configure-tactic]")
-    ?.addEventListener("click", () => panel._configureTacticPersonality());
-  element.querySelector("[data-configure-intel]")
-    ?.addEventListener("click", () => panel._configureIntelLedger());
-  element.querySelector("[data-configure-turn-intent]")
-    ?.addEventListener("click", () => panel._configureTurnIntent());
-  element.querySelector("[data-open-loadout-advisor]")
-    ?.addEventListener("click", () => panel._openLoadoutAdvisor());
+  // The plan-setup buttons exist twice: the full window's menu and the minimal bar's.
+  const onEach = (selector, handler) => {
+    for (const button of element.querySelectorAll(selector)) button.addEventListener("click", handler);
+  };
+  onEach("[data-configure-tactic]", () => panel._configureTacticPersonality());
+  onEach("[data-configure-intel]", () => panel._configureIntelLedger());
+  onEach("[data-configure-turn-intent]", () => panel._configureTurnIntent());
+  onEach("[data-open-loadout-advisor]", () => panel._openLoadoutAdvisor());
   element.querySelector("[data-open-effect-clock]")
     ?.addEventListener("click", () => panel._openEffectClock());
-  const resourceHorizon = element.querySelector("[data-cycle-resource-horizon]");
-  resourceHorizon?.addEventListener("click", () => panel._cycleResourceHorizon());
-  resourceHorizon?.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    panel._cycleResourceHorizon(-1);
-  });
+  for (const resourceHorizon of element.querySelectorAll("[data-cycle-resource-horizon]")) {
+    resourceHorizon.addEventListener("click", () => panel._cycleResourceHorizon());
+    resourceHorizon.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      panel._cycleResourceHorizon(-1);
+    });
+  }
   activateMinionPlanStepBindings(panel, element);
 
   // Cost tabs, search, and the action add/favorite/open controls live in the detached

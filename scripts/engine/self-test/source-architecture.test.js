@@ -1241,9 +1241,9 @@ assert.equal(
   "player plans should auto-sync instead of requiring a manual Share button",
 );
 assert.equal(
-  (panelTemplateSource.match(/data-auto-fill/g) ?? []).length,
+  panelTemplateSource.split(/\r?\n/).filter((line) => line.includes("data-auto-fill") && !line.includes("combater-minimal-tool")).length,
   1,
-  "panel template should expose one top-level Auto-fill button only",
+  "panel template should expose one top-level Auto-fill button only (plus the minimal bar's own)",
 );
 assert.equal(
   panelTemplateSource.includes("combater-auto-fill"),

@@ -1,4 +1,53 @@
-<div class="combater-shell{{#unless expanded}} is-minimal{{/unless}}">
+<div class="combater-shell{{#unless expanded}} is-minimal{{/unless}}{{#each minimalHidden}} hide-{{this}}{{/each}}">
+  {{#*inline "planSetupItems"}}
+        {{#if tacticPersonality.visible}}
+          <button type="button" class="combater-header-tactic {{#if tacticPersonality.isOverride}}is-override{{/if}}" data-configure-tactic data-tooltip="{{tacticPersonality.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.TacticAria"}}">
+            <i class="fa-solid fa-chess-knight"></i>
+            <span class="combater-header-tactic-label">{{tacticPersonality.label}}</span>
+          </button>
+        {{/if}}
+        {{#if intelLedger.visible}}
+          <button type="button" class="combater-header-intel" data-configure-intel data-tooltip="{{intelLedger.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.IntelAria"}}">
+            <i class="fa-solid fa-brain"></i>
+            <span>{{intelLedger.label}}</span>
+          </button>
+        {{/if}}
+        {{#if resourceHorizon.visible}}
+          <button type="button" class="combater-header-resource {{#if resourceHorizon.isConserve}}is-conserve{{/if}} {{#if resourceHorizon.isBurst}}is-burst{{/if}}" data-cycle-resource-horizon data-tooltip="{{resourceHorizon.tooltip}}" aria-label="{{resourceHorizon.ariaLabel}}">
+            <i class="fa-solid {{resourceHorizon.icon}}"></i>
+            <span>{{resourceHorizon.label}}</span>
+          </button>
+        {{/if}}
+        {{#if turnIntent.visible}}
+          <button type="button" class="combater-header-intent {{#if turnIntent.active}}is-active{{/if}}" data-configure-turn-intent data-tooltip="{{turnIntent.tooltip}}" aria-label="{{turnIntent.tooltip}}" aria-pressed="{{#if turnIntent.active}}true{{else}}false{{/if}}">
+            <i class="fa-solid fa-bullseye"></i>
+            <span>{{turnIntent.label}}</span>
+          </button>
+        {{/if}}
+        {{#if loadoutAdvisor.visible}}
+          <button type="button" class="combater-header-loadout {{#if loadoutAdvisor.active}}is-active{{/if}}" data-open-loadout-advisor data-tooltip="{{loadoutAdvisor.tooltip}}" aria-label="{{loadoutAdvisor.tooltip}}">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>{{loadoutAdvisor.label}}</span>
+          </button>
+        {{/if}}
+  {{/inline}}
+  {{#*inline "planWhyBody"}}
+              <header>
+                <strong>{{autoFillCycle.why.title}}</strong>
+                {{#if autoFillCycle.why.versus}}<span class="combater-plan-why-versus">{{autoFillCycle.why.versus}} <b>{{autoFillCycle.why.margin}}</b></span>{{/if}}
+              </header>
+              {{#if (or autoFillCycle.why.gains.length autoFillCycle.why.drops.length)}}
+              <ul class="combater-plan-why-diff">
+                {{#each autoFillCycle.why.gains}}<li class="is-gain"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
+                {{#each autoFillCycle.why.drops}}<li class="is-drop"><i class="fa-solid fa-minus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
+              </ul>
+              {{/if}}
+              {{#if autoFillCycle.why.outcomes.length}}
+              <div class="combater-plan-why-outcomes">
+                {{#each autoFillCycle.why.outcomes}}<span class="combater-plan-why-chip is-{{tone}}"><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{text}}</span>{{/each}}
+              </div>
+              {{/if}}
+  {{/inline}}
   {{#*inline "minionPlanDetails"}}
     {{#if minionPlan}}
       <span class="combater-minion-subturn" data-tooltip="{{minionPlan.label}}">
@@ -462,36 +511,7 @@
           <i class="fa-solid fa-sliders"></i><span>{{profileMenu.label}}</span><i class="fa-solid fa-chevron-down combater-profile-caret"></i>
         </button>
         <div class="combater-profile-menu" data-profile-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.PlanSetup"}}">
-        {{#if tacticPersonality.visible}}
-          <button type="button" class="combater-header-tactic {{#if tacticPersonality.isOverride}}is-override{{/if}}" data-configure-tactic data-tooltip="{{tacticPersonality.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.TacticAria"}}">
-            <i class="fa-solid fa-chess-knight"></i>
-            <span class="combater-header-tactic-label">{{tacticPersonality.label}}</span>
-          </button>
-        {{/if}}
-        {{#if intelLedger.visible}}
-          <button type="button" class="combater-header-intel" data-configure-intel data-tooltip="{{intelLedger.tooltip}}" aria-label="{{localize "PF2E_COMBATER.Panel.IntelAria"}}">
-            <i class="fa-solid fa-brain"></i>
-            <span>{{intelLedger.label}}</span>
-          </button>
-        {{/if}}
-        {{#if resourceHorizon.visible}}
-          <button type="button" class="combater-header-resource {{#if resourceHorizon.isConserve}}is-conserve{{/if}} {{#if resourceHorizon.isBurst}}is-burst{{/if}}" data-cycle-resource-horizon data-tooltip="{{resourceHorizon.tooltip}}" aria-label="{{resourceHorizon.ariaLabel}}">
-            <i class="fa-solid {{resourceHorizon.icon}}"></i>
-            <span>{{resourceHorizon.label}}</span>
-          </button>
-        {{/if}}
-        {{#if turnIntent.visible}}
-          <button type="button" class="combater-header-intent {{#if turnIntent.active}}is-active{{/if}}" data-configure-turn-intent data-tooltip="{{turnIntent.tooltip}}" aria-label="{{turnIntent.tooltip}}" aria-pressed="{{#if turnIntent.active}}true{{else}}false{{/if}}">
-            <i class="fa-solid fa-bullseye"></i>
-            <span>{{turnIntent.label}}</span>
-          </button>
-        {{/if}}
-        {{#if loadoutAdvisor.visible}}
-          <button type="button" class="combater-header-loadout {{#if loadoutAdvisor.active}}is-active{{/if}}" data-open-loadout-advisor data-tooltip="{{loadoutAdvisor.tooltip}}" aria-label="{{loadoutAdvisor.tooltip}}">
-            <i class="fa-solid fa-shield-halved"></i>
-            <span>{{loadoutAdvisor.label}}</span>
-          </button>
-        {{/if}}
+        {{> planSetupItems}}
         </div>
       </div>
       {{/if}}
@@ -515,21 +535,7 @@
             {{#if autoFillCycle.why.visible}}
             <button type="button" class="combater-plan-why-toggle" data-plan-why-toggle aria-expanded="false" aria-haspopup="dialog" data-tooltip="{{autoFillCycle.why.label}}" aria-label="{{autoFillCycle.why.label}}"><i class="fa-solid fa-scale-balanced"></i></button>
             <div class="combater-plan-why" data-plan-why popover="auto" role="dialog" aria-label="{{autoFillCycle.why.title}}">
-              <header>
-                <strong>{{autoFillCycle.why.title}}</strong>
-                {{#if autoFillCycle.why.versus}}<span class="combater-plan-why-versus">{{autoFillCycle.why.versus}} <b>{{autoFillCycle.why.margin}}</b></span>{{/if}}
-              </header>
-              {{#if (or autoFillCycle.why.gains.length autoFillCycle.why.drops.length)}}
-              <ul class="combater-plan-why-diff">
-                {{#each autoFillCycle.why.gains}}<li class="is-gain"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
-                {{#each autoFillCycle.why.drops}}<li class="is-drop"><i class="fa-solid fa-minus" aria-hidden="true"></i><span>{{this}}</span></li>{{/each}}
-              </ul>
-              {{/if}}
-              {{#if autoFillCycle.why.outcomes.length}}
-              <div class="combater-plan-why-outcomes">
-                {{#each autoFillCycle.why.outcomes}}<span class="combater-plan-why-chip is-{{tone}}"><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{text}}</span>{{/each}}
-              </div>
-              {{/if}}
+              {{> planWhyBody}}
             </div>
             {{/if}}
             {{/if}}
@@ -546,8 +552,59 @@
       </div>
       {{/unless}}
     </div>
+    {{#if (and (not expanded) builder (not builder.readonly))}}
+      <span class="combater-minimal-tools" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.PlanToolbar"}}">
+        {{#if showAutoFill}}<button type="button" class="combater-minimal-tool is-autofill" data-auto-fill data-tooltip="{{localize "PF2E_COMBATER.Panel.AutoFillTooltip"}}" aria-label="{{localize "PF2E_COMBATER.Panel.AutoFillAria"}}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>{{/if}}
+        <button type="button" class="combater-minimal-tool is-browse{{#if browserOpen}} is-active{{/if}}" data-action="toggle-browser" data-tooltip="{{#if browserOpen}}{{localize "PF2E_COMBATER.Panel.BrowseClose"}}{{else}}{{localize "PF2E_COMBATER.Panel.BrowseOpen"}}{{/if}}" aria-label="{{localize "PF2E_COMBATER.Panel.BrowseAria"}}" aria-pressed="{{#if browserOpen}}true{{else}}false{{/if}}"><i class="fa-solid fa-layer-group"></i></button>
+        {{#if (or tacticPersonality.visible intelLedger.visible resourceHorizon.visible turnIntent.visible loadoutAdvisor.visible)}}
+        <span class="combater-minimal-setup">
+          <button type="button" class="combater-minimal-tool is-setup" data-profile-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="{{profileMenu.ariaLabel}}" data-tooltip="{{profileMenu.ariaLabel}}: {{profileMenu.label}}"><i class="fa-solid fa-sliders"></i></button>
+          <div class="combater-profile-menu" data-profile-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.PlanSetup"}}">
+            {{> planSetupItems}}
+          </div>
+        </span>
+        {{/if}}
+        {{#if showAutoFill}}
+        {{#if autoFillCycle.canCycle}}
+        <span class="combater-minimal-cycle" role="group" aria-label="{{autoFillCycle.ariaLabel}}" data-tooltip="{{autoFillCycle.tooltip}}">
+          <button type="button" data-cycle-auto-fill-previous aria-label="{{autoFillCycle.previousLabel}}"><i class="fa-solid fa-chevron-left"></i></button>
+          <span class="combater-minimal-cycle-position">{{autoFillCycle.position}}/{{autoFillCycle.total}}</span>
+          <button type="button" data-cycle-auto-fill aria-label="{{autoFillCycle.nextLabel}}"><i class="fa-solid fa-chevron-right"></i></button>
+        </span>
+        {{/if}}
+        {{#if autoFillCycle.why.visible}}
+        <span class="combater-minimal-why">
+          <button type="button" class="combater-minimal-tool is-why" data-plan-why-toggle aria-expanded="false" aria-haspopup="dialog" data-tooltip="{{autoFillCycle.why.label}}" aria-label="{{autoFillCycle.why.label}}"><i class="fa-solid fa-scale-balanced"></i></button>
+          <div class="combater-plan-why" data-plan-why popover="auto" role="dialog" aria-label="{{autoFillCycle.why.title}}">
+            {{> planWhyBody}}
+          </div>
+        </span>
+        {{/if}}
+        {{/if}}
+      </span>
+    {{/if}}
     {{#if (or actionTracker.visible effectClock.visible)}}
     <div class="combater-turn-status">
+    {{#if (and (not expanded) planLayout.quickSteps.length)}}
+      <ol class="combater-minimal-plan" aria-label="{{localize "PF2E_COMBATER.Panel.QuickPlan"}}">
+        {{#each planLayout.quickSteps}}
+          <li>
+            <button type="button" class="combater-quick-step{{#if isNext}} is-next{{/if}}{{#if needsChoice}} needs-choice{{/if}}{{#if blocked}} is-blocked{{/if}}" data-quick-step{{#unless blocked}} data-{{attr}}="{{instanceId}}"{{/unless}} data-preview-draft-step="{{instanceId}}"{{#if pipSlots}} data-step-pips="{{pipSlots}}"{{/if}} data-tooltip="{{tooltip}}" data-tooltip-direction="UP" aria-label="{{tooltip}}" aria-haspopup="true">
+              {{#if img}}<img src="{{img}}" alt="">{{else}}<span class="combater-quick-step-number">{{stepNumber}}</span>{{/if}}
+              <i class="fa-solid {{icon}}" aria-hidden="true"></i>
+            </button>
+            {{#if tools.length}}
+            <div class="combater-quick-tools" data-quick-tools popover="auto" role="group" aria-label="{{title}}">
+              <span class="combater-quick-tools-title">{{title}}</span>
+              {{#each tools}}
+                <button type="button" class="combater-quick-tool{{#if needed}} is-needed{{/if}}{{#if run}} is-run{{/if}}{{#if danger}} is-danger{{/if}}" data-{{attr}}="{{../instanceId}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}" {{#if disabled}}disabled{{/if}}><i class="fa-solid {{icon}}" aria-hidden="true"></i>{{#if text}}<span>{{text}}</span>{{/if}}</button>
+              {{/each}}
+            </div>
+            {{/if}}
+          </li>
+        {{/each}}
+      </ol>
+    {{/if}}
     {{#if actionTracker.visible}}
       <section class="combater-action-tracker {{#if actionTracker.forecast}}is-forecast{{else}}is-current{{/if}}" aria-label="{{actionTracker.label}}"{{#if expanded}} data-tooltip="{{actionTracker.hint}}"{{/if}} aria-live="polite">
         <span class="combater-tracker-pips{{#if actionTracker.glyphControls}} is-editable{{/if}}" aria-hidden="true"{{#if actionTracker.glyphControls}} data-tracker-pips data-tooltip="{{actionTracker.pipsHint}}"{{/if}}>{{#each actionTracker.pips}}<span class="combater-pip {{#if quickened}}is-quickened{{/if}} {{#if spent}}is-spent{{/if}}" data-pip="{{slot}}"><span class="action-glyph">1</span>{{#if owner}}<span class="combater-pip-owner">{{owner}}</span>{{/if}}</span>{{/each}}</span>

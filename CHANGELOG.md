@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Customize minimal bar.** A new *Customize minimal bar* button in Combater's settings lets each user choose which parts the minimal bar shows: Auto-fill, Browse, plan setup, plan choice, plan steps, action tracker, readied action, Delay, upcoming turns and End turn.
+- **Plan tools in the minimal bar.** Small buttons at the bar's left edge: Auto-fill, Browse, plan setup (tactic, intel, resources, turn intent, loadout), Auto-fill's plan cycle (‹ 1/33 ›) and Why this plan. Build and tune a plan without opening the full window.
+- **Step options on right-click.** Right-click a plan chip in the minimal bar for a tiny row of that step's buttons: target, square, template, items, summon, MAP, run and remove.
+- **Plan in the minimal bar.** Left of the action glyphs, each step still to run is a small chip (its icon, with the next step outlined in green). Click any chip to run that step, in any order. If the step still needs something, the chip's badge shows it and the click does that instead: choose target, choose square (Stride), place template, choose items or choose summon. Hover a chip to see the step and target, preview it on the canvas, and light the glyphs it spends.
+
 ## [2.4.0]
 
 ### Added
