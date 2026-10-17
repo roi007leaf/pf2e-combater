@@ -6,6 +6,7 @@ import { movementActionsSpent } from "./token-refresh.js";
 import { movementFootprintCentersForToken } from "../rules/token-geometry.js";
 import { isPlannableActor } from "../rules/actor-eligibility.js";
 import { summonIdentity } from "../rules/summoned-creatures.js";
+import { reactionBlock } from "../rules/reaction-block.js";
 import {
   INTEL_REVEAL_MODES,
   bandedIntelDefenseEntry,
@@ -454,6 +455,7 @@ function tokenEntry(token, originToken, { canSeeDefenses = false, combatant = nu
     hpPercent: hpPercent(actor),
     conditions,
     effects,
+    reactionBlocked: Boolean(reactionBlock(actor)),
     ...readDefensiveMeta(actor, canSeeDefenses, intelLedger),
   }, readBestiaryKnowledge(token));
 }

@@ -105,6 +105,7 @@
       "PipsHint": "Click: spend an action · Right-click: refund one",
       "ReactionAvailable": "Reaction available",
       "ReactionHint": "Click: use the reaction · Right-click: give it back",
+      "ReactionBlocked": "Can't use reactions ({source})",
       "PendingConditions": "{conditions} · next turn",
       "PendingConditionsHint": "Gained during this turn: it reduces the actions this creature regains at the start of its next turn.",
       "AllowanceTitle": "Quickened actions",

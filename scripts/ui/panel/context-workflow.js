@@ -202,7 +202,6 @@ export function viewPanelContext(panel, context) {
       ? t("ActionTracker.Planned", "{planned} of {total} planned", { planned: Math.min(planned, tracker.normal), total: tracker.normal })
       : "";
     tracker.overPlanned = planned > tracker.normal;
-    tracker.adjustLabel = t("ActionTracker.Adjust", "Adjust action budget");
   }
   const tactic = tacticPersonalityView(context);
   const profileParts = [tactic?.visible ? tactic.label : "", resourceHorizon?.label ?? ""].filter(Boolean);

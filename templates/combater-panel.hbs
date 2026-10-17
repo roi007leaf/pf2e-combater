@@ -531,12 +531,9 @@
           <i class="fa-solid fa-layer-group"></i>
           <span>{{localize "PF2E_COMBATER.Panel.Browse"}}</span>
         </button>
-        <div class="combater-utilities">
-          <button type="button" class="icon-button combater-utilities-toggle" data-panel-utilities aria-expanded="false" data-tooltip="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}" aria-label="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}"><i class="fa-solid fa-ellipsis"></i></button>
-          <div class="combater-utilities-menu" data-panel-utilities-menu popover="auto" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}">
-            <button type="button" data-action="refresh"><i class="fa-solid fa-arrows-rotate"></i><span>{{localize "PF2E_COMBATER.Panel.Refresh"}}</span></button>
-            <button type="button" data-action="toggle-compact" aria-pressed="{{#if expanded}}false{{else}}true{{/if}}"><i class="fa-solid {{#if expanded}}fa-down-left-and-up-right-to-center{{else}}fa-up-right-and-down-left-from-center{{/if}}"></i><span>{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}</span></button>
-          </div>
+        <div class="combater-utilities" role="group" aria-label="{{localize "PF2E_COMBATER.Panel.WindowOptions"}}">
+          <button type="button" class="icon-button combater-utility-button" data-action="refresh" data-tooltip="{{localize "PF2E_COMBATER.Panel.Refresh"}}" aria-label="{{localize "PF2E_COMBATER.Panel.Refresh"}}"><i class="fa-solid fa-arrows-rotate"></i></button>
+          <button type="button" class="icon-button combater-utility-button" data-action="toggle-compact" aria-pressed="{{#if expanded}}false{{else}}true{{/if}}" data-tooltip="{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}" aria-label="{{#if expanded}}{{localize "PF2E_COMBATER.Panel.CompactCollapse"}}{{else}}{{localize "PF2E_COMBATER.Panel.CompactExpand"}}{{/if}}"><i class="fa-solid {{#if expanded}}fa-down-left-and-up-right-to-center{{else}}fa-up-right-and-down-left-from-center{{/if}}"></i></button>
         </div>
       </div>
       {{/unless}}
@@ -546,45 +543,26 @@
     {{#if actionTracker.visible}}
       <section class="combater-action-tracker {{#if actionTracker.forecast}}is-forecast{{else}}is-current{{/if}}" aria-label="{{actionTracker.label}}"{{#if expanded}} data-tooltip="{{actionTracker.hint}}"{{/if}} aria-live="polite">
         <span class="combater-tracker-pips{{#if actionTracker.glyphControls}} is-editable{{/if}}" aria-hidden="true"{{#if actionTracker.glyphControls}} data-tracker-pips data-tooltip="{{actionTracker.pipsHint}}"{{/if}}>{{#each actionTracker.pips}}<span class="combater-pip {{#if quickened}}is-quickened{{/if}} {{#if spent}}is-spent{{/if}}" data-pip="{{slot}}"><span class="action-glyph">1</span>{{#if owner}}<span class="combater-pip-owner">{{owner}}</span>{{/if}}</span>{{/each}}</span>
-        {{#if actionTracker.reaction}}<span class="combater-tracker-reaction{{#if actionTracker.reaction.used}} is-used{{/if}}{{#if actionTracker.glyphControls}} is-editable" data-tracker-reaction data-tooltip="{{actionTracker.reaction.label}}. {{actionTracker.reaction.hint}}"{{else}}" data-tooltip="{{actionTracker.reaction.label}}"{{/if}} aria-label="{{actionTracker.reaction.label}}"><span class="action-glyph">R</span></span>{{/if}}
+        {{#if actionTracker.reaction}}<span class="combater-tracker-reaction{{#if actionTracker.reaction.used}} is-used{{/if}}{{#if actionTracker.reaction.blocked}} is-blocked{{/if}}{{#if actionTracker.glyphControls}} is-editable" data-tracker-reaction data-tooltip="{{actionTracker.reaction.label}}. {{actionTracker.reaction.hint}}"{{else}}" data-tooltip="{{actionTracker.reaction.label}}"{{/if}} aria-label="{{actionTracker.reaction.label}}"><span class="action-glyph">R</span></span>{{/if}}
         {{#if actionTracker.conditionIcons.length}}<span class="combater-tracker-condition-icons">{{#each actionTracker.conditionIcons}}<span class="combater-condition-icon{{#if pending}} is-pending{{/if}}" data-tooltip="{{tooltip}}" aria-label="{{tooltip}}"><img src="{{img}}" alt="">{{#if value}}<span class="combater-condition-value">{{value}}</span>{{/if}}</span>{{/each}}</span>{{/if}}
+        {{!-- The glyphs show the count (blue for the next-turn forecast), so no headline text. --}}
+        {{#if (or actionTracker.plannedLabel actionTracker.conditions actionTracker.pendingConditions)}}
         <span class="combater-tracker-text">
-          <strong><span class="combater-tracker-label">{{actionTracker.label}}</span> {{actionTracker.countLabel}}</strong>
           {{#if actionTracker.plannedLabel}}<small class="{{#if actionTracker.overPlanned}}is-over{{/if}}">{{actionTracker.plannedLabel}}</small>{{/if}}
           {{#if actionTracker.conditions}}<small class="combater-tracker-conditions">{{actionTracker.conditions}}</small>{{/if}}
           {{#if actionTracker.pendingConditions}}<small class="combater-tracker-conditions is-pending" data-tooltip="{{actionTracker.pendingConditionsHint}}">{{actionTracker.pendingConditions}}</small>{{/if}}
         </span>
+        {{/if}}
         {{#if actionTracker.quickened}}
           {{#if actionTracker.quickenedPending}}
             <button type="button" class="combater-tracker-quickened is-pending {{#if actionTracker.quickenedNeedsConfiguration}}needs-configuration{{/if}}" data-quickened-allowance data-tooltip="{{actionTracker.quickenedPendingHint}} {{actionTracker.quickenedHint}}" {{#unless actionTracker.canConfigureQuickened}}disabled{{/unless}}><i class="fa-solid fa-bolt" aria-hidden="true"></i><span class="combater-tracker-quickened-text">{{actionTracker.quickenedPendingLabel}}{{#if actionTracker.quickenedNeedsConfiguration}} · {{actionTracker.quickenedSetupLabel}}{{/if}}</span></button>
           {{else}}
             {{#if actionTracker.quickenedNeedsConfiguration}}
               <button type="button" class="combater-tracker-quickened needs-configuration" data-quickened-allowance data-tooltip="{{actionTracker.quickenedHint}}" {{#unless actionTracker.canConfigureQuickened}}disabled{{/unless}}><i class="fa-solid fa-bolt" aria-hidden="true"></i><span class="combater-tracker-quickened-text">{{actionTracker.quickenedLabel}} · {{actionTracker.quickenedSetupLabel}}</span></button>
+            {{else if actionTracker.canConfigureQuickened}}
+              <button type="button" class="combater-tracker-quickened is-icon" data-quickened-allowance data-tooltip="{{actionTracker.quickenedLabel}}: {{actionTracker.quickenedHint}}" aria-label="{{actionTracker.quickenedLabel}}"><i class="fa-solid fa-bolt" aria-hidden="true"></i></button>
             {{/if}}
           {{/if}}
-        {{/if}}
-        {{#if actionTracker.editable}}
-          <button type="button" class="combater-tracker-adjust-toggle" data-tracker-adjust-toggle aria-haspopup="true" aria-expanded="false" aria-label="{{actionTracker.adjustLabel}}" data-tooltip="{{actionTracker.adjustLabel}}"><i class="fa-solid fa-sliders"></i></button>
-          <div class="combater-tracker-adjust-menu" data-tracker-adjust-menu popover="auto" role="group" aria-label="{{actionTracker.adjustLabel}}">
-            <div class="combater-tracker-stepper">
-              <span>{{actionTracker.label}}</span>
-              <span class="combater-tracker-stepper-controls">
-                <button type="button" data-tracker-adjust="1" data-tracker-pool="normal" aria-label="{{actionTracker.spendLabel}}" {{#unless actionTracker.canSpend}}disabled{{/unless}}>−</button>
-                <output>{{actionTracker.normal}}</output>
-                <button type="button" data-tracker-adjust="-1" data-tracker-pool="normal" aria-label="{{actionTracker.refundLabel}}" {{#unless actionTracker.canRefund}}disabled{{/unless}}>+</button>
-              </span>
-            </div>
-            {{#if actionTracker.quickened}}{{#unless actionTracker.quickenedPending}}
-            <div class="combater-tracker-stepper">
-              <button type="button" class="combater-tracker-quickened" data-quickened-allowance data-tooltip="{{actionTracker.quickenedHint}}" {{#unless actionTracker.canConfigureQuickened}}disabled{{/unless}}>{{actionTracker.quickenedLabel}}</button>
-              <span class="combater-tracker-stepper-controls">
-                <button type="button" data-tracker-adjust="1" data-tracker-pool="quickened" aria-label="{{actionTracker.spendLabel}} ({{actionTracker.quickenedLabel}})" {{#unless actionTracker.canSpendQuickened}}disabled{{/unless}}>−</button>
-                <output>{{actionTracker.quickenedLeft}}</output>
-                <button type="button" data-tracker-adjust="-1" data-tracker-pool="quickened" aria-label="{{actionTracker.refundLabel}} ({{actionTracker.quickenedLabel}})" {{#unless actionTracker.canRefundQuickened}}disabled{{/unless}}>+</button>
-              </span>
-            </div>
-            {{/unless}}{{/if}}
-          </div>
         {{/if}}
       </section>
     {{/if}}

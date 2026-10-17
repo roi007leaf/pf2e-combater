@@ -802,20 +802,14 @@
   display: none;
 }
 
-/* The glyphs already show what's left, so the bar drops the count text. Clicking the glyphs spends
-   and refunds, so the adjust menu and the "planned" sub-line stay in the full panel. */
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-text,
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-toggle,
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-adjust-menu {
+/* The glyphs already show what's left (click spends, right-click refunds), so the bar drops the
+   text lines; the "planned" and condition sub-lines stay in the full panel. */
+.pf2e-combater .combater-shell.is-minimal .combater-tracker-text {
   display: none;
 }
 
-/* Reaction glyph: minimal bar only (the full panel has its "Reaction used" badge). */
+/* Reaction glyph beside the action pips, in both the minimal bar and the full panel. */
 .pf2e-combater .combater-tracker-reaction {
-  display: none;
-}
-
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction {
   display: inline-flex;
   align-items: center;
   padding-left: 6px;
@@ -831,18 +825,36 @@
   line-height: 1;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-editable {
+.pf2e-combater .combater-tracker-reaction.is-editable {
   cursor: pointer;
   user-select: none;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-editable:hover {
+.pf2e-combater .combater-tracker-reaction.is-editable:hover {
   text-shadow: 0 0 6px currentColor;
 }
 
-.pf2e-combater .combater-shell.is-minimal .combater-tracker-reaction.is-used {
+.pf2e-combater .combater-tracker-reaction.is-used {
   color: #6f7a86;
   opacity: 0.55;
+}
+
+/* Can't react (Paralyzed, Laughing Fit...): struck through in red, distinct from a spent reaction. */
+.pf2e-combater .combater-tracker-reaction.is-blocked {
+  position: relative;
+  color: #c98a8a;
+  opacity: 0.8;
+}
+
+.pf2e-combater .combater-tracker-reaction.is-blocked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: -2px;
+  top: 50%;
+  border-top: 2px solid #e06c6c;
+  transform: rotate(-35deg);
+  pointer-events: none;
 }
 
 /* Slowed / Stunned as PF2e's condition icons with a value badge: they explain the missing
@@ -4482,24 +4494,8 @@
 .pf2e-combater .combater-plan-toolbar .combater-header-browse { border-color: #495b6e; background: #222c36; color: #b7cee6; }
 .pf2e-combater .combater-plan-toolbar .combater-header-browse.is-active { border-color: #79aee8; background: #283d52; color: #d3e7ff; }
 .pf2e-combater .combater-plan-toolbar > button:focus-visible { outline: 2px solid #79aee8; outline-offset: 1px; }
-.pf2e-combater .combater-utilities { flex: 0 0 auto; margin-left: auto; }
-.pf2e-combater .combater-plan-toolbar .combater-utilities-toggle { width: 30px; height: 32px; border-color: transparent; background: transparent; }
-.pf2e-combater .combater-utilities-menu {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  padding: 5px;
-  min-width: 170px;
-  max-width: calc(100vw - 16px);
-  border: 1px solid #4b5664;
-  border-radius: 7px;
-  background: #20262e;
-  color: #e5ecf4;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
-}
-.pf2e-combater .combater-utilities-menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 30px; margin: 0; padding: 6px 9px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 12px; text-align: left; }
-.pf2e-combater .combater-utilities-menu button:hover,
-.pf2e-combater .combater-utilities-menu button:focus-visible { background: #354458; color: #fff; outline: none; }
+.pf2e-combater .combater-utilities { display: flex; flex: 0 0 auto; gap: 2px; margin-left: auto; }
+.pf2e-combater .combater-plan-toolbar .combater-utility-button { width: 30px; height: 32px; border-color: transparent; background: transparent; }
 .pf2e-combater .combater-browser-recharge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #6a5a30; border-radius: 10px; background: #2c271c; color: #e6c77e; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .pf2e-combater .combater-browser-recharge i { font-size: 10px; }
 .pf2e-combater .combater-detail-chip.is-move-end { border-color: #3c5a78; background: #1d2a38; color: #b9d4ef; }
@@ -4570,7 +4566,8 @@
 .pf2e-combater .combater-plan-why-chip.is-good { border-color: #2f5a41; color: #8fe0ab; }
 .pf2e-combater .combater-plan-why-chip.is-risk { border-color: #6a4730; color: #f1b27e; }
 .pf2e-combater .combater-turn-status { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
-.pf2e-combater .combater-turn-status .combater-action-tracker { flex: 1 1 240px; min-width: 0; }
+/* Hug the glyphs: the count text is gone, so stretching only left empty space. */
+.pf2e-combater .combater-turn-status .combater-action-tracker { flex: 0 1 auto; min-width: 0; }
 .pf2e-combater .combater-turn-status .combater-header-clock { flex: 0 0 auto; margin-left: auto; height: 28px; min-height: 28px; padding: 4px 7px; border-radius: 5px; border-color: #49535e; background: #20262c; color: #b5c3d0; }
 .pf2e-combater .combater-turn-status .combater-header-clock.is-active { border-color: #756744; background: #2c291f; color: #e6c77e; }
 .pf2e-combater .combater-turn-status .combater-header-clock.is-urgent { border-color: #b56e45; background: #35241d; color: #f1b27e; }
@@ -4779,36 +4776,6 @@
 .pf2e-combater .combater-tracker-text strong { font-size: 14px; font-variant-numeric: tabular-nums; }
 .pf2e-combater .combater-tracker-text .combater-tracker-label { font-weight: 600; }
 .pf2e-combater .combater-tracker-text small.is-over { color: #f1b27e; }
-.pf2e-combater .combater-action-tracker .combater-tracker-adjust-toggle { margin-left: auto; font-size: 12px; }
-.pf2e-combater .combater-tracker-adjust-menu {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  padding: 8px 10px;
-  width: 230px;
-  border: 1px solid #4b5664;
-  border-radius: 7px;
-  background: #20262e;
-  color: #e5ecf4;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
-}
-.pf2e-combater .combater-tracker-stepper { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 13px; }
-.pf2e-combater .combater-tracker-stepper-controls { display: inline-flex; align-items: center; gap: 6px; }
-.pf2e-combater .combater-tracker-stepper output { min-width: 16px; text-align: center; font-variant-numeric: tabular-nums; }
-.pf2e-combater .combater-tracker-adjust-menu button {
-  width: auto;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 7px;
-  border: 1px solid #4b5664;
-  border-radius: 5px;
-  background: #2a313a;
-  color: #e5ecf4;
-  font-size: 14px;
-}
-.pf2e-combater .combater-tracker-adjust-menu .combater-tracker-quickened { color: #f5d68c; font-size: 13px; }
-.pf2e-combater .combater-tracker-adjust-menu button:disabled { opacity: .45; }
 
 /* Step rows: number badge, attack bonus, quiet traits, secondary tools behind the more button. */
 .pf2e-combater .combater-step-number { position: relative; display: grid; flex: 0 0 auto; place-items: center; width: 20px; height: 20px; }

@@ -230,6 +230,8 @@ function hasReactiveStrike(entity) {
 }
 
 export function reactiveStrikeKnown(context, entity) {
+  // Paralyzed, Laughing Fit and the like: no reaction, so moving past it provokes nothing.
+  if (entity?.reactionBlocked === true) return false;
   if (isGM(context)) return hasReactiveStrike(entity);
   // A player's plan only avoids a Reactive Strike the party has learned about (Intel: Actions).
   return canUseIntelFact(context, entity, "actions", ["reactive-strike", "attack-of-opportunity"])

@@ -65,13 +65,6 @@ export function activatePlanLayoutBindings(panel, element) {
     });
   }
 
-  // Budget steppers re-render the panel; reopen the popover so repeated clicks work.
-  const adjustToggle = element.querySelector("[data-tracker-adjust-toggle]");
-  const adjustMenu = element.querySelector("[data-tracker-adjust-menu]");
-  const adjust = bindPopoverMenu(element, adjustToggle, adjustMenu, { closeOn: null });
-  adjustMenu?.addEventListener("toggle", () => { panel._trackerAdjustOpen = adjustMenu.matches(":popover-open"); });
-  if (adjust && panel._trackerAdjustOpen && adjustToggle?.isConnected) adjust.open();
-
   const pips = Array.from(element.querySelectorAll("[data-pip]"));
   const light = (slots) => {
     const lit = new Set(String(slots ?? "").split(" ").filter(Boolean));

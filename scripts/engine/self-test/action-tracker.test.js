@@ -61,6 +61,17 @@ assert.equal(newlySlowed.conditions, "", "slowed gained mid-turn does not change
 assert.equal(newlySlowed.pendingConditions, "Slowed 1 · next turn", "slowed gained mid-turn shows as a next-turn chip");
 assert.deepEqual(newlySlowed.conditionIcons.map(({ slug, value, pending }) => ({ slug, value, pending })),
   [{ slug: "slowed", value: 1, pending: true }], "the minimal bar shows a pending slowed icon");
+const slowedForecast = actionTrackerView(trackedActionContext({ ...context, combatant: { id: "other", actor } }, { combat, messages: [] }));
+assert.equal(slowedForecast.forecast, true);
+assert.deepEqual(slowedForecast.conditionIcons.map(({ slug, value, pending }) => ({ slug, value, pending })),
+  [{ slug: "slowed", value: 1, pending: false }], "the minimal bar's next-turn forecast shows the slowed icon");
+const slowedTurn = combat.flags["pf2e-combater"].actionTurn;
+combat.flags["pf2e-combater"].actionTurn = createTurnSnapshot(combat, { key: "slowed-turn" });
+actor.itemTypes.condition = [];
+const slowedRemoved = actionTrackerView(trackedActionContext(context, { combat, messages: [] }));
+assert.equal(slowedRemoved.conditions, "", "slowed removed mid-turn leaves the conditions line");
+assert.deepEqual(slowedRemoved.conditionIcons, [], "slowed removed mid-turn leaves the minimal bar");
+combat.flags["pf2e-combater"].actionTurn = slowedTurn;
 actor.itemTypes.condition = [condition("stunned", 2)];
 assert.equal(actionTrackerView(trackedActionContext(context, { combat, messages: [] })).pendingConditions, "Stunned 2 · next turn");
 actor.itemTypes.condition = [];
@@ -280,3 +291,24 @@ try {
   globalThis.foundry = globals.foundry;
 }
 console.log("action tracker tests passed");
+
+// Can't react: blocking conditions and spell effects (matched by slug or name) strike out the reaction.
+{
+  const { reactionBlock } = await import("../../rules/reaction-block.js");
+  const { reactiveStrikeKnown } = await import("../scoring/rk-warnings.js");
+  const blocked = (conditions = [], effects = []) => reactionBlock({ itemTypes: { condition: conditions, effect: effects } });
+  assert.equal(blocked(), null, "nothing blocks a plain creature's reaction");
+  assert.equal(blocked([{ slug: "paralyzed", name: "Paralyzed" }])?.slug, "paralyzed");
+  assert.equal(blocked([{ slug: "unconscious", active: false }]), null, "an inactive condition does not block");
+  assert.equal(blocked([], [{ name: "Spell Effect: Laughing Fit" }])?.name, "Spell Effect: Laughing Fit", "a GM-made effect is matched by name");
+  assert.equal(blocked([], [{ slug: "spell-effect-faerie-dust-failure", name: "Faerie Dust" }])?.slug, "spell-effect-faerie-dust-failure");
+  assert.equal(blocked([], [{ name: "Spell Effect: Hideous Laughter", isExpired: true }]), null, "an expired effect does not block");
+  assert.equal(blocked([{ slug: "frightened" }], [{ name: "Spell Effect: Bless" }]), null);
+  const reactingActor = { ...actor, itemTypes: { condition: [], effect: [{ name: "Spell Effect: Laughing Fit" }] } };
+  const view = actionTrackerView(trackedActionContext({ ...context, combatant: { ...combatant, actor: reactingActor } }, { combat, messages: [] }));
+  assert.equal(view.reaction.blocked, true, "the tracker glyph shows the reaction as blocked");
+  assert.equal(view.reaction.label, "Can't use reactions (Spell Effect: Laughing Fit)");
+  const gm = { isGM: true };
+  assert.equal(reactiveStrikeKnown(gm, { reactiveStrike: true }), true);
+  assert.equal(reactiveStrikeKnown(gm, { reactiveStrike: true, reactionBlocked: true }), false, "an enemy that can't react provokes nothing");
+}

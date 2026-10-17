@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.5]
+
+### Added
+
+- **Can't react.** The reaction glyph is struck through in red when the creature can't use reactions: confused, dying, paralyzed, petrified, stunned or unconscious, or a spell effect such as Laughing Fit (Hideous Laughter), Uncontrollable Dance, Roaring Applause, Infectious Comedy or Faerie Dust. Hover it to see what's blocking it. Auto-fill no longer fears a Reactive Strike from an enemy that can't react.
+
+### Changed
+
+- **Action tracker.** The full panel shows the reaction glyph next to the action glyphs and drops the "Actions left 3/3" / "Next turn 3 actions" text; the tracker is only as wide as its glyphs. The adjust menu is gone: the GM clicks a glyph to spend an action and right-clicks to refund it. A small bolt button lets the GM edit a Quickened creature's allowed actions.
+- **Window options.** Refresh and Minimal mode are now two buttons in the toolbar instead of a "⋯" menu.
+
+### Fixed
+
+- **Condition icons.** The minimal bar shows Slowed/Stunned on the next-turn forecast too, and drops a condition as soon as it leaves the token.
+
 ## [2.3.4]
 
 ### Fixed

@@ -415,9 +415,10 @@ export async function runFeature({ name, fixture }) {
       const message = await action.toMessage();
       await waitFor(() => remaining() === 1, 'Native two-action card did not spend two actions');
       requireCondition(panel._autoFillPlans.every((plan) => plan.totalCost <= 1), 'Auto-fill exceeded remaining actions');
-      await click(panelElement, '[data-tracker-adjust="-1"][data-tracker-pool="normal"]');
+      (await waitFor(() => panelElement()?.querySelector('[data-tracker-pips] .combater-pip:not(.is-quickened)'), 'Missing tracker glyphs'))
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
       await waitFor(() => remaining() === 2, 'Manual refund did not update tracker');
-      await click(panelElement, '[data-tracker-adjust="1"][data-tracker-pool="normal"]');
+      await click(panelElement, '[data-tracker-pips] .combater-pip:not(.is-quickened)');
       await waitFor(() => remaining() === 1, 'Manual spend did not update tracker');
       await message.delete();
       await waitFor(() => remaining() === 3, 'Deleting card did not refund actions');

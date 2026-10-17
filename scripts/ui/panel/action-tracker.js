@@ -1,5 +1,6 @@
 import { adjustTrackedActions, setQuickenedAllowance } from "../../state/action-tracker.js";
 import { reactionUsed, turnIdentity } from "../../state/turn-controls.js";
+import { reactionBlock } from "../../rules/reaction-block.js";
 import { sendTurnControl } from "./turn-controls.js";
 import { pf2eActionName, t } from "../../i18n.js";
 import { CARD_DIALOG_CLASS, cardPickerHtml, checkedValues } from "../card-picker.js";
@@ -33,18 +34,22 @@ function quickenedOptions(panel, allowed) {
   return options;
 }
 
-// The creature's reaction, for the minimal bar (the full panel shows a "Reaction used" badge).
+// The creature's reaction glyph, shown beside the action pips.
 function trackerReactionView(context) {
   const id = context?.combatant?.id;
   if (!id) return null;
   const combatant = globalThis.game?.combat?.turns?.find?.((entry) => entry.id === id) ?? context.combatant;
   const used = reactionUsed(combatant);
+  const block = reactionBlock(combatant?.actor ?? context.actor?.document);
   return {
     used,
+    blocked: Boolean(block),
     combatantId: id,
-    label: used
-      ? t("TurnControls.ReactionUsed", "Reaction used")
-      : t("ActionTracker.ReactionAvailable", "Reaction available"),
+    label: block
+      ? t("ActionTracker.ReactionBlocked", "Can't use reactions ({source})", { source: block.name })
+      : used
+        ? t("TurnControls.ReactionUsed", "Reaction used")
+        : t("ActionTracker.ReactionAvailable", "Reaction available"),
     hint: t("ActionTracker.ReactionHint", "Click: use the reaction · Right-click: give it back"),
   };
 }
@@ -57,18 +62,21 @@ export function actionTrackerView(context) {
   const actor = context.actor?.document ?? context.combatant?.actor;
   const editable = !forecast && (globalThis.game?.user?.isGM === true || actor?.isOwner === true);
   const canConfigureQuickened = globalThis.game?.user?.isGM === true;
-  // Click/right-click on the glyphs is a GM shortcut; players keep the adjust menu.
+  // GM only: click/right-click on the glyphs spends and refunds (there is no separate adjust menu).
   const glyphControls = editable && globalThis.game?.user?.isGM === true;
   const quickened = pool.quickened > 0 || tracker.quickenedPending === true;
   const quickenedNeedsConfiguration = quickened && !tracker.quickenedAllowed.length;
+  // The pool is the turn-start snapshot: drop conditions that have since left the token.
+  const next = tracker.nextTurnPool;
+  const slowedNow = pool.slowed > 0 && (!next || next.slowed > 0);
+  const stunnedNow = (pool.stunned > 0 || pool.stunnedDuration) && (!next || next.stunned > 0 || next.stunnedDuration);
   const conditions = [
-    pool.slowed && t("ActionTracker.Slowed", "Slowed {value}", { value: pool.slowed }),
-    pool.stunned && (pool.stunnedDuration
+    slowedNow && t("ActionTracker.Slowed", "Slowed {value}", { value: pool.slowed }),
+    stunnedNow && (pool.stunnedDuration
       ? t("ActionTracker.StunnedDuration", "Stunned")
       : t("ActionTracker.Stunned", "Stunned {value}", { value: pool.stunned })),
   ].filter(Boolean).join(" · ");
   // Slowed/Stunned gained mid-turn only cost actions the next time the creature regains them.
-  const next = tracker.nextTurnPool;
   const pendingConditions = forecast || !next ? "" : [
     next.slowed > pool.slowed && t("ActionTracker.Slowed", "Slowed {value}", { value: next.slowed }),
     (next.stunned > pool.stunned || (next.stunnedDuration && !pool.stunnedDuration)) && (next.stunnedDuration
@@ -89,11 +97,12 @@ export function actionTrackerView(context) {
         : name,
     };
   };
-  const conditionIcons = forecast ? [] : [
-    pool.slowed && icon("slowed", pool.slowed, false),
-    (pool.stunned || pool.stunnedDuration) && icon("stunned", pool.stunnedDuration ? 0 : pool.stunned, false),
-    next && next.slowed > pool.slowed && icon("slowed", next.slowed, true),
-    next && (next.stunned > pool.stunned || (next.stunnedDuration && !pool.stunnedDuration))
+  // The forecast's pool already includes them, so it shows plain (non-pending) icons too.
+  const conditionIcons = [
+    slowedNow && icon("slowed", pool.slowed, false),
+    stunnedNow && icon("stunned", pool.stunnedDuration ? 0 : pool.stunned, false),
+    !forecast && next && next.slowed > pool.slowed && icon("slowed", next.slowed, true),
+    !forecast && next && (next.stunned > pool.stunned || (next.stunnedDuration && !pool.stunnedDuration))
       && icon("stunned", next.stunnedDuration ? 0 : next.stunned, true),
   ].filter(Boolean);
   return {
@@ -143,8 +152,8 @@ export function actionTrackerView(context) {
 }
 
 export function activateActionTrackerBindings(panel, element) {
-  // Glyphs as a shortcut for the adjust menu: click spends, right-click refunds. The quickened
-  // glyph adjusts the quickened pool; any other glyph the normal pool.
+  // Glyphs: click spends, right-click refunds. The quickened glyph adjusts the quickened pool;
+  // any other glyph the normal pool.
   const pips = element.querySelector?.("[data-tracker-pips]");
   const adjustFromPip = async (event, amount) => {
     event.preventDefault();
@@ -185,18 +194,6 @@ export function activateActionTrackerBindings(panel, element) {
   };
   reaction?.addEventListener("click", (event) => setReaction(event, true));
   reaction?.addEventListener("contextmenu", (event) => setReaction(event, false));
-  for (const button of element.querySelectorAll("[data-tracker-adjust]")) {
-    button.addEventListener("click", async () => {
-      if (!actionTrackerView(panel._context).editable) return;
-      button.disabled = true;
-      try {
-        await adjustTrackedActions(panel._context, button.dataset.trackerPool, Number(button.dataset.trackerAdjust));
-        await panel.refresh("chat-actions");
-      } catch (error) {
-        globalThis.ui?.notifications?.error?.(error.message);
-      } finally { button.disabled = false; }
-    });
-  }
   for (const button of element.querySelectorAll("[data-quickened-allowance]")) button.addEventListener("click", async () => {
     const context = panel._context;
     if (!actionTrackerView(context).canConfigureQuickened) return;
